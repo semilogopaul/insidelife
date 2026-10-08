@@ -4,12 +4,16 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Target, Trophy } from 'lucide-react';
 import { useEffect } from 'react';
 import { gameEvents } from '@/common/game/game-events';
+import { useMediaQuery } from '@/common/hooks/use-media-query';
 import { useCelebrations, type BadgeCelebration } from '../hooks/use-celebration-store';
 import { Confetti } from './Confetti';
 
 const SHOW_MS = 4_500;
 
-/** Toast-level celebration: a medal pops in upper-centre with a small confetti burst, then gets out of the way. */
+/**
+ * Toast-level celebration: a medal pops in with a small confetti burst, then gets out of the way. Upper-centre on wide
+ * screens; on phones the HUD stacks the clock, vitals and minimap down the top third, so it rises from above the thumbs.
+ */
 export function BadgeBurst() {
   const badge = useCelebrations((state) => state.badges[0] ?? null);
   const dismiss = useCelebrations((state) => state.dismissBadge);
@@ -22,7 +26,7 @@ export function BadgeBurst() {
   }, [badge, dismiss]);
 
   return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 top-[18%] z-[65] flex justify-center px-4">
+    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-[24%] z-[65] flex justify-center px-4 md:bottom-auto md:top-[18%]">
       <AnimatePresence>{badge && <Medal key={badge.key} badge={badge} onDismiss={() => dismiss(badge.key)} />}</AnimatePresence>
     </div>
   );
@@ -30,9 +34,10 @@ export function BadgeBurst() {
 
 function Medal({ badge, onDismiss }: { readonly badge: BadgeCelebration; readonly onDismiss: () => void }) {
   const Icon = badge.kind === 'goal' ? Target : Trophy;
+  const wide = useMediaQuery('(min-width: 768px)');
   return (
     <>
-      <Confetti burstKey={badge.key} intensity="small" origin={{ x: 0.5, y: 0.22 }} />
+      <Confetti burstKey={badge.key} intensity="small" origin={{ x: 0.5, y: wide ? 0.22 : 0.72 }} />
       <motion.button
         type="button"
         onClick={onDismiss}

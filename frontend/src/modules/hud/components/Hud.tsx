@@ -13,7 +13,7 @@ import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
 import { cn } from '@/common/utils/cn';
 import { useHudData } from '../hooks/use-hud-data';
-import { useMediaQuery } from '../hooks/use-media-query';
+import { useMediaQuery } from '@/common/hooks/use-media-query';
 import { useSuggestions } from '../hooks/use-suggestions';
 import { isRoutineDue } from '../services/suggestions';
 import { ActivityBanner } from './ActivityBanner';
@@ -126,10 +126,10 @@ export function Hud({ tray, map }: HudProps) {
             <button
               type="button"
               onClick={() => gameEvents.emit('interact', { interactableId: nearby.id })}
-              className="h-12 rounded-card bg-paper px-4 font-bold text-ink shadow-[var(--shadow-lift)]"
+              className="h-12 whitespace-nowrap rounded-card bg-paper px-4 font-bold text-ink shadow-[var(--shadow-lift)]"
             >
               {nearby.label}
-              <kbd className="ml-2 rounded bg-paper-3 px-1.5 py-0.5 text-xs">E</kbd>
+              <kbd className="ml-2 rounded bg-paper-3 px-1.5 py-0.5 text-xs pointer-coarse:hidden">E</kbd>
             </button>
           )}
           {!phoneOpen && (

@@ -17,7 +17,6 @@ export interface PhoneProps {
 /** The in-game phone: the main menu, styled as a bright handset sliding up over the world. */
 export function Phone({ apps }: PhoneProps) {
   const { phoneOpen, phoneApp, openPhone, closePhone } = useUi();
-  const minute = useGameMinute(10_000);
   const app = apps.find((candidate) => candidate.id === phoneApp);
 
   useEscapeLayer(phoneOpen, closePhone);
@@ -37,7 +36,7 @@ export function Phone({ apps }: PhoneProps) {
           className="absolute inset-x-0 bottom-0 z-40 mx-auto flex h-[min(92dvh,820px)] w-full max-w-[440px] flex-col overflow-hidden rounded-t-phone bg-paper text-text shadow-[0_-12px_40px_rgb(4_18_24/0.45)] sm:bottom-4 sm:rounded-phone"
         >
           <div className="flex items-center justify-between px-6 pb-1 pt-3 text-xs font-bold text-text-soft">
-            <span className="tabular">{formatClock12(minute)}</span>
+            <StatusClock />
             <span aria-hidden className="h-1.5 w-16 rounded-full bg-paper-3" />
             <span>9mobile 4G</span>
           </div>
@@ -94,4 +93,10 @@ export function Phone({ apps }: PhoneProps) {
       )}
     </AnimatePresence>
   );
+}
+
+/** Ticks every second like the HUD clock; its own component so the open app doesn't re-render with it. */
+function StatusClock() {
+  const minute = useGameMinute(1_000);
+  return <span className="tabular">{formatClock12(minute)}</span>;
 }
