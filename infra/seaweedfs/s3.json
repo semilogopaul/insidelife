@@ -1,0 +1,13 @@
+{
+  "identities": [
+    {
+      "name": "anonymous",
+      "actions": ["Read:insidelife-media"]
+    },
+    {
+      "name": "insidelife-api",
+      "credentials": [{ "accessKey": "insidelife", "secretKey": "insidelife-storage-secret" }],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}

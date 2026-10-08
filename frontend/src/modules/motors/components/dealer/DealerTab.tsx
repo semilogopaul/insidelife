@@ -1,0 +1,138 @@
+'use client';
+
+import { Fuel, Store, Users } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import {
+  VEHICLE_GRADE_LABELS,
+  VEHICLE_PAINTS,
+  findVenue,
+  type VehicleCatalogEntryDto,
+  type VehiclePaintId,
+  type VehiclesDto,
+} from '@insidelife/shared';
+import { Badge, Button, Money } from '@/common/components';
+import { useSnapshot } from '@/common/game/snapshot';
+import { filterCatalogue, type SegmentFilter } from '../../services/motors-rules';
+import { CarArt } from '../CarArt';
+import { FilterChips } from '@/common/components';
+import { BuyCarSheet, type BuyChoice } from './BuyCarSheet';
+import { PaintSwatches } from './PaintSwatches';
+import { PerformanceBars } from './PerformanceBars';
+
+const SEGMENTS: ReadonlyArray<{ readonly id: SegmentFilter; readonly label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'economy', label: 'Economy' },
+  { id: 'family', label: 'Family' },
+  { id: 'executive', label: 'Executive' },
+  { id: 'luxury', label: 'Luxury' },
+  { id: 'commercial', label: 'Work' },
+];
+
+/** The lot: every car with price, street name, performance and paints; in person at a dealer or delivered. */
+export function DealerTab({ data }: { readonly data: VehiclesDto }) {
+  const { data: snapshot } = useSnapshot();
+  const [segment, setSegment] = useState<SegmentFilter>('all');
+  const [budgetOnly, setBudgetOnly] = useState(false);
+  const [buying, setBuying] = useState<BuyChoice | null>(null);
+  const balance = snapshot?.wallet.balance ?? null;
+  const cars = useMemo(
+    () => filterCatalogue(data.catalogue, segment, budgetOnly ? balance : null),
+    [data.catalogue, segment, budgetOnly, balance],
+  );
+  const dealer = data.atDealer ? findVenue(data.atDealer) : undefined;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="flex items-start gap-2.5 rounded-card bg-paper-2 p-3 text-sm">
+        <Store size={18} aria-hidden className="mt-0.5 shrink-0 text-lagoon" />
+        <span>
+          {dealer ? (
+            <>
+              You’re at <strong>{dealer.name}</strong> — cars on this lot drive off today with no delivery
+              fee.
+            </>
+          ) : (
+            'Buy in person at Berger Car Mart (Naija-used & tokunbo) or Lekki Auto Gallery (clean tokunbo & brand new) — or order delivery for a fee.'
+          )}
+        </span>
+      </p>
+      <FilterChips label="Kind of car" value={segment} onChange={setSegment} options={SEGMENTS} />
+      <FilterChips
+        label="Budget"
+        value={budgetOnly ? 'budget' : 'any'}
+        onChange={(value) => setBudgetOnly(value === 'budget')}
+        options={[
+          { id: 'any', label: 'Any price' },
+          { id: 'budget', label: 'What I can afford' },
+        ]}
+      />
+      {cars.length === 0 ? (
+        <p className="rounded-card bg-paper-2 p-4 text-center text-sm text-text-soft">
+          Nothing in this range. Danfo still dey.
+        </p>
+      ) : (
+        <ul className="flex flex-col gap-3">
+          {cars.map((entry) => (
+            <CarCard key={entry.vehicle.id} entry={entry} onBuy={(paint) => setBuying({ entry, paint })} />
+          ))}
+        </ul>
+      )}
+      <BuyCarSheet choice={buying} onClose={() => setBuying(null)} />
+    </div>
+  );
+}
+
+function CarCard({
+  entry,
+  onBuy,
+}: {
+  readonly entry: VehicleCatalogEntryDto;
+  readonly onBuy: (paint: VehiclePaintId) => void;
+}) {
+  const { vehicle } = entry;
+  const [paint, setPaint] = useState<VehiclePaintId>(vehicle.defaultPaint);
+  return (
+    <li className="flex flex-col gap-3 rounded-card bg-paper-2 p-3.5">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="type-slogan text-[1.6rem] text-ink">“{vehicle.nickname}”</p>
+          <p className="truncate text-sm font-bold">{vehicle.name}</p>
+        </div>
+        <p className="shrink-0 text-right leading-tight">
+          <Money amount={entry.price} compact className="type-figure text-xl" />
+          {entry.buyHere && <span className="block text-2xs font-bold text-naira">On this lot</span>}
+        </p>
+      </div>
+      <div className="px-4">
+        <CarArt model={vehicle.model} color={VEHICLE_PAINTS[paint].hex} />
+      </div>
+      <p className="text-sm text-text-soft">{vehicle.blurb}</p>
+      <div className="flex flex-wrap gap-1.5">
+        <Badge
+          tone={vehicle.grade === 'brand-new' ? 'good' : vehicle.grade === 'tokunbo' ? 'info' : 'neutral'}
+        >
+          {VEHICLE_GRADE_LABELS[vehicle.grade]}
+        </Badge>
+        <Badge>
+          <Users size={12} aria-hidden />
+          {vehicle.seats} seats
+        </Badge>
+        <Badge>
+          <Fuel size={12} aria-hidden />
+          {vehicle.fuelEconomyKmPerLitre} km/L {vehicle.fuelType}
+        </Badge>
+        {vehicle.status > 0 && <Badge tone="ankara">+{vehicle.status} clout</Badge>}
+      </div>
+      <PerformanceBars performance={vehicle.performance} />
+      <PaintSwatches
+        label={`${vehicle.name} paint`}
+        paints={vehicle.paints}
+        value={paint}
+        onChange={setPaint}
+      />
+      <Button variant={entry.buyHere ? 'danfo' : 'ink'} onClick={() => onBuy(paint)}>
+        {entry.buyHere ? 'Buy and drive off' : 'Buy or order delivery'}
+      </Button>
+    </li>
+  );
+}

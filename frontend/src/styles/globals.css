@@ -1,0 +1,204 @@
+@import 'tailwindcss';
+
+/*
+ * Inside Life design tokens.
+ * One bold thing: Danfo yellow + the double stripe. Everything else stays quiet:
+ * Lagoon Ink glass over the 3D world, bright Paper inside the phone.
+ */
+@theme {
+  /* Brand */
+  --color-danfo: #f6b90b;
+  --color-danfo-deep: #d99c00;
+  --color-danfo-soft: #fff1c2;
+
+  /* Surfaces */
+  --color-ink: #0e2733;
+  --color-ink-2: #153645;
+  --color-ink-3: #1f4a5c;
+  --color-lagoon: #13606b;
+  --color-paper: #ffffff;
+  --color-paper-2: #f3f5f2;
+  --color-paper-3: #e4e9e5;
+  --color-line: #d5ddd8;
+
+  /* Text */
+  --color-text: #0e2733;
+  --color-text-soft: #4b6470;
+  --color-text-faint: #7d929b;
+  --color-on-ink: #f4f7f5;
+  --color-on-ink-soft: #a9c0c8;
+
+  /* Meaning */
+  --color-naira: #0f8a4f;
+  --color-naira-soft: #d8f2e4;
+  --color-okada: #e2412e;
+  --color-okada-soft: #fde2dd;
+  --color-ankara: #c8287a;
+  --color-ankara-soft: #fbdfee;
+  --color-cobalt: #2457d6;
+  --color-cobalt-soft: #dde6fd;
+
+  /* Needs (paired with icons; never colour alone) */
+  --color-need-energy: #f6b90b;
+  --color-need-hunger: #e8742b;
+  --color-need-hygiene: #2fa7c4;
+  --color-need-fun: #c8287a;
+  --color-need-social: #0f8a4f;
+
+  /* Type */
+  --font-display: var(--font-anybody), 'Arial Narrow', sans-serif;
+  --font-sans: var(--font-atkinson), system-ui, sans-serif;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* Radii: phone and sheets are soft, HUD chips are tight like signage */
+  --radius-chip: 6px;
+  --radius-card: 14px;
+  --radius-sheet: 24px;
+  --radius-phone: 34px;
+
+  /* Elevation */
+  --shadow-glass: 0 8px 24px rgb(4 18 24 / 0.35);
+  --shadow-lift: 0 10px 30px rgb(14 39 51 / 0.18);
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    background: var(--color-ink);
+    color: var(--color-on-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-danfo);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-danfo);
+    color: var(--color-ink);
+  }
+}
+
+@layer utilities {
+  /* Signage headline: condensed, heavy, tight — like a hand-painted danfo slogan. */
+  .type-slogan {
+    font-family: var(--font-display);
+    font-weight: 900;
+    font-stretch: 62%;
+    font-variation-settings: 'wdth' 62;
+    letter-spacing: -0.01em;
+    line-height: 0.88;
+  }
+
+  /* Money and big numbers: wide and confident. */
+  .type-figure {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-variation-settings: 'wdth' 118;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  .type-title {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-variation-settings: 'wdth' 88;
+    letter-spacing: -0.01em;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The danfo double stripe: the single recurring motif. */
+  .danfo-stripes {
+    background-image: linear-gradient(
+      to bottom,
+      var(--color-ink) 0 3px,
+      transparent 3px 6px,
+      var(--color-ink) 6px 9px
+    );
+    background-size: 100% 9px;
+    background-repeat: no-repeat;
+  }
+
+  .glass {
+    background: color-mix(in oklab, var(--color-ink) 78%, transparent);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow: var(--shadow-glass);
+  }
+
+  .safe-pad {
+    padding-top: max(env(safe-area-inset-top), 0.75rem);
+    padding-bottom: max(env(safe-area-inset-bottom), 0.75rem);
+    padding-left: max(env(safe-area-inset-left), 0.75rem);
+    padding-right: max(env(safe-area-inset-right), 0.75rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Landing: a danfo crossing Third Mainland Bridge. */
+@keyframes danfo-drive {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(1400px);
+  }
+}
+
+.danfo-drive {
+  animation: danfo-drive 26s linear infinite;
+}
+
+@keyframes loading {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(310%);
+  }
+}
+
+@keyframes rain-fall {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(-25px, 640px);
+  }
+}
+
+.rain-fall {
+  animation: rain-fall 0.7s linear infinite;
+}

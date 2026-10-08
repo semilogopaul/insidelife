@@ -1,0 +1,131 @@
+import type { DistrictId } from '../catalog/geography.js';
+import { findVenue } from '../catalog/venues.js';
+import { hashString } from '../random/rng.js';
+import { cityDistrictAt, districtBounds, homeLots, venueLot } from './city-map.js';
+import { nearestRoadPoint, routeDistance } from './routing.js';
+import type { Entrance, WorldPoint } from './types.js';
+
+/**
+ * Open-world geometry contract shared by the server (validation, fuel) and the client (rendering, GPS).
+ *
+ * World units are metres; +x is east, +z is south. The playable city is a compact, stylised Lagos of 640 × 420 m
+ * (`city-layout.ts` → `city-map.ts`): a cross-town drive is ~45-60 real seconds at 15 m/s. Fuel and fares use map km:
+ * one world metre is `MAP_KM_PER_WORLD_METRE` km, so crossing the city costs fuel like a 35-40 km Lagos drive.
+ *
+ * Everything here is pure and deterministic; graphs are built once at module load.
+ */
+
+export type { Entrance, WorldPoint } from './types.js';
+export {
+  BILLBOARD_WORLD_PLACEMENTS,
+  CITY_BOUNDS,
+  CITY_MAP,
+  DIR_E,
+  DIR_N,
+  DIR_S,
+  DIR_W,
+  billboardPlacement,
+  cellCentreX,
+  cellCentreZ,
+  cellIndex,
+  cellKindAt,
+  cellKindOf,
+  colAt,
+  districtBounds,
+  homeLots,
+  lotAt,
+  rowAt,
+  venueLot,
+  type BillboardWorldPlacement,
+  type CityBounds,
+  type CityBridge,
+  type CityCellKind,
+  type CityLot,
+  type CityLotKind,
+  type CityMap,
+  type CityRoadEdge,
+  type CityRoadNode,
+  type CityRoadTile,
+  type CityRoadTileKind,
+  type CityRoundabout,
+  type DistrictBounds,
+} from './city-map.js';
+export {
+  CITY_CELL_SIZE,
+  CITY_COLS,
+  CITY_ROWS,
+  type BillboardMount,
+  type CellRect,
+  type CompassSide,
+  type LotArchetype,
+  type RoadClass,
+} from './city-layout.js';
+export {
+  findRoute,
+  nearestRoadPoint,
+  streetNameAt,
+  turnByTurn,
+  type CityRoute,
+  type ManeuverKind,
+  type RoadSnap,
+  type RouteLeg,
+  type RouteLegKind,
+  type RouteManeuver,
+  type TurnByTurnOptions,
+} from './routing.js';
+
+/** World metres per map km: the ~800 m Ikeja → Ajah drive costs fuel like ~40 km of Lagos road. */
+export const WORLD_METRES_PER_MAP_KM = 20;
+/** Map km represented by one world metre (fuel and fares use map km). */
+export const MAP_KM_PER_WORLD_METRE = 1 / WORLD_METRES_PER_MAP_KM;
+/** How close (metres) you must be to a door to go in. */
+export const ENTRY_RADIUS = 14;
+/** Fastest plausible movement (m/s) per mode, with headroom; used by anti-teleport checks. */
+export const MAX_PLAUSIBLE_SPEED = { walk: 8, car: 40 } as const;
+
+/** Unit vector `(x, z)` of a heading (see `Entrance`). */
+export function headingVector(heading: number): WorldPoint {
+  return { x: Math.cos(heading), z: Math.sin(heading) };
+}
+
+/** A kerbside entrance near a district's centre — only used if a district somehow has no lots. */
+function districtFallbackEntrance(districtId: DistrictId, key: string): Entrance {
+  const snap = nearestRoadPoint(districtBounds(districtId).centre);
+  const point = snap?.point ?? { x: 0, z: 0 };
+  const heading = ((hashString(key) % 4) * Math.PI) / 2;
+  return { position: point, heading, parking: { x: point.x, z: point.z, heading: heading + Math.PI / 2 } };
+}
+
+/** Door of a catalog venue, or null for out-of-town venues (reached by interstate bus, not on foot). */
+export function venueEntrance(venueId: string): Entrance | null {
+  const venue = findVenue(venueId);
+  if (!venue || venue.regionId) return null;
+  return venueLot(venueId)?.entrance ?? districtFallbackEntrance(venue.districtId, venueId);
+}
+
+/** Front door of a character's home in a district (deterministic lot per character; neighbours may share a lot). */
+export function homeEntrance(characterId: string, districtId: DistrictId): Entrance {
+  const lots = homeLots(districtId);
+  const pick = lots[hashString(`home:${characterId}`) % Math.max(1, lots.length)];
+  return pick?.entrance ?? districtFallbackEntrance(districtId, `home:${characterId}`);
+}
+
+/** District containing a world point (points outside the city snap to the nearest edge cell). */
+export function districtAt(point: WorldPoint): DistrictId {
+  return cityDistrictAt(point);
+}
+
+export function straightDistance(a: WorldPoint, b: WorldPoint): number {
+  return Math.hypot(a.x - b.x, a.z - b.z);
+}
+
+/**
+ * Driving distance in metres between two points along roads (A* over the road graph, including the walk to and from
+ * the kerb). Very short hops skip the search; unroutable points fall back to 1.3 × the straight distance.
+ */
+export function roadDistance(a: WorldPoint, b: WorldPoint): number {
+  const straight = straightDistance(a, b);
+  if (straight < 12) return straight;
+  const viaRoads = routeDistance(a, b);
+  return viaRoads === null ? straight * 1.3 : Math.max(straight, viaRoads);
+}

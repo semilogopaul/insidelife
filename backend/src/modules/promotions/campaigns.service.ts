@@ -1,0 +1,398 @@
+import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { Brackets, In, LessThanOrEqual, MoreThan, type DataSource, type EntityManager, type Repository } from 'typeorm';
+import {
+  BILLBOARD_MAX_DAYS,
+  BILLBOARD_MAX_LEAD_DAYS,
+  BILLBOARD_MIN_DAYS,
+  BILLBOARD_ROTATION_SECONDS,
+  BILLBOARD_SLOTS,
+  BILLBOARD_WEEK_DAYS,
+  BILLBOARD_WEEKLY_DISCOUNT_PERCENT,
+  PROMOTION_CONTENT_RULES,
+  PROMOTION_TITLE_MAX,
+  billboardQuote,
+  findBillboardSlot,
+  formatNaira,
+  koboToNaira,
+  type AdCampaignDto,
+  type BillboardHouseAdDto,
+  type BillboardSlot,
+  type BillboardSlotsDto,
+  type CampaignCheckoutDto,
+  type LiveBillboardSlotDto,
+  type LiveBillboardsDto,
+  type PromotionStatus,
+} from '@insidelife/shared';
+import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
+import { CHECKOUT_PORT, type CheckoutPort, type CheckoutSession, type PaidCheckout } from '../../common/ports/checkout.port.js';
+import { withTransaction } from '../../database/transaction.js';
+import { CharacterDirectory } from '../characters/character-directory.service.js';
+import { CreativeService } from './creative.service.js';
+import type { CreateCampaignDto } from './dto/campaign.dto.js';
+import { AdCampaignEntity } from './entities/ad-campaign.entity.js';
+import { appendModerationLog } from './moderation-log.js';
+import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN, WINDOW_MESSAGES } from './promotions.constants.js';
+import { clockAt, toCampaignDto, type Clock } from './promotions.mappers.js';
+import { autoRefundNotice, paidNotice, type NoticeSubject } from './promotions.notices.js';
+import { PromotionStateException, PromotionRuleException } from './promotions.errors.js';
+import { PromotionsNotifier } from './promotions-notifier.service.js';
+import { validateDisplayText, validatePromotionLink } from './rules/content.rules.js';
+import { addDays, bookingWindowProblem, dailyOccupancy, firstFullDay, rangeOf, type DateRange } from './rules/schedule.rules.js';
+import { admitAfterPayment, COMMITTED_STATUSES, matchPayment } from './rules/status.rules.js';
+import { CachedValue } from './util/cached-value.js';
+
+/** Unpaid bookings (live holds) per account, so nobody can squat on every board. */
+const MAX_UNPAID_HOLDS = 3;
+/** Days of availability shown per slot in the Billboards app. */
+const AVAILABILITY_DAYS = 28;
+
+interface LiveBillboards {
+  readonly dto: LiveBillboardsDto;
+  /** campaignId → link, for click tracking. */
+  readonly links: ReadonlyMap<string, string>;
+}
+
+const houseAd = (slot: BillboardSlot): BillboardHouseAdDto => ({
+  headline: 'Your ad here',
+  body: 'Open the Billboards app on your phone to put your brand on this board.',
+  priceLabel: `From ${formatNaira(koboToNaira(slot.pricePerDayKobo))}/day`,
+  action: { type: 'open-phone-app', app: 'billboards', slotId: slot.id },
+});
+
+const subjectOf = (campaign: AdCampaignEntity): NoticeSubject => ({
+  noun: 'Billboard',
+  name: campaign.title,
+  where: findBillboardSlot(campaign.slotId)?.name ?? 'your board',
+});
+
+/**
+ * Billboard bookings: availability, booking + checkout, payment fulfilment, the public live feed for the 3D world and
+ * the lazy approved → live → completed transition (no cron: effective status is derived from dates, and the stored
+ * status is reconciled whenever the live feed refreshes).
+ */
+@Injectable()
+export class CampaignsService implements OnModuleInit {
+  private readonly logger = new Logger(CampaignsService.name);
+  private readonly live = new CachedValue<LiveBillboards>(LIVE_FEED_CACHE_MS, () => this.loadLive());
+
+  constructor(
+    @InjectDataSource() private readonly dataSource: DataSource,
+    @InjectRepository(AdCampaignEntity) private readonly campaigns: Repository<AdCampaignEntity>,
+    @Inject(CHECKOUT_PORT) private readonly checkout: CheckoutPort,
+    private readonly creatives: CreativeService,
+    private readonly directory: CharacterDirectory,
+    private readonly notifier: PromotionsNotifier,
+  ) {}
+
+  onModuleInit(): void {
+    this.checkout.registerFulfiller({ purpose: 'billboard', fulfill: (payment) => this.applyPayment(payment) });
+  }
+
+  async slots(): Promise<BillboardSlotsDto> {
+    const clock = clockAt();
+    const window = rangeOf(clock.today, AVAILABILITY_DAYS);
+    const bookings = await this.activeBookings(this.campaigns.manager, window, clock.now);
+    return {
+      today: clock.today,
+      minDays: BILLBOARD_MIN_DAYS,
+      maxDays: BILLBOARD_MAX_DAYS,
+      maxLeadDays: BILLBOARD_MAX_LEAD_DAYS,
+      weeklyDiscountPercent: BILLBOARD_WEEKLY_DISCOUNT_PERCENT,
+      rules: PROMOTION_CONTENT_RULES.filter((rule) => rule.appliesTo !== 'music'),
+      slots: BILLBOARD_SLOTS.map((slot) => {
+        const mine = bookings.filter((booking) => booking.slotId === slot.id);
+        const occupancy = dailyOccupancy(mine, window.startDate, AVAILABILITY_DAYS);
+        const liveCount = mine.filter((booking) => (booking.status === 'approved' || booking.status === 'live') && booking.startDate <= clock.today).length;
+        return {
+          id: slot.id,
+          name: slot.name,
+          districtId: slot.districtId,
+          description: slot.description,
+          placement: slot.placement,
+          format: slot.format,
+          width: slot.width,
+          height: slot.height,
+          tier: slot.tier,
+          pricePerDayKobo: slot.pricePerDayKobo,
+          weekPriceKobo: billboardQuote(slot, BILLBOARD_WEEK_DAYS).totalKobo,
+          maxConcurrentAds: slot.maxConcurrentAds,
+          liveCount,
+          availability: occupancy.map((booked, index) => ({ date: addDays(clock.today, index), booked, capacity: slot.maxConcurrentAds })),
+        };
+      }),
+    };
+  }
+
+  async create(user: AuthUser, request: CreateCampaignDto): Promise<CampaignCheckoutDto> {
+    const slot = findBillboardSlot(request.slotId);
+    if (!slot) throw new ResourceNotFoundException('Billboard');
+    const clock = clockAt();
+    const problem = bookingWindowProblem(request.startDate, request.days, clock.today, {
+      minDays: BILLBOARD_MIN_DAYS,
+      maxDays: BILLBOARD_MAX_DAYS,
+      maxLeadDays: BILLBOARD_MAX_LEAD_DAYS,
+    });
+    if (problem) throw new PromotionRuleException('INVALID_DATES', WINDOW_MESSAGES[problem]);
+    const title = validateDisplayText(request.title, 'Title', 3, PROMOTION_TITLE_MAX);
+    if (!title.ok) throw new PromotionRuleException('INVALID_TITLE', title.reason);
+    const link = validatePromotionLink(request.linkUrl);
+    if (!link.ok) throw new PromotionRuleException('INVALID_LINK', link.reason);
+
+    const creative = await this.creatives.requireOwnedFor(user.userId, request.creativeKey, slot);
+    const quote = billboardQuote(slot, request.days);
+    const range = rangeOf(request.startDate, request.days);
+    const character = await this.directory.findLivingByUser(user.userId);
+
+    const campaign = await withTransaction(this.dataSource, async (manager) => {
+      await advisoryLock(manager, `promotions:billboard:${slot.id}`);
+      const unpaid = await manager.count(AdCampaignEntity, {
+        where: { ownerUserId: user.userId, status: 'pending-payment', holdExpiresAt: MoreThan(clock.now) },
+      });
+      if (unpaid >= MAX_UNPAID_HOLDS) throw new PromotionRuleException('TOO_MANY_UNPAID', 'Pay for or cancel your unpaid bookings first');
+      const full = firstFullDay(await this.activeBookings(manager, range, clock.now, slot.id), range, slot.maxConcurrentAds);
+      if (full) throw new PromotionRuleException('SLOT_FULL', `${slot.name} is fully booked on ${full}. Pick other dates or another board`);
+      return manager.save(
+        manager.create(AdCampaignEntity, {
+          ownerUserId: user.userId,
+          ownerCharacterId: character?.id ?? null,
+          slotId: slot.id,
+          title: title.value,
+          creativeKey: creative.key,
+          creativeUrl: creative.url,
+          linkUrl: link.value,
+          startDate: range.startDate,
+          endDate: range.endDate,
+          days: request.days,
+          amountKobo: quote.totalKobo,
+          status: 'pending-payment',
+          holdExpiresAt: new Date(clock.now.getTime() + CHECKOUT_HOLD_MINUTES * 60_000),
+        }),
+      );
+    });
+
+    const session = await this.startCheckout(user, character?.id ?? null, campaign, slot);
+    return {
+      campaignId: campaign.id,
+      reference: session.reference,
+      authorizationUrl: session.authorizationUrl,
+      quote,
+      campaign: toCampaignDto(campaign, clock),
+    };
+  }
+
+  async listMine(userId: string): Promise<AdCampaignDto[]> {
+    const clock = clockAt();
+    const rows = await this.campaigns.find({ where: { ownerUserId: userId }, order: { createdAt: 'DESC' }, take: 50 });
+    return rows.map((row) => toCampaignDto(row, clock));
+  }
+
+  /** Cancel before payment. A payment that still lands later is honoured if there is room, refunded otherwise. */
+  async cancel(userId: string, campaignId: string): Promise<void> {
+    await withTransaction(this.dataSource, async (manager) => {
+      const campaign = await manager.findOne(AdCampaignEntity, { where: { id: campaignId, ownerUserId: userId }, lock: { mode: 'pessimistic_write' } });
+      if (!campaign) throw new ResourceNotFoundException('Booking');
+      if (campaign.status === 'cancelled') return;
+      if (campaign.status !== 'pending-payment' && campaign.status !== 'draft') {
+        throw new PromotionStateException('This booking is already paid, so it can’t be cancelled here. Contact support if something is wrong');
+      }
+      const from = campaign.status;
+      campaign.status = 'cancelled';
+      campaign.holdExpiresAt = null;
+      campaign.checkoutUrl = null;
+      await manager.save(campaign);
+      await appendModerationLog(manager, { subjectType: 'campaign', subjectId: campaign.id, action: 'cancelled', fromStatus: from, toStatus: 'cancelled', actorUserId: userId });
+    });
+  }
+
+  async liveBillboards(): Promise<LiveBillboardsDto> {
+    return (await this.live.get()).dto;
+  }
+
+  /** Link of a currently-live campaign (null if it isn't live). */
+  async liveLink(campaignId: string): Promise<string | null> {
+    return (await this.live.get()).links.get(campaignId) ?? null;
+  }
+
+  async filterLive(campaignIds: readonly string[]): Promise<string[]> {
+    const { links } = await this.live.get();
+    return campaignIds.filter((id) => links.has(id));
+  }
+
+  /** After a moderation decision, so this instance serves the change immediately. */
+  invalidateLive(): void {
+    this.live.invalidate();
+  }
+
+  // ----- Internals --------------------------------------------------------------------------------------------------
+
+  private async startCheckout(user: AuthUser, characterId: string | null, campaign: AdCampaignEntity, slot: BillboardSlot): Promise<CheckoutSession> {
+    const plural = campaign.days === 1 ? 'day' : 'days';
+    let session: CheckoutSession;
+    try {
+      session = await this.checkout.start({
+        userId: user.userId,
+        email: user.email,
+        characterId,
+        purpose: 'billboard',
+        amountKobo: campaign.amountKobo,
+        description: `Inside Life billboard: ${slot.name}, ${campaign.days} ${plural} from ${campaign.startDate}`.slice(0, 120),
+        subjectId: campaign.id,
+      });
+    } catch (error) {
+      await this.releaseFailedCheckout(campaign.id);
+      throw error;
+    }
+    await this.campaigns.update({ id: campaign.id }, { paymentReference: session.reference, checkoutUrl: session.authorizationUrl });
+    campaign.paymentReference = session.reference;
+    campaign.checkoutUrl = session.authorizationUrl;
+    return session;
+  }
+
+  private async releaseFailedCheckout(campaignId: string): Promise<void> {
+    try {
+      await withTransaction(this.dataSource, async (manager) => {
+        const result = await manager.update(AdCampaignEntity, { id: campaignId, status: 'pending-payment' }, { status: 'cancelled', holdExpiresAt: null });
+        if (result.affected) {
+          await appendModerationLog(manager, { subjectType: 'campaign', subjectId: campaignId, action: 'checkout-failed', fromStatus: 'pending-payment', toStatus: 'cancelled' });
+        }
+      });
+    } catch (error) {
+      this.logger.warn({ err: error, campaignId }, 'Could not release a booking after a failed checkout; its hold will lapse');
+    }
+  }
+
+  /**
+   * Checkout fulfiller for 'billboard'. Idempotent by reference; never throws for permanent problems (unknown
+   * campaign, duplicate payment) so the payments module doesn't retry forever — those are logged for ops instead.
+   */
+  private async applyPayment(payment: PaidCheckout): Promise<void> {
+    if (!UUID_PATTERN.test(payment.subjectId)) {
+      this.logger.error({ reference: payment.reference, subjectId: payment.subjectId }, 'Billboard payment for a malformed campaign id; refund manually');
+      return;
+    }
+    const clock = clockAt();
+    const result = await withTransaction(this.dataSource, async (manager) => {
+      const campaign = await manager.findOne(AdCampaignEntity, { where: { id: payment.subjectId }, lock: { mode: 'pessimistic_write' } });
+      if (!campaign) {
+        this.logger.error({ reference: payment.reference, campaignId: payment.subjectId }, 'Billboard payment for an unknown campaign; refund manually');
+        return null;
+      }
+      const match = matchPayment(campaign, payment.reference);
+      if (match === 'already-fulfilled') return null;
+      if (match === 'duplicate') {
+        this.logger.error({ reference: payment.reference, campaignId: campaign.id }, 'Second payment for an already-paid campaign; refund manually');
+        await appendModerationLog(manager, {
+          subjectType: 'campaign',
+          subjectId: campaign.id,
+          action: 'duplicate-payment',
+          fromStatus: campaign.status,
+          toStatus: campaign.status,
+          paymentReference: payment.reference,
+          reason: 'Duplicate payment — refund this reference in Paystack',
+        });
+        return null;
+      }
+
+      await advisoryLock(manager, `promotions:billboard:${campaign.slotId}`);
+      const slot = findBillboardSlot(campaign.slotId);
+      const others = await this.activeBookings(manager, campaign, clock.now, campaign.slotId, campaign.id);
+      const admission = admitAfterPayment({
+        range: campaign,
+        today: clock.today,
+        amountKobo: campaign.amountKobo,
+        paidKobo: payment.amountKobo,
+        hasRoom: slot !== undefined && firstFullDay(others, campaign, slot.maxConcurrentAds) === null,
+      });
+
+      const from = campaign.status;
+      campaign.paidAt = payment.paidAt;
+      campaign.paymentReference = payment.reference;
+      campaign.holdExpiresAt = null;
+      campaign.checkoutUrl = null;
+      if (admission.kind === 'review') {
+        campaign.status = 'in-review';
+      } else {
+        campaign.status = 'refund-due';
+        campaign.rejectionReason = admission.reason;
+      }
+      await manager.save(campaign);
+      await appendModerationLog(manager, {
+        subjectType: 'campaign',
+        subjectId: campaign.id,
+        action: admission.kind === 'review' ? 'paid' : 'refund-flagged',
+        fromStatus: from,
+        toStatus: campaign.status,
+        paymentReference: payment.reference,
+        reason: admission.kind === 'refund' ? admission.reason : null,
+      });
+      return { campaign, admission };
+    });
+
+    if (!result) return;
+    const { campaign, admission } = result;
+    this.logger.log({ campaignId: campaign.id, reference: payment.reference, status: campaign.status }, 'Billboard payment applied');
+    await this.notifier.notifyOwner(
+      campaign.ownerUserId,
+      admission.kind === 'review' ? paidNotice(subjectOf(campaign)) : autoRefundNotice(subjectOf(campaign), admission.reason),
+    );
+  }
+
+  /** Bookings that take a place on their dates: paid & not refused, or unpaid with a live hold. */
+  private activeBookings(manager: EntityManager, range: DateRange, now: Date, slotId?: string, excludeId?: string): Promise<AdCampaignEntity[]> {
+    const query = manager
+      .createQueryBuilder(AdCampaignEntity, 'c')
+      .select(['c.id', 'c.slotId', 'c.status', 'c.startDate', 'c.endDate', 'c.holdExpiresAt'])
+      .where('c.endDate > :from AND c.startDate < :to', { from: range.startDate, to: range.endDate })
+      .andWhere(
+        new Brackets((where) => {
+          where.where('c.status IN (:...committed)', { committed: COMMITTED_STATUSES }).orWhere("(c.status = 'pending-payment' AND c.holdExpiresAt > :now)", { now });
+        }),
+      );
+    if (slotId) query.andWhere('c.slotId = :slotId', { slotId });
+    if (excludeId) query.andWhere('c.id <> :excludeId', { excludeId });
+    return query.getMany();
+  }
+
+  /** Persist date-driven transitions (approved → live → completed). Effective statuses never depend on this. */
+  private async reconcile(clock: Clock): Promise<void> {
+    const runningStatuses: PromotionStatus[] = ['approved', 'live'];
+    await this.campaigns.update({ status: In(runningStatuses), endDate: LessThanOrEqual(clock.today) }, { status: 'completed' });
+    await this.campaigns.update({ status: 'approved', startDate: LessThanOrEqual(clock.today), endDate: MoreThan(clock.today) }, { status: 'live' });
+  }
+
+  private async loadLive(): Promise<LiveBillboards> {
+    const clock = clockAt();
+    try {
+      await this.reconcile(clock);
+    } catch (error) {
+      this.logger.warn({ err: error }, 'Billboard status reconcile failed; serving by date anyway');
+    }
+    const running = await this.campaigns.find({
+      where: { status: In(['approved', 'live']), startDate: LessThanOrEqual(clock.today), endDate: MoreThan(clock.today) },
+      order: { paidAt: 'ASC', id: 'ASC' },
+    });
+    const links = new Map<string, string>();
+    const slots: LiveBillboardSlotDto[] = BILLBOARD_SLOTS.map((slot) => {
+      const creatives = running
+        .filter((campaign) => campaign.slotId === slot.id)
+        .slice(0, slot.maxConcurrentAds)
+        .map((campaign) => {
+          links.set(campaign.id, campaign.linkUrl);
+          return { campaignId: campaign.id, imageUrl: campaign.creativeUrl, linkUrl: campaign.linkUrl, title: campaign.title };
+        });
+      return {
+        slotId: slot.id,
+        format: slot.format,
+        width: slot.width,
+        height: slot.height,
+        rotationSeconds: BILLBOARD_ROTATION_SECONDS,
+        creatives,
+        hasSpace: creatives.length < slot.maxConcurrentAds,
+        houseAd: houseAd(slot),
+      };
+    });
+    return { dto: { generatedAt: clock.now.toISOString(), slots }, links };
+  }
+}

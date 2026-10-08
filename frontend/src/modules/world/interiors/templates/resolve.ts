@@ -1,0 +1,105 @@
+import { findVenue, isHomeLocation, type CharacterSummaryDto, type VenueType } from '@insidelife/shared';
+
+export const INTERIOR_TEMPLATE_IDS = [
+  'home-family',
+  'home-face-me',
+  'home-self-contain',
+  'home-flat',
+  'home-duplex',
+  'home-mansion',
+  'home-hostel',
+  'campus',
+  'school',
+  'office',
+  'hospital-ward',
+  'clinic',
+  'pharmacy',
+  'club',
+  'buka',
+  'restaurant',
+  'bar',
+  'market',
+  'mall',
+  'gym',
+  'cinema',
+  'church',
+  'mosque',
+  'cbt-centre',
+  'government',
+  'estate-agency',
+  'car-dealer',
+  'salon',
+  'airport',
+  'event-centre',
+  'beach',
+  'park',
+  'motor-park',
+] as const;
+export type InteriorTemplateId = (typeof INTERIOR_TEMPLATE_IDS)[number];
+
+export type HomeInfo = Pick<CharacterSummaryDto['home'], 'label' | 'ownership' | 'comfort'>;
+
+const VENUE_TEMPLATES: Readonly<Record<Exclude<VenueType, 'home'>, InteriorTemplateId>> = {
+  campus: 'campus',
+  office: 'office',
+  market: 'market',
+  mall: 'mall',
+  'hospital-public': 'hospital-ward',
+  'hospital-private': 'clinic',
+  pharmacy: 'pharmacy',
+  gym: 'gym',
+  bar: 'bar',
+  club: 'club',
+  buka: 'buka',
+  restaurant: 'restaurant',
+  beach: 'beach',
+  park: 'park',
+  'cbt-centre': 'cbt-centre',
+  airport: 'airport',
+  'motor-park': 'motor-park',
+  'event-centre': 'event-centre',
+  'estate-agency': 'estate-agency',
+  'car-dealer': 'car-dealer',
+  church: 'church',
+  mosque: 'mosque',
+  cinema: 'cinema',
+  salon: 'salon',
+  government: 'government',
+  school: 'school',
+};
+
+/** Which home interior fits the player's current home (label keywords first, comfort as a fallback). */
+export function homeTemplateFor(home: HomeInfo | null | undefined): InteriorTemplateId {
+  if (!home) return 'home-family';
+  if (home.ownership === 'hostel') return 'home-hostel';
+  const label = home.label.toLowerCase();
+  if (/face-me|face me/.test(label)) return 'home-face-me';
+  if (/self[- ]contain/.test(label)) return 'home-self-contain';
+  if (/mansion|banana island/.test(label)) return 'home-mansion';
+  if (/duplex/.test(label)) return 'home-duplex';
+  if (/family house/.test(label)) return 'home-family';
+  if (/flat|bungalow|bed/.test(label)) return 'home-flat';
+  if (home.comfort >= 12) return 'home-mansion';
+  if (home.comfort >= 9) return 'home-duplex';
+  if (home.comfort >= 5) return 'home-flat';
+  if (home.comfort >= 3) return 'home-self-contain';
+  return home.comfort <= 0 ? 'home-face-me' : 'home-family';
+}
+
+/** Template for a location id: venue type via the catalog, or the player's home for `home:<id>`. */
+export function resolveTemplateId(locationId: string, home?: HomeInfo | null): InteriorTemplateId {
+  if (isHomeLocation(locationId)) return homeTemplateFor(home);
+  const venue = findVenue(locationId);
+  if (!venue) return (INTERIOR_TEMPLATE_IDS as readonly string[]).includes(locationId) ? (locationId as InteriorTemplateId) : 'home-family';
+  if (venue.type === 'home') return homeTemplateFor(home);
+  return VENUE_TEMPLATES[venue.type];
+}
+
+/** NEPA (power) cut: deterministic per location and game day, only at night. */
+export function isNepaOff(locationId: string, dayIndex: number, hour: number, chance = 0.35): boolean {
+  if (hour >= 6 && hour < 19) return false;
+  let h = 2166136261;
+  const key = `${locationId}:${dayIndex}`;
+  for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619);
+  return ((h >>> 0) % 1000) / 1000 < chance;
+}

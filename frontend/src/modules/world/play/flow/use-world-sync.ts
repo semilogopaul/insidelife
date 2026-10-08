@@ -1,0 +1,234 @@
+'use client';
+
+import { useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef, useState } from 'react';
+import { DISTRICTS, ENTRY_RADIUS, MAP_KM_PER_WORLD_METRE, districtAt, streetNameAt, type DrivenVehicleDto, type OpenWorldMode } from '@insidelife/shared';
+import { queryKeys } from '@/common/api/query-keys';
+import { toast } from '@/common/components';
+import { useNavigation } from '@/common/game/navigation-store';
+import { useWorld, type Interactable } from '@/common/game/world-store';
+import { getSocket } from '@/common/realtime/socket';
+import { handleOf } from '../players/presence-directory';
+import type { PlayRuntime } from '../runtime/play-runtime';
+import { doorLabel, nearestDoor, type Door } from './doors';
+import { movementApi } from './movement.api';
+import { savePose } from './spawn-handoff';
+
+export const CAR_ENTER_ID = 'play:car:enter';
+export const CAR_EXIT_ID = 'play:car:exit';
+export const doorId = (locationId: string): string => `play:door:${locationId}`;
+export const playerTargetId = (characterId: string): string => `play:player:${characterId}`;
+
+/** Doors prompt within this distance on foot (the server accepts up to ENTRY_RADIUS). */
+const DOOR_PROMPT_RADIUS = 7;
+const PLAYER_PROMPT_SECONDS = 6;
+const HEARTBEAT_MS = 15_000;
+const MIN_HEARTBEAT_GAP_MS = 4_000;
+const DIESEL_PREMIUM = 1.3;
+
+export interface WorldSyncOptions {
+  /** A real session (heartbeats, positions); false in the dev sandbox. */
+  readonly online: boolean;
+  readonly characterId: string | null;
+  readonly homeDoor: Door | null;
+  /** ₦ per litre right now. */
+  readonly fuelPrice: number;
+}
+
+function isTouchDevice(): boolean {
+  try {
+    return window.matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+  } catch {
+    return false;
+  }
+}
+
+const sameNearby = (a: Interactable | null, b: Interactable | null): boolean => a?.id === b?.id && a?.label === b?.label;
+
+/**
+ * `POST /characters/me/heartbeats`: every 15 s while outside and on walking ↔ driving switches, never closer than 4 s
+ * (the API allows 20 a minute). A rejected move refreshes the snapshot; a car the server keeps refusing is parked.
+ */
+export class Heartbeats {
+  online = false;
+  private last = 0;
+  private pending: OpenWorldMode | null = null;
+  private rejected = 0;
+  private inFlight = false;
+  private readonly runtime: PlayRuntime;
+  private readonly onRejected: () => void;
+
+  constructor(runtime: PlayRuntime, onRejected: () => void) {
+    this.runtime = runtime;
+    this.onRejected = onRejected;
+  }
+
+  setOnline(online: boolean): void {
+    this.online = online;
+  }
+
+  /** Send now (or as soon as allowed). */
+  send(mode?: OpenWorldMode): void {
+    const runtime = this.runtime;
+    if (!this.online || runtime.mode === 'ride') return;
+    const now = Date.now();
+    const wanted: OpenWorldMode = mode ?? (runtime.mode === 'drive' ? 'car' : 'walk');
+    if (this.inFlight || now - this.last < MIN_HEARTBEAT_GAP_MS) {
+      this.pending = wanted;
+      return;
+    }
+    this.last = now;
+    this.pending = null;
+    this.inFlight = true;
+    movementApi
+      .heartbeat({ position: { x: runtime.controller.x, z: runtime.controller.z }, mode: wanted, heading: runtime.controller.heading })
+      .then(({ accepted }) => {
+        if (accepted) {
+          this.rejected = 0;
+          return;
+        }
+        this.rejected++;
+        this.onRejected();
+        if (wanted === 'car' && this.rejected >= 3 && runtime.mode === 'drive') {
+          this.rejected = 0;
+          toast({ title: 'The car won’t go on', body: 'Park up and continue on foot — check Motors on your phone.', tone: 'bad' });
+          runtime.requestExitCar();
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        this.inFlight = false;
+      });
+  }
+
+  /** Called every second: the 15 s beat, or a postponed one. */
+  tick(): void {
+    const since = Date.now() - this.last;
+    if (since >= HEARTBEAT_MS || (this.pending !== null && since >= MIN_HEARTBEAT_GAP_MS)) this.send(this.pending ?? undefined);
+  }
+}
+
+/** The open world's low-rate side: HUD pose, context button, drive telemetry, `world:move`, heartbeats. */
+export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): Heartbeats {
+  const client = useQueryClient();
+  const optionsRef = useRef(options);
+  useEffect(() => {
+    optionsRef.current = options;
+  });
+  // The server sees things differently (taken inside, car unavailable): refresh our view of the character.
+  const [heartbeats] = useState(() => new Heartbeats(runtime, () => void client.invalidateQueries({ queryKey: queryKeys.snapshot })));
+  useEffect(() => {
+    heartbeats.setOnline(options.online);
+  }, [heartbeats, options.online]);
+
+  useEffect(() => {
+    const world = useWorld.getState;
+    const touchUi = isTouchDevice();
+    let lastX = Number.NaN;
+    let lastZ = Number.NaN;
+    let lastSent = 0;
+    let lastFuel = -1;
+
+    // ≈5 Hz: pose for the HUD, the context button, the speedometer.
+    const pose = window.setInterval(() => {
+      const c = runtime.controller;
+      const x = runtime.subjectX;
+      const z = runtime.subjectZ;
+      if (Math.abs(x - lastX) > 0.05 || Math.abs(z - lastZ) > 0.05) {
+        lastX = x;
+        lastZ = z;
+        const point = { x, z };
+        const district = DISTRICTS[districtAt(point)]?.name ?? null;
+        const street = streetNameAt(point);
+        world().setPose(point, runtime.subjectHeading, district, street);
+      }
+
+      // Context button.
+      let next: Interactable | null = null;
+      if (runtime.mode === 'walk') {
+        const destinationId = useNavigation.getState().destinationId;
+        const door = nearestDoor({ x: c.walker.x, z: c.walker.z }, ENTRY_RADIUS, optionsRef.current.homeDoor);
+        const doorClose = door && (Math.hypot(door.x - c.walker.x, door.z - c.walker.z) <= DOOR_PROMPT_RADIUS || door.locationId === destinationId);
+        const selected = runtime.selectedPlayer && performance.now() - runtime.selectedAt < PLAYER_PROMPT_SECONDS * 1000 ? runtime.selectedPlayer : null;
+        // A player you just tapped wins for a few seconds (explicit intent), then your car, then the nearest door.
+        if (selected) next = { id: playerTargetId(selected), kind: 'player', label: `@${handleOf(selected)}` };
+        else if (c.canEnterCar()) next = { id: CAR_ENTER_ID, kind: 'car', label: 'Get in car' };
+        else if (door && doorClose) next = { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, false, door === optionsRef.current.homeDoor), locationId: door.locationId };
+      } else if (runtime.mode === 'drive') {
+        const door = Math.abs(c.speed) < 2.5 ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, optionsRef.current.homeDoor) : null;
+        // Touch screens have their own "Get out" next to the pedals; the HUD button is kept for doors there.
+        next = door
+          ? { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, true, door === optionsRef.current.homeDoor), locationId: door.locationId }
+          : touchUi
+            ? null
+            : { id: CAR_EXIT_ID, kind: 'car', label: 'Get out' };
+      }
+      if (!sameNearby(world().nearby, next)) world().setNearby(next);
+
+      // Speedometer and fuel so far.
+      if (runtime.mode === 'drive' && c.car) {
+        const km = c.driven * MAP_KM_PER_WORLD_METRE;
+        const vehicle: DrivenVehicleDto = c.car.vehicle;
+        const litres = km / Math.max(1, vehicle.fuelEconomyKmPerLitre);
+        const fuel = Math.round(litres * optionsRef.current.fuelPrice * (vehicle.fuelType === 'diesel' ? DIESEL_PREMIUM : 1));
+        const speedKmh = Math.round(Math.abs(c.speed) * 3.6);
+        const drive = world().drive;
+        if (!drive || drive.speedKmh !== speedKmh || fuel !== lastFuel) world().setDrive({ speedKmh, tripFuelCost: fuel });
+        lastFuel = fuel;
+      } else if (world().drive) {
+        world().setDrive(null);
+        lastFuel = -1;
+      }
+    }, 200);
+
+    // 4 Hz: positions for other players (visual only).
+    const move = window.setInterval(() => {
+      if (!optionsRef.current.online) return;
+      const socket = getSocket();
+      if (!socket.connected) return;
+      const speed = Math.abs(runtime.subjectSpeed);
+      const now = performance.now();
+      if (speed < 0.05 && now - lastSent < 2000) return;
+      lastSent = now;
+      const mode = runtime.mode === 'walk' || runtime.ride.onFoot ? 'walk' : 'car';
+      const car = mode === 'car' && runtime.mode === 'drive' ? runtime.controller.car?.vehicle : undefined;
+      socket.emit('world:move', {
+        x: Math.round(runtime.subjectX * 100) / 100,
+        z: Math.round(runtime.subjectZ * 100) / 100,
+        heading: Math.round(runtime.subjectHeading * 1000) / 1000,
+        mode,
+        speed: Math.round(speed * 100) / 100,
+        ...(car ? { vehicle: { model: car.model, color: car.color } } : {}),
+      });
+    }, 250);
+
+    // Heartbeats keep "exploring" alive and pay for fuel; the pose is saved for reloads.
+    const heartbeat = window.setInterval(() => {
+      heartbeats.tick();
+      const { characterId } = optionsRef.current;
+      if (characterId && runtime.mode !== 'ride') {
+        const c = runtime.controller;
+        savePose({
+          characterId,
+          x: c.walker.x,
+          z: c.walker.z,
+          heading: c.walker.heading,
+          driving: runtime.mode === 'drive',
+          car: c.car ? { x: c.car.state.x, z: c.car.state.z, heading: c.car.state.heading, vehicle: c.car.vehicle } : null,
+          savedAt: Date.now(),
+        });
+      }
+    }, 1000);
+
+    return () => {
+      window.clearInterval(pose);
+      window.clearInterval(move);
+      window.clearInterval(heartbeat);
+      const current = world().nearby;
+      if (current?.id.startsWith('play:')) world().setNearby(null);
+      world().setDrive(null);
+    };
+  }, [runtime, heartbeats]);
+
+  return heartbeats;
+}

@@ -1,0 +1,25 @@
+'use client';
+
+import { GLOBAL_CHANNEL } from '../../services/chat-channels';
+import { useGistNav } from '../../hooks/use-gist-nav';
+import { ChatThread } from '../chat/ChatThread';
+import type { MentionCandidate } from '../chat/Composer';
+
+/** Lagos-wide chat: everyone online, one room. */
+export function LagosTab({ me, candidates }: { readonly me: { readonly id: string; readonly handle: string }; readonly candidates: readonly MentionCandidate[] }) {
+  const openProfile = useGistNav((state) => state.openProfile);
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="rounded-card bg-paper-2 px-3 py-2 text-xs text-text-soft">Everybody in Lagos can read this. Keep it friendly — reports are reviewed by real people.</p>
+      <ChatThread
+        channel={GLOBAL_CHANNEL}
+        me={me}
+        placeholder="Talk to Lagos… (@ to mention)"
+        emptyTitle="Lagos is quiet"
+        emptyBody="Say how far — somebody will answer."
+        candidates={candidates}
+        onOpenProfile={openProfile}
+      />
+    </div>
+  );
+}

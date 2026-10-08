@@ -1,0 +1,244 @@
+import { Logger, type OnModuleDestroy } from '@nestjs/common';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  type OnGatewayConnection,
+  type OnGatewayDisconnect,
+  type OnGatewayInit,
+} from '@nestjs/websockets';
+import { JwtService } from '@nestjs/jwt';
+import type { Server, Socket } from 'socket.io';
+import {
+  REALTIME_NAMESPACE,
+  districtAt,
+  isVehicleModel,
+  interestCell,
+  interestNeighbourhood,
+  type ClientToServerEvents,
+  type PresencePlayerDto,
+  type RealtimeAck,
+  type ServerToClientEvents,
+  type WorldMovePayload,
+  type WorldPlayerPositionDto,
+  type WorldVehicleLook,
+} from '@insidelife/shared';
+import type { AccessTokenPayload } from '../../common/interfaces/auth-user.interface.js';
+import { DomainException } from '../../common/exceptions/domain.exception.js';
+import { deferred } from '../../common/utils/deferred.js';
+import { MetricsService } from '../../metrics/metrics.service.js';
+import { CharacterDirectory } from '../characters/character-directory.service.js';
+import type { CharacterEntity } from '../characters/entities/character.entity.js';
+import { PresenceService } from '../presence/presence.service.js';
+import { RealtimeBus, characterRoom } from '../realtime-bus/realtime-bus.service.js';
+import { ChatService } from './chat.service.js';
+
+type RealtimeSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
+
+interface SocketData {
+  characterId: string;
+  handle: string;
+  lastMoveAt: number;
+  /** District room (district-wide events such as street parties). */
+  districtRoom: string | null;
+  /** Interest cell the player stands in (positions are published here; the 3×3 block around it is joined). */
+  cell: string | null;
+  cellRooms: ReadonlySet<string>;
+  /** Resolves once the handshake is authenticated; handlers wait on it so early events aren't dropped. */
+  ready: Promise<boolean>;
+}
+
+/** Positions are relayed in batches at this rate. */
+const POSITION_TICK_MS = 250;
+/** Clients may report at most this often. */
+const MIN_MOVE_INTERVAL_MS = 150;
+
+const districtRoom = (districtId: string): string => `district:${districtId}`;
+const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
+
+/** A driving player's car look, if it's a known model and a plain hex colour (cosmetic; anything else is dropped). */
+function vehicleLook(payload: WorldMovePayload): WorldVehicleLook | undefined {
+  const vehicle = payload.vehicle;
+  if (payload.mode !== 'car' || !vehicle || typeof vehicle.model !== 'string' || typeof vehicle.color !== 'string') return undefined;
+  return isVehicleModel(vehicle.model) && HEX_COLOUR.test(vehicle.color) ? { model: vehicle.model, color: vehicle.color } : undefined;
+}
+
+/**
+ * Realtime gateway: presence, chat and open-world position relay. Positions are visual only; the API validates
+ * anything that matters (entering buildings, fuel). Rooms: `character:<id>` for private pushes, `cell:<x>:<z>` for
+ * interest-managed position batches (you hear the 3×3 cells around you), `district:<id>` for district-wide events,
+ * chat channels by name.
+ */
+@WebSocketGateway({ namespace: REALTIME_NAMESPACE, cors: { origin: true, credentials: true }, transports: ['websocket', 'polling'] })
+export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
+  @WebSocketServer() private server: Server<ClientToServerEvents, ServerToClientEvents>;
+
+  private readonly logger = new Logger(RealtimeGateway.name);
+  private readonly pendingPositions = new Map<string, Map<string, WorldPlayerPositionDto>>();
+  private flushTimer: NodeJS.Timeout | null = null;
+
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly directory: CharacterDirectory,
+    private readonly presence: PresenceService,
+    private readonly chat: ChatService,
+    private readonly bus: RealtimeBus,
+    private readonly metrics: MetricsService,
+  ) {}
+
+  afterInit(server: Server<ClientToServerEvents, ServerToClientEvents>): void {
+    this.bus.attach(server);
+    this.flushTimer = setInterval(() => this.flushPositions(), POSITION_TICK_MS);
+    this.flushTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.flushTimer) clearInterval(this.flushTimer);
+  }
+
+  async handleConnection(socket: RealtimeSocket): Promise<void> {
+    const ready = deferred<boolean>();
+    socket.data = {
+      characterId: '',
+      handle: '',
+      lastMoveAt: 0,
+      districtRoom: null,
+      cell: null,
+      cellRooms: new Set(),
+      ready: ready.promise,
+    };
+    // Register handlers before any await so events sent right after connecting are queued, not lost.
+    socket.on('chat:send', (body, ack) => void this.whenReady(socket, () => this.onChatSend(socket, body.channel, body.body, ack)));
+    socket.on('chat:join', (body, ack) => void this.whenReady(socket, () => this.onChatJoin(socket, body.channel, ack)));
+    socket.on('chat:leave', (body) => void socket.leave(body.channel));
+    socket.on('world:move', (body) => void this.whenReady(socket, async () => this.onMove(socket, body)));
+
+    try {
+      const token = typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
+      if (!token) throw new DomainException('UNAUTHENTICATED', 'Missing token');
+      const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
+      const character = await this.directory.findLivingByUser(payload.sub);
+      if (!character) throw new DomainException('NO_CHARACTER', 'No character');
+
+      socket.data.characterId = character.id;
+      socket.data.handle = character.handle;
+      await socket.join([characterRoom(character.id), 'global']);
+      const player = this.toPresence(character);
+      await this.presence.markOnline(player);
+      this.metrics.onlinePlayers.inc();
+      ready.resolve(true);
+
+      socket.emit('presence:snapshot', await this.presence.sample());
+      socket.broadcast.emit('presence:joined', player);
+      this.server.emit('world:online-count', { count: await this.presence.onlineCount() });
+    } catch (error) {
+      ready.resolve(false);
+      this.logger.debug(`Rejected socket: ${error instanceof Error ? error.message : 'unknown'}`);
+      socket.disconnect(true);
+    }
+  }
+
+  private async whenReady(socket: RealtimeSocket, handler: () => Promise<void>): Promise<void> {
+    if (await socket.data.ready) await handler();
+  }
+
+  async handleDisconnect(socket: RealtimeSocket): Promise<void> {
+    const characterId = socket.data?.characterId;
+    if (!characterId) return;
+    this.metrics.onlinePlayers.dec();
+    const remaining = await this.server.in(characterRoom(characterId)).fetchSockets();
+    if (remaining.length > 0) return;
+    await this.presence.markOffline(characterId);
+    this.server.emit('presence:left', { characterId });
+  }
+
+  private async onChatSend(socket: RealtimeSocket, channel: string, body: string, ack: (result: RealtimeAck) => void): Promise<void> {
+    try {
+      const sender = await this.directory.findById(socket.data.characterId);
+      if (!sender) throw new DomainException('NO_CHARACTER', 'No character');
+      const message = await this.chat.send(sender, channel, body);
+      if (channel.startsWith('dm:')) {
+        for (const participant of channel.split(':').slice(1)) this.server.to(characterRoom(participant)).emit('chat:message', message);
+      } else {
+        this.server.to(channel).emit('chat:message', message);
+      }
+      ack({ ok: true });
+    } catch (error) {
+      ack({ ok: false, error: error instanceof DomainException ? error.message : 'Message not sent' });
+    }
+  }
+
+  private async onChatJoin(socket: RealtimeSocket, channel: string, ack: (result: RealtimeAck) => void): Promise<void> {
+    const character = await this.directory.findById(socket.data.characterId);
+    if (!character || !this.chat.canAccess(character, channel)) {
+      ack({ ok: false, error: 'You’re not in that chat' });
+      return;
+    }
+    if (!channel.startsWith('dm:')) await socket.join(channel);
+    ack({ ok: true });
+  }
+
+  private onMove(socket: RealtimeSocket, payload: WorldMovePayload): void {
+    const now = Date.now();
+    if (now - socket.data.lastMoveAt < MIN_MOVE_INTERVAL_MS) return;
+    if (![payload.x, payload.z, payload.heading, payload.speed].every(Number.isFinite)) return;
+    if (payload.mode !== 'walk' && payload.mode !== 'car') return;
+    socket.data.lastMoveAt = now;
+
+    const point = { x: payload.x, z: payload.z };
+    const district = districtRoom(districtAt(point));
+    if (socket.data.districtRoom !== district) {
+      if (socket.data.districtRoom) void socket.leave(socket.data.districtRoom);
+      void socket.join(district);
+      socket.data.districtRoom = district;
+    }
+    const cell = interestCell(point);
+    if (socket.data.cell !== cell) this.moveInterest(socket, cell, new Set(interestNeighbourhood(point)));
+
+    let batch = this.pendingPositions.get(cell);
+    if (!batch) {
+      batch = new Map();
+      this.pendingPositions.set(cell, batch);
+    }
+    const vehicle = vehicleLook(payload);
+    batch.set(socket.data.characterId, {
+      characterId: socket.data.characterId,
+      handle: socket.data.handle,
+      x: payload.x,
+      z: payload.z,
+      heading: payload.heading,
+      mode: payload.mode,
+      speed: Math.min(60, Math.max(0, payload.speed)),
+      ...(vehicle ? { vehicle } : {}),
+      t: now,
+    });
+  }
+
+  /** Listen to the cells around the player's new cell (leave the ones now out of range). */
+  private moveInterest(socket: RealtimeSocket, cell: string, wanted: ReadonlySet<string>): void {
+    for (const room of socket.data.cellRooms) if (!wanted.has(room)) void socket.leave(room);
+    for (const room of wanted) if (!socket.data.cellRooms.has(room)) void socket.join(room);
+    socket.data.cell = cell;
+    socket.data.cellRooms = wanted;
+  }
+
+  private flushPositions(): void {
+    for (const [room, batch] of this.pendingPositions) {
+      if (batch.size > 0) this.server.to(room).emit('world:players', [...batch.values()]);
+    }
+    this.pendingPositions.clear();
+  }
+
+  private toPresence(character: CharacterEntity): PresencePlayerDto {
+    return {
+      characterId: character.id,
+      handle: character.handle,
+      firstName: character.firstName,
+      gender: character.gender,
+      appearance: character.appearance,
+      outfit: character.outfit,
+      locationId: character.locationId,
+      activity: character.activity?.actionId ?? null,
+      status: character.status,
+    };
+  }
+}

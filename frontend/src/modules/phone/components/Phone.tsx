@@ -1,0 +1,97 @@
+'use client';
+
+import { AnimatePresence, motion } from 'motion/react';
+import { ChevronLeft, X } from 'lucide-react';
+import { formatClock12 } from '@insidelife/shared';
+import { gameEvents } from '@/common/game/game-events';
+import { useEscapeLayer } from '@/common/hooks/use-escape-layer';
+import type { PhoneAppDefinition } from '@/common/game/phone-apps';
+import { useUi } from '@/common/game/ui-store';
+import { useGameMinute } from '@/common/game/use-game-clock';
+
+export interface PhoneProps {
+  /** Supplied by the composition root. */
+  readonly apps: readonly PhoneAppDefinition[];
+}
+
+/** The in-game phone: the main menu, styled as a bright handset sliding up over the world. */
+export function Phone({ apps }: PhoneProps) {
+  const { phoneOpen, phoneApp, openPhone, closePhone } = useUi();
+  const minute = useGameMinute(10_000);
+  const app = apps.find((candidate) => candidate.id === phoneApp);
+
+  useEscapeLayer(phoneOpen, closePhone);
+
+  return (
+    <AnimatePresence>
+      {phoneOpen && (
+        <motion.div
+          key="phone"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Phone"
+          initial={{ y: '105%' }}
+          animate={{ y: 0 }}
+          exit={{ y: '105%' }}
+          transition={{ type: 'spring', stiffness: 380, damping: 36 }}
+          className="absolute inset-x-0 bottom-0 z-40 mx-auto flex h-[min(92dvh,820px)] w-full max-w-[440px] flex-col overflow-hidden rounded-t-phone bg-paper text-text shadow-[0_-12px_40px_rgb(4_18_24/0.45)] sm:bottom-4 sm:rounded-phone"
+        >
+          <div className="flex items-center justify-between px-6 pb-1 pt-3 text-xs font-bold text-text-soft">
+            <span className="tabular">{formatClock12(minute)}</span>
+            <span aria-hidden className="h-1.5 w-16 rounded-full bg-paper-3" />
+            <span>9mobile 4G</span>
+          </div>
+          <header className="flex items-center gap-2 px-4 py-2">
+            {phoneApp !== 'home' ? (
+              <button type="button" onClick={() => openPhone('home')} aria-label="Back to home screen" className="grid size-10 place-items-center rounded-full hover:bg-paper-2">
+                <ChevronLeft size={22} aria-hidden />
+              </button>
+            ) : (
+              <span className="size-10" />
+            )}
+            <h2 className="type-title flex-1 text-xl">{app?.name ?? 'Home'}</h2>
+            <button
+              type="button"
+              onClick={() => {
+                gameEvents.emit('sfx', { id: 'ui-close' });
+                closePhone();
+              }}
+              aria-label="Close phone"
+              className="grid size-10 place-items-center rounded-full hover:bg-paper-2"
+            >
+              <X size={20} aria-hidden />
+            </button>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
+            {phoneApp === 'home' || !app ? (
+              <ul className="grid grid-cols-4 gap-x-3 gap-y-5 pt-2">
+                {apps.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          gameEvents.emit('sfx', { id: 'ui-click' });
+                          openPhone(item.id);
+                        }}
+                        className="flex w-full flex-col items-center gap-1.5"
+                      >
+                        <span className="grid size-14 place-items-center rounded-[18px] text-white shadow-[var(--shadow-lift)]" style={{ background: item.tint }}>
+                          <Icon size={26} aria-hidden strokeWidth={2.2} color={item.tint === '#f6b90b' ? '#0e2733' : 'white'} />
+                        </span>
+                        <span className="text-xs font-bold">{item.name}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : (
+              <app.component />
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}

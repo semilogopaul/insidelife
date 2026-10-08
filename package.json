@@ -1,0 +1,26 @@
+{
+  "name": "insidelife",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Inside Life — a Nigerian life simulation game. Monorepo root.",
+  "workspaces": [
+    "packages/*",
+    "backend",
+    "frontend"
+  ],
+  "engines": {
+    "node": ">=24.11.0"
+  },
+  "scripts": {
+    "build:shared": "npm run build -w @insidelife/shared",
+    "build": "npm run build:shared && npm run build -w @insidelife/backend && npm run build -w @insidelife/frontend",
+    "dev:infra": "docker compose up -d postgres redis storage",
+    "dev:shared": "npm run dev -w @insidelife/shared",
+    "dev:backend": "npm run start:dev -w @insidelife/backend",
+    "dev:frontend": "npm run dev -w @insidelife/frontend",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "postinstall": "npm run build:shared"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "$schema": "../node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "import",
+    "unicorn"
+  ],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "typescript/no-explicit-any": "error",
+    "no-console": "error",
+    "eqeqeq": "error",
+    "typescript/no-extraneous-class": [
+      "warn",
+      {
+        "allowWithDecorator": true
+      }
+    ],
+    "import/no-unassigned-import": [
+      "warn",
+      {
+        "allow": [
+          "reflect-metadata"
+        ]
+      }
+    ]
+  }
+}

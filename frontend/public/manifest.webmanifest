@@ -1,0 +1,11 @@
+{
+  "name": "Inside Life",
+  "short_name": "Inside Life",
+  "description": "Your life in Lagos. Earn it.",
+  "start_url": "/play",
+  "display": "fullscreen",
+  "orientation": "any",
+  "background_color": "#0e2733",
+  "theme_color": "#0e2733",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

@@ -1,0 +1,83 @@
+import { BullModule } from '@nestjs/bullmq';
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { LoggerModule } from 'nestjs-pino';
+import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { RedisModule } from './common/redis/redis.module.js';
+import { resolveTraceId, TRACE_HEADER } from './common/utils/trace.js';
+import { configuration, type AppConfig } from './config/configuration.js';
+import { validationSchema } from './config/validation.schema.js';
+import { DatabaseModule } from './database/database.module.js';
+import { HealthModule } from './health/health.module.js';
+import { MetricsInterceptor } from './metrics/metrics.interceptor.js';
+import { MetricsModule } from './metrics/metrics.module.js';
+import { AuthModule } from './modules/auth/auth.module.js';
+import { LedgerModule } from './modules/ledger/ledger.module.js';
+import { LifeModule } from './modules/life/life.module.js';
+import { RealtimeBusModule } from './modules/realtime-bus/realtime-bus.module.js';
+import { RealtimeModule } from './modules/realtime/realtime.module.js';
+import { SettlementModule } from './modules/settlement/settlement.module.js';
+import { WorldModule } from './modules/world/world.module.js';
+import { DOMAIN_MODULES } from './modules/domain-modules.js';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      cache: true,
+      load: [configuration],
+      validationSchema,
+    }),
+    LoggerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<AppConfig, true>) => {
+        const env = config.get('env', { infer: true });
+        return {
+          pinoHttp: {
+            level: config.get('logLevel', { infer: true }),
+            genReqId: (req, res) => {
+              const traceId = resolveTraceId(req);
+              res.setHeader(TRACE_HEADER, traceId);
+              return traceId;
+            },
+            customProps: (req) => ({ traceId: req.id }),
+            redact: {
+              paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]', '*.password', '*.passwordHash'],
+              censor: '[redacted]',
+            },
+            autoLogging: { ignore: (req) => req.url === '/api/health' || req.url === '/api/metrics' },
+            transport: env === 'development' ? { target: 'pino-pretty', options: { singleLine: true, colorize: true } } : undefined,
+          },
+        };
+      },
+    }),
+    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 240 }]),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService<AppConfig, true>) => ({
+        connection: { url: config.get('redis', { infer: true }).url, maxRetriesPerRequest: null },
+        prefix: 'il',
+      }),
+    }),
+    DatabaseModule,
+    RedisModule,
+    MetricsModule,
+    HealthModule,
+    RealtimeBusModule,
+    LedgerModule,
+    WorldModule,
+    AuthModule,
+    LifeModule,
+    RealtimeModule,
+    SettlementModule,
+    ...DOMAIN_MODULES,
+  ],
+  providers: [
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
+  ],
+})
+export class AppModule {}

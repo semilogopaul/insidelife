@@ -1,0 +1,303 @@
+import type { PropSpec } from '../../props/prop-types';
+import { gridPoints, npc, place, row, seat, stand } from '../helpers';
+import type { InteriorTemplate } from '../types';
+
+/** Open market: stalls under striped umbrellas, traders calling, buyers pricing. */
+export const MARKET: InteriorTemplate = {
+  id: 'market',
+  label: 'Market',
+  room: { width: 12, depth: 9, height: 3, floor: 'cement', floorColor: '#a39886', wall: { style: 'none', color: '#000000' }, outdoor: true },
+  furniture: [place('tree_palmDetailedTall', [-5.4, -4.0], 0, { scale: 1.2 }), place('cardboardBoxClosed', [4.9, -3.7], 20), place('cardboardBoxOpen', [5.2, -3.1], -10)],
+  props: [
+    { kind: 'stall', at: [-3.6, -2.6], goods: 'tomatoes', umbrella: '#e2412e' },
+    { kind: 'stall', at: [-0.6, -2.6], goods: 'fabric', umbrella: '#1d4e89' },
+    { kind: 'stall', at: [2.4, -2.6], goods: 'phones', umbrella: '#f6b90b' },
+    { kind: 'stall', at: [-3.6, 1.2], rot: 180, goods: 'peppers', umbrella: '#0f8a4f' },
+    { kind: 'stall', at: [2.4, 1.2], rot: 180, goods: 'shoes', umbrella: '#c8287a' },
+    { kind: 'bucket', at: [-4.6, -1.7], color: '#e53935' },
+    { kind: 'bucket', at: [-2.6, 0.4], color: '#1e88e5' },
+    { kind: 'cooler', at: [0.6, 1.4], rot: 30, color: '#1e88e5' },
+    { kind: 'plastic-chair', at: [-4.6, 2.2], rot: 160, color: '#c0392b' },
+    { kind: 'sign', at: [0.0, -4.3], size: [3.4, 0.6], lines: ['BALOGUN MARKET'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'generator', at: [4.8, 2.2], rot: -40 },
+  ],
+  player: {
+    default: stand([-0.6, -1.1], 180, 'talk'),
+    talk: stand([-0.6, -1.1], 180, 'talk'),
+    walk: stand([0.8, -0.4], 250, 'walk'),
+    phone: stand([1.6, 0.2], 210, 'phone'),
+  },
+  npcs: [
+    npc(stand([-3.6, -3.2], 0, 'talk'), 'market', { gender: 'female' }),
+    npc(stand([-0.6, -3.2], 0, 'talk'), 'market', { gender: 'female' }),
+    npc(stand([2.4, -3.2], 0, 'phone'), 'street', { gender: 'male' }),
+    npc(seat([-4.6, 2.2], 160, 'talk'), 'market', { gender: 'female' }),
+    npc(stand([2.4, 1.85], 180, 'talk'), 'market', { gender: 'male', lod: 'low' }),
+    npc(stand([-3.4, -1.2], 200, 'talk'), 'casual', { lod: 'low' }),
+    npc(stand([2.0, -1.2], 170, 'phone'), 'campus', { lod: 'low' }),
+    npc(stand([4.0, -0.4], 260, 'walk'), 'casual', { lod: 'low' }),
+  ],
+  guests: [stand([-1.4, -0.8], 200, 'talk'), stand([3.2, -1.0], 210, 'idle')],
+  lighting: { mood: 'outdoor', practicals: [[0.0, 2.6, -1.0]] },
+};
+
+/** Mall boutique: racks, shelves of clothes, mirrors, a cashier. */
+export const MALL: InteriorTemplate = {
+  id: 'mall',
+  label: 'Mall store',
+  room: {
+    width: 9,
+    depth: 7,
+    height: 3.2,
+    floor: 'marble',
+    floorColor: '#efece6',
+    wall: { style: 'paint', color: '#f6f3ee', band: '#c8287a' },
+    windows: [{ wall: 'left', at: 1.6, width: 2.4, sill: 0.3, height: 2.4, bars: false }],
+    doors: [{ wall: 'left', at: -1.2, width: 1.6 }],
+  },
+  furniture: [place('pottedPlant', [4.1, -3.0], 0, { scale: 1.4 }), place('pottedPlant', [-4.1, 3.0], 0, { scale: 1.4 }), place('loungeDesignSofa', [3.9, 2.1], -90, { palette: { carpetBlue: '#c8287a' } })],
+  props: [
+    { kind: 'shelf', at: [-2.4, -3.25], size: [3.0, 2.2, 0.45], items: 'clothes', color: '#f6f3ee' },
+    { kind: 'shelf', at: [1.2, -3.25], size: [3.0, 2.2, 0.45], items: 'clothes', color: '#f6f3ee' },
+    { kind: 'shelf', at: [-1.0, 0.3], rot: 90, size: [2.2, 1.3, 0.5], items: 'clothes', color: '#e0dcd5' },
+    { kind: 'shelf', at: [0.6, 0.3], rot: -90, size: [2.2, 1.3, 0.5], items: 'boxes', color: '#e0dcd5' },
+    { kind: 'mirror', at: [3.0, -3.42], y: 1.1, size: [0.8, 1.6], frame: '#1c1c1c' },
+    { kind: 'bar-counter', at: [3.3, -0.4], rot: -90, length: 2.0, color: '#1c1c1c', top: '#c8287a' },
+    { kind: 'sign', at: [-0.6, -3.48], y: 2.8, wall: true, size: [3.6, 0.42], lines: ['LEKKI ATELIER'], bg: '#1c1c1c', fg: '#ffffff' },
+    { kind: 'sign', at: [-4.48, 1.6], rot: 90, y: 2.75, wall: true, size: [2.0, 0.4], lines: ['DETTY DECEMBER SALE −30%'], bg: '#c8287a', fg: '#ffffff' },
+  ],
+  player: {
+    default: stand([2.2, -2.2], 160),
+    talk: stand([2.6, -0.4], 90, 'talk'),
+    sit: seat([3.8, 2.1], -90),
+    phone: seat([3.8, 2.1], -90, 'phone'),
+  },
+  npcs: [npc(stand([3.85, -0.4], -90, 'talk'), 'club', { gender: 'female' }), npc(stand([-2.4, -2.5], 170, 'idle'), 'club'), npc(stand([0.0, 1.9], 220, 'phone'), 'street', { lod: 'low' }), npc(stand([-2.2, 1.0], 120, 'talk'), 'corporate', { lod: 'low' })],
+  guests: [stand([-0.2, -1.6], 200, 'idle'), seat([3.8, 1.6], -90, 'talk')],
+  lighting: { mood: 'shop', practicals: [[-0.6, 2.9, -1.4], [1.0, 2.9, 1.0]] },
+};
+
+/** Car showroom: three cars on turning plinths, a deal desk, glossy floor. */
+export const CAR_DEALER: InteriorTemplate = {
+  id: 'car-dealer',
+  label: 'Car showroom',
+  room: {
+    width: 13,
+    depth: 9,
+    height: 3.6,
+    floor: 'marble',
+    floorColor: '#e9ecef',
+    wall: { style: 'paint', color: '#f3f5f7', band: '#0e2733' },
+    windows: [{ wall: 'back', at: 3.6, width: 3.0, sill: 0.3, height: 2.8, bars: false }, { wall: 'left', at: 1.4, width: 3.0, sill: 0.3, height: 2.8, bars: false }],
+    doors: [{ wall: 'left', at: -2.4, width: 1.6 }],
+  },
+  furniture: [
+    place('desk', [-3.6, -3.4], 0, { scale: 1.2, palette: { wood: '#1c1c1c' } }),
+    place('chairDesk', [-3.6, -4.0], 0),
+    place('laptop', [-3.8, -3.5], 0, { y: 0.69 }),
+    place('chairModernCushion', [-4.0, -2.65], 180, { palette: { carpetBlue: '#f6b90b' } }),
+    place('chairModernCushion', [-3.2, -2.65], 180, { palette: { carpetBlue: '#f6b90b' } }),
+    place('pottedPlant', [-6.0, -4.0], 0, { scale: 1.5 }),
+    place('pottedPlant', [6.0, 4.0], 0, { scale: 1.5 }),
+    place('kitchenCoffeeMachine', [-5.9, -1.5], 90, { y: 0.68 }),
+    place('kitchenCabinet', [-6.0, -1.5], 90),
+  ],
+  props: [
+    { kind: 'car-platform', at: [-1.2, 0.8], r: 2.2 },
+    { kind: 'car-platform', at: [3.4, -1.6], r: 2.2 },
+    { kind: 'car-platform', at: [3.6, 2.6], r: 1.9 },
+    { kind: 'sign', at: [-0.6, -4.48], y: 2.9, wall: true, size: [4.4, 0.55], lines: ['LEKKI AUTO GALLERY'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'sign', at: [-6.48, -3.2], rot: 90, y: 2.0, wall: true, size: [1.6, 0.9], lines: ['TOKUNBO & BRAND NEW', 'DUTY PAID ✓', 'NO STORY'], bg: '#ffffff', fg: '#0e2733', accent: '#0f8a4f', style: 'poster' },
+  ],
+  player: {
+    default: stand([1.0, 1.8], 220),
+    talk: seat([-4.0, -2.65], 180, 'talk'),
+    sit: seat([-4.0, -2.65], 180),
+    walk: stand([1.0, 1.8], 220, 'walk'),
+  },
+  npcs: [npc(seat([-3.6, -4.0], 0, 'talk'), 'corporate', { gender: 'male' }), npc(stand([0.9, -0.9], 220, 'talk'), 'corporate', { gender: 'female' }), npc(stand([5.6, -0.4], 250, 'phone'), 'club', { lod: 'low' })],
+  guests: [seat([-3.2, -2.65], 180, 'talk'), stand([1.6, -0.2], 210, 'idle')],
+  lighting: { mood: 'shop', practicals: [[-1.2, 3.2, 0.8], [3.4, 3.2, 0.0]] },
+  extras: {
+    cars: [
+      { model: 'suv-luxury', at: [-1.2, 0.8], rot: 35, spin: true },
+      { model: 'sedan', at: [3.4, -1.6], rot: -20 },
+      { model: 'hatchback-sports', at: [3.6, 2.6], rot: 60 },
+    ],
+  },
+};
+
+/** Airport departure lounge: rows of seats, departures board, check-in, luggage. */
+export const AIRPORT: InteriorTemplate = {
+  id: 'airport',
+  label: 'Departure lounge',
+  room: {
+    width: 12,
+    depth: 8,
+    height: 3.6,
+    floor: 'marble',
+    floorColor: '#dfe3e6',
+    wall: { style: 'paint', color: '#eef2f4', band: '#1d4e89' },
+    windows: [
+      { wall: 'back', at: -2.0, width: 3.0, sill: 0.3, height: 2.9, bars: false },
+      { wall: 'back', at: 2.4, width: 3.0, sill: 0.3, height: 2.9, bars: false },
+    ],
+    doors: [{ wall: 'left', at: 2.6, width: 1.6 }],
+  },
+  furniture: [place('pottedPlant', [-5.5, -3.5], 0, { scale: 1.5 }), place('pottedPlant', [5.5, -3.5], 0, { scale: 1.5 }), place('trashcan', [5.6, 3.6])],
+  props: [
+    ...gridPoints(2, 2, [0.6, 0.3], [4.6, 2.6]).map(([x, z]): PropSpec => ({ kind: 'seat-row', at: [x, z], count: 6, color: '#1d4e89', frame: '#9aa3ad' })),
+    { kind: 'bar-counter', at: [-4.6, 0.0], rot: 90, length: 3.4, color: '#eceff1', top: '#1d4e89' },
+    { kind: 'sign', at: [-4.6, 0.0], rot: 90, y: 0.95, size: [1.2, 0.32], lines: ['CHECK-IN'], bg: '#1d4e89', fg: '#ffffff' },
+    { kind: 'sign', at: [-5.98, 0.0], rot: 90, y: 2.5, wall: true, size: [3.4, 1.2], lines: ['DEPARTURES', 'LOS → LHR  22:40  BOARDING', 'LOS → DXB  23:55  ON TIME'], bg: '#0b1b2b', fg: '#f6b90b', accent: '#21d4fd', style: 'screen' },
+    { kind: 'luggage', at: [-1.0, 1.6], rot: 20, color: '#c62828' },
+    { kind: 'luggage', at: [2.4, -0.6], rot: -30, color: '#263238' },
+    { kind: 'luggage', at: [-3.4, -1.3], rot: 60, color: '#f6b90b' },
+    { kind: 'sign', at: [0.2, -3.98], y: 3.2, wall: true, size: [3.6, 0.42], lines: ['MURTALA MUHAMMED INTL • GATE E7'], bg: '#1d4e89', fg: '#ffffff' },
+  ],
+  player: {
+    default: stand([0.6, 2.2], 200),
+    sit: seat([-1.42, -1.0], 0),
+    phone: seat([-1.42, -1.0], 0, 'phone'),
+    read: seat([-1.42, -1.0], 0, 'read'),
+    sleep: seat([-1.42, -1.0], 0, 'sit'),
+    walk: stand([4.0, 2.2], 250, 'walk'),
+  },
+  npcs: [
+    npc(seat([-0.86, -1.0], 0, 'phone'), 'corporate'),
+    npc(seat([3.18, -1.0], 0, 'read'), 'casual'),
+    npc(seat([-2.54, 1.6], 0, 'sit'), 'street', { lod: 'low' }),
+    npc(seat([3.74, 1.6], 0, 'phone'), 'club', { lod: 'low' }),
+    npc(stand([-5.1, 0.6], 90, 'talk'), 'uniform', { gender: 'female' }),
+    npc(stand([-3.8, -0.8], 270, 'idle'), 'corporate', { lod: 'low' }),
+  ],
+  guests: [seat([-0.3, 1.6], 0, 'sit'), seat([2.06, -1.0], 0, 'phone')],
+  lighting: { mood: 'office', practicals: [[-1.6, 3.3, 0.0], [2.8, 3.3, 0.0]] },
+};
+
+/** Motor park: danfos loading, a ticket booth, benches under a shade, agberos shouting. */
+export const MOTOR_PARK: InteriorTemplate = {
+  id: 'motor-park',
+  label: 'Motor park',
+  room: { width: 14, depth: 10, height: 3, floor: 'asphalt', floorColor: '#4b4f53', wall: { style: 'none', color: '#000000' }, outdoor: true },
+  furniture: [place('tree_palmDetailedTall', [-6.2, -4.4], 0, { scale: 1.2 }), place('tree_palmDetailedTall', [6.3, 4.2], 0, { scale: 1.1 })],
+  props: [
+    { kind: 'danfo', at: [-2.0, -2.2], rot: 90 },
+    { kind: 'danfo', at: [2.6, -2.4], rot: 75 },
+    { kind: 'canopy', at: [-3.2, 2.4], size: [4.0, 2.0], color: '#1d4e89', trim: '#f6b90b', height: 2.4 },
+    { kind: 'bench', at: [-3.2, 2.2], length: 3.0, color: '#8d6e63' },
+    { kind: 'box', at: [3.6, 2.4], size: [1.6, 2.1, 1.3], color: '#f6b90b', surface: 'paint' },
+    { kind: 'sign', at: [3.6, 3.06], y: 1.6, wall: true, size: [1.4, 0.7], lines: ['TICKETS', 'OSHODI ₦650', 'CMS ₦900'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'sign', at: [0.0, -4.6], size: [4.4, 0.6], lines: ['IKORODU GARAGE — ENTER WITH YOUR CHANGE'], bg: '#f6b90b', fg: '#0e2733' },
+    { kind: 'cooler', at: [0.4, 1.8], rot: 20, color: '#e53935' },
+    { kind: 'umbrella', at: [0.6, 2.6], color: '#0f8a4f', color2: '#ffffff' },
+    { kind: 'plastic-chair', at: [1.2, 2.2], rot: 230, color: '#c0392b' },
+    { kind: 'generator', at: [5.6, -3.2], rot: -30 },
+  ],
+  player: {
+    default: stand([-0.2, 0.2], 200),
+    sit: seat([-2.6, 2.2], 0),
+    phone: seat([-2.6, 2.2], 0, 'phone'),
+    walk: stand([0.4, 0.4], 240, 'walk'),
+    talk: stand([-0.2, 0.2], 200, 'talk'),
+  },
+  npcs: [
+    npc(stand([-0.4, -1.0], 160, 'talk'), 'street', { gender: 'male' }),
+    npc(stand([3.6, 1.55], 0, 'talk'), 'casual', { gender: 'female' }),
+    npc(seat([-3.8, 2.2], 0, 'phone'), 'market', { lod: 'low' }),
+    npc(seat([-3.2, 2.2], 0, 'sit'), 'campus', { lod: 'low' }),
+    npc(seat([1.2, 2.2], 230, 'talk'), 'market', { gender: 'female', lod: 'low' }),
+    npc(stand([1.6, -0.6], 250, 'wave'), 'street', { lod: 'low' }),
+  ],
+  guests: [seat([-2.0, 2.2], 0, 'sit'), stand([2.0, 0.6], 220, 'idle')],
+  lighting: { mood: 'outdoor', practicals: [[-3.2, 2.2, 2.4]] },
+};
+
+/** Beach: sand, sea, umbrellas, sun loungers, suya grill and a speaker blasting Afrobeats. */
+export const BEACH: InteriorTemplate = {
+  id: 'beach',
+  label: 'Beach',
+  room: { width: 14, depth: 10, height: 3, floor: 'sand', floorColor: '#e6cf9c', wall: { style: 'none', color: '#000000' }, outdoor: true },
+  furniture: [
+    place('tree_palmDetailedTall', [-6.0, 3.6], 0, { scale: 1.4 }),
+    place('tree_palmBend', [-5.2, 4.4], 120, { scale: 1.3 }),
+    place('tree_palmDetailedTall', [6.2, 4.2], 40, { scale: 1.3 }),
+    ...row('loungeChairRelax', 3, [-2.8, -0.6], [1.6, 0], 180, { palette: { carpet: '#f6b90b', wood: '#ffffff' } }),
+    place('speaker', [4.4, 1.6], -110),
+  ],
+  props: [
+    { kind: 'box', at: [0.0, -4.0], y: -0.08, size: [14, 0.1, 2.0], color: '#3a9fd0', surface: 'plastic', round: 0.02 },
+    { kind: 'box', at: [0.0, -2.95], y: -0.06, size: [14, 0.08, 0.3], color: '#f4f8f6', surface: 'gloss', round: 0.2 },
+    { kind: 'umbrella', at: [-2.0, 0.4], color: '#e2412e', color2: '#ffffff' },
+    { kind: 'umbrella', at: [1.2, 0.4], color: '#1d4e89', color2: '#f6b90b' },
+    { kind: 'grill', at: [3.6, 2.8], rot: -20 },
+    { kind: 'cooler', at: [2.6, 3.1], rot: 15, color: '#1e88e5' },
+    { kind: 'plastic-chair', at: [-1.0, 2.6], rot: 160, color: '#c0392b' },
+    { kind: 'plastic-chair', at: [-0.2, 2.8], rot: 200, color: '#c0392b' },
+    { kind: 'sign', at: [5.0, 3.6], rot: -60, size: [1.4, 0.6], lines: ['ELEGUSHI', 'SUYA • CHAPMAN'], bg: '#0e2733', fg: '#f6b90b' },
+  ],
+  player: {
+    default: stand([0.4, 1.4], 30, 'dance'),
+    dance: stand([0.4, 1.4], 30, 'dance'),
+    sleep: { at: [-1.2, 0.33, -0.6], rot: 180, animation: 'sleep' },
+    sit: seat([-1.0, 2.6], 160),
+    eat: seat([-1.0, 2.6], 160, 'eat'),
+    walk: stand([2.0, -1.8], 270, 'walk'),
+  },
+  npcs: [
+    npc(stand([-0.6, 1.0], 40, 'dance'), 'street', { gender: 'female' }),
+    npc(stand([1.6, 1.6], 300, 'dance'), 'street', { gender: 'male' }),
+    npc({ at: [-2.8, 0.33, -0.6], rot: 180, animation: 'sleep' }, 'gym', { gender: 'male' }),
+    npc(stand([3.0, 2.4], 200, 'cook'), 'market', { gender: 'male', lod: 'low' }),
+    npc(seat([-0.2, 2.8], 200, 'talk'), 'casual', { lod: 'low' }),
+    npc(stand([-4.4, -2.2], 90, 'walk'), 'gym', { lod: 'low' }),
+  ],
+  guests: [stand([2.4, 0.6], 220, 'dance'), stand([-1.8, 1.8], 60, 'dance')],
+  lighting: { mood: 'outdoor', practicals: [[3.4, 2.4, 2.6]] },
+};
+
+/** Park: lawn, paths, benches under palms, a little bandstand. */
+export const PARK: InteriorTemplate = {
+  id: 'park',
+  label: 'Park',
+  room: { width: 14, depth: 10, height: 3, floor: 'grass', floorColor: '#5f9e3c', wall: { style: 'none', color: '#000000' }, outdoor: true },
+  furniture: [
+    place('tree_palmDetailedTall', [-5.6, -3.6], 0, { scale: 1.3 }),
+    place('tree_palmShort', [5.4, -3.8], 30, { scale: 1.2 }),
+    place('tree_palmDetailedTall', [5.8, 3.6], 60, { scale: 1.2 }),
+    place('plant_bushLarge', [-3.2, -4.2], 0, { scale: 1.6 }),
+    place('plant_bushLarge', [2.6, -4.3], 40, { scale: 1.6 }),
+    place('plant_bushDetailed', [-6.0, 1.2], 0, { scale: 1.6 }),
+    place('flower_redA', [-1.6, -3.9], 0, { scale: 1.6 }),
+    place('flower_yellowA', [0.6, -3.9], 0, { scale: 1.6 }),
+    place('flower_redA', [3.8, -3.6], 0, { scale: 1.6 }),
+    place('bench', [-2.4, -1.8], 0, { scale: 1.2 }),
+    place('bench', [1.4, -1.8], 0, { scale: 1.2 }),
+  ],
+  props: [
+    { kind: 'box', at: [0.0, 0.0], y: -0.01, size: [14, 0.03, 1.4], color: '#c9b48a', surface: 'stone', round: 0.05 },
+    { kind: 'box', at: [3.4, 0.0], y: -0.01, size: [1.4, 0.03, 10], color: '#c9b48a', surface: 'stone', round: 0.05 },
+    { kind: 'canopy', at: [-3.6, 3.0], size: [3.0, 2.4], color: '#f6b90b', trim: '#0e2733', height: 2.6 },
+    { kind: 'stage', at: [-3.6, 3.0], size: [3.0, 2.4], height: 0.3, color: '#8d6e63', trim: '#f6b90b' },
+    { kind: 'sign', at: [5.2, 1.4], rot: -70, size: [1.6, 0.6], lines: ['FREEDOM PARK', 'LIVE MUSIC 7PM'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'cooler', at: [1.2, 2.4], rot: 30, color: '#e53935' },
+  ],
+  player: {
+    default: stand([0.8, 0.8], 30),
+    sit: seat([-2.4, -1.8], 0),
+    read: seat([-2.4, -1.8], 0, 'read'),
+    phone: seat([-2.4, -1.8], 0, 'phone'),
+    walk: stand([1.6, 0.2], 250, 'walk'),
+    exercise: stand([0.8, 1.6], 30, 'exercise'),
+    dance: { at: [-3.4, 0.3, 3.0], rot: 30, animation: 'dance' },
+  },
+  npcs: [
+    npc(seat([1.0, -1.8], 0, 'talk'), 'campus', { gender: 'female' }),
+    npc(seat([1.8, -1.8], 0, 'talk'), 'campus', { gender: 'male' }),
+    npc({ at: [-3.6, 0.3, 3.2], rot: 30, animation: 'dance' }, 'street', { gender: 'male' }),
+    npc(stand([3.4, 2.6], 180, 'walk'), 'gym', { lod: 'low' }),
+    npc(stand([-0.6, 0.2], 90, 'walk'), 'casual', { lod: 'low' }),
+  ],
+  guests: [stand([0.2, 1.8], 40, 'talk'), seat([-2.0, -1.8], 0, 'sit')],
+  lighting: { mood: 'outdoor', practicals: [[-3.6, 2.4, 3.0]] },
+};
