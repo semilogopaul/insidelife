@@ -7,6 +7,8 @@ export const site = {
   supportEmail: 'hello@insidelife.online',
   /** The company that runs Inside Life (legal pages, footer). */
   operator: 'iLaw Legaltech Solutions',
+  /** First year of publication for the © line (a fixed year: pages are prerendered, and the first year is what counts). */
+  copyrightYear: 2026,
 } as const;
 
 /**

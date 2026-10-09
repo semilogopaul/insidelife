@@ -77,7 +77,7 @@ export default function LandingPage() {
           <Link href="/disclaimer" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
             Disclaimer
           </Link>
-          <span>© {new Date().getFullYear()} {site.operator}</span>
+          <span>© {site.copyrightYear} {site.operator}</span>
         </nav>
       </footer>
     </main>

@@ -21,7 +21,7 @@ export default function LegalLayout({ children }: { readonly children: ReactNode
           <Link href="/disclaimer">Disclaimer</Link>
           <a href={`mailto:${site.supportEmail}`}>{site.supportEmail}</a>
         </nav>
-        <p className="mt-2">© {new Date().getFullYear()} {site.operator}</p>
+        <p className="mt-2">© {site.copyrightYear} {site.operator}</p>
       </footer>
     </main>
   );
