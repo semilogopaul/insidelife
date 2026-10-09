@@ -108,6 +108,7 @@ export class CharacterCreationService {
         seed,
         earnedTotal: 0,
         unearnedTotal: 0,
+        lockedUnearned: profile.startingCash + STARTER_FUND,
         purchasedTotal: 0,
         netWorth: 0,
         lastActiveAt: new Date(),

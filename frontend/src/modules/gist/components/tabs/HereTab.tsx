@@ -1,7 +1,8 @@
 'use client';
 
-import { DoorClosed, Map as MapIcon } from 'lucide-react';
-import { findVenue, isHomeLocation, isStreetLocation, type CharacterSnapshotDto } from '@insidelife/shared';
+import { Banknote, DoorClosed, Map as MapIcon } from 'lucide-react';
+import { useState } from 'react';
+import { SPRAY_VENUE_TYPES, findVenue, isHomeLocation, isStreetLocation, type CharacterSnapshotDto } from '@insidelife/shared';
 import { PlaceIcon, venuePlaceKind } from '@/common/brand/place-icons';
 import { Button, EmptyState, Spinner } from '@/common/components';
 import { useUi } from '@/common/game/ui-store';
@@ -10,14 +11,16 @@ import { useVenuePlayers } from '../../hooks/use-social';
 import { venueChannel } from '../../services/chat-channels';
 import { ChatThread } from '../chat/ChatThread';
 import { PlayerAvatar } from '../PlayerAvatar';
+import { VenueSprayPanel } from '../spray/VenueSprayPanel';
 
-/** Chat with whoever is in the same place, and see who's here. */
+/** Chat with whoever is in the same place, see who's here, and (at clubs and bars) spray them or the DJ. */
 export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto }) {
   const openPhone = useUi((state) => state.openPhone);
   const openProfile = useGistNav((state) => state.openProfile);
   const locationId = snapshot.character.locationId;
   const venue = snapshot.travel === null && !isStreetLocation(locationId) && !isHomeLocation(locationId) ? (findVenue(locationId) ?? null) : null;
   const players = useVenuePlayers(venue?.id ?? null);
+  const [spraying, setSpraying] = useState(false);
 
   if (!venue) {
     return (
@@ -35,6 +38,7 @@ export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto 
   }
 
   const here = players.data?.players ?? [];
+  const sprayable = (SPRAY_VENUE_TYPES as readonly string[]).includes(venue.type);
   return (
     <div className="flex flex-col gap-3">
       <section aria-label={`Who’s at ${venue.name}`} className="rounded-card bg-paper-2 p-3">
@@ -62,7 +66,20 @@ export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto 
             ))}
           </ul>
         )}
+        {sprayable && (
+          <Button
+            variant={spraying ? 'paper' : 'danfo'}
+            block
+            className="mt-2"
+            icon={<Banknote size={18} aria-hidden />}
+            aria-expanded={spraying}
+            onClick={() => setSpraying((open) => !open)}
+          >
+            {spraying ? 'Done spraying' : 'Spray money'}
+          </Button>
+        )}
       </section>
+      {sprayable && spraying && <VenueSprayPanel venue={venue} players={here} cash={snapshot.wallet.balance} />}
       <ChatThread
         channel={venueChannel(venue.id)}
         me={{ id: snapshot.character.id, handle: snapshot.character.handle }}

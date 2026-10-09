@@ -3,6 +3,8 @@
  * Calibrated to Nigeria in 2026 — see docs/research/nigeria-economy-2026.md.
  */
 
+import { formatNaira } from '../money/money.js';
+
 /** Nigeria Tax Act 2025 personal income tax bands (annual, from 2026). */
 export const PIT_BANDS: ReadonlyArray<{ readonly upTo: number; readonly rate: number }> = [
   { upTo: 800_000, rate: 0 },
@@ -91,15 +93,25 @@ export function transferFee(amount: number): TransferFee {
   return { fee, stampDuty, total: fee + stampDuty };
 }
 
+/**
+ * Daily limits on money SENT to other players (bank transfers, sprays and any other player-to-player money), counted
+ * per real UTC day on the amounts that reach them (charges not included). `null` = no daily limit.
+ */
 export const TRANSFER_TIERS = [
-  { tier: 1, label: 'Tier 1', dailyLimit: 30_000 },
-  { tier: 2, label: 'Tier 2', dailyLimit: 200_000 },
-  { tier: 3, label: 'Tier 3', dailyLimit: 5_000_000 },
-] as const;
+  { tier: 1, label: 'Tier 1', dailyLimit: 4_000_000 },
+  { tier: 2, label: 'Tier 2', dailyLimit: 10_000_000 },
+  { tier: 3, label: 'Tier 3', dailyLimit: null },
+] as const satisfies ReadonlyArray<{ readonly tier: number; readonly label: string; readonly dailyLimit: number | null }>;
 export type TransferTier = (typeof TRANSFER_TIERS)[number]['tier'];
 
 export const MAX_SINGLE_TRANSFER = 5_000_000;
 export const MIN_TRANSFER = 100;
+
+/**
+ * The most a player can RECEIVE from other players per real UTC day, across every player-to-player channel. Money from
+ * work, businesses, investments, the game itself and top-ups is never capped. Stops many accounts feeding one.
+ */
+export const DAILY_PEER_RECEIVE_LIMIT = 4_000_000;
 
 /** Character age (in game days) needed for each transfer tier. Tier 3 also needs a verified email. */
 export const TRANSFER_TIER_MIN_DAYS: Readonly<Record<TransferTier, number>> = { 1: 0, 2: 7, 3: 30 };
@@ -110,8 +122,79 @@ export function transferTierFor(characterAgeDays: number, emailVerified: boolean
   return 1;
 }
 
-export function dailyTransferLimit(tier: TransferTier): number {
-  return TRANSFER_TIERS.find((t) => t.tier === tier)?.dailyLimit ?? TRANSFER_TIERS[0].dailyLimit;
+/** The tier's daily send limit, or null when it has none. */
+export function dailyTransferLimit(tier: TransferTier): number | null {
+  const entry = TRANSFER_TIERS.find((t) => t.tier === tier) ?? TRANSFER_TIERS[0];
+  return entry.dailyLimit;
+}
+
+export interface PeerSendableInput {
+  readonly earnedTotal: number;
+  /** Includes the starting money, free assets, top-ups and everything other players sent you. */
+  readonly unearnedTotal: number;
+  /** The part of unearned that can never go to players: starting money and the value of free assets. */
+  readonly lockedUnearned: number;
+  /** Everything this character ever sent to other players. */
+  readonly peerSentTotal: number;
+}
+
+/**
+ * How much of a character's money may go to other players: what they earned, bought or were sent, minus what they've
+ * already sent. Starting money (and free assets like a starter car) can be spent in the game but never passed on, so
+ * new accounts can't be farmed for it.
+ */
+export function peerSendable(input: PeerSendableInput): number {
+  return Math.max(0, input.earnedTotal + input.unearnedTotal - input.lockedUnearned - input.peerSentTotal);
+}
+
+export interface PeerMoneyCheckInput {
+  readonly amount: number;
+  /** Sender: sent to players today, the tier limit (null = none) and the sendable budget. */
+  readonly sentToday: number;
+  readonly dailyLimit: number | null;
+  readonly sendable: number;
+  /** Recipient: received from players today. */
+  readonly receivedToday: number;
+  readonly recipientHandle: string;
+}
+
+export type PeerMoneyViolation = 'DAILY_LIMIT_EXCEEDED' | 'STARTER_MONEY_LOCKED' | 'RECIPIENT_DAILY_LIMIT';
+
+export type PeerMoneyCheck = { readonly ok: true } | { readonly ok: false; readonly code: PeerMoneyViolation; readonly message: string };
+
+/** Player-to-player money rules shared by transfers and sprays. Pure. */
+export function checkPeerMoney(input: PeerMoneyCheckInput): PeerMoneyCheck {
+  const { amount, sentToday, dailyLimit, sendable, receivedToday, recipientHandle } = input;
+  if (dailyLimit !== null && sentToday + amount > dailyLimit) {
+    const left = Math.max(0, dailyLimit - sentToday);
+    return {
+      ok: false,
+      code: 'DAILY_LIMIT_EXCEEDED',
+      message: left === 0 ? 'You’ve used today’s limit for sending money to players. It resets at midnight (UTC).' : `Daily limit: you can still send ${formatNaira(left)} to players today.`,
+    };
+  }
+  if (amount > sendable) {
+    return {
+      ok: false,
+      code: 'STARTER_MONEY_LOCKED',
+      message:
+        sendable === 0
+          ? 'Your starting money is for you to spend in Lagos — it can’t be sent to other players. Earn or top up to send money.'
+          : `You can send ${formatNaira(sendable)} to players: your starting money can’t be passed on.`,
+    };
+  }
+  if (receivedToday + amount > DAILY_PEER_RECEIVE_LIMIT) {
+    const room = Math.max(0, DAILY_PEER_RECEIVE_LIMIT - receivedToday);
+    return {
+      ok: false,
+      code: 'RECIPIENT_DAILY_LIMIT',
+      message:
+        room === 0
+          ? `@${recipientHandle} has received all they can from players today (${formatNaira(DAILY_PEER_RECEIVE_LIMIT)} a day).`
+          : `@${recipientHandle} can only receive ${formatNaira(room)} more from players today.`,
+    };
+  }
+  return { ok: true };
 }
 
 /** Lagos rent upfront: one year plus agency (10%), legal (10%) and a refundable caution deposit (10%). */

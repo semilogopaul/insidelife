@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { districtAt, type CharacterSnapshotDto } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
+import { ALWAYS_DAYLIGHT } from '@/common/game/daylight';
 import { gameClock } from '@/common/game/game-clock';
 import { gameEvents } from '@/common/game/game-events';
 import { useWorld, type PlayerMode } from '@/common/game/world-store';
@@ -58,6 +59,7 @@ export function useSceneAudio(engine: AudioEngine | null): void {
         homeDistrictId: snapshot?.character.homeDistrictId ?? null,
         positionDistrictId: world.position ? districtAt(world.position) : null,
         gameMinute: gameClock.now(),
+        alwaysDaylight: ALWAYS_DAYLIGHT,
       };
     };
 
@@ -74,6 +76,7 @@ export function useSceneAudio(engine: AudioEngine | null): void {
           placeType: scene.placeType,
           districtId: scene.districtId,
           driving: scene.driving,
+          alwaysDaylight: inputs.alwaysDaylight,
         }),
         scene.kind === 'inside',
       );

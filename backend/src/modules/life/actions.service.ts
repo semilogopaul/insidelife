@@ -16,6 +16,7 @@ import {
 import { GameRuleException } from '../../common/exceptions/domain.exception.js';
 import { HOME_ACCESS_PORT, type HomeAccessPort } from '../../common/ports/home-access.port.js';
 import type { ActivityState } from '../characters/entities/character.entity.js';
+import { LedgerTransactionEntity } from '../ledger/entities/ledger-transaction.entity.js';
 import { unmetRequirement } from '../simulation/action-requirements.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationEngine } from '../simulation/simulation-engine.service.js';
@@ -52,7 +53,13 @@ export class ActionsService {
     if (fromPantry) character.pantryMeals -= 1;
     const cost = fromPantry ? 0 : ctx.world.price(action.cost, ctx.time);
     if (cost > 0) {
-      await ctx.wallet.pay(cost, 'purchase', action.label, `action:${action.id}:${ctx.time}`);
+      const key = `action:${action.id}:${ctx.time}`;
+      // The ledger ignores a repeated key, so a cancel-and-restart inside the same game minute (half a real second)
+      // would run free. Refuse it instead.
+      if (await ctx.manager.exists(LedgerTransactionEntity, { where: { idempotencyKey: `${character.id}:${key}` } })) {
+        throw new GameRuleException('TOO_SOON', 'You just started that — give it a moment');
+      }
+      await ctx.wallet.pay(cost, 'purchase', action.label, key);
     }
 
     if (character.activity) this.pauseHabit(ctx, character.activity);

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { annualIncomeTax, computePayslip, dailyTransferLimit, rentUpfront, transferFee, transferTierFor } from './finance.js';
+import {
+  DAILY_PEER_RECEIVE_LIMIT,
+  annualIncomeTax,
+  checkPeerMoney,
+  computePayslip,
+  dailyTransferLimit,
+  peerSendable,
+  rentUpfront,
+  transferFee,
+  transferTierFor,
+  type PeerMoneyCheckInput,
+} from './finance.js';
 
 describe('Nigeria Tax Act 2025 bands', () => {
   it('exempts the first ₦800k', () => {
@@ -41,7 +52,41 @@ describe('transfers', () => {
     expect(transferTierFor(0, true)).toBe(1);
     expect(transferTierFor(10, false)).toBe(2);
     expect(transferTierFor(40, true)).toBe(3);
-    expect(dailyTransferLimit(1)).toBe(30_000);
+    expect(dailyTransferLimit(1)).toBe(4_000_000);
+    expect(dailyTransferLimit(2)).toBe(10_000_000);
+    expect(dailyTransferLimit(3)).toBeNull();
+  });
+});
+
+describe('player-to-player money', () => {
+  const check = (overrides: Partial<PeerMoneyCheckInput> = {}) => {
+    const result = checkPeerMoney({ amount: 100_000, sentToday: 0, dailyLimit: 4_000_000, sendable: 1_000_000, receivedToday: 0, recipientHandle: 'femi', ...overrides });
+    return result.ok ? 'OK' : result.code;
+  };
+
+  it('starting money can be spent but never passed on', () => {
+    const fresh = { earnedTotal: 0, unearnedTotal: 4_150_000, lockedUnearned: 4_150_000, peerSentTotal: 0 };
+    expect(peerSendable(fresh)).toBe(0);
+    expect(peerSendable({ ...fresh, earnedTotal: 300_000 })).toBe(300_000);
+    // Top-ups (part of unearned) and money players sent you can be passed on; what you already sent is used up.
+    expect(peerSendable({ ...fresh, unearnedTotal: 4_150_000 + 200_000 + 1_000_000, peerSentTotal: 500_000 })).toBe(700_000);
+    expect(peerSendable({ ...fresh, peerSentTotal: 1 })).toBe(0);
+  });
+
+  it('applies the sender’s tier limit (none at tier 3)', () => {
+    expect(check({ sentToday: 3_950_000 })).toBe('DAILY_LIMIT_EXCEEDED');
+    expect(check({ sentToday: 3_900_000 })).toBe('OK');
+    expect(check({ sentToday: 50_000_000, dailyLimit: null, sendable: 1e12 })).toBe('OK');
+  });
+
+  it('won’t send starting money', () => {
+    expect(check({ sendable: 0 })).toBe('STARTER_MONEY_LOCKED');
+    expect(check({ sendable: 99_999 })).toBe('STARTER_MONEY_LOCKED');
+  });
+
+  it('caps what one player can receive from players in a day', () => {
+    expect(check({ receivedToday: DAILY_PEER_RECEIVE_LIMIT - 100_000 })).toBe('OK');
+    expect(check({ receivedToday: DAILY_PEER_RECEIVE_LIMIT - 99_999 })).toBe('RECIPIENT_DAILY_LIMIT');
   });
 });
 

@@ -205,6 +205,8 @@ export class SuccessionService {
       seed: heirSeed(rng),
       earnedTotal: 0,
       unearnedTotal: estate.inherited,
+      // The parent's starting money stays unsendable in the heir's hands too.
+      lockedUnearned: Math.min(estate.inherited, Number(deceased.lockedUnearned)),
       purchasedTotal: 0,
       netWorth: estate.inherited,
       lastActiveAt: new Date(),

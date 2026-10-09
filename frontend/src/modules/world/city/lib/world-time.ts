@@ -1,4 +1,5 @@
 import { MINUTES_PER_DAY, weatherAt, type Weather, type WeatherCondition } from '@insidelife/shared';
+import { sceneHour } from '@/common/game/daylight';
 import { gameClock } from '@/common/game/game-clock';
 
 /**
@@ -18,12 +19,15 @@ export function setWorldTimeOverride(hour: number | null, weather: WeatherCondit
   override.weather = weather;
 }
 
-/** Fractional hour of day 0–24. Before the clock syncs we show late afternoon (the city's best side). */
+/**
+ * Fractional hour of day 0–24 to draw the city at: the game hour through the daylight lock (`sceneHour`), or the
+ * preview's pinned hour. Before the clock syncs we show late morning.
+ */
 export function worldHour(): number {
   if (override.hour !== null) return override.hour;
-  if (!gameClock.ready) return 16.5;
+  if (!gameClock.ready) return sceneHour(10.5);
   const minuteOfDay = gameClock.now() % MINUTES_PER_DAY;
-  return (minuteOfDay < 0 ? minuteOfDay + MINUTES_PER_DAY : minuteOfDay) / 60;
+  return sceneHour((minuteOfDay < 0 ? minuteOfDay + MINUTES_PER_DAY : minuteOfDay) / 60);
 }
 
 const CLEAR: Weather = { condition: 'clear', intensity: 0, raining: false, temperatureC: 30, season: 'dry' };

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CreateProposalRequest, ReportPlayerRequest } from '@insidelife/shared';
+import type { CreateProposalRequest, ReportPlayerRequest, VenueSprayRequest } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
 import { gistApi } from '../services/gist.api';
 import { gistKeys } from '../services/gist-keys';
@@ -30,6 +30,15 @@ export function useVenuePlayers(venueId: string | null) {
     enabled: venueId !== null,
     staleTime: 15_000,
     refetchInterval: 30_000,
+  });
+}
+
+/** Spray someone at a club or bar (or the DJ). Refreshes your cash. */
+export function useVenueSpray(venueId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: VenueSprayRequest) => gistApi.venueSpray(venueId, body),
+    onSettled: () => void client.invalidateQueries({ queryKey: queryKeys.snapshot }),
   });
 }
 
