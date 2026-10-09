@@ -51,14 +51,14 @@ describe('furnish', () => {
     expect(propKinds(wholeFlat(rooms)).filter((kind) => kind === 'aircon')).toHaveLength(1);
   });
 
-  it('has nobody sitting on air: without the armchair its sitter stands, with it they sit', () => {
+  it('has nobody sitting on air: without the armchair you stand, with it you sit', () => {
     const bare = furnishFlat([]).get('living');
-    expect(bare?.npcs[0]?.stance).toBe('stand');
-    expect(bare?.npcs[0]?.at).toHaveLength(2);
     expect(bare?.player.sit?.stance).toBe('stand');
     const furnished = furnishFlat(['sofa-italian']).get('living');
-    expect(furnished?.npcs[0]?.stance).toBe('sit');
     expect(furnished?.player.sit?.stance).toBe('sit');
+    // A home you rent or own has no strangers in it; the family house keeps the family.
+    expect(bare?.npcs).toEqual([]);
+    expect(furnish(HOME_FAMILY, [], { providedFurniture: true }).npcs).toHaveLength(HOME_FAMILY.npcs.length);
     // Sitting on the edge of the family-house bed still counts as sitting.
     const family = furnish(HOME_FAMILY, [], { providedFurniture: true });
     expect(family.player.phone?.stance).toBe('sit');

@@ -278,7 +278,10 @@ export function furnish(template: InteriorTemplate, owned: readonly string[], { 
       : template.player;
   const grounded = <T extends Spot>(spot: T): T => (spot.stance === 'sit' && !hasSeat(spot, seats) ? { ...spot, at: [spot.at[0], spot.at[spot.at.length - 1] as number], stance: 'stand' } : spot);
   const players = Object.fromEntries(Object.entries(player).map(([key, spot]) => [key, spot && key !== 'sleep' ? grounded(spot) : spot])) as PlayerSpots;
-  return { ...template, furniture, props, player: players, npcs: template.npcs.map(grounded), guests: template.guests.map(grounded) };
+  // The template's people are the family (family house) or roommates (hostel); a home you rent or own has no
+  // strangers in it — just you, your guests and your visitors.
+  const npcs = providedFurniture ? template.npcs.map(grounded) : [];
+  return { ...template, furniture, props, player: players, npcs, guests: template.guests.map(grounded) };
 }
 
 // ----- Things resting on other things --------------------------------------------------------------------------------
