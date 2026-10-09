@@ -133,11 +133,22 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
       await this.checkout.flag(payment.reference, 'Top-up refunded before delivery: no coins were credited');
       return;
     }
+    // Each refund takes back its own share (a second partial refund takes the rest); keyed by refund id, never twice.
     const share = Math.min(1, refund.amountKobo / payment.paidKobo);
     const owed = Math.ceil(result.credit.virtualAmount * share);
-    const { taken, shortfall } = await this.creditor.clawBack(await this.recipientFor(payment), result.credit, owed, payment.reference);
-    const summary = `Top-up refunded after delivery: clawed back ${formatNaira(taken)} of ${formatNaira(owed)}`;
+    const { taken, shortfall } = await this.creditor.clawBack(await this.recipientFor(payment), result.credit, owed, payment.reference, refund.refundId);
+    const summary = `Top-up refunded after delivery (refund ${refund.refundId}): clawed back ${formatNaira(taken)} of ${formatNaira(owed)}`;
     await this.checkout.flag(payment.reference, shortfall > 0 ? `${summary} (${formatNaira(shortfall)} already spent)` : summary);
+  }
+
+  /**
+   * A refund of a top-up failed at Flutterwave after it had been reported completed (and the coins taken back). The
+   * player keeps neither the money nor the coins until ops act, so flag it; if the refund completes after all, its
+   * clawback key is already used and nothing is taken twice.
+   */
+  async onRefundFailed(payment: PaidCheckout, refund: CheckoutRefund, wasCompleted: boolean): Promise<void> {
+    if (!wasCompleted) return;
+    await this.checkout.flag(payment.reference, `Refund ${refund.refundId} failed after the coins were taken back: refund it again by hand or re-credit the coins`);
   }
 
   /** The character that paid, or the account's living heir if they've since died. */

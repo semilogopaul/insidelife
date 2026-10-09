@@ -42,21 +42,22 @@ export class TopupCreditor {
 
   /**
    * Take back up to `amount` in-game naira after the real payment was refunded: cash first, then savings, never below
-   * zero. Each source has its own ledger key (`topup-clawback[-savings]:<reference>`), so a retry takes nothing twice.
+   * zero. Each refund of each source has its own ledger key (`topup-clawback[-savings]:<reference>:<refundId>`), so a
+   * retry (or the same refund reported completed again) takes nothing twice, while a second partial refund takes its share.
    * The money returns to `system:topup` and comes off the character's purchased (and unearned) totals.
    */
-  async clawBack(characterId: string, pack: TopupDetailsDto, amount: number, reference: string): Promise<Clawback> {
+  async clawBack(characterId: string, pack: TopupDetailsDto, amount: number, reference: string, refundId: string): Promise<Clawback> {
     return this.session.run({ characterId }, async (ctx) => {
       const balances = await this.ledger.balances(ctx.manager, characterId);
       const fromCash = Math.min(Math.max(0, ctx.wallet.cash), amount);
       const fromSavings = Math.min(Math.max(0, balances.savings), amount - fromCash);
       const memo = `Top-up refunded: ${pack.label} reversed`;
-      const metadata = { reference, packageId: pack.packageId ?? 'custom', ratePerNaira: pack.ratePerNaira };
+      const metadata = { reference, refundId, packageId: pack.packageId ?? 'custom', ratePerNaira: pack.ratePerNaira };
       const cashBefore = ctx.wallet.cash;
-      await ctx.wallet.pay(fromCash, 'adjustment', memo, `topup-clawback:${reference}`, { sink: 'topup', metadata });
+      await ctx.wallet.pay(fromCash, 'adjustment', memo, `topup-clawback:${reference}:${refundId}`, { sink: 'topup', metadata });
       const tookCash = cashBefore - ctx.wallet.cash;
       const savingsBefore = balances.savings;
-      await ctx.wallet.pay(fromSavings, 'adjustment', memo, `topup-clawback-savings:${reference}`, { sink: 'topup', account: 'savings', metadata });
+      await ctx.wallet.pay(fromSavings, 'adjustment', memo, `topup-clawback-savings:${reference}:${refundId}`, { sink: 'topup', account: 'savings', metadata });
       const tookSavings = savingsBefore - (await this.ledger.balances(ctx.manager, characterId)).savings;
       const taken = tookCash + tookSavings;
       if (taken > 0) {

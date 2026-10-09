@@ -51,7 +51,7 @@ import { appendModerationLog } from './moderation-log.js';
 import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN } from './promotions.constants.js';
 import { clockAt, toCampaignDto, type Clock } from './promotions.mappers.js';
 import { autoRefundNotice, paidNotice, refundedNotice, type NoticeSubject } from './promotions.notices.js';
-import { applyRefundToItem } from './promotion-refunds.js';
+import { applyRefundToItem, revertRefundOnItem } from './promotion-refunds.js';
 import { PromotionStateException, PromotionRuleException } from './promotions.errors.js';
 import { PromotionsNotifier } from './promotions-notifier.service.js';
 import { validateDisplayText, validatePromotionLink } from './rules/content.rules.js';
@@ -59,7 +59,7 @@ import { firstFullDay, nextFreeStart, rangeOf, type DateRange } from './rules/sc
 import { admitAfterPayment, COMMITTED_STATUSES, matchPayment } from './rules/status.rules.js';
 import type { Buyer } from './promotions.types.js';
 import { CachedValue } from './util/cached-value.js';
-import { assertExpectedStart } from './util/dates.js';
+import { assertExpectedPrice, assertExpectedStart } from './util/dates.js';
 
 /** Unpaid bookings (live holds) per account, so nobody can squat on every board. */
 const MAX_UNPAID_HOLDS = 3;
@@ -139,6 +139,9 @@ export class CampaignsService implements OnModuleInit {
       purpose: 'billboard',
       fulfill: (payment) => this.applyPayment(payment),
       onRefunded: (payment, refund) => this.applyRefund(payment, refund),
+      onRefundFailed: async (payment, refund) => {
+        if (UUID_PATTERN.test(payment.subjectId)) await revertRefundOnItem(this.dataSource, AdCampaignEntity, 'campaign', payment, refund);
+      },
     });
     // The live feed shows prices on empty boards: refresh it as soon as a rate changes on any node.
     this.rates.onChange(() => this.live.invalidate());
@@ -176,6 +179,7 @@ export class CampaignsService implements OnModuleInit {
     if (weeksProblem) throw new PromotionRuleException('INVALID_LENGTH', weeksProblem);
     const clock = clockAt();
     const quote = quoteFor(await this.rates.pricing(), slot, request.weeks);
+    assertExpectedPrice(request.expectedPriceKobo, quote, 'week');
     const title = validateDisplayText(request.title, 'Title', 3, PROMOTION_TITLE_MAX);
     if (!title.ok) throw new PromotionRuleException('INVALID_TITLE', title.reason);
     const link = validatePromotionLink(request.linkUrl);

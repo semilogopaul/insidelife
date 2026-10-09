@@ -51,6 +51,7 @@ export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
       linkUrl: linkCheck.value,
       weeks,
       expectedStartDate: start,
+      ...(quote ? { expectedPriceKobo: quote.totalKobo } : {}),
     });
   };
 

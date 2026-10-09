@@ -66,7 +66,7 @@ export function OrderForm({ track, offer, rules, onCancel }: OrderFormProps) {
           icon={<Lock size={18} aria-hidden />}
           disabled={!ready}
           loading={leaving}
-          onClick={() => start && order.mutate({ trackId: track.id, body: { productId: product.id, clubs: ['all'], expectedStartDate: start } })}
+          onClick={() => start && order.mutate({ trackId: track.id, body: { productId: product.id, clubs: ['all'], expectedStartDate: start, expectedPriceKobo: priceKobo } })}
         >
           {leaving ? 'Opening checkout…' : `Pay ${formatNaira(koboToNaira(priceKobo))}`}
         </Button>

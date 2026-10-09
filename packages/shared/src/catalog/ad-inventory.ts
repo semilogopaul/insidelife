@@ -1,6 +1,7 @@
 import { AD_PLACEMENT_KINDS, AD_PLACEMENTS, type AdPlacementKind, type AdPlacementSpot } from '../world-map/ad-placements.js';
 import { DISTRICTS, type DistrictId } from './geography.js';
 import {
+  AD_MAX_PRICE_KOBO,
   BILLBOARD_FORMAT_SPECS,
   BILLBOARD_SLOT_IDS,
   BILLBOARD_SLOTS,
@@ -122,7 +123,9 @@ const BY_DISTRICT_KINDS: ReadonlySet<AdSlotKind> = new Set(AD_PLACEMENT_KINDS.fi
 
 /** A slot's weekly price from its rate: roadside kinds are scaled by district prestige and rounded to ₦500. */
 export function adWeekPriceKobo(slot: Pick<AdSlot, 'kind' | 'districtId'>, rateKobo: number): number {
-  return BY_DISTRICT_KINDS.has(slot.kind) && slot.districtId ? friendlyWeekPriceKobo(rateKobo * districtPriceFactor(slot.districtId)) : rateKobo;
+  if (!BY_DISTRICT_KINDS.has(slot.kind) || !slot.districtId) return rateKobo;
+  // A base rate near the ₦100m cap times a rich district's factor would exceed it: clamp, so it stays bookable.
+  return Math.min(AD_MAX_PRICE_KOBO, friendlyWeekPriceKobo(rateKobo * districtPriceFactor(slot.districtId)));
 }
 
 // ----- Slots -------------------------------------------------------------------------------------------------------

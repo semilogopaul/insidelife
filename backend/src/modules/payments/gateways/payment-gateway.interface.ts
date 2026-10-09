@@ -13,7 +13,10 @@ export interface GatewayCharge {
   /** The gateway's own transaction id (Flutterwave `data.id`); needed for refunds. */
   readonly transactionId: string | null;
   readonly status: GatewayChargeStatus;
+  /** The transaction amount (Flutterwave `amount`). */
   readonly amountKobo: number;
+  /** What the customer was actually charged (Flutterwave `charged_amount`, fees included); null when missing. */
+  readonly chargedAmountKobo: number | null;
   readonly currency: string;
   readonly channel: string | null;
   readonly paidAt: Date | null;
@@ -45,8 +48,13 @@ export interface GatewayRefundInput {
 export interface GatewayRefund {
   readonly refundId: string;
   readonly amountKobo: number;
-  /** Gateway wording (`completed`, `processing`, `completed-mpgs`…), kept for audit. */
+  /** Gateway wording (`completed`, `processing`, `completed-mpgs`, `failed`…), kept for audit. See `refundStateOf`. */
   readonly status: string;
+}
+
+/** A refund as read back from the gateway, with the transaction it refunds. */
+export interface GatewayRefundRecord extends GatewayRefund {
+  readonly transactionId: string | null;
 }
 
 /** A hosted-checkout payment provider. */
@@ -59,8 +67,13 @@ export interface PaymentGateway {
   verifyTransaction(transactionId: string): Promise<GatewayCharge | null>;
   /** Ask the gateway to send money back to the payer. Throws `ExternalServiceException` when it refuses. */
   refund(input: GatewayRefundInput): Promise<GatewayRefund>;
-  /** Read a refund back by its id (confirms a refund webhook). Null when unknown; absent on the sandbox. */
-  fetchRefund?(refundId: string): Promise<(GatewayRefund & { readonly transactionId: string | null }) | null>;
+  /** Read a refund back by its id (confirms a refund webhook, re-checks a pending one). Null when unknown; absent on the sandbox. */
+  fetchRefund?(refundId: string): Promise<GatewayRefundRecord | null>;
+  /**
+   * The latest refund of a transaction created since `since`, or null. Used when a refund call timed out or a process
+   * died mid-call, to learn whether the gateway took it before declaring it failed. Absent on the sandbox.
+   */
+  findRefund?(transactionId: string, since: Date): Promise<GatewayRefundRecord | null>;
 }
 
 export const PAYMENT_GATEWAY = Symbol('PAYMENT_GATEWAY');

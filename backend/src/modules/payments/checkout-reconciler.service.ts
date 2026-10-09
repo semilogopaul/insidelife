@@ -1,22 +1,33 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnModuleDestroy } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { And, IsNull, LessThan, MoreThan, type Repository } from 'typeorm';
+import { In, IsNull, LessThan, LessThanOrEqual, MoreThan, type FindOptionsWhere, type Repository } from 'typeorm';
 import { CheckoutService } from './checkout.service.js';
 import { PaymentEntity } from './entities/payment.entity.js';
 
 const SWEEP_EVERY_MS = 2 * 60_000;
 const BATCH = 20;
 const MINUTE_MS = 60_000;
-/** Give the player's own redirect + verify a head start before we poll the gateway. */
-const VERIFY_AFTER_MS = 10 * MINUTE_MS;
 const ABANDON_AFTER_MS = 24 * 60 * MINUTE_MS;
 const RETRY_FULFILMENT_FOR_MS = 7 * 24 * 60 * MINUTE_MS;
+/** A refund claim older than this with no answer was interrupted (the gateway call itself times out after 15 s). */
+const STALE_SENDING_MS = 5 * MINUTE_MS;
+/** Processing refunds are re-read from the gateway this often, in case the completion webhook was lost. */
+const PENDING_REFUND_RECHECK_MS = 30 * MINUTE_MS;
 
 /**
- * Safety net for lost webhooks, closed tabs and failed fulfilments: every two minutes it retries paid-but-undelivered
- * payments, sends refunds that were owed but never sent, re-verifies in-flight checkouts older than 10 minutes with
- * the gateway (Flutterwave `verify_by_reference`), and marks day-old unpaid checkouts abandoned. Everything it calls
- * is idempotent and row-locked, so several instances sweeping at once is harmless.
+ * Safety net for lost webhooks, closed tabs and failed fulfilments. Every two minutes, for the active gateway's rows
+ * only (Flutterwave in production; rows from another provider, e.g. old Paystack test rows, are never touched):
+ *
+ * 1. retries paid-but-undelivered payments that are due (each failure backs off: 1, 5, 15, 60 min, then 6 h, so a
+ *    payment that keeps failing can't block the others);
+ * 2. sends refunds that were owed but never sent, resolves claims left `sending` by a dead process (re-checked with
+ *    the gateway first) and re-reads refunds still processing;
+ * 3. checks unconfirmed checkouts (`initialized`, and `failed`/`abandoned` ones that may still be paid) with the
+ *    gateway on a schedule by age — 10 min, 30 min, 2 h, 6 h, 23 h — least recently due first, so the oldest unpaid
+ *    rows can't starve a paid one whose webhook was lost;
+ * 4. after a day, checks each still-unconfirmed checkout one last time and only then marks it abandoned.
+ *
+ * Everything it calls is idempotent and row-locked, so several instances sweeping at once is harmless.
  */
 @Injectable()
 export class CheckoutReconciler implements OnApplicationBootstrap, OnModuleDestroy {
@@ -42,40 +53,67 @@ export class CheckoutReconciler implements OnApplicationBootstrap, OnModuleDestr
     if (this.running) return;
     this.running = true;
     try {
-      const undelivered = await this.payments.find({
-        where: { status: 'success', fulfilledAt: IsNull(), createdAt: MoreThan(new Date(now.getTime() - RETRY_FULFILMENT_FOR_MS)) },
-        order: { createdAt: 'ASC' },
-        take: BATCH,
+      await this.step('deliveries', () => this.retryDeliveries(now));
+      await this.step('refunds', async () => {
+        await this.checkout.resolveStaleRefunds(now, STALE_SENDING_MS, BATCH);
+        await this.checkout.sendDueRefunds(BATCH);
+        await this.checkout.refreshPendingRefunds(now, PENDING_REFUND_RECHECK_MS, BATCH);
       });
-      for (const payment of undelivered) await this.checkout.fulfill(payment.reference);
-
-      await this.checkout.sendDueRefunds(BATCH);
-
-      const stale = await this.payments.find({
-        where: {
-          status: 'initialized',
-          provider: this.checkout.gatewayProvider,
-          createdAt: And(LessThan(new Date(now.getTime() - VERIFY_AFTER_MS)), MoreThan(new Date(now.getTime() - ABANDON_AFTER_MS))),
-        },
-        order: { createdAt: 'ASC' },
-        take: BATCH,
-      });
-      for (const payment of stale) {
-        try {
-          await this.checkout.verifyWithGateway(payment.reference);
-        } catch (error) {
-          this.logger.warn({ reference: payment.reference, err: error }, 'Reconciliation verify failed');
-        }
-      }
-
-      await this.payments.update(
-        { status: 'initialized', createdAt: LessThan(new Date(now.getTime() - ABANDON_AFTER_MS)) },
-        { status: 'abandoned', failureReason: 'checkout_expired' },
-      );
-    } catch (error) {
-      this.logger.warn({ err: error }, 'Checkout reconciliation sweep failed');
+      await this.step('checks', () => this.checkUnconfirmed(now));
+      await this.step('expiry', () => this.expireUnpaid(now));
     } finally {
       this.running = false;
+    }
+  }
+
+  private async retryDeliveries(now: Date): Promise<void> {
+    const base: FindOptionsWhere<PaymentEntity> = {
+      status: 'success',
+      fulfilledAt: IsNull(),
+      provider: this.checkout.gatewayProvider,
+      createdAt: MoreThan(new Date(now.getTime() - RETRY_FULFILMENT_FOR_MS)),
+    };
+    const due = await this.payments.find({
+      // Never tried (no retry time yet) or due for a retry.
+      where: [
+        { ...base, nextCheckAt: IsNull() },
+        { ...base, nextCheckAt: LessThanOrEqual(now) },
+      ],
+      order: { nextCheckAt: { direction: 'ASC', nulls: 'FIRST' }, createdAt: 'ASC' },
+      take: BATCH,
+    });
+    for (const payment of due) await this.checkout.fulfill(payment.reference, now);
+  }
+
+  private async checkUnconfirmed(now: Date): Promise<void> {
+    const due = await this.payments.find({
+      where: {
+        status: In(['initialized', 'failed', 'abandoned']),
+        provider: this.checkout.gatewayProvider,
+        createdAt: MoreThan(new Date(now.getTime() - ABANDON_AFTER_MS)),
+        nextCheckAt: LessThanOrEqual(now),
+      },
+      order: { nextCheckAt: 'ASC' },
+      take: BATCH,
+    });
+    for (const payment of due) await this.checkout.recheckCheckout(payment.reference, now);
+  }
+
+  private async expireUnpaid(now: Date): Promise<void> {
+    const expired = await this.payments.find({
+      where: { status: 'initialized', provider: this.checkout.gatewayProvider, createdAt: LessThan(new Date(now.getTime() - ABANDON_AFTER_MS)) },
+      order: { createdAt: 'ASC' },
+      take: BATCH,
+    });
+    for (const payment of expired) await this.checkout.expireCheckout(payment.reference, now);
+  }
+
+  /** One failing step (gateway down, a bad row) never stops the others. */
+  private async step(name: string, work: () => Promise<void>): Promise<void> {
+    try {
+      await work();
+    } catch (error) {
+      this.logger.warn({ err: error, step: name }, 'Checkout reconciliation step failed');
     }
   }
 }

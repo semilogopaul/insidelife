@@ -70,7 +70,10 @@ export class FlutterwaveWebhookService implements OnModuleInit {
     const job: PaymentsJob =
       event.kind === 'charge'
         ? { name: 'charge', data: { transactionId: event.transactionId } }
-        : { name: 'refund', data: { refundId: event.refund.refundId, transactionId: event.refund.transactionId, amountKobo: event.refund.amountKobo } };
+        : {
+            name: 'refund',
+            data: { refundId: event.refund.refundId, transactionId: event.refund.transactionId, amountKobo: event.refund.amountKobo, status: event.refund.status },
+          };
     try {
       await this.queue.add(job.name, job.data, { ...PAYMENTS_JOB_OPTIONS, jobId: jobIdFor(job) });
     } catch (error) {

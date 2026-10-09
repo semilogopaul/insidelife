@@ -8,6 +8,7 @@ import {
   parseEnvelope,
   parseHostedLink,
   parseRefund,
+  parseRefundList,
   parseTransaction,
   type FlutterwaveEnvelope,
   type ParsedRefund,
@@ -18,6 +19,11 @@ const FLUTTERWAVE_API = 'https://api.flutterwave.com/v3';
 const TIMEOUT_MS = 15_000;
 /** Matches the promotions checkout hold: an unpaid hosted link dies with the hold. */
 const SESSION_MINUTES = 30;
+/** Pages of the refunds list read when looking for a refund we lost track of (newest first, a few days at most). */
+const REFUND_PAGES = 5;
+
+/** `YYYY-MM-DD` (UTC) for the refunds list filters. */
+const day = (date: Date): string => date.toISOString().slice(0, 10);
 
 interface CallResult {
   readonly httpStatus: number;
@@ -95,6 +101,26 @@ export class FlutterwaveClient implements PaymentGateway {
     if (!/^\d{1,20}$/.test(refundId)) return null;
     const { envelope } = await this.call('GET', `/refunds/${refundId}`, undefined, { allowClientErrors: true });
     return envelope?.ok ? parseRefund(envelope.data) : null;
+  }
+
+  /**
+   * `GET /v3/refunds?from&to&page` — the latest refund of `transactionId` created since `since` (a refund call that
+   * timed out may still have gone through). Matches on `tx_id` ourselves, so it works whatever filters the API applies.
+   * Throws when Flutterwave can't be asked (the caller then can't tell and must not assume either way).
+   */
+  async findRefund(transactionId: string, since: Date): Promise<ParsedRefund | null> {
+    if (!/^\d{1,20}$/.test(transactionId)) return null;
+    const from = day(new Date(since.getTime() - 24 * 3_600_000));
+    const to = day(new Date(Date.now() + 24 * 3_600_000));
+    for (let page = 1; page <= REFUND_PAGES; page++) {
+      const { envelope } = await this.call('GET', `/refunds?from=${from}&to=${to}&page=${page}`);
+      if (!envelope?.ok) throw new ExternalServiceException('Flutterwave');
+      const refunds = parseRefundList(envelope.data);
+      const match = refunds.filter((refund) => refund.transactionId === transactionId).toSorted((a, b) => Number(b.refundId) - Number(a.refundId))[0];
+      if (match) return match;
+      if (refunds.length === 0) return null;
+    }
+    return null;
   }
 
   private async readTransaction(path: string, context: Readonly<Record<string, string>>): Promise<GatewayCharge | null> {

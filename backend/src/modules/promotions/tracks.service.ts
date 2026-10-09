@@ -42,7 +42,7 @@ import { appendModerationLog } from './moderation-log.js';
 import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN } from './promotions.constants.js';
 import { clockAt, toClubOrderDto, toTrackDto, type Clock } from './promotions.mappers.js';
 import { autoRefundNotice, paidNotice, refundedNotice, type NoticeSubject } from './promotions.notices.js';
-import { applyRefundToItem } from './promotion-refunds.js';
+import { applyRefundToItem, revertRefundOnItem } from './promotion-refunds.js';
 import { InvalidMediaException, PromotionRuleException, PromotionStateException } from './promotions.errors.js';
 import { PromotionsNotifier } from './promotions-notifier.service.js';
 import type { Buyer, UploadedMedia } from './promotions.types.js';
@@ -52,7 +52,7 @@ import { firstFullClub, nextFreeClubStart, rangeOf, type DateRange } from './rul
 import { admitAfterPayment, COMMITTED_STATUSES, matchPayment } from './rules/status.rules.js';
 import { StorageService } from '../../common/storage/storage.service.js';
 import { CachedValue } from './util/cached-value.js';
-import { assertExpectedStart } from './util/dates.js';
+import { assertExpectedPrice, assertExpectedStart } from './util/dates.js';
 
 const MAX_UNPAID_ORDERS = 3;
 const DAILY_TRACK_UPLOADS = 10;
@@ -110,6 +110,9 @@ export class TracksService implements OnModuleInit {
       purpose: 'club-play',
       fulfill: (payment) => this.applyPayment(payment),
       onRefunded: (payment, refund) => this.applyRefund(payment, refund),
+      onRefundFailed: async (payment, refund) => {
+        if (UUID_PATTERN.test(payment.subjectId)) await revertRefundOnItem(this.dataSource, ClubPlayOrderEntity, 'club-order', payment, refund);
+      },
     });
   }
 
@@ -172,6 +175,7 @@ export class TracksService implements OnModuleInit {
     const clock = clockAt();
     // The price is quoted now and stored on the order: a later rate change never touches it.
     const priceKobo = await this.rates.rateKobo('club-song');
+    assertExpectedPrice(request.expectedPriceKobo, { weekPriceKobo: priceKobo, totalKobo: priceKobo }, 'song');
     const character = await this.directory.findLivingByUser(user.userId);
 
     const { track, order } = await withTransaction(this.dataSource, async (manager) => {

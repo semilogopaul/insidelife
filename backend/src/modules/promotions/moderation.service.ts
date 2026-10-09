@@ -17,7 +17,7 @@ import { clockAt, toCampaignDto, toClubOrderDto, type Clock } from './promotions
 import { approvedNotice, refundedNotice, rejectedNotice, type NoticeSubject } from './promotions.notices.js';
 import { PromotionStateException } from './promotions.errors.js';
 import { PromotionsNotifier, type PromotionNotice } from './promotions-notifier.service.js';
-import { COMMITTED_STATUSES, decideModeration, type ModerationDecision } from './rules/status.rules.js';
+import { COMMITTED_STATUSES, decideModeration, type ModerationDecision, type ModerationOutcome } from './rules/status.rules.js';
 import { StorageService } from '../../common/storage/storage.service.js';
 import { TracksService, trackSubject } from './tracks.service.js';
 
@@ -30,22 +30,26 @@ type Handles = ReadonlyMap<string, string>;
 const logAction = (decision: ModerationDecision): ModerationAction =>
   decision.action === 'approve' ? 'approved' : decision.action === 'reject' ? 'rejected' : 'refunded';
 
-function noticeFor(decision: ModerationDecision, to: PromotionStatus, subject: NoticeSubject, item: { startDate: string; amountKobo: number }, reason: string | null): PromotionNotice {
+type Decided = Extract<ModerationOutcome, { readonly ok: true }>;
+
+function noticeFor(decision: ModerationDecision, outcome: Decided, subject: NoticeSubject, item: { startDate: string; amountKobo: number }, reason: string | null): PromotionNotice {
   switch (decision.action) {
     case 'approve':
-      return approvedNotice(subject, to === 'live', item.startDate);
+      return approvedNotice(subject, outcome.to === 'live', item.startDate);
     case 'reject':
-      return rejectedNotice(subject, reason ?? 'it breaks our content rules.', to === 'refund-due');
+      return rejectedNotice(subject, reason ?? 'it breaks our content rules.', outcome.to === 'refund-due', outcome.wasRunning);
     case 'mark-refunded':
       return refundedNotice(subject, item.amountKobo);
   }
 }
 
 /**
- * Admin review of paid billboard campaigns and club orders: the queue, approve / reject (with refund flag), and
- * marking refunds done by hand. A rejection with refund refunds the payer automatically through Flutterwave (the
- * item then lands in `refunded`); when the gateway refuses, the item stays in "refunds due" for ops to refund in the
- * Flutterwave dashboard and mark refunded. Rejected media is deleted from storage.
+ * Admin review of paid billboard campaigns and club orders: the queue, approve / reject, and marking refunds done by
+ * hand. Refund policy: an item rejected before it starts running is refunded automatically through Flutterwave (it
+ * lands in `refunded` when Flutterwave completes the refund; if Flutterwave refuses, it stays in "refunds due" for ops
+ * to refund in the dashboard and mark refunded). An item rejected while running is taken down with no refund, unless
+ * the moderator explicitly asks for one — then it goes to "refunds due" for a manual refund, never an automatic one.
+ * Rejected media is deleted from storage.
  */
 @Injectable()
 export class ModerationService {
@@ -94,13 +98,13 @@ export class ModerationService {
 
   async decideCampaign(adminId: string, campaignId: string, decision: ModerationDecision, reason: string | null): Promise<ModerationCampaignDto> {
     const clock = clockAt();
-    const campaign = await withTransaction(this.dataSource, async (manager) => {
+    const { campaign, outcome } = await withTransaction(this.dataSource, async (manager) => {
       const entity = await manager.findOne(AdCampaignEntity, { where: { id: campaignId }, lock: { mode: 'pessimistic_write' } });
       if (!entity) throw new ResourceNotFoundException('Campaign');
-      const outcome = decideModeration(entity, decision, clock.today);
-      if (!outcome.ok) throw new PromotionStateException(outcome.message);
+      const decided = decideModeration(entity, decision, clock.today);
+      if (!decided.ok) throw new PromotionStateException(decided.message);
       const from = entity.status;
-      entity.status = outcome.to;
+      entity.status = decided.to;
       if (decision.action === 'mark-refunded') {
         entity.holdExpiresAt = null;
       } else {
@@ -119,16 +123,17 @@ export class ModerationService {
         reason,
         paymentReference: entity.paymentReference,
       });
-      return entity;
+      return { campaign: entity, outcome: decided };
     });
 
     this.campaignFeed.invalidateLive();
     if (decision.action === 'reject') await this.removeCreativeIfUnused(campaign);
     this.logger.log({ campaignId, action: decision.action, status: campaign.status, adminId }, 'Billboard campaign moderated');
     const subject: NoticeSubject = { noun: 'Billboard', name: campaign.title, where: findAdSlot(campaign.slotId)?.name ?? 'your board' };
-    await this.notifier.notifyOwner(campaign.ownerUserId, noticeFor(decision, campaign.status, subject, campaign, reason));
+    await this.notifier.notifyOwner(campaign.ownerUserId, noticeFor(decision, outcome, subject, campaign, reason));
     if (decision.action === 'reject' && campaign.status === 'refund-due') {
-      await this.refundAutomatically('campaign', campaign, adminId, reason);
+      if (!outcome.autoRefund) await this.logManualRefund('campaign', campaign, adminId);
+      else await this.refundAutomatically('campaign', campaign, adminId, reason);
       const refreshed = await this.campaigns.findOneByOrFail({ id: campaign.id });
       return this.campaignView(refreshed, clock, await this.handlesOf([refreshed]));
     }
@@ -137,15 +142,15 @@ export class ModerationService {
 
   async decideClubOrder(adminId: string, orderId: string, decision: ModerationDecision, reason: string | null): Promise<ModerationClubOrderDto> {
     const clock = clockAt();
-    const { order, track } = await withTransaction(this.dataSource, async (manager) => {
+    const { order, track, outcome } = await withTransaction(this.dataSource, async (manager) => {
       const entity = await manager.findOne(ClubPlayOrderEntity, { where: { id: orderId }, lock: { mode: 'pessimistic_write' } });
       if (!entity) throw new ResourceNotFoundException('Club order');
       const owner = await manager.findOne(ClubTrackEntity, { where: { id: entity.trackId } });
       if (!owner) throw new ResourceNotFoundException('Song');
-      const outcome = decideModeration(entity, decision, clock.today);
-      if (!outcome.ok) throw new PromotionStateException(outcome.message);
+      const decided = decideModeration(entity, decision, clock.today);
+      if (!decided.ok) throw new PromotionStateException(decided.message);
       const from = entity.status;
-      entity.status = outcome.to;
+      entity.status = decided.to;
       if (decision.action === 'mark-refunded') {
         entity.holdExpiresAt = null;
       } else {
@@ -164,15 +169,16 @@ export class ModerationService {
         reason,
         paymentReference: entity.paymentReference,
       });
-      return { order: entity, track: owner };
+      return { order: entity, track: owner, outcome: decided };
     });
 
     this.rotationFeed.invalidateRotation();
     if (decision.action === 'reject') await this.removeTrackIfUnused(track, order.id);
     this.logger.log({ orderId, action: decision.action, status: order.status, adminId }, 'Club order moderated');
-    await this.notifier.notifyOwner(order.ownerUserId, noticeFor(decision, order.status, trackSubject(track, order), order, reason));
+    await this.notifier.notifyOwner(order.ownerUserId, noticeFor(decision, outcome, trackSubject(track, order), order, reason));
     if (decision.action === 'reject' && order.status === 'refund-due') {
-      await this.refundAutomatically('club-order', order, adminId, reason);
+      if (!outcome.autoRefund) await this.logManualRefund('club-order', order, adminId);
+      else await this.refundAutomatically('club-order', order, adminId, reason);
       const refreshed = await this.orders.findOneByOrFail({ id: order.id });
       return this.orderView(refreshed, track, clock, await this.handlesOf([refreshed]));
     }
@@ -204,20 +210,43 @@ export class ModerationService {
     }
     if (outcome.kind === 'failed' || outcome.kind === 'not-refundable') {
       this.logger.warn({ subjectType, id: item.id, reason: outcome.reason }, 'Automatic refund failed; left in refunds due');
-      await withTransaction(this.dataSource, (manager) =>
-        appendModerationLog(manager, {
-          subjectType,
-          subjectId: item.id,
-          action: 'refund-failed',
-          fromStatus: item.status,
-          toStatus: item.status,
-          actorUserId: adminId,
-          paymentReference: item.paymentReference,
-          reason: `Automatic refund failed: ${outcome.reason}. Refund it in the Flutterwave dashboard, then mark it refunded`,
-        }),
-      );
+      await this.log(subjectType, item, adminId, 'refund-failed', `Automatic refund failed: ${outcome.reason}. Refund it in the Flutterwave dashboard, then mark it refunded`);
+    }
+    if (outcome.kind === 'pending' || outcome.kind === 'in-progress') {
+      // Flutterwave took it and is processing it: the item moves to refunded when the refund completes. Don't refund by hand.
+      await this.log(subjectType, item, adminId, 'refund-sent', 'Refund sent through Flutterwave and processing. Don’t refund by hand: it moves to refunded when Flutterwave completes it');
     }
     return outcome;
+  }
+
+  /** A running item taken down with a refund the moderator asked for: refunded by hand, never automatically. */
+  private async logManualRefund(
+    subjectType: ModerationSubjectType,
+    item: { readonly id: string; readonly status: PromotionStatus; readonly paymentReference: string | null },
+    adminId: string,
+  ): Promise<void> {
+    await this.log(subjectType, item, adminId, 'refund-flagged', 'Taken down while running: no automatic refund. Refund it in the Flutterwave dashboard if you choose to, then mark it refunded');
+  }
+
+  private async log(
+    subjectType: ModerationSubjectType,
+    item: { readonly id: string; readonly status: PromotionStatus; readonly paymentReference: string | null },
+    adminId: string,
+    action: ModerationAction,
+    reason: string,
+  ): Promise<void> {
+    await withTransaction(this.dataSource, (manager) =>
+      appendModerationLog(manager, {
+        subjectType,
+        subjectId: item.id,
+        action,
+        fromStatus: item.status,
+        toStatus: item.status,
+        actorUserId: adminId,
+        paymentReference: item.paymentReference,
+        reason,
+      }),
+    );
   }
 
   /** Delete a rejected creative unless another live/held booking still shows it. */

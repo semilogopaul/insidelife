@@ -14,6 +14,7 @@ import {
   type AdSlot,
 } from './ad-inventory.js';
 import {
+  AD_MAX_PRICE_KOBO,
   AD_MIN_PRICE_KOBO,
   BILLBOARD_SLOT_IDS,
   CLUB_PLAY_PRODUCTS,
@@ -126,6 +127,15 @@ describe('ad rates (admin-editable)', () => {
     // Doubling a byDistrict base rate roughly doubles every spot of that kind (still on the ₦500 grid).
     expect(adWeekPriceKobo(shelter, 2 * AD_RATE_DEFINITIONS['bus-shelter'].defaultKobo) % (500 * NAIRA)).toBe(0);
     expect(adWeekPriceKobo(findAdSlot('lagos-tv')!, 50_000 * NAIRA)).toBe(50_000 * NAIRA);
+  });
+
+  it('clamps a district-scaled price to the ₦100m cap, so a rate near it stays bookable', () => {
+    const rich = AD_SLOTS.filter((slot) => slot.kind === 'street-billboard').toSorted((a, b) => districtPriceFactor(b.districtId!) - districtPriceFactor(a.districtId!))[0]!;
+    expect(districtPriceFactor(rich.districtId!)).toBeGreaterThan(1);
+    const price = adWeekPriceKobo(rich, AD_MAX_PRICE_KOBO);
+    expect(price).toBe(AD_MAX_PRICE_KOBO);
+    expect(isValidAdPriceKobo(price)).toBe(true);
+    expect(() => adQuote(price, 4)).not.toThrow();
   });
 
   it('accepts only whole naira from ₦2,000 to ₦100m', () => {

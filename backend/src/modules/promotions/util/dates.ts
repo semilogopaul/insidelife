@@ -1,5 +1,16 @@
-import type { IsoDate } from '@insidelife/shared';
-import { PromotionRuleException } from '../promotions.errors.js';
+import { formatNaira, koboToNaira, type IsoDate } from '@insidelife/shared';
+import { PriceChangedException, PromotionRuleException } from '../promotions.errors.js';
+
+/**
+ * The buyer saw a price before paying; if ops re-priced it since, stop rather than charge a different amount (the
+ * error carries the new quote; the app shows it again).
+ */
+export function assertExpectedPrice(expectedKobo: number | undefined, quote: { readonly weekPriceKobo: number; readonly totalKobo: number }, unit: 'week' | 'song'): void {
+  if (expectedKobo === undefined || expectedKobo === quote.totalKobo) return;
+  const now = formatNaira(koboToNaira(quote.totalKobo));
+  const per = unit === 'week' ? ` (${formatNaira(koboToNaira(quote.weekPriceKobo))} a week)` : '';
+  throw new PriceChangedException(`The price just changed to ${now}${per}. Check it and pay again`, quote.weekPriceKobo, quote.totalKobo);
+}
 
 const SHORT_DATE = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
 

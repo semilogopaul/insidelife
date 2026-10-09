@@ -37,6 +37,12 @@ export class CreateCampaignDto implements CreateCampaignRequest {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expectedStartDate must be YYYY-MM-DD' })
   readonly expectedStartDate?: string;
+
+  /** The total the buyer was shown, in kobo; a re-priced slot is refused with PRICE_CHANGED. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  readonly expectedPriceKobo?: number;
 }
 
 /** Multipart text fields of `POST /promotions/creatives`. */

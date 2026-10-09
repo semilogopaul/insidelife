@@ -1,17 +1,116 @@
 import sharp from 'sharp';
 import { BILLBOARD_FORMAT_SPECS } from '@insidelife/shared';
 import { InvalidMediaException } from '../promotions.errors.js';
+import { countMp3, countOgg } from './audio-frames.js';
 import { inspectTrack } from './audio-inspector.js';
 import { renderCreative } from './image-processor.js';
 
 const landscape = BILLBOARD_FORMAT_SPECS.landscape;
 
 /** MPEG-1 Layer III, 128 kbps, 44.1 kHz, no CRC/padding: 417-byte frames of 1152 samples (silent payload). */
+const framesFor = (seconds: number): number => Math.ceil((seconds * 44_100) / 1_152);
+
 function synthMp3(seconds: number): Buffer {
-  const frames = Math.ceil((seconds * 44_100) / 1_152);
   const frame = Buffer.alloc(417);
   frame.set([0xff, 0xfb, 0x90, 0x64]);
-  return Buffer.concat(Array.from({ length: frames }, () => frame));
+  return Buffer.concat(Array.from({ length: framesFor(seconds) }, () => frame));
+}
+
+/** A Xing tag frame declaring `frames` audio frames (joint stereo: the tag sits after 32 bytes of side info). */
+function xingFrame(frames: number): Buffer {
+  const frame = Buffer.alloc(417);
+  frame.set([0xff, 0xfb, 0x90, 0x64]);
+  frame.write('Xing', 36, 'latin1');
+  frame.writeUInt32BE(1, 40); // flags: frame count present
+  frame.writeUInt32BE(frames, 44);
+  return frame;
+}
+
+/** One Ogg page (CRC left at 0: neither our counter nor the parser checks it). */
+function oggPage(serial: number, sequence: number, granule: bigint, packets: readonly Buffer[], flags: number): Buffer {
+  const lacing: number[] = [];
+  for (const packet of packets) {
+    let size = packet.length;
+    while (size >= 255) {
+      lacing.push(255);
+      size -= 255;
+    }
+    lacing.push(size);
+  }
+  const header = Buffer.alloc(27);
+  header.write('OggS', 0, 'latin1');
+  header[5] = flags;
+  header.writeBigInt64LE(granule, 6);
+  header.writeUInt32LE(serial, 14);
+  header.writeUInt32LE(sequence, 18);
+  header[26] = lacing.length;
+  return Buffer.concat([header, Buffer.from(lacing), ...packets]);
+}
+
+/** Pages of `perPage` audio packets after the header packets, granules scaled by `declaredShare` (1 = honest). */
+function oggStream(serial: number, headers: readonly Buffer[], audio: readonly Buffer[], samplesBefore: (index: number) => number, declaredShare: number): Buffer {
+  const pages = [oggPage(serial, 0, 0n, [headers[0]!], 0x02), oggPage(serial, 1, 0n, headers.slice(1), 0)];
+  const perPage = 50;
+  for (let start = 0; start < audio.length; start += perPage) {
+    const end = Math.min(audio.length, start + perPage);
+    const granule = BigInt(Math.round(samplesBefore(end) * declaredShare));
+    pages.push(oggPage(serial, pages.length, granule, audio.slice(start, end), end === audio.length ? 0x04 : 0));
+  }
+  return Buffer.concat(pages);
+}
+
+const PRE_SKIP = 312;
+
+/** Opus at 48 kHz: CELT 20 ms frames (TOC config 31, one frame per packet = 960 samples). */
+function synthOpus(seconds: number, declaredSeconds = seconds, serial = 0x1234): Buffer {
+  const head = Buffer.alloc(19);
+  head.write('OpusHead', 0, 'latin1');
+  head[8] = 1;
+  head[9] = 2;
+  head.writeUInt16LE(PRE_SKIP, 10);
+  head.writeUInt32LE(48_000, 12);
+  const vendor = Buffer.from('test');
+  const tags = Buffer.concat([Buffer.from('OpusTags', 'latin1'), Buffer.from([vendor.length, 0, 0, 0]), vendor, Buffer.alloc(4)]);
+  const packets = Math.ceil((seconds * 48_000 + PRE_SKIP) / 960);
+  const audio = Array.from({ length: packets }, () => Buffer.from([31 << 3, 0xfc, 0xff]));
+  return oggStream(serial, [head, tags], audio, (count) => PRE_SKIP + (count * 960 - PRE_SKIP) * (declaredSeconds / seconds), 1);
+}
+
+/** LSB-first bit writer (Vorbis packing). */
+function vorbisBits(fields: ReadonlyArray<readonly [value: number, bits: number]>): Buffer {
+  const bytes: number[] = [];
+  let position = 0;
+  for (const [value, width] of fields) {
+    for (let bit = 0; bit < width; bit++) {
+      const index = position >> 3;
+      bytes[index] = (bytes[index] ?? 0) | (((value >> bit) & 1) << (position & 7));
+      position += 1;
+    }
+  }
+  return Buffer.from(bytes.map((byte) => byte ?? 0));
+}
+
+/** Vorbis, 44.1 kHz, blocks 256/2048, two modes (short, long), `packets` long-block audio packets. */
+function synthVorbis(packets: number, declaredShare = 1): Buffer {
+  const id = Buffer.alloc(30);
+  id[0] = 1;
+  id.write('vorbis', 1, 'latin1');
+  id[11] = 2;
+  id.writeUInt32LE(44_100, 12);
+  id.writeInt32LE(128_000, 20);
+  id[28] = (11 << 4) | 8;
+  id[29] = 1;
+  const vendor = Buffer.from('test');
+  const comments = Buffer.concat([Buffer.from('\x03vorbis', 'latin1'), Buffer.from([vendor.length, 0, 0, 0]), vendor, Buffer.alloc(4), Buffer.from([1])]);
+  const modes = vorbisBits([
+    [1, 6], // mode count - 1
+    [0, 1], [0, 16], [0, 16], [0, 8], // mode 0: short block
+    [1, 1], [0, 16], [0, 16], [0, 8], // mode 1: long block
+    [1, 1], // framing
+  ]);
+  const setup = Buffer.concat([Buffer.from('\x05vorbis', 'latin1'), Buffer.alloc(8, 0xff), modes]);
+  const audio = Array.from({ length: packets }, () => Buffer.from([0b10, 0xab, 0xcd]));
+  return oggStream(0x5678, [id, comments, setup], audio, (count) => Math.max(0, count - 1) * 1_024, declaredShare);
 }
 
 describe('renderCreative', () => {
@@ -62,6 +161,44 @@ describe('inspectTrack', () => {
     await expect(inspectTrack(synthMp3(5 * 60 + 3), 'audio/mpeg')).rejects.toThrow(/must be under 5 minutes \(this one is 5:03\)/);
     await expect(inspectTrack(synthMp3(5 * 60), 'audio/mpeg')).rejects.toThrow(/under 5 minutes/);
     await expect(inspectTrack(synthMp3(4 * 60 + 58), 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 298 });
+  });
+
+  it('counts MP3 frames itself and refuses a Xing header that lies about the length', async () => {
+    const honest = Buffer.concat([xingFrame(framesFor(4 * 60)), synthMp3(4 * 60)]);
+    await expect(inspectTrack(honest, 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 240 });
+    // Declares 4 minutes, carries 6: the header says "short enough", the frames say otherwise.
+    const forged = Buffer.concat([xingFrame(framesFor(4 * 60)), synthMp3(6 * 60)]);
+    expect(countMp3(forged)).toMatchObject({ declaredSeconds: expect.closeTo(240, 0) });
+    expect(countMp3(forged)?.seconds).toBeCloseTo(360, 0);
+    await expect(inspectTrack(forged, 'audio/mpeg')).rejects.toThrow(/length information doesn’t match/);
+    // Within 5% is fine (encoders round), more is not.
+    await expect(inspectTrack(Buffer.concat([xingFrame(framesFor(232)), synthMp3(240)]), 'audio/mpeg')).resolves.toMatchObject({ durationSeconds: 240 });
+    await expect(inspectTrack(Buffer.concat([xingFrame(framesFor(200)), synthMp3(240)]), 'audio/mpeg')).rejects.toThrow(/doesn’t match/);
+  });
+
+  it('counts Opus packets from their TOC bytes and refuses granule positions that lie', async () => {
+    expect(countOgg(synthOpus(240))?.seconds).toBeCloseTo(240, 1);
+    await expect(inspectTrack(synthOpus(240), 'audio/ogg')).resolves.toEqual({ contentType: 'audio/ogg', durationSeconds: 240 });
+    // Six minutes of packets whose pages claim four.
+    const forged = synthOpus(6 * 60, 4 * 60);
+    expect(countOgg(forged)).toMatchObject({ declaredSeconds: expect.closeTo(240, 0) });
+    await expect(inspectTrack(forged, 'audio/ogg')).rejects.toThrow(/doesn’t match/);
+  });
+
+  it('counts Vorbis packets by block size, from the modes in the setup header', () => {
+    // 2048-sample long blocks: every packet after the first adds 1024 samples.
+    const counted = countOgg(synthVorbis(10_000));
+    expect(counted?.seconds).toBeCloseTo((9_999 * 1_024) / 44_100, 3);
+    expect(counted?.declaredSeconds).toBeCloseTo((9_999 * 1_024) / 44_100, 3);
+    const forged = countOgg(synthVorbis(10_000, 0.5));
+    expect(forged?.declaredSeconds).toBeCloseTo(((9_999 * 1_024) / 44_100) * 0.5, 0);
+    expect(forged?.seconds).toBeCloseTo((9_999 * 1_024) / 44_100, 3);
+  });
+
+  it('refuses a second (chained) Ogg stream and pages that go backwards', () => {
+    const opus = synthOpus(60);
+    expect(countOgg(Buffer.concat([opus, synthOpus(60, 60, 0xbeef)]))).toBeNull();
+    expect(countOgg(Buffer.concat([opus, Buffer.from('trailing junk')]))).toBeNull();
   });
 
   it('refuses junk behind a valid-looking signature', async () => {

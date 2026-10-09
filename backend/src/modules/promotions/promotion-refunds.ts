@@ -4,7 +4,7 @@ import type { CheckoutRefund, PaidCheckout } from '../../common/ports/checkout.p
 import { withTransaction } from '../../database/transaction.js';
 import type { ModerationSubjectType } from './entities/moderation-log.entity.js';
 import { appendModerationLog } from './moderation-log.js';
-import { refundSettlement, type RefundSettlement } from './rules/status.rules.js';
+import { refundReversal, refundSettlement, type RefundReversal, type RefundSettlement } from './rules/status.rules.js';
 
 /** The fields a billboard campaign and a club order share for refunds. */
 export interface RefundableItem {
@@ -21,6 +21,41 @@ export interface AppliedRefund<T extends RefundableItem> {
 
 const refundLine = (refund: CheckoutRefund): string =>
   `${formatNaira(koboToNaira(refund.amountKobo))} refunded ${refund.source === 'api' ? 'automatically' : 'in the Flutterwave dashboard'} (refund ${refund.refundId})`;
+
+/**
+ * A refund of an item's payment failed at the gateway (the `onRefundFailed` hook). If it had been settled the item
+ * goes back from `refunded` to `refund-due` for a manual refund; if it was still due it stays there. Either way it's
+ * logged. Row-locked; a repeat finds the item already back in `refund-due` and only logs.
+ */
+export async function revertRefundOnItem<T extends RefundableItem>(
+  dataSource: DataSource,
+  target: EntityTarget<T>,
+  subjectType: ModerationSubjectType,
+  payment: PaidCheckout,
+  refund: CheckoutRefund,
+): Promise<RefundReversal | null> {
+  return withTransaction(dataSource, async (manager) => {
+    const item = await manager.findOne(target, { where: { id: payment.subjectId } as FindOptionsWhere<T>, lock: { mode: 'pessimistic_write' } });
+    if (!item) return null;
+    const reversal = refundReversal(item, payment.reference);
+    if (reversal.kind === 'none') return reversal;
+    const from = item.status;
+    if (reversal.kind === 'back-to-refund-due') {
+      item.status = 'refund-due';
+      await manager.save(item);
+    }
+    await appendModerationLog(manager, {
+      subjectType,
+      subjectId: item.id,
+      paymentReference: payment.reference,
+      action: 'refund-failed',
+      fromStatus: from,
+      toStatus: item.status,
+      reason: `Flutterwave reported refund ${refund.refundId} failed. Refund it in the Flutterwave dashboard, then mark it refunded`,
+    });
+    return reversal;
+  });
+}
 
 /**
  * Record a refund of an item's payment (the `onRefunded` hook of the billboard and club-play fulfillers): an owed

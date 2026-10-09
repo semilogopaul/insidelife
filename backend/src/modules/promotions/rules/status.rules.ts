@@ -100,7 +100,8 @@ export function refundSettlement(item: { readonly status: PromotionStatus; reado
 
 export type ModerationDecision =
   | { readonly action: 'approve' }
-  | { readonly action: 'reject'; readonly refund: boolean }
+  /** `refund` omitted = the policy default: refund what hasn't started running, not what has. */
+  | { readonly action: 'reject'; readonly refund?: boolean }
   | { readonly action: 'mark-refunded' };
 
 export interface ModeratedItem extends DateRange {
@@ -108,31 +109,68 @@ export interface ModeratedItem extends DateRange {
   readonly paidAt: Date | null;
 }
 
-export type ModerationOutcome = { readonly ok: true; readonly to: PromotionStatus } | { readonly ok: false; readonly message: string };
+export type ModerationOutcome =
+  | {
+      readonly ok: true;
+      readonly to: PromotionStatus;
+      /** Refund the payer through the gateway now (rejected before it started running). */
+      readonly autoRefund: boolean;
+      /** It was running when taken down. */
+      readonly wasRunning: boolean;
+    }
+  | { readonly ok: false; readonly message: string };
 
 /**
  * What a moderator's decision does to an item. Approvals only apply to items in review whose run hasn't ended;
- * rejections apply to anything paid and not finished (a live ad can be taken down); paid rejections owe a refund
- * unless the moderator withholds it (fraud, repeat abuse).
+ * rejections apply to anything paid and not finished (a live ad can be taken down).
+ *
+ * Refund policy (the public terms): an ad or song rejected before it starts running is refunded in full,
+ * automatically. Once it has started running there is no refund: it is taken down (`rejected`). The moderator can
+ * still choose to refund a running item (`refund: true`), which lands it in "refunds due" for a manual refund in the
+ * Flutterwave dashboard, never an automatic one; and can withhold the refund of an unstarted item (`refund: false`:
+ * fraud, repeat abuse).
  */
 export function decideModeration(item: ModeratedItem, decision: ModerationDecision, today: IsoDate): ModerationOutcome {
   const current = effectiveStatus(item.status, item, today);
+  const wasRunning = current === 'live';
   let to: PromotionStatus;
+  let autoRefund = false;
   switch (decision.action) {
     case 'approve':
       if (current !== 'in-review') return { ok: false, message: `Only items in review can be approved (this one is ${current})` };
       if (today >= item.endDate) return { ok: false, message: 'This run has already ended — reject it with a refund instead' };
       to = effectiveStatus('approved', item, today);
       break;
-    case 'reject':
+    case 'reject': {
       if (!REVIEWABLE_STATUSES.includes(current)) return { ok: false, message: `This item can’t be rejected (it is ${current})` };
-      to = decision.refund && item.paidAt !== null ? 'refund-due' : 'rejected';
+      const refund = (decision.refund ?? !wasRunning) && item.paidAt !== null;
+      to = refund ? 'refund-due' : 'rejected';
+      autoRefund = refund && !wasRunning;
       break;
+    }
     case 'mark-refunded':
       if (current !== 'refund-due') return { ok: false, message: `Only items awaiting a refund can be marked refunded (this one is ${current})` };
       to = 'refunded';
       break;
   }
   // Transitions are checked from the stored status: a lagging 'approved' that is effectively live may still move on.
-  return canTransition(item.status, to) ? { ok: true, to } : { ok: false, message: `Can’t move from ${item.status} to ${to}` };
+  return canTransition(item.status, to) ? { ok: true, to, autoRefund, wasRunning } : { ok: false, message: `Can’t move from ${item.status} to ${to}` };
+}
+
+export type RefundReversal =
+  /** The refund we recorded for this item's payment failed after all: back under "refunds due". */
+  | { readonly kind: 'back-to-refund-due' }
+  /** Still waiting for its refund (`refund-due`): nothing moves, it's logged. */
+  | { readonly kind: 'still-due' }
+  | { readonly kind: 'none' };
+
+/**
+ * A refund of an item's payment failed at the gateway. If it had been settled (`refunded`), the item goes back to
+ * `refund-due` for a manual refund — the only way out of `refunded`, used by the payments system, never by moderators.
+ */
+export function refundReversal(item: { readonly status: PromotionStatus; readonly paymentReference: string | null }, paymentReference: string): RefundReversal {
+  if (item.paymentReference !== paymentReference) return { kind: 'none' };
+  if (item.status === 'refunded') return { kind: 'back-to-refund-due' };
+  if (item.status === 'refund-due') return { kind: 'still-due' };
+  return { kind: 'none' };
 }

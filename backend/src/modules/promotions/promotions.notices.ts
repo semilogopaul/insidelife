@@ -32,10 +32,12 @@ export function approvedNotice(subject: NoticeSubject, live: boolean, startDate:
   };
 }
 
-export function rejectedNotice(subject: NoticeSubject, reason: string, refund: boolean): PromotionNotice {
+/** `wasRunning`: taken down after it started; per the terms it isn't refunded (unless a refund was granted anyway). */
+export function rejectedNotice(subject: NoticeSubject, reason: string, refund: boolean, wasRunning = false): PromotionNotice {
+  const money = refund ? ' Your payment will be refunded in full.' : wasRunning ? ' It had already started running, so it isn’t refunded.' : '';
   return {
-    title: `${subject.noun} not approved`,
-    body: `${quoted(subject)} wasn’t approved: ${reason}${refund ? ' Your payment will be refunded in full.' : ''}`,
+    title: wasRunning ? `${subject.noun} taken down` : `${subject.noun} not approved`,
+    body: `${quoted(subject)} ${wasRunning ? 'was taken down' : 'wasn’t approved'}: ${reason}${money}`,
     tone: 'bad',
   };
 }

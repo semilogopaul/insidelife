@@ -132,6 +132,11 @@ export interface CreateCampaignRequest {
    * start later, the server refuses (`DATES_CHANGED`) instead of charging for dates the buyer never saw.
    */
   readonly expectedStartDate?: IsoDate;
+  /**
+   * The total the buyer was shown (`weekPriceKobo × weeks`). If ops re-priced the slot meanwhile, the server refuses
+   * with `PRICE_CHANGED` (details: `weekPriceKobo=…`, `totalKobo=…`) instead of charging a different amount.
+   */
+  readonly expectedPriceKobo?: number;
 }
 
 export interface AdCampaignDto {
@@ -248,6 +253,8 @@ export interface CreateClubOrderRequest {
   readonly clubs?: readonly string[];
   /** The start date the artist was shown (`clubSong.startDate`); a later one is refused with `DATES_CHANGED`. */
   readonly expectedStartDate?: IsoDate;
+  /** The price the artist was shown (`clubSong.priceKobo`); a different one is refused with `PRICE_CHANGED`. */
+  readonly expectedPriceKobo?: number;
 }
 
 export interface ClubPlayOrderDto {
@@ -365,7 +372,11 @@ export interface ModerationQueueDto {
 export interface RejectPromotionRequest {
   /** Shown to the buyer. 3-300 chars. */
   readonly reason: string;
-  /** Default true: paid items move to `refund-due`. false = `rejected` without refund (fraud, repeat abuse). */
+  /**
+   * Omitted = the refund policy: an item rejected before it starts running is refunded in full automatically; one that
+   * is already running is taken down without a refund. `true` on a running item: refund it by hand (refunds due).
+   * `false` on an unstarted item: no refund (fraud, repeat abuse).
+   */
   readonly refund?: boolean;
 }
 

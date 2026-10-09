@@ -57,6 +57,7 @@ export class SandboxGateway implements PaymentGateway {
       transactionId: null,
       status,
       amountKobo: payment.amountKobo,
+      chargedAmountKobo: payment.amountKobo,
       currency: payment.currency,
       channel: 'sandbox',
       paidAt: payment.verifiedAt,

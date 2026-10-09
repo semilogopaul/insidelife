@@ -8,7 +8,7 @@ import type { ClubPlayOrderEntity } from './entities/club-play-order.entity.js';
 import type { ClubTrackEntity } from './entities/club-track.entity.js';
 import type { CreativeEntity } from './entities/creative.entity.js';
 import { ModerationService } from './moderation.service.js';
-import { applyRefundToItem } from './promotion-refunds.js';
+import { applyRefundToItem, revertRefundOnItem } from './promotion-refunds.js';
 import type { PromotionNotice, PromotionsNotifier } from './promotions-notifier.service.js';
 import type { TracksService } from './tracks.service.js';
 
@@ -144,6 +144,63 @@ describe('rejecting a paid ad refunds the payer automatically', () => {
     const view = await service.decideCampaign('admin-1', CAMPAIGN, { action: 'reject', refund: false }, 'Fraudulent advertiser');
     expect(view.status).toBe('rejected');
     expect(refunds).toEqual([]);
+  });
+
+  it('refunds by default when nothing is said about the refund, as long as it hasn’t started', async () => {
+    const store = new FakePromotions();
+    const { service, refunds } = moderation(store, async () => ({ kind: 'failed', reason: 'down' }));
+    await service.decideCampaign('admin-1', CAMPAIGN, { action: 'reject' }, 'Misleading claims');
+    expect(refunds).toEqual([REF]);
+  });
+
+  it('logs a refund Flutterwave is still processing, and leaves the booking in refunds due until it completes', async () => {
+    const store = new FakePromotions();
+    const { service } = moderation(store, async () => ({ kind: 'pending', refundId: '75923' }));
+    const view = await service.decideCampaign('admin-1', CAMPAIGN, { action: 'reject' }, 'Misleading claims');
+    expect(view.status).toBe('refund-due');
+    expect(store.log.at(-1)).toMatchObject({ action: 'refund-sent', reason: expect.stringMatching(/Don’t refund by hand/) });
+  });
+});
+
+/** The booking started running months ago and is live now. */
+function running(store: FakePromotions): void {
+  store.campaign.status = 'live';
+  store.campaign.startDate = '2026-01-01';
+  store.campaign.endDate = '2099-01-08';
+}
+
+describe('rejecting a running ad (the public terms: no refund once it has started)', () => {
+  it('takes it down with no refund and says why', async () => {
+    const store = new FakePromotions();
+    running(store);
+    const { service, refunds, notices } = moderation(store, async () => ({ kind: 'refunded', refund }));
+    const view = await service.decideCampaign('admin-1', CAMPAIGN, { action: 'reject' }, 'Misleading claims');
+    expect(view.status).toBe('rejected');
+    expect(refunds).toEqual([]);
+    expect(notices[0]).toMatchObject({ title: 'Billboard taken down', body: expect.stringMatching(/already started running, so it isn’t refunded/) });
+  });
+
+  it('lets the moderator grant a refund, by hand only (refunds due), never automatically', async () => {
+    const store = new FakePromotions();
+    running(store);
+    const { service, refunds } = moderation(store, async () => ({ kind: 'refunded', refund }));
+    const view = await service.decideCampaign('admin-1', CAMPAIGN, { action: 'reject', refund: true }, 'Our mistake');
+    expect(view.status).toBe('refund-due');
+    expect(refunds).toEqual([]);
+    expect(store.log.at(-1)).toMatchObject({ action: 'refund-flagged', reason: expect.stringMatching(/no automatic refund/) });
+  });
+});
+
+describe('revertRefundOnItem', () => {
+  it('puts a refunded booking back under refunds due when Flutterwave reports its refund failed', async () => {
+    const store = new FakePromotions();
+    store.campaign.status = 'refunded';
+    expect(await revertRefundOnItem(store.dataSource, AdCampaignEntity, 'campaign', paid, refund)).toEqual({ kind: 'back-to-refund-due' });
+    expect(store.campaign.status).toBe('refund-due');
+    expect(store.log).toEqual([expect.objectContaining({ action: 'refund-failed', fromStatus: 'refunded', toStatus: 'refund-due' })]);
+    // Repeated: it is already due, only logged.
+    expect(await revertRefundOnItem(store.dataSource, AdCampaignEntity, 'campaign', paid, refund)).toEqual({ kind: 'still-due' });
+    expect(store.campaign.status).toBe('refund-due');
   });
 });
 

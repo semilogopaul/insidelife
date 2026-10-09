@@ -90,6 +90,7 @@ export function parseTransaction(data: unknown): GatewayCharge | null {
     transactionId,
     status: STATUS_MAP[rawStatus.toLowerCase()] ?? 'pending',
     amountKobo,
+    chargedAmountKobo: nairaToKoboAmount(data.charged_amount),
     currency: str(data.currency)?.toUpperCase() ?? '',
     channel,
     paidAt,
@@ -114,7 +115,28 @@ export function parseRefund(data: unknown): ParsedRefund | null {
 }
 
 /** Refund states that mean Flutterwave accepted the refund (money is on its way back, or already there). */
-export const isAcceptedRefundStatus = (status: string): boolean => /^(completed|processing|pending)/i.test(status);
+export const isAcceptedRefundStatus = (status: string): boolean => refundStateOf(status) !== 'failed';
+
+/**
+ * Where a refund stands, from Flutterwave's wording: `completed`, `completed-mpgs`, `completed-bank-transfer`… are
+ * final; `failed`, `declined`, `rejected`, `cancelled`, `reversed` mean the money did not go back; anything else
+ * (`processing`, `pending`, `pending-momo`, `new`…) is still in progress.
+ */
+export function refundStateOf(status: string): 'completed' | 'pending' | 'failed' {
+  const value = status.trim().toLowerCase();
+  if (value.startsWith('completed')) return 'completed';
+  if (/^(failed|declined|rejected|cancell?ed|reversed)/.test(value)) return 'failed';
+  return 'pending';
+}
+
+/** `GET /v3/refunds` → `data` (an array of refunds). Unparseable entries are skipped. */
+export function parseRefundList(data: unknown): ParsedRefund[] {
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((entry: unknown) => {
+    const refund = parseRefund(entry);
+    return refund ? [refund] : [];
+  });
+}
 
 export type FlutterwaveWebhook =
   | { readonly kind: 'charge'; readonly transactionId: string; readonly reference: string | null }

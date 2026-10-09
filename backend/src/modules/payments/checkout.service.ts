@@ -1,7 +1,7 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import type { DataSource, EntityManager, Repository } from 'typeorm';
+import { LessThan, type DataSource, type EntityManager, type Repository } from 'typeorm';
 import {
   CHECKOUT_PURPOSES,
   type CheckoutFulfiller,
@@ -16,10 +16,42 @@ import {
 } from '../../common/ports/checkout.port.js';
 import { DomainException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import { withTransaction } from '../../database/transaction.js';
-import { claimRefund, decideCharge, type ChargeDecision } from './checkout-rules.js';
+import {
+  claimRefund,
+  decideCharge,
+  decideRefundReport,
+  fulfilmentRetryAt,
+  nextCheckAt,
+  type ChargeDecision,
+  type RefundReport,
+  type RefundReportDecision,
+} from './checkout-rules.js';
 import { PaymentEntity } from './entities/payment.entity.js';
+import { refundStateOf } from './gateways/flutterwave.parsers.js';
 import { PAYMENT_GATEWAY, type GatewayCharge, type GatewayRefund, type PaymentGateway } from './gateways/payment-gateway.interface.js';
 import { SandboxGateway } from './gateways/sandbox.gateway.js';
+
+const MINUTE_MS = 60_000;
+/** The reconciler's first gateway check of an unconfirmed checkout (then `CHECK_SCHEDULE_MINUTES`). */
+const FIRST_CHECK_AFTER_MS = 10 * MINUTE_MS;
+/** When the gateway can't be asked, look again this much later (without using up one of the scheduled checks). */
+const CHECK_RETRY_MS = 10 * MINUTE_MS;
+/** A purchase whose refund is still processing isn't delivered; look again this much later. */
+const REFUND_HOLD_MS = 30 * MINUTE_MS;
+
+const toReport = (refund: GatewayRefund): RefundReport => ({
+  refundId: refund.refundId,
+  amountKobo: refund.amountKobo,
+  state: refundStateOf(refund.status),
+  gatewayStatus: refund.status.slice(0, 32),
+});
+
+/** A refund webhook arrived before its charge was verified: fail the job so it is retried after the charge lands. */
+export class RefundBeforeChargeException extends DomainException {
+  constructor(reference: string) {
+    super('REFUND_BEFORE_CHARGE', `The charge for ${reference} isn't verified yet`, HttpStatus.CONFLICT);
+  }
+}
 
 /**
  * Flutterwave's practical NGN floor is ₦100. The ceiling is a sanity bound, not a business rule: top-ups stop at the
@@ -39,11 +71,20 @@ export interface VerifiedPayment {
   readonly fulfilledNow: boolean;
 }
 
-/** A refund the gateway reported by webhook (already authenticated), to be recorded once. */
+/** A refund the gateway reported by webhook (already authenticated), to be recorded once per status. */
 export interface ReportedRefund {
   readonly refundId: string;
   readonly transactionId: string | null;
   readonly amountKobo: number;
+  /** The gateway's refund status (`completed`, `processing`, `failed`…). Only completed is final. */
+  readonly status: string;
+}
+
+/** What recording a refund report did (for the caller's outcome). */
+interface AppliedRefundReport {
+  readonly decision: RefundReportDecision;
+  readonly payment: PaymentEntity;
+  readonly refund: CheckoutRefund;
 }
 
 class InvalidCheckoutException extends DomainException {
@@ -65,8 +106,13 @@ const errorText = (error: unknown): string => (error instanceof Error ? error.me
  * is why fulfillers must be idempotent by reference (top-ups are, via the ledger key `topup:<reference>`).
  *
  * Refund guarantee: a refund is owed (`due`), claimed under the row lock (`sending`), sent to the gateway outside any
- * transaction, then recorded (`refunded` / `failed`). A payment is refunded through the API at most once; the
- * reconciler retries owed refunds that were never sent.
+ * transaction, then recorded from what the gateway says: `pending` (processing), `refunded` (completed: final, the
+ * purpose settles it once) or `failed`. A failure reported after completion reverts it and the purpose undoes its
+ * settlement. A refund call that errors is re-checked with the gateway before being declared failed; a claim left
+ * `sending` by a dead process is re-checked and resolved by the reconciler. A payment is refunded through the API at
+ * most once per claim, and Flutterwave itself refuses refunding more than was paid.
+ *
+ * Only rows of the active gateway (Flutterwave in production) are swept: rows from another provider are left alone.
  */
 @Injectable()
 export class CheckoutService implements CheckoutPort {
@@ -112,6 +158,7 @@ export class CheckoutService implements CheckoutPort {
         currency: 'NGN',
         provider: this.gateway.provider,
         status: 'initialized',
+        nextCheckAt: new Date(Date.now() + FIRST_CHECK_AFTER_MS),
       });
       return String(inserted.identifiers[0]?.id ?? '');
     });
@@ -129,7 +176,8 @@ export class CheckoutService implements CheckoutPort {
       this.logger.log({ reference, purpose: request.purpose, provider: this.gateway.provider }, 'Checkout started');
       return { reference, authorizationUrl };
     } catch (error) {
-      await this.payments.update({ reference }, { status: 'failed', failureReason: 'initialize_failed' });
+      // No hosted checkout was handed out, so there is nothing to re-check.
+      await this.payments.update({ reference }, { status: 'failed', failureReason: 'initialize_failed', nextCheckAt: null });
       throw error;
     }
   }
@@ -206,6 +254,8 @@ export class CheckoutService implements CheckoutPort {
           payment.status = 'success';
           payment.verifiedAt = charge.paidAt ?? new Date();
           payment.paidKobo = charge.amountKobo;
+          // Delivery follows at once; if it doesn't, the undelivered sweep picks rows with no retry time first.
+          payment.nextCheckAt = null;
           payment.channel = charge.channel?.slice(0, 32) ?? null;
           payment.gatewayTransactionId = charge.transactionId;
           payment.gatewayResponse = charge.details;
@@ -240,16 +290,24 @@ export class CheckoutService implements CheckoutPort {
    * are recorded on the row and leave it unfulfilled for the next trigger to retry. A fulfiller that can't deliver
    * (sold out, duplicate payment…) asks for a refund, which is sent right after this commits.
    */
-  async fulfill(reference: string): Promise<boolean> {
+  async fulfill(reference: string, now: Date = new Date()): Promise<boolean> {
     const outcome = await withTransaction(this.dataSource, async (manager): Promise<'delivered' | 'refund' | null> => {
       const payment = await manager.findOne(PaymentEntity, { where: { reference }, lock: { mode: 'pessimistic_write' } });
       if (!payment || payment.status !== 'success' || payment.fulfilledAt) return null;
       if (payment.refundStatus === 'refunded') {
         // Refunded (e.g. from the dashboard) before it was delivered: settle it without delivering anything.
-        payment.fulfilledAt = new Date();
+        payment.fulfilledAt = now;
+        payment.nextCheckAt = null;
         payment.lastFulfillmentError = 'Refunded before delivery; nothing delivered';
         await manager.save(payment);
         this.logger.warn({ reference }, 'Payment refunded before delivery; not delivering');
+        return null;
+      }
+      if (payment.refundStatus === 'pending') {
+        // A refund is on its way: deliver nothing while it processes (it completes, or fails and delivery goes ahead).
+        payment.nextCheckAt = new Date(now.getTime() + REFUND_HOLD_MS);
+        payment.lastFulfillmentError = 'Refund processing; delivery on hold';
+        await manager.save(payment);
         return null;
       }
 
@@ -257,6 +315,7 @@ export class CheckoutService implements CheckoutPort {
       if (!fulfiller) {
         this.logger.warn({ reference, purpose: payment.purpose }, 'No fulfiller registered for purpose; will retry');
         payment.lastFulfillmentError = `No fulfiller registered for "${payment.purpose}"`;
+        payment.nextCheckAt = fulfilmentRetryAt(now, Math.max(1, payment.fulfillmentAttempts));
         await manager.save(payment);
         return null;
       }
@@ -266,17 +325,21 @@ export class CheckoutService implements CheckoutPort {
       try {
         result = await fulfiller.fulfill(this.toPaid(payment));
       } catch (error) {
-        this.logger.error({ reference, purpose: payment.purpose, err: error }, 'Checkout fulfilment failed; will retry');
+        // Back off (1, 5, 15, 60 min, then 6 h) so a payment that keeps failing (no living character…) can't block others.
+        payment.nextCheckAt = fulfilmentRetryAt(now, payment.fulfillmentAttempts);
+        this.logger.error({ reference, purpose: payment.purpose, err: error, retryAt: payment.nextCheckAt }, 'Checkout fulfilment failed; will retry');
         payment.lastFulfillmentError = errorText(error);
         await manager.save(payment);
         return null;
       }
-      payment.fulfilledAt = new Date();
+      payment.fulfilledAt = now;
+      payment.nextCheckAt = null;
       payment.lastFulfillmentError = null;
       const refund = result.kind === 'refund' && payment.refundStatus === null;
       if (result.kind === 'refund' && refund) {
         payment.refundStatus = 'due';
         payment.refundReason = result.reason.slice(0, 200);
+        payment.refundUpdatedAt = now;
       }
       await manager.save(payment);
       this.logger.log({ reference, purpose: payment.purpose, refund }, refund ? 'Checkout settled with a refund' : 'Checkout fulfilled');
@@ -300,10 +363,11 @@ export class CheckoutService implements CheckoutPort {
         case 'already-refunded':
           return { kind: 'already-refunded', refund: this.recordedRefund(payment) };
         case 'in-flight':
-          return { kind: 'in-progress' };
+          return payment.refundStatus === 'pending' && payment.refundId ? { kind: 'pending', refundId: payment.refundId } : { kind: 'in-progress' };
         case 'send':
           payment.refundStatus = 'due';
           payment.refundReason = reason.slice(0, 200);
+          payment.refundUpdatedAt = new Date();
           await manager.save(payment);
           return null;
       }
@@ -313,9 +377,60 @@ export class CheckoutService implements CheckoutPort {
 
   /** Reconciler: send refunds that were owed but never sent (process stopped right after fulfilment). */
   async sendDueRefunds(limit: number): Promise<number> {
-    const due = await this.payments.find({ where: { refundStatus: 'due' }, order: { createdAt: 'ASC' }, take: limit });
+    const due = await this.payments.find({ where: { refundStatus: 'due', provider: this.gateway.provider }, order: { createdAt: 'ASC' }, take: limit });
     for (const payment of due) await this.sendRefund(payment.reference);
     return due.length;
+  }
+
+  /**
+   * Reconciler: refund claims left `sending` by a process that died mid-call (or whose call errored and couldn't be
+   * re-checked). Ask the gateway: a refund it has is recorded; none at all means the call never landed, so it is owed
+   * again (`due`, sent by the next sweep; Flutterwave refuses refunding more than was paid). If the gateway can't be
+   * asked, the claim stays and is re-checked next time.
+   */
+  async resolveStaleRefunds(now: Date, olderThanMs: number, limit: number): Promise<number> {
+    const stale = await this.payments.find({
+      where: { refundStatus: 'sending', provider: this.gateway.provider, refundUpdatedAt: LessThan(new Date(now.getTime() - olderThanMs)) },
+      order: { refundUpdatedAt: 'ASC' },
+      take: limit,
+    });
+    for (const payment of stale) {
+      const since = payment.refundUpdatedAt ?? payment.createdAt;
+      const lookup = await this.lookUpLostRefund(payment, since);
+      if (lookup.kind === 'unknown') {
+        await this.payments.update({ reference: payment.reference, refundStatus: 'sending' }, { refundUpdatedAt: now });
+        continue;
+      }
+      if (lookup.kind === 'found') {
+        await this.applyAndAnnounce(payment.reference, lookup.report, 'api');
+        continue;
+      }
+      this.logger.warn({ reference: payment.reference }, 'Interrupted refund never reached the gateway; owed again');
+      await this.payments.update({ reference: payment.reference, refundStatus: 'sending' }, { refundStatus: 'due', refundUpdatedAt: now });
+    }
+    return stale.length;
+  }
+
+  /** Reconciler: re-read refunds the gateway is still processing (a lost completion webhook can't strand them). */
+  async refreshPendingRefunds(now: Date, olderThanMs: number, limit: number): Promise<number> {
+    if (!this.gateway.fetchRefund) return 0;
+    const pending = await this.payments.find({
+      where: { refundStatus: 'pending', provider: this.gateway.provider, refundUpdatedAt: LessThan(new Date(now.getTime() - olderThanMs)) },
+      order: { refundUpdatedAt: 'ASC' },
+      take: limit,
+    });
+    for (const payment of pending) {
+      // Move it to the back of the line first, whatever the gateway answers.
+      await this.payments.update({ reference: payment.reference, refundStatus: 'pending' }, { refundUpdatedAt: now });
+      if (!payment.refundId) continue;
+      try {
+        const refund = await this.gateway.fetchRefund(payment.refundId);
+        if (refund) await this.applyAndAnnounce(payment.reference, toReport(refund), 'gateway');
+      } catch (error) {
+        this.logger.warn({ reference: payment.reference, err: error }, 'Could not re-check a pending refund');
+      }
+    }
+    return pending.length;
   }
 
   /**
@@ -323,38 +438,24 @@ export class CheckoutService implements CheckoutPort {
    * the purpose's `onRefunded` then claws back or takes down what the payment bought.
    */
   async recordGatewayRefund(reported: ReportedRefund): Promise<'recorded' | 'duplicate' | 'unknown'> {
-    const reference = await this.referenceForTransaction(reported.transactionId);
-    if (!reference) {
+    const found = await this.referenceForTransaction(reported.transactionId);
+    if (!found) {
       this.logger.warn({ refundId: reported.refundId, transactionId: reported.transactionId }, 'Refund for a transaction we don’t know; ignored');
       return 'unknown';
     }
-    let source: CheckoutRefund['source'] = 'dashboard';
-    const recorded = await withTransaction(this.dataSource, async (manager) => {
-      const payment = await manager.findOne(PaymentEntity, { where: { reference }, lock: { mode: 'pessimistic_write' } });
-      if (!payment || payment.status !== 'success') return null;
-      if (payment.refundId === reported.refundId && payment.refundStatus === 'refunded') return null;
-      const sameRefund = payment.refundId === reported.refundId;
-      // Our own API refund whose webhook beat the API response: it's ours, not a dashboard refund.
-      source = payment.refundStatus === 'sending' ? 'api' : 'dashboard';
-      payment.refundStatus = 'refunded';
-      payment.refundReason ??= DASHBOARD_REFUND_REASON;
-      payment.refundedKobo = sameRefund ? reported.amountKobo : Math.min(payment.amountKobo, payment.refundedKobo + reported.amountKobo);
-      payment.refundId = reported.refundId;
-      payment.refundedAt = new Date();
-      payment.refundFailure = null;
-      payment.gatewayTransactionId ??= reported.transactionId;
-      await manager.save(payment);
-      return payment;
-    });
-    if (!recorded) return 'duplicate';
-    this.logger.warn({ reference, refundId: reported.refundId, amountKobo: reported.amountKobo }, 'Gateway refund recorded');
-    await this.notifyRefunded(recorded, {
+    // The refund webhook can beat the charge's own verification: record the charge now if the gateway gave it to us
+    // (record only: the refund is settled first, so a refund before delivery delivers nothing).
+    if (found.charge) await this.applyCharge(found.charge);
+    const report: RefundReport = {
       refundId: reported.refundId,
       amountKobo: reported.amountKobo,
-      source,
-      reason: recorded.refundReason,
-      delivered: recorded.fulfilledAt !== null,
-    });
+      state: refundStateOf(reported.status),
+      gatewayStatus: reported.status.slice(0, 32),
+    };
+    // Throws RefundBeforeChargeException while the charge still isn't verified: the job is retried.
+    const applied = await this.applyAndAnnounce(found.reference, report, 'gateway', reported.transactionId);
+    if (!applied || applied.decision.kind === 'ignore') return 'duplicate';
+    this.logger.warn({ reference: found.reference, refundId: report.refundId, state: report.state, amountKobo: report.amountKobo }, 'Gateway refund recorded');
     return 'recorded';
   }
 
@@ -364,17 +465,63 @@ export class CheckoutService implements CheckoutPort {
     await this.payments.update({ reference }, { flagReason: reason.slice(0, 200) });
   }
 
-  /** Used by the reconciler. */
+  /** Read a checkout back from the gateway by reference and record it. Throws when the gateway can't be asked. */
   async verifyWithGateway(reference: string): Promise<void> {
     const charge = await this.gateway.verify(reference);
     if (charge) await this.handleCharge(charge);
+  }
+
+  /**
+   * Reconciler: check an unconfirmed checkout with the gateway and schedule the next look (10 min, 30 min, 2 h, 6 h,
+   * 23 h after it started; nothing after the fifth). When the gateway can't be asked, look again in 10 minutes without
+   * using up a scheduled check.
+   */
+  async recheckCheckout(reference: string, now: Date): Promise<void> {
+    let asked = true;
+    try {
+      await this.verifyWithGateway(reference);
+    } catch (error) {
+      asked = false;
+      this.logger.warn({ reference, err: error }, 'Reconciliation check failed; will retry');
+    }
+    const row = await this.payments.findOne({ where: { reference } });
+    if (!row || row.status === 'success') return;
+    const attempts = asked ? row.checkAttempts + 1 : row.checkAttempts;
+    const scheduled = asked ? nextCheckAt(row.createdAt, attempts) : new Date(now.getTime() + CHECK_RETRY_MS);
+    // A row that fell behind its schedule still goes to the back of the line.
+    const next = scheduled && scheduled.getTime() < now.getTime() + MINUTE_MS ? new Date(now.getTime() + MINUTE_MS) : scheduled;
+    await this.payments.update({ reference, status: row.status }, { checkAttempts: attempts, lastCheckedAt: now, nextCheckAt: next });
+  }
+
+  /**
+   * Reconciler: a checkout unconfirmed after a day. Check it with the gateway one last time; only if it is still
+   * unpaid is it marked abandoned (a payment that lands later still counts). Returns false when the gateway couldn't be
+   * asked (it stays as it is for the next sweep).
+   */
+  async expireCheckout(reference: string, now: Date): Promise<boolean> {
+    try {
+      await this.verifyWithGateway(reference);
+    } catch (error) {
+      this.logger.warn({ reference, err: error }, 'Final check before expiry failed; will retry');
+      return false;
+    }
+    await this.payments.update(
+      { reference, status: 'initialized' },
+      { status: 'abandoned', failureReason: 'checkout_expired', nextCheckAt: null, lastCheckedAt: now },
+    );
+    return true;
   }
 
   /** Confirm a webhook-reported refund with the gateway (when it can), else trust the authenticated webhook body. */
   async confirmRefund(reported: ReportedRefund): Promise<ReportedRefund> {
     const confirmed = await this.gateway.fetchRefund?.(reported.refundId);
     if (!confirmed) return reported;
-    return { refundId: confirmed.refundId, transactionId: confirmed.transactionId ?? reported.transactionId, amountKobo: confirmed.amountKobo };
+    return {
+      refundId: confirmed.refundId,
+      transactionId: confirmed.transactionId ?? reported.transactionId,
+      amountKobo: confirmed.amountKobo,
+      status: confirmed.status,
+    };
   }
 
   // ----- Internals --------------------------------------------------------------------------------------------------
@@ -387,59 +534,158 @@ export class CheckoutService implements CheckoutPort {
     return this.gateway.verify(reference);
   }
 
-  /** Claim an owed refund (`due` → `sending`), call the gateway, record the outcome, then tell the purpose. */
+  /** Claim an owed refund (`due` → `sending`), call the gateway, record what it says, then tell the purpose. */
   private async sendRefund(reference: string): Promise<RefundOutcome> {
+    const claimedAt = new Date();
     const claimed = await withTransaction(this.dataSource, async (manager) => {
       const payment = await manager.findOne(PaymentEntity, { where: { reference }, lock: { mode: 'pessimistic_write' } });
       if (!payment || payment.refundStatus !== 'due') return payment;
       payment.refundStatus = 'sending';
+      payment.refundUpdatedAt = claimedAt;
       await manager.save(payment);
-      return { ...payment, refundStatus: 'sending' as const, claimedNow: true };
+      return { payment, claimedNow: true as const };
     });
     if (!claimed) return { kind: 'not-refundable', reason: 'Unknown payment' };
     if (!('claimedNow' in claimed)) {
       if (claimed.refundStatus === 'refunded') return { kind: 'already-refunded', refund: this.recordedRefund(claimed) };
-      if (claimed.refundStatus === 'sending') return { kind: 'in-progress' };
+      if (claimed.refundStatus === 'pending' && claimed.refundId) return { kind: 'pending', refundId: claimed.refundId };
+      if (claimed.refundStatus === 'sending' || claimed.refundStatus === 'pending') return { kind: 'in-progress' };
       if (claimed.refundStatus === 'failed') return { kind: 'failed', reason: claimed.refundFailure ?? 'The gateway refused the refund' };
       return { kind: 'not-refundable', reason: 'No refund is owed on this payment' };
     }
 
-    let refund: GatewayRefund;
+    let report: RefundReport;
     try {
-      refund = await this.gateway.refund({
-        reference,
-        transactionId: claimed.gatewayTransactionId,
-        comments: `Inside Life refund: ${claimed.refundReason ?? 'not delivered'}`,
-      });
+      report = toReport(
+        await this.gateway.refund({
+          reference,
+          transactionId: claimed.payment.gatewayTransactionId,
+          comments: `Inside Life refund: ${claimed.payment.refundReason ?? 'not delivered'}`,
+        }),
+      );
     } catch (error) {
-      const failure = errorText(error);
-      await this.payments.update({ reference, refundStatus: 'sending' }, { refundStatus: 'failed', refundFailure: failure });
-      this.logger.error({ reference, err: error }, 'Automatic refund failed; refund it by hand in the Flutterwave dashboard');
-      return { kind: 'failed', reason: failure };
+      // A timeout may still have gone through: ask the gateway before calling it failed.
+      const lookup = await this.lookUpLostRefund(claimed.payment, claimedAt);
+      if (lookup.kind === 'unknown') {
+        this.logger.warn({ reference, err: error }, 'Refund call failed and the gateway could not be re-checked; the reconciler resolves it');
+        return { kind: 'in-progress' };
+      }
+      if (lookup.kind === 'none') {
+        const failure = errorText(error);
+        await this.payments.update({ reference, refundStatus: 'sending' }, { refundStatus: 'failed', refundFailure: failure, refundUpdatedAt: new Date() });
+        this.logger.error({ reference, err: error }, 'Automatic refund failed; refund it by hand in the Flutterwave dashboard');
+        return { kind: 'failed', reason: failure };
+      }
+      this.logger.warn({ reference, refundId: lookup.report.refundId }, 'Refund call errored but the gateway has the refund; recording it');
+      report = lookup.report;
     }
 
-    const recorded = await withTransaction(this.dataSource, async (manager) => {
-      const payment = await manager.findOneOrFail(PaymentEntity, { where: { reference }, lock: { mode: 'pessimistic_write' } });
-      // The refund webhook can beat our own API response; it then already recorded (and announced) this refund.
-      if (payment.refundStatus === 'refunded' && payment.refundId === refund.refundId) return { payment, announce: false };
-      payment.refundStatus = 'refunded';
-      payment.refundId = refund.refundId;
-      payment.refundedKobo = refund.amountKobo;
-      payment.refundedAt = new Date();
-      payment.refundFailure = null;
-      await manager.save(payment);
-      return { payment, announce: true };
+    const applied = await this.applyAndAnnounce(reference, report, 'api');
+    if (!applied) return { kind: 'not-refundable', reason: 'Unknown payment' };
+    this.logger.log({ reference, refundId: report.refundId, state: report.state, amountKobo: report.amountKobo }, 'Refund sent');
+    const now = applied.payment;
+    switch (now.refundStatus) {
+      case 'refunded':
+        return { kind: 'refunded', refund: applied.refund };
+      case 'pending':
+        return { kind: 'pending', refundId: report.refundId };
+      case 'failed':
+        return { kind: 'failed', reason: now.refundFailure ?? 'The gateway refused the refund' };
+      default:
+        return { kind: 'in-progress' };
+    }
+  }
+
+  /**
+   * Record a refund report under the row lock (`decideRefundReport`), then tell the purpose: `onRefunded` when it
+   * completed, `onRefundFailed` when a refund we tracked failed. `origin` says whether it came from our own API call.
+   * Throws `RefundBeforeChargeException` when the payment isn't verified yet (a webhook that beat the charge).
+   */
+  private async applyAndAnnounce(
+    reference: string,
+    report: RefundReport,
+    origin: 'api' | 'gateway',
+    transactionId: string | null = null,
+  ): Promise<AppliedRefundReport | null> {
+    const applied = await withTransaction(this.dataSource, async (manager): Promise<AppliedRefundReport | null> => {
+      const payment = await manager.findOne(PaymentEntity, { where: { reference }, lock: { mode: 'pessimistic_write' } });
+      if (!payment) return null;
+      if (payment.status !== 'success') throw new RefundBeforeChargeException(reference);
+      const decision = decideRefundReport(payment, report);
+      // Ours: sent by this process, claimed by us, or the same refund we sent earlier (never a dashboard reason).
+      const ours =
+        origin === 'api' ||
+        payment.refundStatus === 'sending' ||
+        (payment.refundId === report.refundId && payment.refundReason !== null && payment.refundReason !== DASHBOARD_REFUND_REASON);
+      const now = new Date();
+      switch (decision.kind) {
+        case 'ignore':
+          break;
+        case 'pending':
+          payment.refundStatus = 'pending';
+          payment.refundId = report.refundId;
+          payment.refundFailure = null;
+          payment.refundReason ??= DASHBOARD_REFUND_REASON;
+          break;
+        case 'completed': {
+          const paid = payment.paidKobo ?? payment.amountKobo;
+          payment.refundedKobo = decision.additional ? Math.min(paid, payment.refundedKobo + report.amountKobo) : Math.min(paid, report.amountKobo);
+          payment.refundStatus = 'refunded';
+          payment.refundId = report.refundId;
+          payment.refundedAt = now;
+          payment.refundFailure = null;
+          payment.refundReason ??= DASHBOARD_REFUND_REASON;
+          break;
+        }
+        case 'failed':
+          if (decision.reverted) {
+            payment.refundedKobo = Math.max(0, payment.refundedKobo - report.amountKobo);
+            payment.refundedAt = null;
+          }
+          payment.refundStatus = 'failed';
+          payment.refundId = report.refundId;
+          payment.refundFailure = `Flutterwave reported the refund ${report.gatewayStatus}: refund it by hand`.slice(0, 200);
+          break;
+      }
+      if (decision.kind !== 'ignore') {
+        payment.refundGatewayStatus = report.gatewayStatus;
+        payment.refundUpdatedAt = now;
+        payment.gatewayTransactionId ??= transactionId;
+        await manager.save(payment);
+      }
+      const refund: CheckoutRefund = {
+        refundId: report.refundId,
+        amountKobo: report.amountKobo,
+        source: ours ? 'api' : 'dashboard',
+        reason: payment.refundReason,
+        delivered: payment.fulfilledAt !== null,
+      };
+      return { decision, payment, refund };
     });
-    const result: CheckoutRefund = {
-      refundId: refund.refundId,
-      amountKobo: refund.amountKobo,
-      source: 'api',
-      reason: recorded.payment.refundReason,
-      delivered: recorded.payment.fulfilledAt !== null,
-    };
-    this.logger.log({ reference, refundId: refund.refundId, amountKobo: refund.amountKobo }, 'Payment refunded');
-    if (recorded.announce) await this.notifyRefunded(recorded.payment, result);
-    return { kind: 'refunded', refund: result };
+    if (!applied) return null;
+    if (applied.decision.kind === 'completed') await this.notifyRefunded(applied.payment, applied.refund);
+    if (applied.decision.kind === 'failed') await this.notifyRefundFailed(applied.payment, applied.refund, applied.decision.reverted);
+    return applied;
+  }
+
+  /**
+   * Did the gateway take a refund we lost track of (call timed out, process died)? `found`: it has one for this
+   * transaction since `since`; `none`: it has none; `unknown`: it couldn't be asked.
+   */
+  private async lookUpLostRefund(
+    payment: PaymentEntity,
+    since: Date,
+  ): Promise<{ readonly kind: 'found'; readonly report: RefundReport } | { readonly kind: 'none' } | { readonly kind: 'unknown' }> {
+    if (!this.gateway.findRefund) return { kind: 'none' };
+    try {
+      const transactionId = payment.gatewayTransactionId ?? (await this.gateway.verify(payment.reference))?.transactionId ?? null;
+      if (!transactionId) return { kind: 'none' };
+      const refund = await this.gateway.findRefund(transactionId, since);
+      return refund ? { kind: 'found', report: toReport(refund) } : { kind: 'none' };
+    } catch (error) {
+      this.logger.warn({ reference: payment.reference, err: error }, 'Could not look a refund up at the gateway');
+      return { kind: 'unknown' };
+    }
   }
 
   private async notifyRefunded(payment: PaymentEntity, refund: CheckoutRefund): Promise<void> {
@@ -453,13 +699,28 @@ export class CheckoutService implements CheckoutPort {
     }
   }
 
-  /** Our reference for a gateway transaction id: from the recorded id, else read back from the gateway. */
-  private async referenceForTransaction(transactionId: string | null): Promise<string | null> {
+  private async notifyRefundFailed(payment: PaymentEntity, refund: CheckoutRefund, wasCompleted: boolean): Promise<void> {
+    this.logger.error({ reference: payment.reference, refundId: refund.refundId, wasCompleted }, 'Refund failed at the gateway; refund it by hand');
+    const fulfiller = this.fulfillers.get(payment.purpose);
+    if (!fulfiller?.onRefundFailed) return;
+    try {
+      await fulfiller.onRefundFailed(this.toPaid(payment), refund, wasCompleted);
+    } catch (error) {
+      this.logger.error({ reference: payment.reference, err: error }, 'Refund-failure follow-up failed; flagged for ops');
+      await this.payments.update({ reference: payment.reference }, { flagReason: `Refund-failure follow-up failed: ${errorText(error)}`.slice(0, 200) });
+    }
+  }
+
+  /**
+   * Our reference for a gateway transaction id: from the recorded id, else read back from the gateway (and then the
+   * charge too, so a refund webhook that beat the charge's verification can verify it first).
+   */
+  private async referenceForTransaction(transactionId: string | null): Promise<{ readonly reference: string; readonly charge: GatewayCharge | null } | null> {
     if (!transactionId) return null;
     const known = await this.payments.findOne({ where: { gatewayTransactionId: transactionId } });
-    if (known) return known.reference;
+    if (known) return { reference: known.reference, charge: null };
     const charge = await this.gateway.verifyTransaction(transactionId);
-    return charge && (await this.payments.exists({ where: { reference: charge.reference } })) ? charge.reference : null;
+    return charge && (await this.payments.exists({ where: { reference: charge.reference } })) ? { reference: charge.reference, charge } : null;
   }
 
   private recordedRefund(payment: PaymentEntity): CheckoutRefund {

@@ -8,11 +8,11 @@ import type { LedgerService } from '../ledger/ledger.service.js';
 import type { CharacterSession } from '../simulation/character-session.service.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { CheckoutReconciler } from './checkout-reconciler.service.js';
-import { claimRefund, decideCharge } from './checkout-rules.js';
+import { claimRefund, decideCharge, nextCheckAt } from './checkout-rules.js';
 import { CheckoutService } from './checkout.service.js';
 import { PaymentEntity } from './entities/payment.entity.js';
 import { FlutterwaveWebhookService, InvalidWebhookSignatureException } from './flutterwave-webhook.service.js';
-import type { GatewayCharge, GatewayRefund, GatewayRefundInput, PaymentGateway } from './gateways/payment-gateway.interface.js';
+import type { GatewayCharge, GatewayRefund, GatewayRefundInput, GatewayRefundRecord, PaymentGateway } from './gateways/payment-gateway.interface.js';
 import type { SandboxGateway } from './gateways/sandbox.gateway.js';
 import { PaymentsEventsProcessor } from './payments-events.processor.js';
 import { TopupCreditor } from './topup-creditor.service.js';
@@ -26,15 +26,20 @@ const HASH = 'f'.repeat(16) + '0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6b7'
 
 type Row = Record<string, unknown>;
 
-/** Evaluates the TypeORM operators the payments code uses (IsNull, LessThan, MoreThan, And) against a value. */
+/** Evaluates the TypeORM operators the payments code uses (IsNull, In, LessThan[OrEqual], MoreThan, And) against a value. */
 function satisfies(actual: unknown, expected: unknown): boolean {
   if (!(expected instanceof FindOperator)) return actual === expected;
   const operand = expected.value as unknown;
+  if (expected.type !== 'isNull' && (actual === null || actual === undefined)) return false;
   switch (expected.type) {
     case 'isNull':
       return actual === null || actual === undefined;
+    case 'in':
+      return (operand as unknown[]).includes(actual);
     case 'lessThan':
       return (actual as number | Date) < (operand as number | Date);
+    case 'lessThanOrEqual':
+      return (actual as number | Date) <= (operand as number | Date);
     case 'moreThan':
       return (actual as number | Date) > (operand as number | Date);
     case 'and':
@@ -44,7 +49,33 @@ function satisfies(actual: unknown, expected: unknown): boolean {
   }
 }
 
-const matches = (row: PaymentEntity, where: Row): boolean => Object.entries(where).every(([key, value]) => satisfies((row as unknown as Row)[key], value));
+const matches = (row: PaymentEntity, where: Row | Row[]): boolean =>
+  Array.isArray(where) ? where.some((part) => matches(row, part)) : Object.entries(where).every(([key, value]) => satisfies((row as unknown as Row)[key], value));
+
+type Order = Record<string, 'ASC' | 'DESC' | { direction: 'ASC' | 'DESC'; nulls?: 'FIRST' | 'LAST' }>;
+
+/** A sortable column value (dates as epoch ms); null for null. */
+function sortValue(row: PaymentEntity, key: string): number | null {
+  const raw = (row as unknown as Row)[key];
+  return raw instanceof Date ? raw.getTime() : typeof raw === 'number' ? raw : null;
+}
+
+/** Sorts like Postgres: ascending puts nulls last unless asked otherwise. */
+function ordered(rows: PaymentEntity[], order: Order | undefined): PaymentEntity[] {
+  if (!order) return rows;
+  const keys = Object.entries(order).map(([key, spec]) => (typeof spec === 'string' ? { key, desc: spec === 'DESC', nullsFirst: spec === 'DESC' } : { key, desc: spec.direction === 'DESC', nullsFirst: spec.nulls === 'FIRST' }));
+
+  return rows.toSorted((a, b) => {
+    for (const { key, desc, nullsFirst } of keys) {
+      const [x, y] = [sortValue(a, key), sortValue(b, key)];
+      if (x === y) continue;
+      if (x === null) return nullsFirst ? -1 : 1;
+      if (y === null) return nullsFirst ? 1 : -1;
+      return desc ? y - x : x - y;
+    }
+    return 0;
+  });
+}
 
 /** In-memory payments table with commit semantics and a global lock standing in for `SELECT … FOR UPDATE`. */
 class FakePayments {
@@ -75,10 +106,15 @@ class FakePayments {
       fulfilledAt: null,
       fulfillmentAttempts: 0,
       lastFulfillmentError: null,
+      checkAttempts: 0,
+      lastCheckedAt: null,
+      nextCheckAt: null,
       refundStatus: null,
       refundReason: null,
       refundedKobo: 0,
       refundId: null,
+      refundGatewayStatus: null,
+      refundUpdatedAt: null,
       refundedAt: null,
       refundFailure: null,
       flagReason: null,
@@ -131,8 +167,13 @@ class FakePayments {
       return row;
     },
     exists: async (options: { where: Row }) => this.findWhere(options.where) !== null,
-    find: async (options: { where: Row; take?: number }) =>
-      [...this.rows.values()].filter((row) => matches(row, options.where)).slice(0, options.take ?? 1_000).map((row) => Object.assign(new PaymentEntity(), row)),
+    find: async (options: { where: Row | Row[]; order?: Order; take?: number }) =>
+      ordered(
+        [...this.rows.values()].filter((row) => matches(row, options.where)),
+        options.order,
+      )
+        .slice(0, options.take ?? 1_000)
+        .map((row) => Object.assign(new PaymentEntity(), row)),
     update: async (where: Row, patch: Partial<PaymentEntity>) => {
       let affected = 0;
       for (const row of this.rows.values()) {
@@ -150,6 +191,7 @@ const charge = (overrides: Partial<GatewayCharge> = {}): GatewayCharge => ({
   transactionId: TX,
   status: 'success',
   amountKobo: 250_000,
+  chargedAmountKobo: 253_500,
   currency: 'NGN',
   channel: 'card',
   paidAt: new Date(),
@@ -162,10 +204,28 @@ class FakeGateway implements PaymentGateway {
   readonly provider = 'flutterwave' as const;
   byReference: GatewayCharge | null = charge();
   byTransaction: GatewayCharge | null = charge();
+  verifyError: Error | null = null;
   refundError: Error | null = null;
+  refundStatus = 'completed';
+  /** What `findRefund` / `fetchRefund` report (a refund the gateway has), or an error to throw. */
+  knownRefund: GatewayRefundRecord | null = null;
+  lookupError: Error | null = null;
   readonly verifiedReferences: string[] = [];
   readonly verifiedTransactions: string[] = [];
   readonly refunds: GatewayRefundInput[] = [];
+  readonly refundLookups: string[] = [];
+
+  async findRefund(transactionId: string): Promise<GatewayRefundRecord | null> {
+    this.refundLookups.push(transactionId);
+    if (this.lookupError) throw this.lookupError;
+    return this.knownRefund;
+  }
+
+  async fetchRefund(refundId: string): Promise<GatewayRefundRecord | null> {
+    this.refundLookups.push(refundId);
+    if (this.lookupError) throw this.lookupError;
+    return this.knownRefund?.refundId === refundId ? this.knownRefund : null;
+  }
 
   async initialize(): Promise<{ readonly authorizationUrl: string }> {
     return { authorizationUrl: 'https://checkout.flutterwave.com/v3/hosted/pay/x' };
@@ -173,7 +233,8 @@ class FakeGateway implements PaymentGateway {
 
   async verify(reference: string): Promise<GatewayCharge | null> {
     this.verifiedReferences.push(reference);
-    return this.byReference;
+    if (this.verifyError) throw this.verifyError;
+    return this.byReference ? { ...this.byReference, reference: this.byReference.reference === REF ? reference : this.byReference.reference } : null;
   }
 
   async verifyTransaction(transactionId: string): Promise<GatewayCharge | null> {
@@ -185,7 +246,7 @@ class FakeGateway implements PaymentGateway {
     await new Promise((resolve) => setTimeout(resolve, 2));
     this.refunds.push(input);
     if (this.refundError) throw this.refundError;
-    return { refundId: `75923${this.refunds.length}`, amountKobo: input.amountKobo ?? 250_000, status: 'completed' };
+    return { refundId: `75923${this.refunds.length}`, amountKobo: input.amountKobo ?? 250_000, status: this.refundStatus };
   }
 }
 
@@ -206,8 +267,14 @@ class CountingFulfiller implements CheckoutFulfiller {
     return this.result;
   }
 
+  readonly refundFailures: Array<{ refundId: string; wasCompleted: boolean }> = [];
+
   async onRefunded(_payment: PaidCheckout, refund: CheckoutRefund): Promise<void> {
     this.refunded.push(refund);
+  }
+
+  async onRefundFailed(_payment: PaidCheckout, refund: CheckoutRefund, wasCompleted: boolean): Promise<void> {
+    this.refundFailures.push({ refundId: refund.refundId, wasCompleted });
   }
 }
 
@@ -227,6 +294,12 @@ describe('decideCharge (Flutterwave: successful, tx_ref matches, NGN, amount ≥
   it('records a matching success, and accepts paying more than the price', () => {
     expect(decideCharge(expected, charge())).toEqual({ kind: 'record-success' });
     expect(decideCharge(expected, charge({ amountKobo: 250_100 }))).toEqual({ kind: 'record-success' });
+  });
+
+  it('also requires charged_amount ≥ the price (and refuses a charge that doesn’t say what was charged)', () => {
+    expect(decideCharge(expected, charge({ chargedAmountKobo: 250_000 }))).toEqual({ kind: 'record-success' });
+    expect(decideCharge(expected, charge({ chargedAmountKobo: 249_999 }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(expected, charge({ chargedAmountKobo: null }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
   });
 
   it('refuses a success that paid less, in another currency or for another reference', () => {
@@ -253,6 +326,7 @@ describe('claimRefund', () => {
     expect(claimRefund({ status: 'success', refundStatus: 'due' })).toEqual({ kind: 'send' });
     expect(claimRefund({ status: 'success', refundStatus: 'failed' })).toEqual({ kind: 'send' });
     expect(claimRefund({ status: 'success', refundStatus: 'sending' })).toEqual({ kind: 'in-flight' });
+    expect(claimRefund({ status: 'success', refundStatus: 'pending' })).toEqual({ kind: 'in-flight' });
     expect(claimRefund({ status: 'success', refundStatus: 'refunded' })).toEqual({ kind: 'already-refunded' });
     expect(claimRefund({ status: 'initialized', refundStatus: null }).kind).toBe('not-refundable');
   });
@@ -392,7 +466,7 @@ describe('CheckoutService refunds', () => {
   it('records a dashboard refund once however many times the webhook arrives', async () => {
     const { payments, checkout, fulfiller } = setup();
     payments.seed({ status: 'success', fulfilledAt: new Date(), gatewayTransactionId: TX });
-    const reported = { refundId: '99025', transactionId: TX, amountKobo: 250_000 };
+    const reported = { refundId: '99025', transactionId: TX, amountKobo: 250_000, status: 'completed' };
     const results = await Promise.all([checkout.recordGatewayRefund(reported), checkout.recordGatewayRefund(reported), checkout.recordGatewayRefund(reported)]);
     expect(results.toSorted()).toEqual(['duplicate', 'duplicate', 'recorded']);
     expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundId: '99025', refundedKobo: 250_000, refundReason: 'Refunded in the Flutterwave dashboard' });
@@ -403,13 +477,149 @@ describe('CheckoutService refunds', () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.seed({ status: 'success', gatewayTransactionId: null });
     gateway.byTransaction = charge();
-    expect(await checkout.recordGatewayRefund({ refundId: '1', transactionId: TX, amountKobo: 250_000 })).toBe('recorded');
+    expect(await checkout.recordGatewayRefund({ refundId: '1', transactionId: TX, amountKobo: 250_000, status: 'completed' })).toBe('recorded');
     expect(fulfiller.refunded).toEqual([expect.objectContaining({ delivered: false })]);
     expect(await checkout.fulfill(REF)).toBe(false);
     expect(fulfiller.delivered).toHaveLength(0);
     expect(payments.read(REF)?.lastFulfillmentError).toMatch(/Refunded before delivery/);
     gateway.byTransaction = null;
-    expect(await checkout.recordGatewayRefund({ refundId: '2', transactionId: '777', amountKobo: 1 })).toBe('unknown');
+    expect(await checkout.recordGatewayRefund({ refundId: '2', transactionId: '777', amountKobo: 1, status: 'completed' })).toBe('unknown');
+  });
+});
+
+/** A refund of the default payment as a webhook reports it. */
+const refundReport = (refundId: string, status: string) => ({ refundId, transactionId: TX, amountKobo: 250_000, status });
+
+describe('refund states (only completed is final)', () => {
+  const paidRow = { status: 'success' as const, fulfilledAt: new Date(), gatewayTransactionId: TX, paidKobo: 250_000 };
+
+  it('records our refund as pending while Flutterwave processes it, and settles it once when it completes', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.seed(paidRow);
+    gateway.refundStatus = 'processing';
+    expect(await checkout.refund(REF, 'Not approved in review')).toEqual({ kind: 'pending', refundId: '759231' });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'pending', refundGatewayStatus: 'processing', refundedKobo: 0 });
+    expect(fulfiller.refunded).toHaveLength(0);
+    // A second request doesn't send another refund.
+    expect(await checkout.refund(REF, 'again')).toEqual({ kind: 'pending', refundId: '759231' });
+    expect(gateway.refunds).toHaveLength(1);
+    // The completion webhook for the same refund id is a status change, not a duplicate.
+    const completed = { refundId: '759231', transactionId: TX, amountKobo: 250_000, status: 'completed' };
+    expect(await checkout.recordGatewayRefund(completed)).toBe('recorded');
+    expect(await checkout.recordGatewayRefund(completed)).toBe('duplicate');
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundedKobo: 250_000, refundGatewayStatus: 'completed' });
+    expect(fulfiller.refunded).toEqual([expect.objectContaining({ refundId: '759231', source: 'api' })]);
+  });
+
+  it('reverts a refund Flutterwave later reports failed, and tells the purpose to undo its settlement', async () => {
+    const { payments, checkout, fulfiller } = setup();
+    payments.seed(paidRow);
+    expect(await checkout.recordGatewayRefund(refundReport('880', 'completed'))).toBe('recorded');
+    expect(await checkout.recordGatewayRefund(refundReport('880', 'failed'))).toBe('recorded');
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'failed', refundedKobo: 0, refundGatewayStatus: 'failed', refundFailure: expect.stringMatching(/by hand/) });
+    expect(fulfiller.refundFailures).toEqual([{ refundId: '880', wasCompleted: true }]);
+    // Completing after all settles it again (the purpose's clawback keys stop a second take).
+    expect(await checkout.recordGatewayRefund(refundReport('880', 'completed'))).toBe('recorded');
+    expect(fulfiller.refunded.map((refund) => refund.refundId)).toEqual(['880', '880']);
+  });
+
+  it('treats a failure of a refund still processing as failed, without a settlement to undo', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.seed(paidRow);
+    gateway.refundStatus = 'pending';
+    await checkout.refund(REF, 'Not approved');
+    expect(await checkout.recordGatewayRefund({ refundId: '759231', transactionId: TX, amountKobo: 250_000, status: 'failed' })).toBe('recorded');
+    expect(payments.read(REF)?.refundStatus).toBe('failed');
+    expect(fulfiller.refundFailures).toEqual([{ refundId: '759231', wasCompleted: false }]);
+    expect(fulfiller.refunded).toHaveLength(0);
+  });
+
+  it('records a second partial refund as more money back', async () => {
+    const { payments, checkout, fulfiller } = setup();
+    payments.seed(paidRow);
+    await checkout.recordGatewayRefund({ refundId: '1', transactionId: TX, amountKobo: 100_000, status: 'completed' });
+    await checkout.recordGatewayRefund({ refundId: '2', transactionId: TX, amountKobo: 100_000, status: 'completed-mpgs' });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundId: '2', refundedKobo: 200_000 });
+    expect(fulfiller.refunded.map((refund) => [refund.refundId, refund.amountKobo])).toEqual([
+      ['1', 100_000],
+      ['2', 100_000],
+    ]);
+  });
+
+  it('re-checks with Flutterwave when the refund call errors: a refund it has is recorded, none is a failure', async () => {
+    const { payments, gateway, checkout } = setup();
+    payments.seed(paidRow);
+    gateway.refundError = new RangeError('timeout');
+    gateway.knownRefund = { refundId: '4242', amountKobo: 250_000, status: 'completed', transactionId: TX };
+    expect(await checkout.refund(REF, 'Not approved')).toMatchObject({ kind: 'refunded', refund: { refundId: '4242' } });
+    expect(gateway.refundLookups).toEqual([TX]);
+
+    payments.seed({ ...paidRow, reference: 'ref-2', gatewayTransactionId: '999' });
+    gateway.knownRefund = null;
+    expect(await checkout.refund('ref-2', 'Not approved')).toMatchObject({ kind: 'failed', reason: 'timeout' });
+    expect(payments.read('ref-2')?.refundStatus).toBe('failed');
+  });
+
+  it('leaves a claim in sending when Flutterwave can’t be asked, and the reconciler resolves it later', async () => {
+    const { payments, gateway, checkout } = setup();
+    payments.seed(paidRow);
+    gateway.refundError = new RangeError('timeout');
+    gateway.lookupError = new RangeError('flutterwave down');
+    expect(await checkout.refund(REF, 'Not approved')).toEqual({ kind: 'in-progress' });
+    expect(payments.read(REF)?.refundStatus).toBe('sending');
+
+    const later = new Date(Date.now() + 10 * 60_000);
+    // Still can't ask: the claim stays (and goes to the back of the line).
+    expect(await checkout.resolveStaleRefunds(later, 5 * 60_000, 20)).toBe(1);
+    expect(payments.read(REF)?.refundStatus).toBe('sending');
+    // Flutterwave has it: recorded.
+    gateway.lookupError = null;
+    gateway.knownRefund = { refundId: '5150', amountKobo: 250_000, status: 'processing', transactionId: TX };
+    await checkout.resolveStaleRefunds(new Date(later.getTime() + 10 * 60_000), 5 * 60_000, 20);
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'pending', refundId: '5150' });
+  });
+
+  it('owes a refund again when an interrupted claim never reached Flutterwave', async () => {
+    const { payments, gateway, checkout } = setup();
+    payments.seed({ ...paidRow, refundStatus: 'sending', refundUpdatedAt: new Date(Date.now() - 60 * 60_000), refundReason: 'Sold out' });
+    gateway.knownRefund = null;
+    await checkout.resolveStaleRefunds(new Date(), 5 * 60_000, 20);
+    expect(payments.read(REF)?.refundStatus).toBe('due');
+    await checkout.sendDueRefunds(20);
+    expect(gateway.refunds).toHaveLength(1);
+    expect(payments.read(REF)?.refundStatus).toBe('refunded');
+  });
+
+  it('re-reads refunds still processing, so a lost completion webhook can’t strand them', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.seed({ ...paidRow, refundStatus: 'pending', refundId: '6060', refundReason: 'Not approved', refundUpdatedAt: new Date(Date.now() - 60 * 60_000) });
+    gateway.knownRefund = { refundId: '6060', amountKobo: 250_000, status: 'completed', transactionId: TX };
+    await checkout.refreshPendingRefunds(new Date(), 30 * 60_000, 20);
+    expect(payments.read(REF)?.refundStatus).toBe('refunded');
+    expect(fulfiller.refunded).toEqual([expect.objectContaining({ refundId: '6060', source: 'api' })]);
+  });
+
+  it('holds delivery while a refund is processing', async () => {
+    const { payments, checkout, fulfiller } = setup();
+    payments.seed({ status: 'success', refundStatus: 'pending', refundId: '1' });
+    expect(await checkout.fulfill(REF)).toBe(false);
+    expect(fulfiller.delivered).toHaveLength(0);
+    expect(payments.read(REF)?.nextCheckAt).toBeInstanceOf(Date);
+  });
+
+  it('retries (throws) a refund webhook that arrives before its charge is verified', async () => {
+    const { payments, gateway, checkout } = setup();
+    // Flutterwave still reports the charge pending, so it can't be verified yet.
+    gateway.byTransaction = charge({ status: 'pending' });
+    const processor = new PaymentsEventsProcessor(checkout);
+    await expect(
+      processor.process({ name: 'refund', data: { refundId: '77', transactionId: TX, amountKobo: 250_000, status: 'completed' } } as never),
+    ).rejects.toMatchObject({ errorCode: 'REFUND_BEFORE_CHARGE' });
+    expect(payments.read(REF)?.refundStatus).toBeNull();
+    // Once the charge is successful, the retry verifies it first and records the refund.
+    gateway.byTransaction = charge();
+    expect(await processor.process({ name: 'refund', data: { refundId: '77', transactionId: TX, amountKobo: 250_000, status: 'completed' } } as never)).toBe('recorded');
+    expect(payments.read(REF)).toMatchObject({ status: 'success', refundStatus: 'refunded' });
   });
 });
 
@@ -464,11 +674,26 @@ describe('Flutterwave webhooks → queue → processor', () => {
     const refund = { id: 99025, AmountRefunded: 2_500, status: 'completed', FlwRef: '4687213286', TransactionId: Number(TX) };
     await webhooks.accept(refund);
     await webhooks.accept(refund);
-    expect([...queue.jobs.entries()]).toEqual([['refund-99025', { name: 'refund', data: { refundId: '99025', transactionId: TX, amountKobo: 250_000 } }]]);
+    expect([...queue.jobs.entries()]).toEqual([
+      ['refund-99025-completed', { name: 'refund', data: { refundId: '99025', transactionId: TX, amountKobo: 250_000, status: 'completed' } }],
+    ]);
     const processor = new PaymentsEventsProcessor(checkout);
-    expect(await processor.process({ name: 'refund', data: queue.jobs.get('refund-99025')?.data } as never)).toBe('recorded');
-    expect(await processor.process({ name: 'refund', data: queue.jobs.get('refund-99025')?.data } as never)).toBe('duplicate');
+    expect(await processor.process({ name: 'refund', data: queue.jobs.get('refund-99025-completed')?.data } as never)).toBe('recorded');
+    expect(await processor.process({ name: 'refund', data: queue.jobs.get('refund-99025-completed')?.data } as never)).toBe('duplicate');
     expect(fulfiller.refunded).toHaveLength(1);
+    // A later status of the same refund is a new job, not dropped as a duplicate delivery.
+    await webhooks.accept({ ...refund, status: 'failed' });
+    expect([...queue.jobs.keys()]).toEqual(['refund-99025-completed', 'refund-99025-failed']);
+  });
+
+  it('retries a charge job while Flutterwave still says pending, instead of completing it', async () => {
+    const { gateway, checkout, fulfiller } = setup();
+    gateway.byTransaction = charge({ status: 'pending' });
+    const processor = new PaymentsEventsProcessor(checkout);
+    await expect(processor.process({ name: 'charge', data: { transactionId: TX } } as never)).rejects.toMatchObject({ errorCode: 'CHARGE_PENDING' });
+    gateway.byTransaction = charge();
+    expect(await processor.process({ name: 'charge', data: { transactionId: TX } } as never)).toBe('record-success');
+    expect(fulfiller.delivered).toHaveLength(1);
   });
 
   it('acknowledges malformed and unrelated events without queueing anything', async () => {
@@ -487,27 +712,130 @@ describe('Flutterwave webhooks → queue → processor', () => {
   });
 });
 
+/** `minutes` after `date`. */
+const at = (date: Date, minutes: number): Date => new Date(date.getTime() + minutes * 60_000);
+
 describe('CheckoutReconciler', () => {
-  it('verifies checkouts pending for 10+ minutes by reference, sends owed refunds and expires day-old ones', async () => {
+  const now = new Date('2026-10-09T12:00:00Z');
+  const minutesAgo = (minutes: number): Date => new Date(now.getTime() - minutes * 60_000);
+  /** A checkout started `age` minutes ago, scheduled like `start()` does (first check 10 minutes in). */
+  const checkoutRow = (reference: string, age: number, extra: Partial<PaymentEntity> = {}): Partial<PaymentEntity> => ({
+    reference,
+    createdAt: minutesAgo(age),
+    nextCheckAt: at(minutesAgo(age), 10),
+    ...extra,
+  });
+
+  it('checks due checkouts with the gateway, sends owed refunds and expires day-old ones after a last check', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
-    const now = new Date('2026-10-09T12:00:00Z');
-    const minutesAgo = (minutes: number): Date => new Date(now.getTime() - minutes * 60_000);
     payments.rows.clear();
-    payments.seed({ reference: 'fresh', createdAt: minutesAgo(5) });
-    payments.seed({ reference: 'stale', createdAt: minutesAgo(15) });
-    payments.seed({ reference: 'ancient', createdAt: minutesAgo(25 * 60) });
+    payments.seed(checkoutRow('fresh', 5));
+    payments.seed(checkoutRow('stale', 15));
+    payments.seed(checkoutRow('ancient', 25 * 60, { checkAttempts: 5, nextCheckAt: null }));
     payments.seed({ reference: 'owed', status: 'success', fulfilledAt: minutesAgo(30), refundStatus: 'due', refundReason: 'Sold out', gatewayTransactionId: '1', createdAt: minutesAgo(30) });
     gateway.byReference = charge({ reference: 'stale' });
 
     await new CheckoutReconciler(checkout, payments.repository).sweep(now);
 
-    expect(gateway.verifiedReferences).toEqual(['stale']);
+    // The day-old one gets one last check before being abandoned.
+    expect(gateway.verifiedReferences.toSorted()).toEqual(['ancient', 'stale']);
     expect(payments.read('stale')).toMatchObject({ status: 'success' });
     expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['stale']);
     expect(payments.read('fresh')?.status).toBe('initialized');
     expect(payments.read('ancient')).toMatchObject({ status: 'abandoned', failureReason: 'checkout_expired' });
     expect(gateway.refunds.map((refund) => refund.reference)).toEqual(['owed']);
     expect(payments.read('owed')?.refundStatus).toBe('refunded');
+  });
+
+  it('delivers a day-old checkout that turns out to be paid at its last check, instead of abandoning it', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.rows.clear();
+    payments.seed(checkoutRow('late', 24 * 60 + 5, { checkAttempts: 5, nextCheckAt: null }));
+    gateway.byReference = charge({ reference: 'late' });
+    await new CheckoutReconciler(checkout, payments.repository).sweep(now);
+    expect(payments.read('late')?.status).toBe('success');
+    expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['late']);
+  });
+
+  it('backs unpaid checkouts off (10 min, 30 min, 2 h, 6 h, 23 h) so a paid one with a lost webhook is reached at once', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.rows.clear();
+    // 40 old unpaid checkouts, all due, older than the paid one: the old code re-checked these 20 oldest forever.
+    for (let index = 0; index < 40; index++) payments.seed(checkoutRow(`unpaid-${index}`, 60 + index));
+    payments.seed(checkoutRow('paid', 20));
+    gateway.byReference = null; // "no transaction found" for the unpaid ones
+    const reconciler = new CheckoutReconciler(checkout, payments.repository);
+
+    await reconciler.sweep(now);
+    await reconciler.sweep(at(now, 2));
+    gateway.byReference = charge({ reference: 'paid' });
+    await reconciler.sweep(at(now, 4));
+
+    expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['paid']);
+    const first = payments.read('unpaid-0');
+    expect(first).toMatchObject({ status: 'initialized', checkAttempts: 1 });
+    // Next look at 30 minutes after it started (already past), so at least a minute from the check.
+    expect(first?.lastCheckedAt).toEqual(expect.any(Date));
+    expect(first?.nextCheckAt?.getTime()).toBeGreaterThan(now.getTime());
+  });
+
+  it('follows the check schedule by age and stops after the fifth check', () => {
+    const created = new Date('2026-10-09T00:00:00Z');
+    expect([0, 1, 2, 3, 4, 5].map((attempts) => nextCheckAt(created, attempts)?.toISOString().slice(11, 16) ?? null)).toEqual([
+      '00:10',
+      '00:30',
+      '02:00',
+      '06:00',
+      '23:00',
+      null,
+    ]);
+  });
+
+  it('re-checks failed checkouts within the day (a mismatched or failed attempt may still be paid)', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.rows.clear();
+    payments.seed(checkoutRow('retried', 45, { status: 'failed', failureReason: 'charge_failed' }));
+    payments.seed(checkoutRow('never-started', 45, { status: 'failed', failureReason: 'initialize_failed', nextCheckAt: null }));
+    gateway.byReference = charge({ reference: 'retried' });
+    await new CheckoutReconciler(checkout, payments.repository).sweep(now);
+    expect(gateway.verifiedReferences).toEqual(['retried']);
+    expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['retried']);
+  });
+
+  it('doesn’t use up a scheduled check when the gateway can’t be asked', async () => {
+    const { payments, gateway, checkout } = setup();
+    payments.rows.clear();
+    payments.seed(checkoutRow('flaky', 15));
+    gateway.verifyError = new RangeError('flutterwave down');
+    await new CheckoutReconciler(checkout, payments.repository).sweep(now);
+    expect(payments.read('flaky')).toMatchObject({ status: 'initialized', checkAttempts: 0, nextCheckAt: at(now, 10) });
+  });
+
+  it('backs off deliveries that keep failing, so they can’t block other payments', async () => {
+    const { payments, checkout, fulfiller } = setup();
+    payments.rows.clear();
+    for (let index = 0; index < 25; index++) payments.seed({ reference: `stuck-${index}`, status: 'success', createdAt: minutesAgo(90 + index) });
+    payments.seed({ reference: 'healthy', status: 'success', createdAt: minutesAgo(30) });
+    fulfiller.failuresLeft = 25; // the 25 oldest fail (no living character…)
+    const reconciler = new CheckoutReconciler(checkout, payments.repository);
+    await reconciler.sweep(now);
+    await reconciler.sweep(at(now, 0.5));
+    expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['healthy']);
+    // The oldest failed in the first sweep: next try a minute later, not on every sweep.
+    expect(payments.read('stuck-24')).toMatchObject({ fulfillmentAttempts: 1, nextCheckAt: at(now, 1) });
+  });
+
+  it('never touches rows of another provider (old Paystack rows)', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.rows.clear();
+    payments.seed(checkoutRow('paystack-new', 30, { provider: 'paystack' as never }));
+    payments.seed(checkoutRow('paystack-old', 30 * 60, { provider: 'paystack' as never }));
+    payments.seed({ reference: 'paystack-owed', provider: 'paystack' as never, status: 'success', fulfilledAt: new Date(), refundStatus: 'due' });
+    await new CheckoutReconciler(checkout, payments.repository).sweep(now);
+    expect(gateway.verifiedReferences).toEqual([]);
+    expect(gateway.refunds).toEqual([]);
+    expect(fulfiller.delivered).toEqual([]);
+    expect(payments.read('paystack-old')?.status).toBe('initialized');
   });
 });
 
@@ -536,12 +864,19 @@ describe('top-up quotes and credits', () => {
     expect(topupCredit({ ...custom, paidKobo: 800_000 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_520_000 } });
     // Before verification the quote is shown.
     expect(topupCredit({ ...custom, paidKobo: null })).toMatchObject({ ok: true, credit: { virtualAmount: 3_080_000 } });
-    // A rate that isn't the one the server quotes for the price (forged or corrupted row).
-    expect(topupCredit({ ...custom, topupRate: 500 })).toMatchObject({ ok: false });
-    expect(topupCredit({ ...custom, subjectId: 'free-money' })).toMatchObject({ ok: false });
-    // Top-ups made before custom amounts have no stored rate: the pack's.
+    // Top-ups made before custom amounts have no stored rate: the pack's, if the pack still matches what was charged.
     expect(topupCredit({ subjectId: 'big-boy-pack', amountKobo: 500_000, paidKobo: 500_000, topupRate: null })).toMatchObject({ ok: true, credit: { virtualAmount: 2_200_000, ratePerNaira: 440 } });
     expect(topupCredit({ subjectId: 'big-boy-pack', amountKobo: 50_000, paidKobo: 50_000, topupRate: null })).toMatchObject({ ok: false });
+    expect(topupCredit({ subjectId: 'free-money', amountKobo: 50_000, paidKobo: 50_000, topupRate: null })).toMatchObject({ ok: false });
+  });
+
+  it('trusts the rate stored at checkout even after packs or tiers change, within sane bounds', () => {
+    // Quoted at 550 per ₦1 on a day the tiers were more generous: today's 440 doesn't strand it.
+    expect(topupCredit({ subjectId: 'custom', amountKobo: 700_000, paidKobo: 700_000, topupRate: 550 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_850_000 } });
+    // A pack that has since been renamed or retired still credits, with a generic label.
+    expect(topupCredit({ subjectId: 'retired-pack', amountKobo: 300_000, paidKobo: 300_000, topupRate: 380 })).toMatchObject({ ok: true, credit: { label: 'Top-up', virtualAmount: 1_140_000 } });
+    for (const rate of [0, -5, 2_001, 1.5]) expect(topupCredit({ subjectId: 'custom', amountKobo: 700_000, paidKobo: 700_000, topupRate: rate }), String(rate)).toMatchObject({ ok: false });
+    expect(topupCredit({ subjectId: 'custom', amountKobo: 700_000, paidKobo: 700_000, topupRate: 2_000 }).ok).toBe(true);
   });
 });
 
@@ -592,12 +927,12 @@ describe('TopupsService checkout', () => {
 
 describe('TopupsService fulfiller', () => {
   const credits: Array<{ characterId: string; pack: TopupDetailsDto; reference: string }> = [];
-  const clawbacks: Array<{ characterId: string; amount: number; reference: string }> = [];
+  const clawbacks: Array<{ characterId: string; amount: number; reference: string; refundId: string }> = [];
   const flags: string[] = [];
   const creditor = {
     credit: async (characterId: string, pack: TopupDetailsDto, reference: string) => void credits.push({ characterId, pack, reference }),
-    clawBack: async (characterId: string, _pack: TopupDetailsDto, amount: number, reference: string) => {
-      clawbacks.push({ characterId, amount, reference });
+    clawBack: async (characterId: string, _pack: TopupDetailsDto, amount: number, reference: string, refundId: string) => {
+      clawbacks.push({ characterId, amount, reference, refundId });
       return { taken: Math.min(amount, 400_000), shortfall: Math.max(0, amount - 400_000) };
     },
   };
@@ -641,10 +976,10 @@ describe('TopupsService fulfiller', () => {
     expect(credits).toEqual([expect.objectContaining({ pack: { packageId: null, label: 'Custom top-up', ratePerNaira: 500, virtualAmount: 10_000_000 } })]);
   });
 
-  it('refuses unknown packages, mismatched prices and rates that were not quoted', async () => {
-    await expect(topups.fulfill(paid({ subjectId: 'free-money' }))).rejects.toMatchObject({ errorCode: 'TOPUP_UNDELIVERABLE' });
-    await expect(topups.fulfill(paid({ amountKobo: 50_000 }))).rejects.toMatchObject({ errorCode: 'TOPUP_UNDELIVERABLE' });
-    await expect(topups.fulfill(paid({ subjectId: 'custom', amountKobo: 100_000, paidKobo: 100_000, topupRate: 500 }))).rejects.toMatchObject({
+  it('refuses rows with no usable rate (unknown legacy pack, mismatched legacy price, insane stored rate)', async () => {
+    await expect(topups.fulfill(paid({ subjectId: 'free-money', topupRate: null }))).rejects.toMatchObject({ errorCode: 'TOPUP_UNDELIVERABLE' });
+    await expect(topups.fulfill(paid({ amountKobo: 50_000, topupRate: null }))).rejects.toMatchObject({ errorCode: 'TOPUP_UNDELIVERABLE' });
+    await expect(topups.fulfill(paid({ subjectId: 'custom', amountKobo: 100_000, paidKobo: 100_000, topupRate: 50_000 }))).rejects.toMatchObject({
       errorCode: 'TOPUP_UNDELIVERABLE',
     });
     expect(credits).toHaveLength(0);
@@ -652,8 +987,15 @@ describe('TopupsService fulfiller', () => {
 
   it('claws back the coins of a delivered top-up refunded from the dashboard, as far as possible, and flags it', async () => {
     await topups.onRefunded(paid(), dashboardRefund());
-    expect(clawbacks).toEqual([{ characterId: 'heir-1', amount: 1_000_000, reference: REF }]);
-    expect(flags).toEqual(['Top-up refunded after delivery: clawed back ₦400,000 of ₦1,000,000 (₦600,000 already spent)']);
+    expect(clawbacks).toEqual([{ characterId: 'heir-1', amount: 1_000_000, reference: REF, refundId: '9' }]);
+    expect(flags).toEqual(['Top-up refunded after delivery (refund 9): clawed back ₦400,000 of ₦1,000,000 (₦600,000 already spent)']);
+  });
+
+  it('flags a refund that failed after the coins were taken back', async () => {
+    await topups.onRefundFailed(paid(), dashboardRefund(), true);
+    expect(flags).toEqual([expect.stringMatching(/Refund 9 failed after the coins were taken back/)]);
+    await topups.onRefundFailed(paid(), dashboardRefund(), false);
+    expect(flags).toHaveLength(1);
   });
 
   it('claws back only the refunded share of a partial refund, and nothing for an undelivered top-up', async () => {
@@ -711,12 +1053,21 @@ describe('TopupCreditor', () => {
     expect(notifications).toEqual(['Payment confirmed ✓']);
   });
 
-  it('claws back from cash then savings, never below zero, once per reference', async () => {
+  it('claws back from cash then savings, never below zero, once per refund', async () => {
     const { creditor, state, notifications } = walletContext(100_000, 150_000);
-    expect(await creditor.clawBack('char-1', pack, 350_000, REF)).toEqual({ taken: 250_000, shortfall: 100_000 });
+    expect(await creditor.clawBack('char-1', pack, 350_000, REF, 'rf-1')).toEqual({ taken: 250_000, shortfall: 100_000 });
     expect([state.cash, state.savings]).toEqual([0, 0]);
     expect(state.purchasedTotal).toBe(750_000);
     expect(notifications).toEqual(['Top-up reversed']);
-    expect(await creditor.clawBack('char-1', pack, 350_000, REF)).toMatchObject({ taken: 0 });
+    expect(await creditor.clawBack('char-1', pack, 350_000, REF, 'rf-1')).toMatchObject({ taken: 0 });
+  });
+
+  it('takes each partial refund’s share: a second refund id claws back again, the same one never twice', async () => {
+    const { creditor, state, appliedKeys } = walletContext(350_000, 0);
+    expect(await creditor.clawBack('char-1', pack, 175_000, REF, 'rf-1')).toMatchObject({ taken: 175_000 });
+    expect(await creditor.clawBack('char-1', pack, 175_000, REF, 'rf-2')).toMatchObject({ taken: 175_000 });
+    expect(await creditor.clawBack('char-1', pack, 175_000, REF, 'rf-2')).toMatchObject({ taken: 0 });
+    expect(state.cash).toBe(0);
+    expect([...appliedKeys]).toEqual([`topup-clawback:${REF}:rf-1`, `topup-clawback:${REF}:rf-2`]);
   });
 });

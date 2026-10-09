@@ -64,15 +64,27 @@ export interface CheckoutRefund {
 export interface CheckoutFulfiller {
   readonly purpose: CheckoutPurpose;
   fulfill(payment: PaidCheckout): Promise<FulfilmentResult>;
-  /** Called once per refund of a payment of this purpose. Must be idempotent (it may be retried after a crash). */
+  /**
+   * A refund of this payment completed (the gateway's final state). Called once per refund id, and again only if
+   * that refund failed and later completed after all. Must be idempotent by refund id (it may be retried after a crash).
+   */
   onRefunded?(payment: PaidCheckout, refund: CheckoutRefund): Promise<void>;
+  /**
+   * A refund we were tracking failed at the gateway. `wasCompleted`: it had been reported completed (and `onRefunded`
+   * ran), so the purpose must undo its settlement (e.g. put the item back under "refunds due") — without taking
+   * anything twice if it completes later after all.
+   */
+  onRefundFailed?(payment: PaidCheckout, refund: CheckoutRefund, wasCompleted: boolean): Promise<void>;
 }
 
 export type RefundOutcome =
+  /** The gateway completed the refund (final). */
   | { readonly kind: 'refunded'; readonly refund: CheckoutRefund }
+  /** The gateway took the refund and is processing it; `onRefunded` follows when it completes (webhook or re-check). */
+  | { readonly kind: 'pending'; readonly refundId: string }
   /** Already refunded earlier (same result as `refunded`, nothing sent now). */
   | { readonly kind: 'already-refunded'; readonly refund: CheckoutRefund }
-  /** Another call is sending this payment's refund right now (its `onRefunded` will follow). */
+  /** Another call is sending this payment's refund right now, or the gateway is still processing it. */
   | { readonly kind: 'in-progress' }
   /** The gateway refused or couldn't be reached: ops refund by hand and mark it (the manual fallback). */
   | { readonly kind: 'failed'; readonly reason: string }
@@ -84,7 +96,9 @@ export interface CheckoutPort {
   registerFulfiller(fulfiller: CheckoutFulfiller): void;
   /**
    * Refund a successful payment in full through the gateway, at most once per payment (idempotent: a second call
-   * reports the first refund). On success the purpose's `onRefunded` has already run when this resolves.
+   * reports the first refund). `refunded`: the gateway completed it and the purpose's `onRefunded` has already run.
+   * `pending`: the gateway is processing it; `onRefunded` runs when it completes (webhook or the reconciler's re-check),
+   * or `onRefundFailed` if it fails.
    */
   refund(reference: string, reason: string): Promise<RefundOutcome>;
 }

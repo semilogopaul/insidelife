@@ -28,7 +28,7 @@ export class ModerationController {
   @Post('campaigns/:id/reject')
   @HttpCode(HttpStatus.OK)
   rejectCampaign(@CurrentUser() admin: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: RejectPromotionDto): Promise<ModerationCampaignDto> {
-    return this.moderation.decideCampaign(admin.userId, id, { action: 'reject', refund: body.refund ?? true }, body.reason.trim());
+    return this.moderation.decideCampaign(admin.userId, id, { action: 'reject', refund: body.refund }, body.reason.trim());
   }
 
   @Post('campaigns/:id/refunded')
@@ -46,7 +46,7 @@ export class ModerationController {
   @Post('club-orders/:id/reject')
   @HttpCode(HttpStatus.OK)
   rejectClubOrder(@CurrentUser() admin: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: RejectPromotionDto): Promise<ModerationClubOrderDto> {
-    return this.moderation.decideClubOrder(admin.userId, id, { action: 'reject', refund: body.refund ?? true }, body.reason.trim());
+    return this.moderation.decideClubOrder(admin.userId, id, { action: 'reject', refund: body.refund }, body.reason.trim());
   }
 
   @Post('club-orders/:id/refunded')
