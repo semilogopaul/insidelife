@@ -118,7 +118,7 @@ export const LIFESTYLES: Readonly<Record<LifestyleTier, LifestyleDefinition>> = 
  * Every new character gets a one-off starter fund — enough for a Naija-used first car (or a keke business, or school
  * fees, or savings). It is unearned money, so it never counts toward the self-made rich list.
  */
-export const STARTER_FUND = 4_000_000;
+export const STARTER_FUND = 3_000_000;
 
 export const BACKGROUND_IDS = ['sapa-pikin', 'working-class', 'ajebota', 'nepo-baby'] as const;
 export type BackgroundId = (typeof BACKGROUND_IDS)[number];

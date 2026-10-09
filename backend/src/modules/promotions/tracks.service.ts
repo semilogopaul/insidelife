@@ -85,7 +85,7 @@ export const trackSubject = (track: Pick<ClubTrackEntity, 'artistName' | 'title'
 });
 
 /**
- * Club DJ: song uploads (validated MP3/OGG under 5 minutes, stored as-is), rotation orders (one product: ₦5,000 for
+ * Club DJ: song uploads (validated MP3/OGG of 3 minutes or less, stored as-is), rotation orders (one product: ₦5,000 for
  * 7 days in every club and lounge) + checkout, payment fulfilment, refunds and the public per-club rotation feed.
  * A track has at most one open order; ordering again replaces an unpaid one.
  */
