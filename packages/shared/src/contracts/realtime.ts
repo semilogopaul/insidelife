@@ -1,4 +1,5 @@
 import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
+import type { NightOutItemId, VenueMomentEffect, VenueMomentKind } from '../catalog/social.js';
 import type { NotificationDto } from './core.js';
 import type { SocialMomentDto } from './family.js';
 import type { MilestoneMomentDto } from './progression.js';
@@ -26,10 +27,13 @@ export interface PresencePlayerDto {
 export const CHAT_CHANNEL_KINDS = ['global', 'venue', 'dm'] as const;
 export type ChatChannelKind = (typeof CHAT_CHANNEL_KINDS)[number];
 
-/** Plain text, a voice note or a photo. Voice notes and photos are DM-only. */
-export const CHAT_MESSAGE_KINDS = ['text', 'voice', 'image'] as const;
+/**
+ * Plain text, a voice note or a photo. Voice notes and photos are DM-only. `system` is a venue-chat line the server
+ * writes for something a player paid for (a DJ shoutout, a bottle sent); `sender` is that player.
+ */
+export const CHAT_MESSAGE_KINDS = ['text', 'voice', 'image', 'system'] as const;
 export type ChatMessageKind = (typeof CHAT_MESSAGE_KINDS)[number];
-export type ChatMediaKind = Exclude<ChatMessageKind, 'text'>;
+export type ChatMediaKind = Extract<ChatMessageKind, 'voice' | 'image'>;
 
 /** Longest voice note (seconds). */
 export const CHAT_VOICE_MAX_SECONDS = 90;
@@ -146,6 +150,38 @@ export interface SprayEventDto {
   readonly amount: number;
 }
 
+export interface VenueMomentPersonDto {
+  readonly characterId: string;
+  readonly handle: string;
+  readonly firstName: string;
+}
+
+/**
+ * A paid moment in a club or bar that everyone in the room sees (`venue:moment`): a bottle sent to someone, a DJ
+ * shoutout, a birthday cake, a confetti cannon, the VIP section reserved… The banner and the 3D effect play from
+ * `startsAt` for `durationMs` (server clock: compare with the synced `gameClock.serverNow()`). Shoutouts queue per
+ * place, so only one is on screen at a time; everything else starts at once.
+ */
+export interface VenueMomentDto {
+  readonly id: string;
+  readonly venueId: string;
+  readonly kind: VenueMomentKind;
+  readonly from: VenueMomentPersonDto;
+  /** Who it's for (bottles, a birthday for someone else); null when it's the buyer's own moment. */
+  readonly to: VenueMomentPersonDto | null;
+  /** "Champagne", "Odogwu shoutout", "Birthday package". */
+  readonly label: string;
+  readonly emoji: string;
+  /** The catalog item (its tier): `champagne`, `shoutout-odogwu`, `vip-section`… */
+  readonly tier: NightOutItemId;
+  readonly effect: VenueMomentEffect;
+  /** A shoutout's message (already cleaned by the server). */
+  readonly message: string | null;
+  readonly durationMs: number;
+  /** Epoch ms on the server clock. */
+  readonly startsAt: number;
+}
+
 /** Events the server emits. */
 export interface ServerToClientEvents {
   'presence:snapshot': (players: readonly PresencePlayerDto[]) => void;
@@ -159,6 +195,8 @@ export interface ServerToClientEvents {
   /** Someone hugged or kissed you (in the same place): show the moment. */
   'social:moment': (payload: SocialMomentDto) => void;
   'party:spray': (spray: SprayEventDto) => void;
+  /** A paid moment in the club or bar you're in (bottle, shoutout, experience): show the banner and the effect. */
+  'venue:moment': (moment: VenueMomentDto) => void;
   'world:online-count': (payload: { readonly count: number }) => void;
   /** Your Lagos instance (who you see on the streets and in Lagos chat): its id and how many are in it. */
   'world:instance': (payload: { readonly id: string; readonly players: number }) => void;

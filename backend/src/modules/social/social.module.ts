@@ -8,9 +8,11 @@ import { LifeEventsRegistry } from '../events/life-events.registry.js';
 import { FamilyModule } from '../family/family.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
+import { RealtimeModule } from '../realtime/realtime.module.js';
 import { SimulationModule } from '../simulation/simulation.module.js';
 import { BlockEntity } from './entities/block.entity.js';
 import { FriendshipEntity } from './entities/friendship.entity.js';
+import { NightMomentEntity } from './entities/night-moment.entity.js';
 import { PartyGuestEntity } from './entities/party-guest.entity.js';
 import { PartyEntity } from './entities/party.entity.js';
 import { ReportEntity } from './entities/report.entity.js';
@@ -23,6 +25,8 @@ import { LeaderboardsController } from './leaderboards.controller.js';
 import { LeaderboardsService } from './leaderboards.service.js';
 import { BlocksController, ReportsController } from './moderation.controller.js';
 import { ModerationService } from './moderation.service.js';
+import { NightOutController } from './night-out.controller.js';
+import { NightOutService } from './night-out.service.js';
 import { PartiesController } from './parties.controller.js';
 import { PartiesService } from './parties.service.js';
 import { PlayerCardsService } from './player-cards.service.js';
@@ -38,15 +42,28 @@ import { VenueSpraysService } from './venue-sprays.service.js';
 
 /**
  * Social domain: friends, blocks & reports, public profiles and search, "who's here", leaderboards and owambe parties
- * with spraying, and spraying in clubs and bars. Other domains should import `SocialGuardModule` (re-exported here) for `SocialGuard`.
+ * with spraying, spraying in clubs and bars, and club nights (bottles for people, DJ shoutouts, paid experiences).
+ * Other domains should import `SocialGuardModule` (re-exported here) for `SocialGuard`.
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([FriendshipEntity, BlockEntity, ReportEntity, SocialProfileEntity, PartyEntity, PartyGuestEntity, SprayEntity, VenueSprayEntity]),
+    TypeOrmModule.forFeature([
+      FriendshipEntity,
+      BlockEntity,
+      ReportEntity,
+      SocialProfileEntity,
+      PartyEntity,
+      PartyGuestEntity,
+      SprayEntity,
+      VenueSprayEntity,
+      NightMomentEntity,
+    ]),
     SimulationModule,
     CharactersModule,
     NotificationsModule,
     PresenceModule,
+    // Venue chat system lines (ChatService).
+    RealtimeModule,
     EventsModule,
     CareersModule,
     EducationModule,
@@ -62,6 +79,7 @@ import { VenueSpraysService } from './venue-sprays.service.js';
     LeaderboardsController,
     PartiesController,
     VenueSpraysController,
+    NightOutController,
   ],
   providers: [
     PlayerCardsService,
@@ -73,6 +91,7 @@ import { VenueSpraysService } from './venue-sprays.service.js';
     LeaderboardsService,
     PartiesService,
     VenueSpraysService,
+    NightOutService,
     SocialSystem,
   ],
   exports: [SocialGuardModule],

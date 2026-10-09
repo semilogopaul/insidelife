@@ -20,7 +20,7 @@ import { CelebrationLayer, isCelebratedNotification } from '@/modules/celebratio
 import { EpitaphGate, EpitaphLayer } from '@/modules/epitaph';
 import { Hud } from '@/modules/hud';
 import { LifeEventsLayer, PendingDecisionsChip } from '@/modules/life-events';
-import { MomentLayer } from '@/modules/moments';
+import { MomentLayer, VenueMomentLayer } from '@/modules/moments';
 import { NotificationBell, NotificationCenter } from '@/modules/notifications';
 import { Phone } from '@/modules/phone';
 import { VenueSheet } from '@/modules/venue';
@@ -104,6 +104,7 @@ export function GameRoot() {
         notices={<VisitCards />}
       />
       <VenueSheet />
+      <VenueMomentLayer />
       <Phone apps={PHONE_APPS} />
       <LifeEventsLayer />
       <NotificationCenter />

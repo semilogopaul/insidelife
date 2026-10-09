@@ -8,7 +8,7 @@ import {
 import type { RuleResult } from './rules/rule-result.js';
 
 const CONFLICT_CODES = new Set(['ALREADY_FRIENDS', 'ALREADY_HOSTING']);
-const FORBIDDEN_CODES = new Set(['FRIEND_UNAVAILABLE', 'PARTY_UNAVAILABLE', 'SPRAY_UNAVAILABLE']);
+const FORBIDDEN_CODES = new Set(['FRIEND_UNAVAILABLE', 'PARTY_UNAVAILABLE', 'SPRAY_UNAVAILABLE', 'NIGHT_OUT_UNAVAILABLE']);
 
 /** Map a failed pure rule to the right domain exception (same code, player-friendly message). */
 export function ruleException(code: string, message: string): DomainException {

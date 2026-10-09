@@ -4,7 +4,7 @@
  * same rules for previews ("this spray needs whole ₦500/₦1,000 notes").
  */
 import { formatNairaCompact } from '../money/money.js';
-import type { VenueType } from './venues.js';
+import type { VenueDefinition, VenueType } from './venues.js';
 
 // ----- Friends -----------------------------------------------------------------------------------------------------
 
@@ -424,4 +424,351 @@ export const SPRAY_VENUE_TYPES = ['club', 'bar', 'event-centre'] as const;
 /** Nights run 06:00 to 06:00: per-night spray totals (and EFCC thresholds) reset in the morning. */
 export function sprayNightIndex(gameMinute: number): number {
   return Math.floor((gameMinute - 6 * 60) / (24 * 60));
+}
+
+// ----- Night out: paid moments in clubs and bars (bottles, DJ shoutouts, experiences) --------------------------------
+
+/** Where the Night out panel works: the same rooms that take sprays (clubs, bars and lounges, event centres). */
+export const NIGHT_OUT_VENUE_TYPES = SPRAY_VENUE_TYPES;
+
+/** Panel sections (and what a 3D hotspot opens: the bar → bottles, the DJ booth → shoutout). */
+export const NIGHT_OUT_SECTIONS = ['bottles', 'shoutout', 'experiences'] as const;
+export type NightOutSection = (typeof NIGHT_OUT_SECTIONS)[number];
+
+/** What happened, for the banner and the system line in venue chat. */
+export const VENUE_MOMENT_KINDS = ['bottle', 'shoutout', 'birthday', 'champagne-shower', 'confetti-cannon', 'vip-section', 'tip'] as const;
+export type VenueMomentKind = (typeof VENUE_MOMENT_KINDS)[number];
+
+/** What the room shows in 3D (the client draws it; reduced motion gets a calm version). */
+export const VENUE_MOMENT_EFFECTS = ['sparkler', 'parade', 'spotlight', 'confetti', 'fireworks', 'cake', 'shower', 'vip-sign', 'glow'] as const;
+export type VenueMomentEffect = (typeof VENUE_MOMENT_EFFECTS)[number];
+
+export const NIGHT_OUT_ITEM_IDS = [
+  'premium-vodka',
+  'champagne',
+  'cognac',
+  'bottle-parade',
+  'shoutout-basic',
+  'shoutout-big',
+  'shoutout-odogwu',
+  'tip-bartender',
+  'tip-dj',
+  'confetti-cannon',
+  'birthday',
+  'champagne-shower',
+  'vip-section',
+] as const;
+export type NightOutItemId = (typeof NIGHT_OUT_ITEM_IDS)[number];
+
+/** `required`: someone else in the room; `optional`: someone in the room or yourself; `none`: just you. */
+export type NightOutTarget = 'required' | 'optional' | 'none';
+
+export interface NightOutItemDefinition {
+  readonly id: NightOutItemId;
+  readonly section: NightOutSection;
+  readonly kind: VenueMomentKind;
+  readonly label: string;
+  readonly emoji: string;
+  readonly blurb: string;
+  /** What everyone in the room sees (one line for the menu). */
+  readonly shows: string;
+  /** Price at a regular club (₦), before the venue's price band and the world price index. */
+  readonly basePrice: number;
+  /** Clout for the buyer (within the nightly cap). */
+  readonly clout: number;
+  /** How long it plays for the room (real ms). The VIP section lasts until closing instead. */
+  readonly durationMs: number;
+  readonly target: NightOutTarget;
+  readonly effect: VenueMomentEffect;
+  /** How many one person can buy at one place per night. */
+  readonly perNight: number;
+  /** Only these venue types (default: every night-out venue). */
+  readonly venueTypes?: readonly VenueType[];
+  /** Mood lift for the person it's for (bottles, birthdays), applied in their own next settle. */
+  readonly recipientMood?: number;
+}
+
+const SECOND = 1_000;
+
+export const NIGHT_OUT_ITEMS: Readonly<Record<NightOutItemId, NightOutItemDefinition>> = {
+  // Bottles (sent to someone in the room). Lagos 2026 club prices: a bottle of vodka is ₦150-250k, champagne ₦300-500k,
+  // a good cognac ₦500k-1M; a parade is half a dozen champagnes, sparklers and the waitresses' little march.
+  'premium-vodka': {
+    id: 'premium-vodka',
+    section: 'bottles',
+    kind: 'bottle',
+    label: 'Premium vodka',
+    emoji: '🍸',
+    blurb: 'Frosted bottle, a bucket of ice and mixers for the table.',
+    shows: 'A sparkler bottle lands on their table',
+    basePrice: 180_000,
+    clout: 2,
+    durationMs: 9 * SECOND,
+    target: 'required',
+    effect: 'sparkler',
+    perNight: 6,
+    recipientMood: 6,
+  },
+  champagne: {
+    id: 'champagne',
+    section: 'bottles',
+    kind: 'bottle',
+    label: 'Champagne',
+    emoji: '🍾',
+    blurb: 'Gold foil, a sparkler on top and the waitress doing a small dance.',
+    shows: 'A sparkler bottle lands on their table',
+    basePrice: 350_000,
+    clout: 3,
+    durationMs: 10 * SECOND,
+    target: 'required',
+    effect: 'sparkler',
+    perNight: 6,
+    recipientMood: 8,
+  },
+  cognac: {
+    id: 'cognac',
+    section: 'bottles',
+    kind: 'bottle',
+    label: 'Aged cognac',
+    emoji: '🥃',
+    blurb: 'The big-man bottle. Served in a glass box with two sparklers.',
+    shows: 'A glowing bottle with two sparklers',
+    basePrice: 650_000,
+    clout: 5,
+    durationMs: 12 * SECOND,
+    target: 'required',
+    effect: 'sparkler',
+    perNight: 4,
+    recipientMood: 10,
+  },
+  'bottle-parade': {
+    id: 'bottle-parade',
+    section: 'bottles',
+    kind: 'bottle',
+    label: 'Bottle parade with sparklers',
+    emoji: '🎆',
+    blurb: 'Six champagnes, sparklers, a flag with their name and the whole club filming.',
+    shows: 'A parade of sparkler bottles crosses the floor',
+    basePrice: 4_500_000,
+    clout: 25,
+    durationMs: 22 * SECOND,
+    target: 'required',
+    effect: 'parade',
+    perNight: 1,
+    venueTypes: ['club', 'event-centre'],
+    recipientMood: 15,
+  },
+
+  // DJ shoutouts: your name in bold on everyone's screen, one at a time per place.
+  'shoutout-basic': {
+    id: 'shoutout-basic',
+    section: 'shoutout',
+    kind: 'shoutout',
+    label: 'Shoutout',
+    emoji: '🎤',
+    blurb: 'The DJ calls your name. Your name and message on every screen in the room.',
+    shows: 'Your name and message on screen for 8 seconds',
+    basePrice: 50_000,
+    clout: 1,
+    durationMs: 8 * SECOND,
+    target: 'none',
+    effect: 'spotlight',
+    perNight: 4,
+  },
+  'shoutout-big': {
+    id: 'shoutout-big',
+    section: 'shoutout',
+    kind: 'shoutout',
+    label: 'Big shoutout',
+    emoji: '🎉',
+    blurb: 'Hype man on the mic, the music drops and confetti rains on the floor.',
+    shows: 'Your name on screen for 15 seconds, with confetti',
+    basePrice: 250_000,
+    clout: 3,
+    durationMs: 15 * SECOND,
+    target: 'none',
+    effect: 'confetti',
+    perNight: 3,
+  },
+  'shoutout-odogwu': {
+    id: 'shoutout-odogwu',
+    section: 'shoutout',
+    kind: 'shoutout',
+    label: 'Odogwu shoutout',
+    emoji: '👑',
+    blurb: 'Lights down, CO2 blast, fireworks and your name on the LED wall. Lagos will hear.',
+    shows: 'Your name on the LED wall for 25 seconds, with CO2 and fireworks',
+    basePrice: 1_000_000,
+    clout: 8,
+    durationMs: 25 * SECOND,
+    target: 'none',
+    effect: 'fireworks',
+    perNight: 2,
+  },
+
+  // Experiences.
+  'tip-bartender': {
+    id: 'tip-bartender',
+    section: 'experiences',
+    kind: 'tip',
+    label: 'Tip the bartender',
+    emoji: '🍹',
+    blurb: 'Your drinks come faster and stronger for the rest of the night.',
+    shows: 'A little cheer at the bar',
+    basePrice: 10_000,
+    clout: 0,
+    durationMs: 5 * SECOND,
+    target: 'none',
+    effect: 'glow',
+    perNight: 5,
+  },
+  'tip-dj': {
+    id: 'tip-dj',
+    section: 'experiences',
+    kind: 'tip',
+    label: 'Tip the DJ',
+    emoji: '🎧',
+    blurb: 'The DJ nods at you. Respect is earned, and sometimes bought.',
+    shows: 'The DJ booth lights up',
+    basePrice: 20_000,
+    clout: 1,
+    durationMs: 6 * SECOND,
+    target: 'none',
+    effect: 'glow',
+    perNight: 5,
+  },
+  'confetti-cannon': {
+    id: 'confetti-cannon',
+    section: 'experiences',
+    kind: 'confetti-cannon',
+    label: 'Confetti cannon',
+    emoji: '🎊',
+    blurb: 'Two cannons by the stage. Boom: the floor turns green and gold.',
+    shows: 'Confetti blasts over the dance floor',
+    basePrice: 300_000,
+    clout: 3,
+    durationMs: 10 * SECOND,
+    target: 'none',
+    effect: 'confetti',
+    perNight: 3,
+  },
+  birthday: {
+    id: 'birthday',
+    section: 'experiences',
+    kind: 'birthday',
+    label: 'Birthday package',
+    emoji: '🎂',
+    blurb: 'Cake with sparklers, the MC on the mic and the whole room singing. For you or someone here.',
+    shows: 'A sparkler cake, the MC’s announcement and a crowd cheer',
+    basePrice: 750_000,
+    clout: 6,
+    durationMs: 20 * SECOND,
+    target: 'optional',
+    effect: 'cake',
+    perNight: 1,
+    recipientMood: 14,
+  },
+  'champagne-shower': {
+    id: 'champagne-shower',
+    section: 'experiences',
+    kind: 'champagne-shower',
+    label: 'Champagne shower',
+    emoji: '🥂',
+    blurb: 'Shake it, pop it, spray the dance floor. Somebody’s outfit is finished.',
+    shows: 'Champagne sprays over the dance floor',
+    basePrice: 1_500_000,
+    clout: 8,
+    durationMs: 14 * SECOND,
+    target: 'none',
+    effect: 'shower',
+    perNight: 2,
+    venueTypes: ['club', 'event-centre'],
+  },
+  'vip-section': {
+    id: 'vip-section',
+    section: 'experiences',
+    kind: 'vip-section',
+    label: 'Reserve the VIP section',
+    emoji: '🛋️',
+    blurb: 'The section is yours until closing, with your name on the sign. One owner per night.',
+    shows: 'Your name on the VIP sign until closing',
+    basePrice: 2_500_000,
+    clout: 12,
+    durationMs: 0,
+    target: 'none',
+    effect: 'vip-sign',
+    perNight: 1,
+  },
+};
+
+export const NIGHT_OUT_RULES = {
+  minAge: 18,
+  /** Paid moments one person can buy per night across Lagos (nights run 06:00-06:00). */
+  maxMomentsPerNight: 24,
+  /** Clout one person can earn from nightlife per night across Lagos. */
+  maxCloutPerNight: 40,
+  /** Bottles one person can send the same person per night. */
+  maxBottlesPerRecipient: 3,
+  shoutoutMaxLength: 60,
+  /** @mentions a shoutout may carry. */
+  shoutoutMaxMentions: 2,
+  /** Shoutouts waiting their turn at one place, and how many of those can be yours. */
+  maxQueuedShoutouts: 8,
+  maxQueuedPerPerson: 1,
+  /** Breathing room between shoutouts, and before the first one (ms). */
+  shoutoutGapMs: 1_500,
+  shoutoutLeadMs: 1_000,
+  /** How long a bottle or birthday lifts the mood of the person it's for (game minutes). */
+  recipientMoodMinutes: 6 * 60,
+  /** How long the VIP announcement banner stays up (the sign stays until closing). */
+  vipBannerMs: 8_000,
+} as const;
+
+/**
+ * Price band of a place: student bars are cheap, the Island's big doors (clout 250+) charge a premium. Applied to the
+ * base price before the world price index.
+ */
+export function nightOutPriceBand(venue: Pick<VenueDefinition, 'type' | 'minStatus'>): number {
+  const gate = venue.minStatus ?? 0;
+  if (venue.type === 'bar') return gate >= 150 ? 0.8 : 0.6;
+  if (venue.type === 'club') return gate >= 250 ? 1.3 : 1;
+  return 1;
+}
+
+/** Catalog price at this place, before the world price index (rounded to ₦1,000). */
+export function nightOutBasePrice(item: Pick<NightOutItemDefinition, 'basePrice'>, venue: Pick<VenueDefinition, 'type' | 'minStatus'>): number {
+  return Math.max(1_000, Math.round((item.basePrice * nightOutPriceBand(venue)) / 1_000) * 1_000);
+}
+
+/** Whether this item is sold at this kind of place. */
+export function nightOutSoldAt(item: Pick<NightOutItemDefinition, 'venueTypes'>, venueType: VenueType): boolean {
+  if (!(NIGHT_OUT_VENUE_TYPES as readonly string[]).includes(venueType)) return false;
+  return !item.venueTypes || item.venueTypes.includes(venueType);
+}
+
+/** Clout the next purchase earns, given what nightlife already earned tonight (capped per night). */
+export function nightOutClout(item: Pick<NightOutItemDefinition, 'clout'>, cloutTonight: number): number {
+  return Math.max(0, Math.min(item.clout, NIGHT_OUT_RULES.maxCloutPerNight - Math.max(0, cloutTonight)));
+}
+
+/** When the next shoutout can go on screen: after the last one queued here ends (plus a gap), never in the past. */
+export function nextShoutoutSlot(queueEndsAt: number | null, nowMs: number): number {
+  const earliest = nowMs + NIGHT_OUT_RULES.shoutoutLeadMs;
+  return queueEndsAt === null ? earliest : Math.max(earliest, queueEndsAt + NIGHT_OUT_RULES.shoutoutGapMs);
+}
+
+/**
+ * Game minute when tonight ends at this place: its closing time, never past 06:00 (when nights roll over). Places
+ * without opening hours (event centres) run until 06:00. "The VIP section is yours until closing."
+ */
+export function nightOutEndsAt(venue: Pick<VenueDefinition, 'hours'>, t: number): number {
+  const day = 24 * 60;
+  const nightEnd = (sprayNightIndex(t) + 1) * day + 6 * 60;
+  if (!venue.hours) return nightEnd;
+  const [open, close] = venue.hours;
+  const midnight = Math.floor(t / day) * day;
+  let start = midnight + open * 60;
+  // In the small hours of a late-night window, tonight's session opened yesterday.
+  if (close > 24 && t - midnight < (close - 24) * 60) start -= day;
+  return Math.min(start + (close - open) * 60, nightEnd);
 }
