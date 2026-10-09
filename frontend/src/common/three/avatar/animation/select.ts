@@ -32,7 +32,7 @@ export function animationForSegment(segment: TimelineSegmentDto | undefined, loo
 }
 
 /** Animations that read best sitting down when a seat is available. */
-export const SEATED_ANIMATIONS: ReadonlySet<AvatarAnimation> = new Set<AvatarAnimation>(['sit', 'eat', 'read', 'type', 'drive']);
+export const SEATED_ANIMATIONS: ReadonlySet<AvatarAnimation> = new Set<AvatarAnimation>(['sit', 'eat', 'drink', 'read', 'type', 'drive']);
 
 /** Stance for an animation given whether the spot has a seat. */
 export function stanceFor(animation: AvatarAnimation, seated: boolean): AvatarStance {

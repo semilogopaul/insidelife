@@ -10,7 +10,7 @@ import type { SkinWeights } from '../geometry/part-builder';
  * mirrored).
  */
 
-export const AVATAR_PROPS = ['phone', 'book', 'bowl', 'spoon', 'ladle', 'laptop', 'wheel', 'dumbbell'] as const;
+export const AVATAR_PROPS = ['phone', 'book', 'bowl', 'spoon', 'ladle', 'laptop', 'wheel', 'dumbbell', 'cup'] as const;
 export type AvatarProp = (typeof AVATAR_PROPS)[number];
 
 export const BONE_NAMES = [
@@ -40,6 +40,7 @@ export const BONE_NAMES = [
   'propLaptop',
   'propWheel',
   'propDumbbell',
+  'propCup',
 ] as const;
 export type BoneName = (typeof BONE_NAMES)[number];
 
@@ -73,6 +74,7 @@ export const BONE_PARENT: Readonly<Record<BoneName, BoneName | null>> = {
   propLaptop: 'hips',
   propWheel: 'root',
   propDumbbell: 'handR',
+  propCup: 'handR',
 };
 
 export const PROP_BONE: Readonly<Record<AvatarProp, BoneName>> = {
@@ -84,6 +86,7 @@ export const PROP_BONE: Readonly<Record<AvatarProp, BoneName>> = {
   laptop: 'propLaptop',
   wheel: 'propWheel',
   dumbbell: 'propDumbbell',
+  cup: 'propCup',
 };
 
 /** Where props sit relative to their parent bone in bind pose (metres). */
@@ -96,6 +99,7 @@ export const PROP_OFFSET: Readonly<Record<AvatarProp, readonly [number, number, 
   laptop: [0, 0.02, 0.2],
   wheel: [0, 0.62, 0.3],
   dumbbell: [0, -0.05, 0],
+  cup: [0, -0.06, 0.03],
 };
 
 export type Vec3 = readonly [number, number, number];
@@ -232,6 +236,7 @@ export function computeRig(appearance: Appearance, gender: Gender = 'male'): Rig
     propLaptop: [0, 0, 0],
     propWheel: [0, 0, 0],
     propDumbbell: [0, 0, 0],
+    propCup: [0, 0, 0],
   };
   for (const prop of Object.keys(PROP_BONE) as AvatarProp[]) {
     const bone = PROP_BONE[prop];

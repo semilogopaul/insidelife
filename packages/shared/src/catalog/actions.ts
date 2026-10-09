@@ -17,6 +17,7 @@ export const AVATAR_ANIMATIONS = [
   'sleep',
   'sit',
   'eat',
+  'drink',
   'cook',
   'shower',
   'phone',
@@ -419,7 +420,7 @@ export const ACTIONS = [
     cost: 18_000,
     drift: { fun: fill(20, 90), social: fill(26, 96), energy: drain(6, 25) },
     hooks: ['meet-people'],
-    animation: 'talk',
+    animation: 'drink',
     blurb: 'Chapman, suya and loud opinions.',
   },
   {

@@ -615,6 +615,28 @@ const kiss: ClipDefinition = {
   },
 };
 
+/** A glass in the right hand: held at the chest, lifted for a sip every few seconds, the other hand easy. */
+const drink: ClipDefinition = {
+  kind: 'upper',
+  stance: 'sit',
+  apply: (pose, { t, variety, props }) => {
+    const period = 4.2;
+    const p = ((t + variety * 3) % period) / period;
+    const sip = ease(clamp01((p - 0.25) / 0.2)) * (1 - ease(clamp01((p - 0.62) / 0.2)));
+    pose.set('upperArmR', -0.38 - 0.5 * sip, 0, -0.3 + 0.12 * sip);
+    pose.set('foreArmR', -1.15 - 1.0 * sip, 0, -0.1);
+    pose.set('handR', 0.15 - 0.6 * sip, 0, 0);
+    pose.set('upperArmL', -0.2, 0, 0.18);
+    pose.set('foreArmL', -0.7);
+    pose.set('chest', 0.04);
+    pose.set('head', 0.06 - 0.22 * sip, 0.05 * Math.sin(t * 0.5), 0);
+    pose.eyes = sip > 0.7 ? 1 : 0;
+    pose.mouth = 0;
+    pose.expression = 'happy';
+    if (props) pose.prop('cup');
+  },
+};
+
 export const CLIPS: Readonly<Record<AvatarClip, ClipDefinition>> = {
   idle,
   walk,
@@ -638,11 +660,13 @@ export const CLIPS: Readonly<Record<AvatarClip, ClipDefinition>> = {
   hang,
   hug,
   kiss,
+  drink,
 };
 
 /** Props each clip shows (for docs/tests; clips set them on the pose themselves). */
 export const CLIP_PROPS: Readonly<Partial<Record<AvatarClip, readonly AvatarProp[]>>> = {
   eat: ['bowl', 'spoon'],
+  drink: ['cup'],
   cook: ['ladle'],
   phone: ['phone'],
   read: ['book'],

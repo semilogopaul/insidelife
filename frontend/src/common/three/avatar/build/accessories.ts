@@ -558,6 +558,26 @@ export function buildProps(ctx: BuildContext): void {
     ctx.add(tube([new Vector3(l.x, l.y + 0.03, l.z), new Vector3(l.x, l.y - 0.2, l.z + 0.03)], { radius: 0.007, radial: 5 }), ctx.solid('#8a5a35', SURFACE.cloth, bone('ladle')));
     ctx.add(superellipsoid({ w: 0.06, h: 0.03, d: 0.06, round: 0.9, segU: 8, segV: 6 }), ctx.solid('#8a5a35', SURFACE.cloth, bone('ladle')), xf([l.x, l.y - 0.215, l.z + 0.035]));
   }
+  // A glass of something cold (chapman, malt, a cocktail): upright in the fist, drink and ice showing at the top.
+  {
+    const p = at('cup');
+    const glass = loft(
+      [
+        { y: -0.055, w: 0.055, d: 0.055 },
+        { y: 0.05, w: 0.066, d: 0.066 },
+      ],
+      { segments: 14, exponent: 2, capStart: true },
+    );
+    ctx.add(glass, ctx.solid('#dfe9ee', SURFACE.gloss, bone('cup')), xf([p.x, p.y + 0.04, p.z]));
+    const drink = loft(
+      [
+        { y: -0.05, w: 0.05, d: 0.05 },
+        { y: 0.035, w: 0.059, d: 0.059 },
+      ],
+      { segments: 14, exponent: 2, capStart: true, capEnd: true },
+    );
+    ctx.add(drink, ctx.solid('#c8452e', SURFACE.gloss, bone('cup')), xf([p.x, p.y + 0.04, p.z]));
+  }
   // Laptop on the lap (relative to hips).
   {
     const p = at('laptop');
