@@ -19,31 +19,22 @@ describe('transfer fees (Nigerian interbank schedule)', () => {
   });
 
   it('quotes the total debit as amount + fee + stamp duty', () => {
-    const check = checkTransfer({ amount: 20_000, cash: RICH, sentToday: 0, dailyLimit: 200_000 });
+    const check = checkTransfer({ amount: 20_000, cash: RICH });
     expect(check).toEqual({ ok: true, quote: { amount: 20_000, fee: 10, stampDuty: 50, total: 60, totalDebit: 20_060 } });
   });
 });
 
 describe('transfer limits', () => {
   it('rejects amounts outside ₦100 – ₦5m and non-integers', () => {
-    expect(checkTransfer({ amount: 99, cash: RICH, sentToday: 0, dailyLimit: 5_000_000 })).toMatchObject({ ok: false, code: 'TRANSFER_TOO_SMALL' });
-    expect(checkTransfer({ amount: 5_000_001, cash: RICH, sentToday: 0, dailyLimit: 50_000_000 })).toMatchObject({ ok: false, code: 'TRANSFER_TOO_LARGE' });
-    expect(checkTransfer({ amount: 100.5, cash: RICH, sentToday: 0, dailyLimit: 5_000_000 })).toMatchObject({ ok: false, code: 'INVALID_AMOUNT' });
-    expect(checkTransfer({ amount: -500, cash: RICH, sentToday: 0, dailyLimit: 5_000_000 })).toMatchObject({ ok: false, code: 'INVALID_AMOUNT' });
-  });
-
-  it('counts charges toward the daily limit (Tier 1 = ₦30k)', () => {
-    const limit = dailyTransferLimit(1);
-    // ₦29,940 + ₦10 fee + ₦50 duty = exactly ₦30,000.
-    expect(checkTransfer({ amount: 29_940, cash: RICH, sentToday: 0, dailyLimit: limit }).ok).toBe(true);
-    expect(checkTransfer({ amount: 29_941, cash: RICH, sentToday: 0, dailyLimit: limit })).toMatchObject({ ok: false, code: 'DAILY_LIMIT_EXCEEDED' });
-    expect(checkTransfer({ amount: 4_000, cash: RICH, sentToday: 26_000, dailyLimit: limit }).ok).toBe(true);
-    expect(checkTransfer({ amount: 4_001, cash: RICH, sentToday: 26_000, dailyLimit: limit })).toMatchObject({ ok: false, code: 'DAILY_LIMIT_EXCEEDED' });
+    expect(checkTransfer({ amount: 99, cash: RICH })).toMatchObject({ ok: false, code: 'TRANSFER_TOO_SMALL' });
+    expect(checkTransfer({ amount: 5_000_001, cash: RICH })).toMatchObject({ ok: false, code: 'TRANSFER_TOO_LARGE' });
+    expect(checkTransfer({ amount: 100.5, cash: RICH })).toMatchObject({ ok: false, code: 'INVALID_AMOUNT' });
+    expect(checkTransfer({ amount: -500, cash: RICH })).toMatchObject({ ok: false, code: 'INVALID_AMOUNT' });
   });
 
   it('requires the sender to afford amount plus charges', () => {
-    expect(checkTransfer({ amount: 10_000, cash: 10_059, sentToday: 0, dailyLimit: 200_000 })).toMatchObject({ ok: false, code: 'INSUFFICIENT_FUNDS' });
-    expect(checkTransfer({ amount: 10_000, cash: 10_060, sentToday: 0, dailyLimit: 200_000 }).ok).toBe(true);
+    expect(checkTransfer({ amount: 10_000, cash: 10_059 })).toMatchObject({ ok: false, code: 'INSUFFICIENT_FUNDS' });
+    expect(checkTransfer({ amount: 10_000, cash: 10_060 }).ok).toBe(true);
   });
 
   it('tiers by character age in game days and verified email', () => {
@@ -52,7 +43,7 @@ describe('transfer limits', () => {
     expect(transferTierFor(7, false)).toBe(2);
     expect(transferTierFor(45, false)).toBe(2);
     expect(transferTierFor(30, true)).toBe(3);
-    expect([1, 2, 3].map((tier) => dailyTransferLimit(tier as 1 | 2 | 3))).toEqual([30_000, 200_000, 5_000_000]);
+    expect([1, 2, 3].map((tier) => dailyTransferLimit(tier as 1 | 2 | 3))).toEqual([4_000_000, 10_000_000, null]);
   });
 
   it('measures character age in whole game days since creation', () => {

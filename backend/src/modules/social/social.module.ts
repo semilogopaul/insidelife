@@ -9,6 +9,7 @@ import { FamilyModule } from '../family/family.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { SimulationModule } from '../simulation/simulation.module.js';
+import { PeerMoneyModule } from '../wallet/peer-money.module.js';
 import { BlockEntity } from './entities/block.entity.js';
 import { FriendshipEntity } from './entities/friendship.entity.js';
 import { PartyGuestEntity } from './entities/party-guest.entity.js';
@@ -52,6 +53,7 @@ import { VenueSpraysService } from './venue-sprays.service.js';
     EducationModule,
     FamilyModule,
     SocialGuardModule,
+    PeerMoneyModule,
   ],
   controllers: [
     FriendsController,

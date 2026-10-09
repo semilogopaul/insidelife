@@ -6,7 +6,7 @@ import { LedgerTransactionEntity } from '../ledger/entities/ledger-transaction.e
 import { LedgerService } from '../ledger/ledger.service.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
-import { TransferLimitsService } from './transfer-limits.service.js';
+import { PeerMoneyGuard } from './peer-money.guard.js';
 
 /** The Bank app: balances, limits, statement and cash ↔ savings moves. */
 @Injectable()
@@ -14,11 +14,11 @@ export class WalletService {
   constructor(
     private readonly session: CharacterSession,
     private readonly ledger: LedgerService,
-    private readonly limits: TransferLimitsService,
+    private readonly peerMoney: PeerMoneyGuard,
   ) {}
 
   async wallet(ctx: SimulationContext): Promise<WalletDto> {
-    const [balances, limits] = await Promise.all([this.ledger.balances(ctx.manager, ctx.character.id), this.limits.limitsFor(ctx)]);
+    const [balances, limits] = await Promise.all([this.ledger.balances(ctx.manager, ctx.character.id), this.peerMoney.limitsFor(ctx)]);
     return {
       balance: balances.cash,
       savings: balances.savings,
@@ -27,6 +27,9 @@ export class WalletService {
       transferTier: limits.tier,
       dailyLimit: limits.dailyLimit,
       sentToday: limits.sentToday,
+      sendable: limits.sendable,
+      receivedToday: limits.receivedToday,
+      receiveLimit: limits.receiveLimit,
       earnedTotal: ctx.character.earnedTotal,
       purchasedTotal: ctx.character.purchasedTotal,
     };

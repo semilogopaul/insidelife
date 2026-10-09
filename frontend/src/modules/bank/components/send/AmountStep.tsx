@@ -28,7 +28,7 @@ export interface AmountStepProps {
 
 /** Amount with live fee, stamp duty and daily-limit preview; the problem (if any) is said in plain words. */
 export function AmountStep({ recipient, wallet, amount, onAmount, onChangeRecipient, onContinue, onTopUp }: AmountStepProps) {
-  const limits = { cash: wallet.balance, dailyLimit: wallet.dailyLimit, sentToday: wallet.sentToday };
+  const limits = { cash: wallet.balance, dailyLimit: wallet.dailyLimit, sentToday: wallet.sentToday, sendable: wallet.sendable };
   const preview = previewTransfer(amount, limits);
   const max = maxSendable(limits);
   const problem = preview.problem;
@@ -37,7 +37,9 @@ export function AmountStep({ recipient, wallet, amount, onAmount, onChangeRecipi
       ? problem.message
       : max > 0
         ? `You can send up to ${formatNaira(max)} right now.`
-        : 'Nothing left to send today: no cash or no limit left.';
+        : wallet.sendable === 0
+          ? 'Your starting money is for spending in Lagos — earn or top up to send money to players.'
+          : 'Nothing left to send today: no cash or no limit left.';
 
   return (
     <div className="flex flex-col gap-3">

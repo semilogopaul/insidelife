@@ -21,6 +21,7 @@ import { CharacterEntity } from '../characters/entities/character.entity.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
+import { PeerMoneyGuard } from '../wallet/peer-money.guard.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { VenueSprayEntity } from './entities/venue-spray.entity.js';
 import { EFCC_LINES } from './parties.service.js';
@@ -48,6 +49,7 @@ export class VenueSpraysService {
     private readonly cards: PlayerCardsService,
     private readonly guard: SocialGuard,
     private readonly notifier: SocialNotifier,
+    private readonly peerMoney: PeerMoneyGuard,
   ) {}
 
   async spray(ctx: SimulationContext, venueId: string, request: VenueSprayRequest): Promise<VenueSprayResultDto> {
@@ -84,6 +86,8 @@ export class VenueSpraysService {
     let transactionId: string | null = null;
     let cash = ctx.wallet.cash - amount;
     if (recipient) {
+      // Sprays are player-to-player money: tier limit, starting money and the recipient's daily cap apply.
+      await this.peerMoney.authorize(ctx, { id: recipient.id, handle: recipient.handle }, amount);
       // Same lock order and unearned bookkeeping as owambe spraying.
       await ctx.manager.query(`UPDATE characters SET unearned_total = unearned_total + $1, net_worth = net_worth + $1 WHERE id = $2`, [amount, recipient.id]);
       const recipientAccounts = await this.ledger.characterAccounts(ctx.manager, recipient.id);
