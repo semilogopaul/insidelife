@@ -114,20 +114,6 @@ export const ACTIONS = [
     system: true,
   },
   {
-    id: 'home-meal',
-    label: 'Eat at home',
-    verb: 'Eating at home',
-    emoji: '🍛',
-    category: 'food',
-    where: { home: true },
-    durations: [30],
-    cost: 0,
-    drift: { hunger: fill(130) },
-    animation: 'eat',
-    blurb: 'Routine meal covered by your lifestyle budget. Happens automatically at mealtimes when you’re home.',
-    system: true,
-  },
-  {
     id: 'write-exam',
     label: 'Write exam',
     verb: 'Writing an exam',
@@ -211,6 +197,19 @@ export const ACTIONS = [
     blurb: 'Quick recharge.',
   },
   // --- Food ---------------------------------------------------------------------------------------------------
+  {
+    id: 'home-meal',
+    label: 'Eat at home',
+    verb: 'Eating at home',
+    emoji: '🍛',
+    category: 'food',
+    where: { home: true },
+    durations: [30],
+    cost: 0,
+    drift: { hunger: fill(130) },
+    animation: 'eat',
+    blurb: 'A plate from the family pot, covered by your lifestyle budget. The autopilot eats for you while you’re away.',
+  },
   {
     id: 'cook',
     label: 'Cook a pot of stew',
@@ -790,16 +789,23 @@ export function isInterruptibleAction(actionId: string | null | undefined): bool
 }
 
 /**
- * Who started an activity, stored in its `targetId` when the autopilot did: `autopilot` for routine sleep and meals,
- * `habit` for a daily-habit session. Both give way to anything the player does.
+ * Who started an activity, stored in its `targetId` when the game did: `autopilot` for routine sleep and meals,
+ * `habit` for a daily-habit session (both give way to anything the player does), `collapse` for the sleep the body
+ * forces after ten days without a real night's sleep (it can't be cut short).
  */
 export const AUTOPILOT_TARGET = 'autopilot';
 export const HABIT_TARGET = 'habit';
+export const COLLAPSE_TARGET = 'collapse';
 
 /** Whether a running activity may be replaced by a player command (move, start an action, write an exam…). */
 export function isInterruptibleActivity(activity: { readonly actionId: string; readonly targetId?: string } | null | undefined): boolean {
   if (!activity) return true;
   return isInterruptibleAction(activity.actionId) || activity.targetId === AUTOPILOT_TARGET || activity.targetId === HABIT_TARGET;
+}
+
+/** Started by the game rather than the player (routine sleep and meals, a collapse): never counts as a choice. */
+export function isAutopilotActivity(activity: { readonly targetId?: string } | null | undefined): boolean {
+  return activity?.targetId === AUTOPILOT_TARGET || activity?.targetId === COLLAPSE_TARGET;
 }
 
 const ACTION_INDEX: ReadonlyMap<string, ActionDefinition> = new Map(ACTIONS.map((action) => [action.id, action]));

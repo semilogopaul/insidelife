@@ -260,6 +260,26 @@ export interface CharacterSnapshotDto {
   readonly openWorld: OpenWorldPoseDto | null;
 }
 
+/**
+ * Whether the player is at the controls. The client reports `playing` while the tab is visible and the player is
+ * touching it, and `away` when they leave; the autopilot only runs the character's routine while they're away.
+ */
+export const PLAY_STATES = ['playing', 'away'] as const;
+export type PlayState = (typeof PLAY_STATES)[number];
+
+/** `PUT /v1/characters/me/play-state` */
+export interface PlayStateRequestDto {
+  readonly state: PlayState;
+}
+
+export interface PlayStateDto {
+  readonly state: PlayState;
+  /** The player was away until this report (the snapshot's timeline was planned for the autopilot: refetch it). */
+  readonly resumed: boolean;
+  /** Game minute the autopilot takes over again unless the player reports in before then. */
+  readonly presentUntil: GameMinute;
+}
+
 /** Epitaph for the player's most recently deceased character. */
 export interface LastLifeDto {
   readonly characterId: string;

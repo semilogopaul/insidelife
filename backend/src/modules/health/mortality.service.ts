@@ -17,7 +17,7 @@ import type { HealthConditionEntity } from './entities/health-condition.entity.j
 import type { HealthProfileEntity } from './entities/health-profile.entity.js';
 import { MIN_WARNINGS_SEEN, OFFLINE_NATURAL_DEATH_MIN_AGE } from './health.constants.js';
 import { MedicalHistoryService } from './medical-history.service.js';
-import { isPlayerPresent, isPlayerRecentlyActive } from './player-presence.js';
+import { isPlayerPresent, isPlayerRecentlyActive } from '../simulation/player-presence.js';
 
 /** A need below this at day end counts toward deprivation damage ("needs in the red for long"). */
 const LOW_NEED_THRESHOLD = 15;
