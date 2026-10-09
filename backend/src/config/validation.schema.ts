@@ -8,6 +8,26 @@ export const validationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   PORT: Joi.number().port().default(4000),
   CORS_ORIGINS: Joi.string().required(),
+  /**
+   * Origins of the separate admin portal (comma-separated, e.g. `https://admin.insidelife.online`). Empty = no admin
+   * portal can call the API from a browser. https only on the live site.
+   */
+  ADMIN_ORIGINS: Joi.string()
+    .allow('')
+    .default('')
+    .custom((value: string, helpers) => {
+      const bad = value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+        .find((origin) => !isOrigin(origin));
+      return bad ? helpers.message({ custom: `ADMIN_ORIGINS: "${bad}" is not an origin like https://admin.insidelife.online` }) : value;
+    }),
+  /**
+   * Optional hardening: serve the admin API only on this host (e.g. `admin-api.insidelife.online`, proxied to the same
+   * backend). Empty = the admin API answers on every host the API does.
+   */
+  ADMIN_API_HOST: Joi.string().hostname().allow('').default(''),
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
   /** Reverse proxies in front of the API: 1 behind nginx, 2 with an edge (Caddy) in front of nginx. */
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),
@@ -55,6 +75,13 @@ export const validationSchema = Joi.object({
   PHONE_APP_AD_SLOTS: Joi.number().integer().min(0).max(20).default(10),
   /** Comma-separated emails that get the admin role (moderation of ads and music). */
   ADMIN_EMAILS: Joi.string().allow('').default(''),
+  /** Encrypts admins' authenticator (TOTP) secrets at rest. Required on the live site; never change it afterwards. */
+  ADMIN_MFA_KEY: Joi.string().min(32).max(256).optional(),
+  ADMIN_ACCESS_TTL_SECONDS: Joi.number().integer().min(60).max(3600).default(600),
+  ADMIN_SESSION_MAX_HOURS: Joi.number().integer().min(1).max(72).default(12),
+  ADMIN_SESSION_IDLE_MINUTES: Joi.number().integer().min(5).max(1440).default(120),
+  /** Days a deleted account can still be restored before it is anonymised. */
+  ACCOUNT_RESTORE_DAYS: Joi.number().integer().min(1).max(365).default(30),
 
   /** Allow the fake checkout when no Paystack key is set. Never enable on a public deployment. */
   ALLOW_PAYMENT_SANDBOX: Joi.boolean().default(false),
@@ -83,6 +110,8 @@ interface EnvForChecks {
   readonly PAYSTACK_CALLBACK_URL: string;
   readonly JWT_ACCESS_SECRET: string;
   readonly CORS_ORIGINS: string;
+  readonly ADMIN_ORIGINS?: string;
+  readonly ADMIN_MFA_KEY?: string;
   readonly ALLOW_PAYMENT_SANDBOX: boolean;
   readonly COOKIE_SECURE: boolean;
   readonly MARKET_SEED?: string;
@@ -98,6 +127,16 @@ const PLACEHOLDER = /change-?me|local-docker|insidelife-storage-secret|^(.)\1+$|
 
 /** Local mail catchers (Mailpit in the docker stack): fine on your machine, useless for real players. */
 const MAIL_CATCHER = /mailpit|mailhog|localhost|127\.0\.0\.1/i;
+
+/** `scheme://host[:port]` with nothing after it: what browsers send in the Origin header. */
+function isOrigin(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return (url.protocol === 'https:' || url.protocol === 'http:') && url.origin === value.replace(/\/+$/, '');
+  } catch {
+    return false;
+  }
+}
 
 /** Why this environment must not boot (null = fine). Exported for tests. */
 export function productionProblem(value: EnvForChecks): string | null {
@@ -120,6 +159,9 @@ export function productionProblem(value: EnvForChecks): string | null {
     if (!value.MARKET_SEED || PLACEHOLDER.test(value.MARKET_SEED)) return 'MARKET_SEED must be set to a private random value on the live site';
     if (PLACEHOLDER.test(value.S3_SECRET_KEY)) return 'S3_SECRET_KEY must be changed on the live site';
     if (value.CORS_ORIGINS.split(',').some((origin) => !origin.trim().startsWith('https://'))) return 'CORS_ORIGINS must be https:// origins on the live site';
+    const adminOrigins = (value.ADMIN_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean);
+    if (adminOrigins.some((origin) => !origin.startsWith('https://'))) return 'ADMIN_ORIGINS must be https:// origins on the live site';
+    if (!value.ADMIN_MFA_KEY || value.ADMIN_MFA_KEY.length < 32 || PLACEHOLDER.test(value.ADMIN_MFA_KEY)) return 'ADMIN_MFA_KEY must be a long random secret (32+ characters) on the live site';
     if (!value.PAYSTACK_CALLBACK_URL.startsWith('https://')) return 'PAYSTACK_CALLBACK_URL must be https:// on the live site';
     if (smtp && MAIL_CATCHER.test(smtp)) return 'SMTP_URL must be a real mail server on the live site (not a local mail catcher)';
   }

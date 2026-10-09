@@ -28,22 +28,26 @@ export class PlayerCardsService {
     private readonly presence: PresenceService,
   ) {}
 
-  async cards(ids: readonly string[], manager: EntityManager = this.dataSource.manager): Promise<Map<string, PlayerCardDto>> {
+  /**
+   * Cards for these characters. `visibleOnly` leaves out characters hidden because their account was deleted (lists a
+   * player looks at: friends, requests, mutual friends); history (a party's past sprays) keeps them.
+   */
+  async cards(ids: readonly string[], manager: EntityManager = this.dataSource.manager, options: { readonly visibleOnly?: boolean } = {}): Promise<Map<string, PlayerCardDto>> {
     const unique = [...new Set(ids)];
     if (unique.length === 0) return new Map();
     const rows: CardRow[] = await manager.query(
       `SELECT ${CARD_COLUMNS}
          FROM characters c
     LEFT JOIN social_profiles p ON p.character_id = c.id
-        WHERE c.id = ANY($1::uuid[])`,
+        WHERE c.id = ANY($1::uuid[])${options.visibleOnly ? ' AND c.hidden_at IS NULL' : ''}`,
       [unique],
     );
     const online = await this.onlineSet(rows.map((row) => row.id));
     return new Map(rows.map((row) => [row.id, this.toCard(row, online.has(row.id))]));
   }
 
-  async card(id: string, manager?: EntityManager): Promise<PlayerCardDto | null> {
-    return (await this.cards([id], manager)).get(id) ?? null;
+  async card(id: string, manager?: EntityManager, options: { readonly visibleOnly?: boolean } = {}): Promise<PlayerCardDto | null> {
+    return (await this.cards([id], manager, options)).get(id) ?? null;
   }
 
   toCard(row: CardRow, online: boolean): PlayerCardDto {

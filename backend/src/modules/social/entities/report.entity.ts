@@ -41,4 +41,15 @@ export class ReportEntity {
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
+
+  /** When a moderator closed it (actioned or dismissed). */
+  @Column({ type: 'timestamptz', nullable: true })
+  resolvedAt: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  resolvedBy: string | null;
+
+  /** Moderator's note (admins only). */
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  resolutionNote: string | null;
 }

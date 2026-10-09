@@ -13,7 +13,7 @@ import { ConfirmEmailDto, LoginDto, RegisterDto } from './dto/credentials.dto.js
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 
 export const REFRESH_COOKIE = 'il_rt';
-const REFRESH_COOKIE_PATH = '/api/v1/auth';
+export const REFRESH_COOKIE_PATH = '/api/v1/auth';
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {

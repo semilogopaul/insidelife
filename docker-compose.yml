@@ -89,6 +89,8 @@ services:
       S3_PRIVATE_BUCKET: insidelife-private
       S3_PUBLIC_BASE_URL: /media
       ADMIN_EMAILS: ${ADMIN_EMAILS:-oluwasemilogo@insidelife.online}
+      # The admin portal (separate repo) in dev: `npm run dev` there serves http://localhost:5174.
+      ADMIN_ORIGINS: ${ADMIN_ORIGINS:-http://localhost:5174}
     depends_on:
       postgres:
         condition: service_healthy

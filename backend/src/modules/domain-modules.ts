@@ -1,4 +1,7 @@
 import type { Type } from '@nestjs/common';
+import { AccountsModule } from './accounts/accounts.module.js';
+import { AdminModule } from './admin/admin.module.js';
+import { AuditModule } from './audit/audit.module.js';
 import { BusinessesModule } from './businesses/businesses.module.js';
 import { CareersModule } from './careers/careers.module.js';
 import { EducationModule } from './education/education.module.js';
@@ -18,9 +21,11 @@ import { WalletModule } from './wallet/wallet.module.js';
 
 /**
  * Gameplay domain modules. Each registers its simulation system (and life-event cards) on startup.
- * Listed here so domain work never has to touch app.module.ts.
+ * Listed here so domain work never has to touch app.module.ts. Also the account lifecycle, the audit log (global) and
+ * the admin API, which sits on top of everything else.
  */
 export const DOMAIN_MODULES: Type[] = [
+  AuditModule,
   EventsModule,
   EducationModule,
   CareersModule,
@@ -37,4 +42,6 @@ export const DOMAIN_MODULES: Type[] = [
   VisitsModule,
   PromotionsModule,
   ProgressionModule,
+  AccountsModule,
+  AdminModule,
 ];

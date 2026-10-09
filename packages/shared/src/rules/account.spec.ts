@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ageOn,
   birthDateProblem,
+  isAccountDeletionPhrase,
   isEmailCode,
   MIN_PLAYER_AGE,
   parseCalendarDate,
@@ -54,5 +55,14 @@ describe('verification code format', () => {
     expect(isEmailCode('12345')).toBe(false);
     expect(isEmailCode('1234567')).toBe(false);
     expect(isEmailCode('12a456')).toBe(false);
+  });
+});
+
+describe('isAccountDeletionPhrase', () => {
+  it('accepts the phrase in any case with stray spaces, and nothing else', () => {
+    expect(isAccountDeletionPhrase('DELETE MY ACCOUNT')).toBe(true);
+    expect(isAccountDeletionPhrase('  delete  my account ')).toBe(true);
+    expect(isAccountDeletionPhrase('delete account')).toBe(false);
+    expect(isAccountDeletionPhrase('')).toBe(false);
   });
 });

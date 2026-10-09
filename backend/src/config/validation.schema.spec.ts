@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { productionProblem } from './validation.schema.js';
+import { productionProblem, validationSchema } from './validation.schema.js';
 
 const live = {
   NODE_ENV: 'production',
@@ -13,6 +13,8 @@ const live = {
   MARKET_SEED: 'k3Jd9Lq2Xv7Rt5Pm1Wz8',
   S3_SECRET_KEY: 'Xp4Lk9Qz2Vb7Nm1Rt6Ws',
   SMTP_URL: 'smtp://hello%40insidelife.online:app-password@smtp-relay.brevo.com:587',
+  ADMIN_ORIGINS: 'https://admin.insidelife.online',
+  ADMIN_MFA_KEY: 'Zt7Qp2Lm9Xc4Vb8Nn1Ks6Dh3Fj5Gw0Ry',
 };
 
 describe('environment checks', () => {
@@ -75,5 +77,36 @@ describe('environment checks', () => {
     );
     expect(productionProblem({ ...live, CORS_ORIGINS: 'http://insidelife.online' })).toMatch(/https/);
     expect(productionProblem({ ...live, PAYSTACK_SECRET_KEY: '' })).toMatch(/PAYSTACK/);
+  });
+
+  it('needs https admin origins and a private authenticator key on the live site', () => {
+    expect(productionProblem({ ...live, ADMIN_ORIGINS: 'http://admin.insidelife.online' })).toMatch(/ADMIN_ORIGINS/);
+    expect(productionProblem({ ...live, ADMIN_ORIGINS: '' })).toBeNull();
+    expect(productionProblem({ ...live, ADMIN_MFA_KEY: undefined })).toMatch(/ADMIN_MFA_KEY/);
+    expect(productionProblem({ ...live, ADMIN_MFA_KEY: 'change-me-change-me-change-me-change-me' })).toMatch(/ADMIN_MFA_KEY/);
+    // Locally the key is optional (derived from the JWT secret) and http origins are fine.
+    expect(
+      productionProblem({ ...live, DEPLOYMENT: 'local', NODE_ENV: 'development', ADMIN_MFA_KEY: undefined, ADMIN_ORIGINS: 'http://localhost:5174' }),
+    ).toBeNull();
+  });
+
+  it('accepts only plain origins in ADMIN_ORIGINS', () => {
+    const base = {
+      CORS_ORIGINS: 'http://localhost:3100',
+      DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+      REDIS_URL: 'redis://localhost:6379',
+      JWT_ACCESS_SECRET: 'x'.repeat(40),
+      GAME_EPOCH: '2026-10-01T00:00:00.000Z',
+      WORLD_SEED: 'eko-o-ni-baje',
+      PAYSTACK_CALLBACK_URL: 'http://localhost:3100/payments/callback',
+      S3_ENDPOINT: 'http://localhost:58333',
+      S3_ACCESS_KEY: 'insidelife',
+      S3_SECRET_KEY: 'local-secret-123',
+      S3_BUCKET: 'insidelife-media',
+      S3_PUBLIC_BASE_URL: '/media',
+    };
+    expect(validationSchema.validate({ ...base, ADMIN_ORIGINS: 'http://localhost:5174, https://admin.insidelife.online' }).error).toBeUndefined();
+    expect(validationSchema.validate({ ...base, ADMIN_ORIGINS: 'https://admin.insidelife.online/path' }).error?.message).toMatch(/ADMIN_ORIGINS/);
+    expect(validationSchema.validate({ ...base, ADMIN_ORIGINS: '*' }).error?.message).toMatch(/ADMIN_ORIGINS/);
   });
 });

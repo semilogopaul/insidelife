@@ -1,4 +1,5 @@
 import type { ConfigService } from '@nestjs/config';
+import argon2 from 'argon2';
 import type { JwtService } from '@nestjs/jwt';
 import { FindOperator, type Repository } from 'typeorm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,6 +56,13 @@ const USER: UserEntity = {
   birthDate: '2000-01-01',
   role: 'player',
   lastLoginAt: null,
+  suspendedAt: null,
+  suspensionReason: null,
+  suspendedBy: null,
+  deletedAt: null,
+  deletedBy: null,
+  purgeAfter: null,
+  purgedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -115,6 +123,11 @@ function setup({ requireEmailVerification = false } = {}) {
     verification as unknown as EmailVerificationService,
     tokens.repository,
   );
+  // Sessions start in a transaction that reads the account under a lock: the fake reads the current record.
+  const manager = { findOne: async () => ({ ...users.record }), getRepository: () => tokens.repository };
+  Object.assign(tokens.repository, {
+    manager: { connection: { transaction: async (_level: string, work: (m: unknown) => Promise<unknown>) => work(manager) } },
+  });
   return { service, tokens, users, verification };
 }
 
@@ -248,5 +261,84 @@ describe('sign-up', () => {
     expect(users.markEmailVerified).toHaveBeenCalledWith('u1');
     expect(session.user).toMatchObject({ emailVerified: true, mustVerifyEmail: false });
     expect(JSON.parse(session.accessToken)).toMatchObject({ sub: 'u1', ev: true });
+  });
+});
+
+describe('suspended and deleted accounts', () => {
+  const PASSWORD = 'Correct-horse-1';
+  let hash = '';
+  beforeEach(async () => {
+    hash ||= await argon2.hash(PASSWORD);
+  });
+
+  function withAccount(overrides: Partial<UserEntity>) {
+    const context = setup();
+    context.users.record = { ...context.users.record, passwordHash: hash, ...overrides };
+    context.users.findByEmail.mockImplementation(async () => ({ ...context.users.record }) as unknown as null);
+    return context;
+  }
+
+  it('refuses to sign in a deleted account, saying how long it can be restored', async () => {
+    const { service } = withAccount({ deletedAt: new Date(), purgeAfter: new Date(Date.now() + 10 * 86_400_000) });
+    const error = await errorOf(service.login(USER.email, PASSWORD, 'ua'));
+    expect(error?.errorCode).toBe('ACCOUNT_DELETED');
+    expect(error?.message).toMatch(/hello@insidelife\.online/);
+  });
+
+  it('refuses to sign in a suspended account', async () => {
+    const { service } = withAccount({ suspendedAt: new Date() });
+    expect((await errorOf(service.login(USER.email, PASSWORD, 'ua')))?.errorCode).toBe('ACCOUNT_SUSPENDED');
+  });
+
+  it('never reveals the status to someone without the password', async () => {
+    const { service } = withAccount({ deletedAt: new Date() });
+    expect((await errorOf(service.login(USER.email, 'wrong-password-1', 'ua')))?.errorCode).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('ends existing sessions at the next refresh once the account is suspended or deleted', async () => {
+    const context = withAccount({});
+    const issued = await context.service.login(USER.email, PASSWORD, 'ua');
+    context.users.record = { ...context.users.record, suspendedAt: new Date() };
+    expect((await errorOf(context.service.refresh(issued.refreshToken, 'ua')))?.errorCode).toBe('UNAUTHENTICATED');
+    expect(context.tokens.rows.every((row) => row.revokedAt !== null)).toBe(true);
+  });
+
+  it('keeps a deleted account’s email reserved at sign-up', async () => {
+    const { service } = withAccount({ deletedAt: new Date() });
+    const error = await errorOf(service.register(USER.email, 'secret123', '2000-01-01', 'ua'));
+    expect(error?.errorCode).toBe('EMAIL_TAKEN');
+    expect(error?.message).toMatch(/deleted/);
+  });
+});
+
+
+describe('a suspension racing a sign-in', () => {
+  const PASSWORD = 'Correct-horse-1';
+  let hash = '';
+  beforeEach(async () => {
+    hash ||= await argon2.hash(PASSWORD);
+  });
+
+  it('is seen when the refresh token is stored, even after the password check passed', async () => {
+    const context = setup();
+    context.users.record = { ...context.users.record, passwordHash: hash };
+    const active = { ...context.users.record };
+    context.users.findByEmail.mockImplementation(async () => active as unknown as null);
+    // The suspension commits between the password check and the session insert.
+    context.users.record = { ...context.users.record, suspendedAt: new Date() };
+    expect((await errorOf(context.service.login(USER.email, PASSWORD, 'ua')))?.errorCode).toBe('ACCOUNT_SUSPENDED');
+    expect(context.tokens.rows).toHaveLength(0);
+  });
+
+  it('is enforced on the refresh-race path too (a token rotated moments ago)', async () => {
+    const context = setup();
+    context.users.record = { ...context.users.record, passwordHash: hash };
+    context.users.findByEmail.mockImplementation(async () => ({ ...context.users.record }) as unknown as null);
+    const first = await context.service.login(USER.email, PASSWORD, 'ua');
+    await context.service.refresh(first.refreshToken, 'ua');
+    context.users.record = { ...context.users.record, suspendedAt: new Date() };
+    // The old token again within the grace: no new session for a suspended account.
+    expect((await errorOf(context.service.refresh(first.refreshToken, 'ua')))?.errorCode).toBe('UNAUTHENTICATED');
+    expect(context.tokens.rows.every((row) => row.revokedAt !== null)).toBe(true);
   });
 });

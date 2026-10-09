@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { In, MoreThan } from 'typeorm';
+import { In, IsNull, MoreThan } from 'typeorm';
 import {
   NIGHT_OUT_ITEMS,
   NIGHT_OUT_ITEM_IDS,
@@ -328,7 +328,7 @@ export class NightOutService {
     const handle = normaliseHandle(toHandle);
     if (handle === ctx.character.handle) return { entity: ctx.character, check: { id: ctx.character.id, age: ctx.age, here: true, blocked: false, bottlesFromYouTonight: 0 } };
     const entity = await ctx.manager.findOne(CharacterEntity, {
-      where: { handle, alive: true },
+      where: { handle, alive: true, hiddenAt: IsNull() },
       select: { id: true, handle: true, firstName: true, lastName: true, bornAt: true, locationId: true, travel: true, status: true },
     });
     if (!entity) throw playerNotFound();

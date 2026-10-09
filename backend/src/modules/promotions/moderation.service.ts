@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
-import { In, Not, type DataSource, type Repository } from 'typeorm';
+import { In, Not, type DataSource, type EntityManager, type Repository } from 'typeorm';
 import { findAdSlot, type ModerationCampaignDto, type ModerationClubOrderDto, type ModerationQueueDto, type PromotionStatus } from '@insidelife/shared';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import { withTransaction } from '../../database/transaction.js';
@@ -21,6 +21,16 @@ import { StorageService } from '../../common/storage/storage.service.js';
 import { TracksService, trackSubject } from './tracks.service.js';
 
 const QUEUE_LIMIT = 100;
+
+/** What a decision changed, handed to the caller's in-transaction hook (the admin API writes its audit entry there). */
+export interface ModerationChange<T> {
+  readonly entity: T;
+  readonly fromStatus: PromotionStatus;
+  readonly toStatus: PromotionStatus;
+}
+
+/** Runs inside the decision's transaction, after the change is saved: throwing rolls the decision back. */
+export type ModerationHook<T> = (manager: EntityManager, change: ModerationChange<T>) => Promise<void>;
 /** Items that still need their media: anything unpaid-but-held, in review or running. */
 const MEDIA_IN_USE: PromotionStatus[] = ['pending-payment', ...COMMITTED_STATUSES];
 
@@ -88,7 +98,13 @@ export class ModerationService {
     };
   }
 
-  async decideCampaign(adminId: string, campaignId: string, decision: ModerationDecision, reason: string | null): Promise<ModerationCampaignDto> {
+  async decideCampaign(
+    adminId: string,
+    campaignId: string,
+    decision: ModerationDecision,
+    reason: string | null,
+    inTransaction?: ModerationHook<AdCampaignEntity>,
+  ): Promise<ModerationCampaignDto> {
     const clock = clockAt();
     const campaign = await withTransaction(this.dataSource, async (manager) => {
       const entity = await manager.findOne(AdCampaignEntity, { where: { id: campaignId }, lock: { mode: 'pessimistic_write' } });
@@ -115,6 +131,7 @@ export class ModerationService {
         reason,
         paymentReference: entity.paymentReference,
       });
+      await inTransaction?.(manager, { entity, fromStatus: from, toStatus: entity.status });
       return entity;
     });
 
@@ -126,7 +143,13 @@ export class ModerationService {
     return this.campaignView(campaign, clock, await this.handlesOf([campaign]));
   }
 
-  async decideClubOrder(adminId: string, orderId: string, decision: ModerationDecision, reason: string | null): Promise<ModerationClubOrderDto> {
+  async decideClubOrder(
+    adminId: string,
+    orderId: string,
+    decision: ModerationDecision,
+    reason: string | null,
+    inTransaction?: ModerationHook<{ readonly order: ClubPlayOrderEntity; readonly track: ClubTrackEntity }>,
+  ): Promise<ModerationClubOrderDto> {
     const clock = clockAt();
     const { order, track } = await withTransaction(this.dataSource, async (manager) => {
       const entity = await manager.findOne(ClubPlayOrderEntity, { where: { id: orderId }, lock: { mode: 'pessimistic_write' } });
@@ -155,6 +178,7 @@ export class ModerationService {
         reason,
         paymentReference: entity.paymentReference,
       });
+      await inTransaction?.(manager, { entity: { order: entity, track: owner }, fromStatus: from, toStatus: entity.status });
       return { order: entity, track: owner };
     });
 

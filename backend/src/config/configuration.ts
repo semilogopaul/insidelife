@@ -5,6 +5,12 @@ export interface AppConfig {
   readonly env: 'development' | 'test' | 'production';
   readonly port: number;
   readonly corsOrigins: readonly string[];
+  /** Origins of the separate admin portal (e.g. https://admin.insidelife.online). Allowed by CORS for the REST API only. */
+  readonly adminOrigins: readonly string[];
+  /** ADMIN_API_HOST: when set, the admin API answers only on this host (optional hardening; see docs/DEPLOY.md). */
+  readonly adminApiHost: string | null;
+  /** `public` = the live site (strict checks), `local` = a machine of yours. */
+  readonly deployment: 'local' | 'public';
   /** Reverse proxies in front of the API (Express `trust proxy`). */
   readonly trustProxyHops: number;
   readonly logLevel: string;
@@ -38,6 +44,20 @@ export interface AppConfig {
     readonly publicBaseUrl: string;
   };
   readonly adminEmails: readonly string[];
+  readonly admin: {
+    /** Key that encrypts admins' authenticator secrets at rest (32+ chars; derived from the JWT secret when unset). */
+    readonly mfaKey: string;
+    /** Admin access tokens are short-lived (default 10 minutes). */
+    readonly accessTtlSeconds: number;
+    /** An admin session (after password + authenticator) ends this many hours after sign-in, whatever happens. */
+    readonly sessionMaxHours: number;
+    /** …or after this many minutes without activity. */
+    readonly sessionIdleMinutes: number;
+  };
+  readonly accounts: {
+    /** A deleted account can be restored for this many days; after that it is anonymised. */
+    readonly restoreWindowDays: number;
+  };
   readonly ads: {
     /** Sponsored phone app slots for sale (the catalog defines up to PHONE_APP_SLOT_LIMIT). */
     readonly phoneAppSlots: number;
@@ -75,6 +95,12 @@ export const configuration = (): AppConfig => {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    adminOrigins: (env.ADMIN_ORIGINS ?? '')
+      .split(',')
+      .map((origin) => origin.trim().replace(/\/+$/, ''))
+      .filter(Boolean),
+    adminApiHost: env.ADMIN_API_HOST?.trim().toLowerCase() || null,
+    deployment: env.DEPLOYMENT === 'public' ? 'public' : 'local',
     trustProxyHops: Number(env.TRUST_PROXY_HOPS ?? 1),
     logLevel: env.LOG_LEVEL ?? 'info',
     database: {
@@ -112,6 +138,15 @@ export const configuration = (): AppConfig => {
       .split(',')
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
+    admin: {
+      mfaKey: env.ADMIN_MFA_KEY ?? '',
+      accessTtlSeconds: Number(env.ADMIN_ACCESS_TTL_SECONDS ?? 600),
+      sessionMaxHours: Number(env.ADMIN_SESSION_MAX_HOURS ?? 12),
+      sessionIdleMinutes: Number(env.ADMIN_SESSION_IDLE_MINUTES ?? 120),
+    },
+    accounts: {
+      restoreWindowDays: Number(env.ACCOUNT_RESTORE_DAYS ?? 30),
+    },
     mail: {
       smtpUrl: env.SMTP_URL ?? '',
       host: env.SMTP_HOST ?? '',

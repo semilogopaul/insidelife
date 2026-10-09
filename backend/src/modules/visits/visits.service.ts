@@ -11,7 +11,7 @@ import {
   type VisitDto,
   type VisitsDto,
 } from '@insidelife/shared';
-import { In, MoreThan, type EntityManager } from 'typeorm';
+import { In, IsNull, MoreThan, type EntityManager } from 'typeorm';
 import {
   ForbiddenActionException,
   GameRuleException,
@@ -71,7 +71,7 @@ export class VisitsService {
   async invite(ctx: SimulationContext, handle: string): Promise<VisitDto> {
     const host = ctx.character;
     const guest = await ctx.manager.findOne(CharacterEntity, {
-      where: { handle: normaliseHandle(handle), alive: true },
+      where: { handle: normaliseHandle(handle), alive: true, hiddenAt: IsNull() },
       select: PERSON_COLUMNS,
     });
     if (!guest) throw new ResourceNotFoundException('Player');
@@ -202,7 +202,7 @@ export class VisitsService {
     if (me.id !== hostId && me.locationId !== locationId && !(await this.acceptedVisit(ctx, hostId)))
       throw new ResourceNotFoundException('Home');
     const here = await ctx.manager.find(CharacterEntity, {
-      where: { locationId, alive: true },
+      where: { locationId, alive: true, hiddenAt: IsNull() },
       select: PERSON_COLUMNS,
       take: 20,
     });

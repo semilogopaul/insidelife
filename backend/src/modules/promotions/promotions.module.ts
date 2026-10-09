@@ -12,7 +12,6 @@ import { ClubPlayOrderEntity } from './entities/club-play-order.entity.js';
 import { ClubTrackEntity } from './entities/club-track.entity.js';
 import { CreativeEntity } from './entities/creative.entity.js';
 import { ModerationLogEntity } from './entities/moderation-log.entity.js';
-import { ModerationController } from './moderation.controller.js';
 import { ModerationService } from './moderation.service.js';
 import { PromotionsNotifier } from './promotions-notifier.service.js';
 import { PromotionsWorldController } from './promotions-world.controller.js';
@@ -35,7 +34,7 @@ import { ViewerResolver } from './tracking/viewer-resolver.service.js';
     AuthModule,
     StorageModule,
   ],
-  controllers: [PromotionsController, PromotionsWorldController, ModerationController],
+  controllers: [PromotionsController, PromotionsWorldController],
   providers: [
     CreativeService,
     CampaignsService,
@@ -45,5 +44,7 @@ import { ViewerResolver } from './tracking/viewer-resolver.service.js';
     ViewerResolver,
     PromotionsNotifier,
   ],
+  // The admin API (modules/admin) reviews paid ads and club orders through ModerationService.
+  exports: [ModerationService],
 })
 export class PromotionsModule {}

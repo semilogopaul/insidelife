@@ -18,3 +18,20 @@ insidelife.online {
 www.insidelife.online {
 	redir https://insidelife.online{uri} permanent
 }
+
+# Optional hardening (docs/DEPLOY.md, "A separate host for the admin API"): the admin API on its own host, so it never
+# answers on the game's origin. Uncomment, point DNS at this server, and set ADMIN_API_HOST=admin-api.insidelife.online.
+# admin-api.insidelife.online {
+# 	encode zstd gzip
+# 	header {
+# 		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+# 		X-Content-Type-Options nosniff
+# 		-Server
+# 	}
+# 	handle /api/v1/admin/* {
+# 		reverse_proxy gateway:80
+# 	}
+# 	handle {
+# 		respond 404
+# 	}
+# }

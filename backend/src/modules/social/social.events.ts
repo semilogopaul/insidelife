@@ -44,7 +44,7 @@ async function pickFriend(ctx: SimulationContext, purpose: string): Promise<stri
     `SELECT c.handle
        FROM social_friendships f
        JOIN characters c ON c.id = CASE WHEN f.requester_id = $1 THEN f.addressee_id ELSE f.requester_id END
-      WHERE f.status = 'accepted' AND (f.requester_id = $1 OR f.addressee_id = $1) AND c.alive
+      WHERE f.status = 'accepted' AND (f.requester_id = $1 OR f.addressee_id = $1) AND c.alive AND c.hidden_at IS NULL
    ORDER BY c.handle
       LIMIT 50`,
     [ctx.character.id],

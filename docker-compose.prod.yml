@@ -40,6 +40,10 @@ x-backend-env: &backend-env
   S3_PRIVATE_BUCKET: insidelife-private
   S3_PUBLIC_BASE_URL: /media
   ADMIN_EMAILS: ${ADMIN_EMAILS:?set ADMIN_EMAILS}
+  ADMIN_ORIGINS: ${ADMIN_ORIGINS:-https://admin.insidelife.online}
+  ADMIN_API_HOST: ${ADMIN_API_HOST:-}
+  ADMIN_MFA_KEY: ${ADMIN_MFA_KEY:?set ADMIN_MFA_KEY}
+  ACCOUNT_RESTORE_DAYS: ${ACCOUNT_RESTORE_DAYS:-30}
   PHONE_APP_AD_SLOTS: ${PHONE_APP_AD_SLOTS:-10}
 
 services:

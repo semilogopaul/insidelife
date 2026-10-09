@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PROGRESSION_SIGNALS_PORT, type ProgressionSignalsPort } from '../../common/ports/progression.port.js';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
-import { In, MoreThanOrEqual, type DataSource, type EntityManager } from 'typeorm';
+import { In, IsNull, MoreThanOrEqual, type DataSource, type EntityManager } from 'typeorm';
 import {
   MINUTES_PER_HOUR,
   NAIRA_ABUSE,
@@ -290,7 +290,7 @@ export class PartiesService {
     if (previous) return this.replayed(ctx, previous);
 
     const party = await this.findParty(ctx.manager, partyId);
-    const recipient = await ctx.manager.findOne(CharacterEntity, { where: { handle: normaliseHandle(request.toHandle), alive: true } });
+    const recipient = await ctx.manager.findOne(CharacterEntity, { where: { handle: normaliseHandle(request.toHandle), alive: true, hiddenAt: IsNull() } });
     if (!recipient) throw playerNotFound();
 
     const amount = request.amount;

@@ -318,6 +318,7 @@ export class HostingService {
         id: In(visits.map((visit) => visit.guestId)),
         locationId: homeLocationId(host.id),
         alive: true,
+        hiddenAt: IsNull(),
       },
       select: PERSON_COLUMNS,
     });

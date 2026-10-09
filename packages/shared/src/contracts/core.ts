@@ -81,6 +81,21 @@ export interface ConfirmEmailRequest {
   readonly code: string;
 }
 
+/** `POST /v1/account/deletion`: delete your own account (soft delete; restorable by support for a while). */
+export interface DeleteAccountRequest {
+  /** Your current password, re-entered. */
+  readonly password: string;
+  /** `ACCOUNT_DELETION_PHRASE`, typed out. */
+  readonly confirmation: string;
+}
+
+export interface AccountDeletionDto {
+  /** ISO time the account was deleted. */
+  readonly deletedAt: string;
+  /** ISO time after which it can no longer be restored and is anonymised. */
+  readonly restorableUntil: string;
+}
+
 // ----- World -------------------------------------------------------------------------------------------------------
 
 export interface WorldClockDto extends GameClockConfig {

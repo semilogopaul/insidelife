@@ -15,13 +15,16 @@ import {
 } from '@insidelife/shared';
 import type { AppConfig } from '../../config/configuration.js';
 import {
+  AccountDeletedException,
+  AccountSuspendedException,
   AuthenticationRequiredException,
   ConflictException,
   InvalidCredentialsException,
   ValidationFailedException,
 } from '../../common/exceptions/domain.exception.js';
 import { UsersService } from '../users/users.service.js';
-import type { UserEntity } from '../users/entities/user.entity.js';
+import { UserEntity } from '../users/entities/user.entity.js';
+import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
 import { UnderAgeException } from './auth.exceptions.js';
 import { EmailVerificationService } from './email-verification.service.js';
@@ -76,22 +79,48 @@ export class AuthService {
    */
   async register(email: string, password: string, birthDate: string, userAgent: string | undefined): Promise<RegisteredSession> {
     assertOldEnough(birthDate, Date.now());
-    if (await this.users.findByEmail(email)) {
+    const existing = await this.users.findByEmail(email);
+    if (existing?.deletedAt) {
+      // The address stays reserved while the deleted account can still be restored.
+      throw new ConflictException('EMAIL_TAKEN', 'That email belongs to a recently deleted account. Email hello@insidelife.online to restore it, or use another email');
+    }
+    if (existing) {
       throw new ConflictException('EMAIL_TAKEN', 'An account with that email already exists — sign in instead');
     }
     const user = await this.users.create(email, await argon2.hash(password, ARGON2_OPTIONS), birthDate);
-    const issued = await this.issueSession(user, randomUUID(), userAgent);
+    const issued = await this.sessionOrRefusal(await this.startSession(user.id, randomUUID(), userAgent, null), null);
     const emailVerification = this.emailRequired() ? await this.sendFirstCode(user) : await this.verification.status(user);
     return { ...issued, emailVerification };
   }
 
   async login(email: string, password: string, userAgent: string | undefined): Promise<IssuedSession> {
+    const user = await this.checkCredentials(email, password);
+    if (!user) throw new InvalidCredentialsException();
+    // Only after the password checks out, so the account's status never leaks to someone guessing emails.
+    assertMaySignIn(user);
+    const outcome = await this.startSession(user.id, randomUUID(), userAgent, null);
+    // Suspended or deleted since the password check: the same answer as if it had been before.
+    if ('refused' in outcome) assertMaySignIn(outcome.refused);
+    await this.users.touchLogin(user.id);
+    return this.sessionOrRefusal(outcome, null);
+  }
+
+  /**
+   * The account when the email and password match, else null. Takes the same time whether or not the email exists.
+   * Doesn't look at the account's status (callers decide). Also used by the admin portal's sign-in.
+   */
+  async checkCredentials(email: string, password: string): Promise<UserEntity | null> {
     const user = await this.users.findByEmail(email);
     const hash = user?.passwordHash ?? (await DUMMY_HASH_PROMISE);
     const valid = await argon2.verify(hash, password).catch(() => false);
-    if (!user || !valid) throw new InvalidCredentialsException();
-    await this.users.touchLogin(user.id);
-    return this.issueSession(user, randomUUID(), userAgent);
+    return user && valid ? user : null;
+  }
+
+  /** Check a signed-in player's password again (before deleting the account). */
+  async verifyPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.users.findById(userId);
+    if (!user) return false;
+    return argon2.verify(user.passwordHash, password).catch(() => false);
   }
 
   /**
@@ -104,17 +133,12 @@ export class AuthService {
     if (!stored) throw new AuthenticationRequiredException();
 
     if (stored.revokedAt) {
-      if (await this.isRecentRotation(stored)) return this.issueSession(await this.requireUser(stored.userId), stored.familyId, userAgent);
+      if (await this.isRecentRotation(stored)) return this.sessionOrRefusal(await this.startSession(stored.userId, stored.familyId, userAgent, null), stored.familyId);
       await this.revokeFamily(stored.familyId);
       throw new AuthenticationRequiredException('Your session ended. Please sign in again');
     }
     if (stored.expiresAt.getTime() <= Date.now()) throw new AuthenticationRequiredException('Your session expired. Please sign in again');
-
-    const user = await this.requireUser(stored.userId);
-    const issued = await this.issueSession(user, stored.familyId, userAgent);
-    const replacement = await this.refreshTokens.findOne({ where: { tokenHash: sha256(issued.refreshToken) } });
-    await this.refreshTokens.update({ id: stored.id }, { revokedAt: new Date(), replacedById: replacement?.id ?? null });
-    return issued;
+    return this.sessionOrRefusal(await this.startSession(stored.userId, stored.familyId, userAgent, stored.id), stored.familyId);
   }
 
   async logout(rawToken: string | undefined): Promise<void> {
@@ -178,7 +202,7 @@ export class AuthService {
   private async accessSession(user: UserEntity): Promise<AuthSessionDto> {
     const auth = this.config.get('auth', { infer: true });
     const role = this.config.get('adminEmails', { infer: true }).includes(user.email) ? 'admin' : user.role;
-    const payload: AccessTokenPayload = { sub: user.id, email: user.email, role, ev: user.emailVerifiedAt !== null };
+    const payload: AccessTokenPayload = { sub: user.id, email: user.email, role, ev: user.emailVerifiedAt !== null, ia: Date.now() };
     return {
       accessToken: await this.jwt.signAsync(payload, { expiresIn: auth.accessTtlSeconds }),
       accessTokenExpiresAt: Date.now() + auth.accessTtlSeconds * 1000,
@@ -186,22 +210,44 @@ export class AuthService {
     };
   }
 
-  private async issueSession(user: UserEntity, familyId: string, userAgent: string | undefined): Promise<IssuedSession> {
+  /**
+   * Insert a refresh token (and retire the one it replaces) in one transaction that holds the account row under a
+   * share lock. A suspension or deletion committing at the same moment either waits for this transaction and then
+   * revokes the new token with the others, or committed first and is seen here, so the session is refused. The access
+   * token is signed after commit, so the cut-off written after a suspension (Redis) is later than it.
+   */
+  private async startSession(userId: string, familyId: string, userAgent: string | undefined, replaces: string | null): Promise<SessionOutcome> {
     const auth = this.config.get('auth', { infer: true });
     const refreshToken = randomBytes(32).toString('base64url');
     const refreshExpiresAt = new Date(Date.now() + auth.refreshTtlDays * 86_400_000);
-    await this.refreshTokens.save(
-      this.refreshTokens.create({
-        userId: user.id,
-        familyId,
-        tokenHash: sha256(refreshToken),
-        expiresAt: refreshExpiresAt,
-        revokedAt: null,
-        replacedById: null,
-        userAgent: userAgent?.slice(0, 255) ?? null,
-      }),
-    );
-    return { session: await this.accessSession(user), refreshToken, refreshExpiresAt };
+    const result = await withTransaction(this.refreshTokens.manager.connection, async (manager): Promise<{ readonly refused: UserEntity } | { readonly user: UserEntity }> => {
+      const user = await manager.findOne(UserEntity, { where: { id: userId }, lock: { mode: 'pessimistic_read' } });
+      if (!user) throw new AuthenticationRequiredException();
+      if (user.suspendedAt || user.deletedAt) return { refused: user };
+      const tokens = manager.getRepository(RefreshTokenEntity);
+      const saved = await tokens.save(
+        tokens.create({
+          userId,
+          familyId,
+          tokenHash: sha256(refreshToken),
+          expiresAt: refreshExpiresAt,
+          revokedAt: null,
+          replacedById: null,
+          userAgent: userAgent?.slice(0, 255) ?? null,
+        }),
+      );
+      if (replaces) await tokens.update({ id: replaces }, { revokedAt: new Date(), replacedById: saved.id });
+      return { user };
+    });
+    if ('refused' in result) return result;
+    return { issued: { session: await this.accessSession(result.user), refreshToken, refreshExpiresAt } };
+  }
+
+  /** The new session, or (suspended / deleted) the refresh family revoked and the player signed out. */
+  private async sessionOrRefusal(outcome: SessionOutcome, familyId: string | null): Promise<IssuedSession> {
+    if ('issued' in outcome) return outcome.issued;
+    if (familyId) await this.revokeFamily(familyId);
+    throw new AuthenticationRequiredException(outcome.refused.deletedAt ? 'This account was deleted' : 'This account is suspended');
   }
 
   private async revokeFamily(familyId: string): Promise<void> {
@@ -217,6 +263,14 @@ export class AuthService {
       hasCharacter: await this.characters.hasLivingCharacter(user.id),
     };
   }
+}
+
+type SessionOutcome = { readonly issued: IssuedSession } | { readonly refused: UserEntity };
+
+/** Suspended and deleted accounts can't start a session (checked after the password). */
+export function assertMaySignIn(user: Pick<UserEntity, 'suspendedAt' | 'deletedAt' | 'purgeAfter'>): void {
+  if (user.deletedAt) throw new AccountDeletedException(user.purgeAfter);
+  if (user.suspendedAt) throw new AccountSuspendedException();
 }
 
 /** Sign-up age rules (shared with the client): a real date, not in the future, 13 or older. */

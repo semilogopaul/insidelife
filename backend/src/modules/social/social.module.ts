@@ -33,6 +33,7 @@ import { PartiesService } from './parties.service.js';
 import { PlayerCardsService } from './player-cards.service.js';
 import { PlayersController, VenuePlayersController } from './players.controller.js';
 import { ProfilesService } from './profiles.service.js';
+import { ReportReviewService } from './report-review.service.js';
 import { SOCIAL_LIFE_EVENTS } from './social.events.js';
 import { SocialGuardModule } from './social-guard.module.js';
 import { SocialNotifier } from './social-notifier.service.js';
@@ -44,7 +45,8 @@ import { VenueSpraysService } from './venue-sprays.service.js';
 /**
  * Social domain: friends, blocks & reports, public profiles and search, "who's here", leaderboards and owambe parties
  * with spraying, spraying in clubs and bars, and club nights (bottles for people, DJ shoutouts, paid experiences).
- * Other domains should import `SocialGuardModule` (re-exported here) for `SocialGuard`.
+ * Other domains should import `SocialGuardModule` (re-exported here) for `SocialGuard`; the admin API uses
+ * `ReportReviewService` to close reports.
  */
 @Module({
   imports: [
@@ -95,8 +97,9 @@ import { VenueSpraysService } from './venue-sprays.service.js';
     VenueSpraysService,
     NightOutService,
     SocialSystem,
+    ReportReviewService,
   ],
-  exports: [SocialGuardModule],
+  exports: [SocialGuardModule, ReportReviewService],
 })
 export class SocialModule implements OnModuleInit {
   constructor(private readonly lifeEvents: LifeEventsRegistry) {}
