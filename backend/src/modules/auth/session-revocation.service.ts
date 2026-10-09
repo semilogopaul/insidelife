@@ -9,6 +9,8 @@ import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
 import { RefreshTokenEntity } from './entities/refresh-token.entity.js';
 
 const CUTOFF_KEY = (userId: string): string => `auth:cutoff:${userId}`;
+const CUTOFF_ATTEMPTS = 3;
+const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Ends every session of an account at once (suspension, deletion): refresh tokens are revoked in the database (inside
@@ -38,15 +40,30 @@ export class SessionRevocationService {
     return result.affected ?? 0;
   }
 
-  /** After the transaction commits: access tokens issued until now stop working; game sockets close. */
-  async cutOff(userId: string, at = Date.now()): Promise<void> {
-    await this.redis.set(CUTOFF_KEY(userId), String(at), 'EX', this.cutoffTtlSeconds);
+  /**
+   * After the transaction commits: access tokens issued until now stop working; game sockets close. Never throws (the
+   * change it follows has committed, and the caller must not report it as failed): the Redis write is retried, and the
+   * sockets are closed whether or not it succeeded. Returns false when the cut-off couldn't be written (access tokens
+   * then last until they expire; refresh tokens are already revoked).
+   */
+  async cutOff(userId: string, at = Date.now()): Promise<boolean> {
+    let written = false;
+    for (let attempt = 1; attempt <= CUTOFF_ATTEMPTS && !written; attempt++) {
+      try {
+        await this.redis.set(CUTOFF_KEY(userId), String(at), 'EX', this.cutoffTtlSeconds);
+        written = true;
+      } catch (error) {
+        if (attempt < CUTOFF_ATTEMPTS) await pause(50 * attempt);
+        else this.logger.error({ err: error, userId }, 'Could not write the session cut-off: access tokens stay valid until they expire');
+      }
+    }
     try {
       const character = await this.directory.findLivingByUser(userId);
       if (character) this.bus.disconnectCharacter(character.id);
     } catch (error) {
       this.logger.warn({ err: error, userId }, 'Could not close the account’s sockets');
     }
+    return written;
   }
 
   /** True when a token issued at `issuedAtMs` (Unix ms) predates the account's cut-off. */

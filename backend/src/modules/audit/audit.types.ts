@@ -1,5 +1,8 @@
-/** `owner` = an address in ADMIN_EMAILS; `admin` = granted the admin role; `system` = a scheduled job. */
-export type AuditActorRole = 'owner' | 'admin' | 'player' | 'system';
+/**
+ * `owner` = an address in ADMIN_EMAILS; `admin` = granted the admin role; `system` = a scheduled job; `anonymous` =
+ * someone not signed in (failed admin sign-ins, a leaked refresh token presented again).
+ */
+export type AuditActorRole = 'owner' | 'admin' | 'player' | 'system' | 'anonymous';
 
 /** `ad-rate`: ad prices changed from the portal (written by the ad-rates admin API). */
 export const AUDIT_TARGET_TYPES = ['player', 'admin', 'campaign', 'club-order', 'report', 'payment', 'audit-log', 'ad-rate'] as const;
@@ -11,6 +14,7 @@ export const AUDIT_ACTIONS = [
   'admin.sign-in',
   'admin.sign-in-failed',
   'admin.sign-out',
+  'admin.refresh-token-reused',
   'admin.mfa-enrolled',
   'admin.recovery-code-used',
   'admin.recovery-codes-regenerated',

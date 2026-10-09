@@ -31,3 +31,37 @@ describe('auditChanges', () => {
     expect(auditMetadata({ refreshToken: 'abc', count: 2 })).toEqual({ refreshToken: '[redacted]', count: 2 });
   });
 });
+
+describe('redaction', () => {
+  it('hides real secrets but keeps counts and timestamps that only mention them', () => {
+    expect(
+      auditMetadata({
+        recoveryCodesLeft: 9,
+        recoveryCodesIssued: 10,
+        recoveryCodes: ['abcde-fghij'],
+        recoveryCodeHashes: ['x'],
+        pendingSecret: 'S',
+        otpauthUrl: 'otpauth://totp/x',
+        code: '123456',
+        tokenHash: 'h',
+        previousTokenHash: 'p',
+        password: 'pw',
+        sessionsEnded: 2,
+        passwordChangedAt: '2026-10-09T10:00:00.000Z',
+      }),
+    ).toEqual({
+      recoveryCodesLeft: 9,
+      recoveryCodesIssued: 10,
+      recoveryCodes: '[redacted]',
+      recoveryCodeHashes: '[redacted]',
+      pendingSecret: '[redacted]',
+      otpauthUrl: '[redacted]',
+      code: '[redacted]',
+      tokenHash: '[redacted]',
+      previousTokenHash: '[redacted]',
+      password: '[redacted]',
+      sessionsEnded: 2,
+      passwordChangedAt: '2026-10-09T10:00:00.000Z',
+    });
+  });
+});

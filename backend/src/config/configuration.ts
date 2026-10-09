@@ -7,6 +7,10 @@ export interface AppConfig {
   readonly corsOrigins: readonly string[];
   /** Origins of the separate admin portal (e.g. https://admin.insidelife.online). Allowed by CORS for the REST API only. */
   readonly adminOrigins: readonly string[];
+  /** ADMIN_API_HOST: when set, the admin API answers only on this host (optional hardening; see docs/DEPLOY.md). */
+  readonly adminApiHost: string | null;
+  /** `public` = the live site (strict checks), `local` = a machine of yours. */
+  readonly deployment: 'local' | 'public';
   /** Reverse proxies in front of the API (Express `trust proxy`). */
   readonly trustProxyHops: number;
   readonly logLevel: string;
@@ -95,6 +99,8 @@ export const configuration = (): AppConfig => {
       .split(',')
       .map((origin) => origin.trim().replace(/\/+$/, ''))
       .filter(Boolean),
+    adminApiHost: env.ADMIN_API_HOST?.trim().toLowerCase() || null,
+    deployment: env.DEPLOYMENT === 'public' ? 'public' : 'local',
     trustProxyHops: Number(env.TRUST_PROXY_HOPS ?? 1),
     logLevel: env.LOG_LEVEL ?? 'info',
     database: {

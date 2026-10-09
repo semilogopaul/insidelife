@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { IsNull } from 'typeorm';
 import {
   MINUTES_PER_HOUR,
   NAIRA_ABUSE,
@@ -60,7 +61,7 @@ export class VenueSpraysService {
     const venue = findVenue(venueId);
     if (!venue || venue.regionId) throw new ResourceNotFoundException('Venue');
     const recipient = request.toHandle
-      ? await ctx.manager.findOne(CharacterEntity, { where: { handle: normaliseHandle(request.toHandle), alive: true } })
+      ? await ctx.manager.findOne(CharacterEntity, { where: { handle: normaliseHandle(request.toHandle), alive: true, hiddenAt: IsNull() } })
       : null;
     if (request.toHandle && !recipient) throw playerNotFound();
 

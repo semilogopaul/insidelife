@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
+import { configureHttpBoundary } from './common/http/http-boundary.js';
 import { RedisIoAdapter } from './common/redis/redis-io.adapter.js';
 import type { AppConfig } from './config/configuration.js';
 
@@ -20,13 +21,13 @@ async function bootstrap(): Promise<void> {
   app.disable('x-powered-by');
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
   app.use(cookieParser());
-  // The game's origins plus the separate admin portal's (ADMIN_ORIGINS). Credentials carry the refresh cookies, which
-  // the admin portal can only send because its subdomain is same-site with the API.
-  app.enableCors({
-    origin: [...config.get('corsOrigins', { infer: true }), ...config.get('adminOrigins', { infer: true })],
-    credentials: true,
-    exposedHeaders: ['Content-Disposition', 'X-Trace-Id'],
-    maxAge: 600,
+  // CORS per route (the admin API admits only ADMIN_ORIGINS, the game's routes only CORS_ORIGINS), and admin API
+  // requests that change something must carry an ADMIN_ORIGINS Origin (shuts out scripts on the game's origin).
+  configureHttpBoundary(app, {
+    gameOrigins: config.get('corsOrigins', { infer: true }),
+    adminOrigins: config.get('adminOrigins', { infer: true }),
+    requireAdminOrigin: config.get('env', { infer: true }) === 'production',
+    adminApiHost: config.get('adminApiHost', { infer: true }),
   });
   app.useBodyParser('json', { limit: '64kb' });
 

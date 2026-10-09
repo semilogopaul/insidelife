@@ -23,6 +23,11 @@ export const validationSchema = Joi.object({
         .find((origin) => !isOrigin(origin));
       return bad ? helpers.message({ custom: `ADMIN_ORIGINS: "${bad}" is not an origin like https://admin.insidelife.online` }) : value;
     }),
+  /**
+   * Optional hardening: serve the admin API only on this host (e.g. `admin-api.insidelife.online`, proxied to the same
+   * backend). Empty = the admin API answers on every host the API does.
+   */
+  ADMIN_API_HOST: Joi.string().hostname().allow('').default(''),
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
   /** Reverse proxies in front of the API: 1 behind nginx, 2 with an edge (Caddy) in front of nginx. */
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),

@@ -123,6 +123,11 @@ function setup({ requireEmailVerification = false } = {}) {
     verification as unknown as EmailVerificationService,
     tokens.repository,
   );
+  // Sessions start in a transaction that reads the account under a lock: the fake reads the current record.
+  const manager = { findOne: async () => ({ ...users.record }), getRepository: () => tokens.repository };
+  Object.assign(tokens.repository, {
+    manager: { connection: { transaction: async (_level: string, work: (m: unknown) => Promise<unknown>) => work(manager) } },
+  });
   return { service, tokens, users, verification };
 }
 
@@ -306,3 +311,34 @@ describe('suspended and deleted accounts', () => {
   });
 });
 
+
+describe('a suspension racing a sign-in', () => {
+  const PASSWORD = 'Correct-horse-1';
+  let hash = '';
+  beforeEach(async () => {
+    hash ||= await argon2.hash(PASSWORD);
+  });
+
+  it('is seen when the refresh token is stored, even after the password check passed', async () => {
+    const context = setup();
+    context.users.record = { ...context.users.record, passwordHash: hash };
+    const active = { ...context.users.record };
+    context.users.findByEmail.mockImplementation(async () => active as unknown as null);
+    // The suspension commits between the password check and the session insert.
+    context.users.record = { ...context.users.record, suspendedAt: new Date() };
+    expect((await errorOf(context.service.login(USER.email, PASSWORD, 'ua')))?.errorCode).toBe('ACCOUNT_SUSPENDED');
+    expect(context.tokens.rows).toHaveLength(0);
+  });
+
+  it('is enforced on the refresh-race path too (a token rotated moments ago)', async () => {
+    const context = setup();
+    context.users.record = { ...context.users.record, passwordHash: hash };
+    context.users.findByEmail.mockImplementation(async () => ({ ...context.users.record }) as unknown as null);
+    const first = await context.service.login(USER.email, PASSWORD, 'ua');
+    await context.service.refresh(first.refreshToken, 'ua');
+    context.users.record = { ...context.users.record, suspendedAt: new Date() };
+    // The old token again within the grace: no new session for a suspended account.
+    expect((await errorOf(context.service.refresh(first.refreshToken, 'ua')))?.errorCode).toBe('UNAUTHENTICATED');
+    expect(context.tokens.rows.every((row) => row.revokedAt !== null)).toBe(true);
+  });
+});

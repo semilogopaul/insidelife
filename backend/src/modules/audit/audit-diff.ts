@@ -1,5 +1,9 @@
-/** Keys whose values never belong in the audit log (hashes, secrets, tokens, codes). */
-const SECRET_KEY = /pass(word)?|hash|secret|token|otp|recovery/i;
+/**
+ * Keys whose values never belong in the audit log: passwords, hashes, secrets, tokens and one-time codes. Matched on
+ * the end of the key (`passwordHash`, `pendingSecret`, `refreshToken`, `recoveryCodeHashes`) or the whole key, so
+ * counts such as `recoveryCodesLeft` and `recoveryCodesIssued` stay readable.
+ */
+const SECRET_KEY = /(password|passwordhash|secret|token|hash|hashes)$|^(otp|totp|otpauthurl|code|codes|recoverycode|recoverycodes)$/i;
 
 const REDACTED = '[redacted]';
 

@@ -93,6 +93,10 @@ export class AdminAccountsService {
       if (!user || user.purgedAt) throw new ResourceNotFoundException('An account with that email');
       if (user.deletedAt || user.suspendedAt) throw new ConflictException('ACCOUNT_NOT_ACTIVE', 'That account is suspended or deleted');
       if (user.role === 'admin' || isOwner(user.email, this.owners())) throw new ConflictException('ALREADY_ADMIN', 'That account is already an admin');
+      // On the live site an unverified account wouldn't count as an admin anyway (AdminAuthService.roleOf).
+      if (this.config.get('deployment', { infer: true }) === 'public' && !user.emailVerifiedAt) {
+        throw new ConflictException('EMAIL_UNVERIFIED', 'That account hasn’t confirmed its email yet. Ask them to confirm it in the game first');
+      }
       user.role = 'admin';
       await manager.save(user);
       await this.record(manager, actor, 'admin.grant', user, { role: 'player' }, { role: 'admin' }, reason);

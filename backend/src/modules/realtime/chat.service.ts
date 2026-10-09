@@ -227,6 +227,7 @@ export class ChatService {
     LEFT JOIN chat_dm_threads o ON o.character_id = t.counterpart_id AND o.channel = t.channel
         WHERE t.character_id = $1
           AND t.declined_at IS NULL
+          AND c.hidden_at IS NULL
           AND t.last_message_at > now() - make_interval(days => $2)
           AND NOT EXISTS (SELECT 1 FROM social_blocks b
                            WHERE (b.blocker_id = t.character_id AND b.blocked_id = t.counterpart_id)

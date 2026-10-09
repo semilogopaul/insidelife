@@ -4,17 +4,19 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
 import type { DataSource } from 'typeorm';
 import { findVehicle, formatNaira, yearsBetween } from '@insidelife/shared';
-import { ResourceNotFoundException } from '../../../common/exceptions/domain.exception.js';
+import { ForbiddenActionException, ResourceNotFoundException } from '../../../common/exceptions/domain.exception.js';
 import { toCsv, type CsvColumn } from '../../../common/utils/csv.js';
 import { EXPORT_ROW_LIMIT, SqlWhere, containsPattern, offsetOf, pageOf, type Page, type PageRequest } from '../../../common/utils/paging.js';
 import type { AppConfig } from '../../../config/configuration.js';
 import { AccountLifecycleService } from '../../accounts/account-lifecycle.service.js';
-import { accountStatus, canRestore } from '../../accounts/account-status.js';
+import { accountStatus, assertMayManage, canRestore } from '../../accounts/account-status.js';
 import { AuditService } from '../../audit/audit.service.js';
 import type { AuditActor } from '../../audit/audit.types.js';
 import { characterLabel } from '../../characters/character-directory.service.js';
 import { LedgerTransactionEntity } from '../../ledger/entities/ledger-transaction.entity.js';
+import type { SimulationContext } from '../../simulation/simulation-context.js';
 import { CharacterSession } from '../../simulation/character-session.service.js';
+import { UserEntity } from '../../users/entities/user.entity.js';
 import { WorldService } from '../../world/world.service.js';
 import type {
   AdminLedgerEntryDto,
@@ -66,6 +68,13 @@ const PLAYER_FROM = `
   LEFT JOIN ledger_accounts cash ON cash.owner_id = c.id AND cash.kind = 'cash'`;
 
 const iso = (value: Date | null): string | null => value?.toISOString() ?? null;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** A single credit above this needs an owner. */
+export const OWNER_ONLY_CREDIT_ABOVE = 10_000_000;
+/** What one admin (not an owner) may credit in all, per UTC day. */
+export const ADMIN_DAILY_CREDIT_CAP = 50_000_000;
 
 const PLAYER_CSV: readonly CsvColumn<AdminPlayerRowDto>[] = [
   { header: 'User id', value: (row) => row.userId },
@@ -237,11 +246,13 @@ export class AdminPlayersService {
   async adjustWallet(actor: AuditActor, userId: string, request: WalletAdjustmentDto): Promise<WalletAdjustmentResultDto> {
     const reason = request.reason.trim();
     return this.session.run({ userId }, async (ctx) => {
+      await this.assertMayManagePlayer(ctx, actor, userId);
       const key = `admin-adjustment:${request.idempotencyKey}`;
       const ledgerKey = `${ctx.character.id}:${key}`;
       if (await ctx.manager.exists(LedgerTransactionEntity, { where: { idempotencyKey: ledgerKey } })) {
         return { applied: false, amount: request.amount, cashAfter: ctx.wallet.cash };
       }
+      if (request.amount > 0) await this.assertMayCredit(ctx, actor, request.amount);
       const before = ctx.wallet.cash;
       const memo = 'Adjustment by Inside Life support';
       const metadata = { adminUserId: actor.userId, reason: reason.slice(0, 120) };
@@ -273,6 +284,7 @@ export class AdminPlayersService {
   /** Replace an abusive @handle with a neutral one (`player_xxxxxxxx`); the player can pick a new one later. */
   async resetHandle(actor: AuditActor, userId: string, reason: string): Promise<{ readonly handle: string }> {
     return this.session.run({ userId }, async (ctx) => {
+      await this.assertMayManagePlayer(ctx, actor, userId);
       const character = ctx.character;
       const before = { handle: character.handle, label: characterLabel(character) };
       let handle = '';
@@ -303,13 +315,47 @@ export class AdminPlayersService {
 
   // ----- Internals --------------------------------------------------------------------------------------------------
 
+  /** The same rules as suspending or deleting: not your own account, not an owner's, other admins only by an owner. */
+  private async assertMayManagePlayer(ctx: SimulationContext, actor: AuditActor, userId: string): Promise<void> {
+    const target = await ctx.manager.findOne(UserEntity, { where: { id: userId } });
+    if (!target) throw new ResourceNotFoundException('Account');
+    assertMayManage(actor, target, this.config.get('adminEmails', { infer: true }));
+  }
+
+  /**
+   * Credits by an admin who isn't an owner: at most ₦10,000,000 at a time and ₦50,000,000 per UTC day in all, counted
+   * from their own `wallet.adjust` entries in the audit log (written in the same transaction as each credit). A
+   * per-admin advisory lock makes parallel credits by one admin take turns, so they can't pass the cap together.
+   */
+  private async assertMayCredit(ctx: SimulationContext, actor: AuditActor, amount: number): Promise<void> {
+    if (actor.role === 'owner') return;
+    if (amount > OWNER_ONLY_CREDIT_ABOVE) {
+      throw new ForbiddenActionException(`Only an owner can add more than ${formatNaira(OWNER_ONLY_CREDIT_ABOVE)} at a time`);
+    }
+    await ctx.manager.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`admin-credits:${actor.userId ?? 'unknown'}`]);
+    const startOfDay = new Date(Math.floor(Date.now() / 86_400_000) * 86_400_000);
+    const [row] = await ctx.manager.query<Array<{ total: string | null }>>(
+      `SELECT COALESCE(SUM((metadata->>'amount')::bigint), 0) AS total
+         FROM audit_logs
+        WHERE actor_user_id = $1 AND action = 'wallet.adjust' AND occurred_at >= $2 AND (metadata->>'amount')::bigint > 0`,
+      [actor.userId, startOfDay],
+    );
+    const used = Number(row?.total ?? 0);
+    if (used + amount > ADMIN_DAILY_CREDIT_CAP) {
+      throw new ForbiddenActionException(
+        `Admins can add up to ${formatNaira(ADMIN_DAILY_CREDIT_CAP)} a day (UTC) in all; you’ve added ${formatNaira(used)} today. Ask an owner`,
+      );
+    }
+  }
+
   private where(query: PlayersQueryDto): SqlWhere {
     const status = query.status ?? 'all';
     return new SqlWhere()
       .when(query.q, (p, q) => {
         const like = p(containsPattern(q));
         const exact = q.trim().toLowerCase().replace(/^@/, '');
-        const uuid = /^[0-9a-f-]{36}$/.test(exact) ? ` OR u.id = ${p(exact)}::uuid OR c.id = ${p(exact)}::uuid` : '';
+        // Only a well-formed UUID is compared as one (anything else would make the ::uuid cast fail the query).
+        const uuid = UUID.test(exact) ? ` OR u.id = ${p(exact)}::uuid OR c.id = ${p(exact)}::uuid` : '';
         return `u.email ILIKE ${like} OR c.handle ILIKE ${p(containsPattern(exact))} OR (c.first_name || ' ' || c.last_name) ILIKE ${like}${uuid}`;
       })
       .when(status === 'all' ? undefined : status, (_p, value) => {

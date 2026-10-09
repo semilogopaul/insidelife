@@ -18,7 +18,7 @@ import { AuthService } from '../auth/auth.service.js';
 import { SessionRevocationService } from '../auth/session-revocation.service.js';
 import { CharacterDirectory, characterLabel } from '../characters/character-directory.service.js';
 import { UserEntity } from '../users/entities/user.entity.js';
-import { accountSnapshot, canRestore, isOwner, restoreDeadline } from './account-status.js';
+import { accountSnapshot, assertMayManage, canRestore, isOwner, restoreDeadline } from './account-status.js';
 
 /** Shown in admin screens and the audit log once an account is anonymised. */
 export const PURGED_LABEL = 'Deleted player';
@@ -200,7 +200,7 @@ export class AccountLifecycleService {
     return withTransaction(this.dataSource, async (manager) => {
       const user = await manager.findOne(UserEntity, { where: { id: userId }, lock: { mode: 'pessimistic_write' } });
       if (!user || user.purgedAt) throw new ResourceNotFoundException('Account');
-      if (actor.role !== 'player') this.assertMayManage(actor, user);
+      if (actor.role !== 'player') assertMayManage(actor, user, this.owners());
       const before = accountSnapshot(user);
       const endSessions = await mutate(user, manager);
       await manager.save(user);
@@ -215,13 +215,6 @@ export class AccountLifecycleService {
       });
       return user;
     });
-  }
-
-  /** Admins can't act on their own account or an owner's; only owners can act on other admins. */
-  private assertMayManage(actor: AuditActor, user: UserEntity): void {
-    if (actor.userId === user.id) throw new ForbiddenActionException('You can’t do that to your own account');
-    if (isOwner(user.email, this.owners())) throw new ForbiddenActionException('Owner accounts (ADMIN_EMAILS) can’t be changed from the portal');
-    if (user.role === 'admin' && actor.role !== 'owner') throw new ForbiddenActionException('Only an owner can do that to another admin');
   }
 
   private async labelOf(user: UserEntity, manager: EntityManager): Promise<string> {

@@ -45,3 +45,16 @@ describe('totp', () => {
     expect(decodeURIComponent(uri)).toContain('Inside Life Admin');
   });
 });
+
+describe('checkTotp and clock skew', () => {
+  it('treats a last used step ahead of the clock as a wrong code, not a server error', async () => {
+    const secret = newTotpSecret();
+    const now = Date.UTC(2026, 9, 9, 12, 0, 0);
+    const code = await currentTotp(secret, now);
+    const step = Math.floor(now / 30_000);
+    // The server's clock went back two minutes since the last sign-in: otplib would throw AfterTimeStepRangeExceeded.
+    await expect(checkTotp(secret, code, step + 4, now)).resolves.toBeNull();
+    // A normal check still works.
+    await expect(checkTotp(secret, code, step - 1, now)).resolves.toBe(step);
+  });
+});

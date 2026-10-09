@@ -1,3 +1,5 @@
+import { ForbiddenActionException } from '../../common/exceptions/domain.exception.js';
+import type { AuditActor } from '../audit/audit.types.js';
 import type { UserEntity } from '../users/entities/user.entity.js';
 
 /** Where an account stands. `purged` = deleted and anonymised (can't be restored). */
@@ -40,4 +42,18 @@ export function restoreDeadline(deletedAt: Date, windowDays: number): Date {
 /** Owners are the addresses in ADMIN_EMAILS. */
 export function isOwner(email: string, ownerEmails: readonly string[]): boolean {
   return ownerEmails.includes(email.trim().toLowerCase());
+}
+
+/**
+ * What an admin may do to an account from the portal (every change to a player: status, wallet, handle): never to
+ * their own account or an owner's, and only owners may act on other admins.
+ */
+export function assertMayManage(
+  actor: Pick<AuditActor, 'userId' | 'role'>,
+  target: Pick<UserEntity, 'id' | 'email' | 'role'>,
+  ownerEmails: readonly string[],
+): void {
+  if (actor.userId === target.id) throw new ForbiddenActionException('You can’t do that to your own account');
+  if (isOwner(target.email, ownerEmails)) throw new ForbiddenActionException('Owner accounts (ADMIN_EMAILS) can’t be changed from the portal');
+  if (target.role === 'admin' && actor.role !== 'owner') throw new ForbiddenActionException('Only an owner can do that to another admin');
 }

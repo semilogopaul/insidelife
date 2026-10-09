@@ -65,7 +65,8 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 | `PAYSTACK_CALLBACK_URL` | Where Paystack returns players after checkout (`/payments/callback`). |
 | `TOPUP_DAILY_LIMIT_NGN` | Real-money spending cap per account per day (responsible play). |
 | `ADMIN_EMAILS` | Owners of the admin portal (moderation, players, payments, audit log); they can grant the admin role to others. |
-| `ADMIN_ORIGINS` | Origins of the separate admin portal (`insidelife-admin` repo), e.g. `https://admin.insidelife.online`. |
+| `ADMIN_ORIGINS` | Origins of the separate admin portal (`insidelife-admin` repo), e.g. `https://admin.insidelife.online`. The only origins the admin API admits, and required on its state-changing requests. |
+| `ADMIN_API_HOST` | Optional: serve the admin API only on this host (e.g. `admin-api.insidelife.online`). |
 | `ADMIN_MFA_KEY` | Encrypts admins' authenticator secrets (required on the live site; never change it). |
 | `ACCOUNT_RESTORE_DAYS` | How long a deleted account can be restored before it's anonymised (default 30). |
 | `S3_*` | Object storage for ad creatives and music (SeaweedFS locally; any S3-compatible store in production). |

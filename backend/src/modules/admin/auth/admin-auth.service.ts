@@ -6,7 +6,7 @@ import type { Redis } from 'ioredis';
 import { createHash, randomBytes } from 'node:crypto';
 import { IsNull, type DataSource, type EntityManager, type Repository } from 'typeorm';
 import type { RequestMeta } from '../../../common/decorators/request-meta.decorator.js';
-import { ConflictException, InvalidCredentialsException } from '../../../common/exceptions/domain.exception.js';
+import { ConflictException, ForbiddenActionException, InvalidCredentialsException } from '../../../common/exceptions/domain.exception.js';
 import { REDIS } from '../../../common/redis/redis.module.js';
 import type { AppConfig } from '../../../config/configuration.js';
 import { withTransaction } from '../../../database/transaction.js';
@@ -14,7 +14,7 @@ import { isOwner } from '../../accounts/account-status.js';
 import { AuditService } from '../../audit/audit.service.js';
 import type { AuditActor } from '../../audit/audit.types.js';
 import { AuthService } from '../../auth/auth.service.js';
-import type { UserEntity } from '../../users/entities/user.entity.js';
+import { UserEntity } from '../../users/entities/user.entity.js';
 import { UsersService } from '../../users/users.service.js';
 import type {
   AdminAccessPayload,
@@ -56,11 +56,16 @@ const CHALLENGE_TTL_SECONDS = 300;
 const PENDING_SECRET_TTL_MS = 15 * 60_000;
 /** Two tabs refreshing at once present the same cookie; the second gets a fresh rotation within this window. */
 const ROTATION_GRACE_MS = 30_000;
+/** Attempts allowed per window: password per (email, IP), codes per account. */
 const FAILURE_LIMIT = 5;
 const FAILURE_WINDOW_SECONDS = 15 * 60;
 const failureKey = (subject: string): string => `admin:auth-failures:${subject}`;
 
 type CodeAttempt = { readonly ok: true; readonly issued: IssuedAdminSession } | { readonly ok: false };
+/** A refusal returns (so the session's revocation commits) and is thrown after the transaction. */
+type RefreshOutcome = { readonly ok: true; readonly issued: IssuedAdminSession } | { readonly ok: false; readonly ended: 'session' | 'access-removed' };
+
+type RoleFields = Pick<UserEntity, 'email' | 'role' | 'emailVerifiedAt' | 'suspendedAt' | 'deletedAt' | 'purgedAt'>;
 
 /**
  * Admin portal sign-in: password (the account's normal password), then an authenticator-app code. The first sign-in
@@ -82,8 +87,16 @@ export class AdminAuthService {
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
-  /** Owner (ADMIN_EMAILS) or granted admin, and in good standing; null otherwise. */
-  roleOf(user: Pick<UserEntity, 'email' | 'role' | 'suspendedAt' | 'deletedAt' | 'purgedAt'>): AdminRole | null {
+  /**
+   * Owner (ADMIN_EMAILS) or granted admin, in good standing; null otherwise. On the live site the email must be
+   * verified too: otherwise whoever signed up first with an ADMIN_EMAILS address would be an owner.
+   */
+  roleOf(user: RoleFields): AdminRole | null {
+    if (this.config.get('deployment', { infer: true }) === 'public' && !user.emailVerifiedAt) return null;
+    return this.roleIgnoringVerification(user);
+  }
+
+  private roleIgnoringVerification(user: RoleFields): AdminRole | null {
     if (user.suspendedAt || user.deletedAt || user.purgedAt) return null;
     if (isOwner(user.email, this.config.get('adminEmails', { infer: true }))) return 'owner';
     return user.role === 'admin' ? 'admin' : null;
@@ -92,17 +105,21 @@ export class AdminAuthService {
   // ----- Sign-in ----------------------------------------------------------------------------------------------------
 
   async signIn(email: string, password: string, meta: RequestMeta): Promise<AdminChallengeDto> {
-    const subject = `password:${email.trim().toLowerCase()}`;
-    await this.assertNotLocked(subject);
+    // Counted per email and IP: someone guessing from elsewhere can't lock the real admin out of their account.
+    const subject = `password:${email.trim().toLowerCase()}:${meta.ip ?? 'unknown'}`;
+    await this.takeAttempt(subject);
     const user = await this.auth.checkCredentials(email, password);
     const role = user ? this.roleOf(user) : null;
     if (!user || !role) {
-      await this.countFailure(subject);
       await this.recordFailedSignIn(email, 'password', meta);
+      // Only someone who knows the password learns this: the address must be confirmed first (live site).
+      if (user && this.roleIgnoringVerification(user)) {
+        throw new ForbiddenActionException('Confirm your email address in the game first (Me → Settings), then sign in here');
+      }
       // Same answer for "wrong password" and "not an admin": the portal never reveals who the admins are.
       throw new InvalidCredentialsException();
     }
-    await this.clearFailures(subject);
+    await this.clearAttempts(subject);
 
     const mfa = await this.mfa.findOne({ where: { userId: user.id } });
     if (mfa?.enabledAt && mfa.secret) return this.challenge(user, 'verify', null);
@@ -120,7 +137,7 @@ export class AdminAuthService {
   /** First sign-in: the first code from the app proves it holds the secret. Returns the session and recovery codes. */
   async confirmSetup(challengeToken: string, code: string, meta: RequestMeta): Promise<IssuedSetup> {
     const { user, role } = await this.challengedAdmin(challengeToken, 'setup');
-    await this.assertNotLocked(`code:${user.id}`);
+    await this.takeAttempt(`code:${user.id}`);
     const actor = this.actorOf(user, role, meta);
     const result = await withTransaction(this.dataSource, async (manager) => {
       const mfa = await manager.findOne(AdminMfaEntity, { where: { userId: user.id }, lock: { mode: 'pessimistic_write' } });
@@ -149,15 +166,15 @@ export class AdminAuthService {
       const issued = await this.startSession(manager, user, role, mfa, meta, actor, 'authenticator');
       return { issued, recoveryCodes };
     });
-    if (!result) return this.failCode(user, role, meta);
-    await this.clearFailures(`code:${user.id}`);
+    if (!result) return this.failCode(user, meta);
+    await this.clearAttempts(`code:${user.id}`);
     return result;
   }
 
   /** Every later sign-in: a code from the app, or one of the recovery codes. */
   async verify(challengeToken: string, input: { readonly code?: string; readonly recoveryCode?: string }, meta: RequestMeta): Promise<IssuedAdminSession> {
     const { user, role } = await this.challengedAdmin(challengeToken, 'verify');
-    await this.assertNotLocked(`code:${user.id}`);
+    await this.takeAttempt(`code:${user.id}`);
     const actor = this.actorOf(user, role, meta);
     const attempt = await withTransaction(this.dataSource, async (manager): Promise<CodeAttempt> => {
       const mfa = await manager.findOne(AdminMfaEntity, { where: { userId: user.id }, lock: { mode: 'pessimistic_write' } });
@@ -184,39 +201,51 @@ export class AdminAuthService {
       }
       return { ok: true, issued: await this.startSession(manager, user, role, mfa, meta, actor, method) };
     });
-    if (!attempt.ok) return this.failCode(user, role, meta);
-    await this.clearFailures(`code:${user.id}`);
+    if (!attempt.ok) return this.failCode(user, meta);
+    await this.clearAttempts(`code:${user.id}`);
     return attempt.issued;
   }
 
-  /** Rotate the refresh cookie and mint a new access token. */
+  /**
+   * Rotate the refresh cookie and mint a new access token. Refusals that end the session (a leaked token presented
+   * again, an account that lost admin access) return out of the transaction so the revocation commits, then throw.
+   */
   async refresh(rawToken: string | undefined, meta: RequestMeta): Promise<IssuedAdminSession> {
     if (!rawToken) throw new AdminSessionEndedException('Sign in to continue');
     const hash = sha256(rawToken);
-    return withTransaction(this.dataSource, async (manager) => {
+    const outcome = await withTransaction(this.dataSource, async (manager): Promise<RefreshOutcome> => {
       const repo = manager.getRepository(AdminSessionEntity);
       let session = await repo.findOne({ where: { tokenHash: hash }, lock: { mode: 'pessimistic_write' } });
       if (!session) {
         const rotated = await repo.findOne({ where: { previousTokenHash: hash }, lock: { mode: 'pessimistic_write' } });
-        if (!rotated) throw new AdminSessionEndedException();
+        if (!rotated) return { ok: false, ended: 'session' };
         const withinGrace = rotated.rotatedAt !== null && Date.now() - rotated.rotatedAt.getTime() < ROTATION_GRACE_MS;
         if (!withinGrace) {
-          // An old token came back after the grace: it leaked. End the session.
-          await this.endSession(manager, rotated, 'reuse');
-          throw new AdminSessionEndedException();
+          // An old token came back after the grace: it leaked. End the session (and say so in the audit log).
+          if (!rotated.revokedAt) {
+            await this.endSession(manager, rotated, 'reuse');
+            const owner = await manager.findOne(UserEntity, { where: { id: rotated.userId } });
+            await this.audit.record(manager, this.anonymousActor(meta), {
+              action: 'admin.refresh-token-reused',
+              target: { type: 'admin', id: rotated.userId, label: owner?.email ?? null },
+              metadata: { sessionId: rotated.id },
+            });
+          }
+          return { ok: false, ended: 'session' };
         }
         session = rotated;
       }
       const now = Date.now();
       if (session.revokedAt || session.idleExpiresAt.getTime() <= now || session.absoluteExpiresAt.getTime() <= now) {
-        throw new AdminSessionEndedException();
+        return { ok: false, ended: 'session' };
       }
-      const user = await this.users.findById(session.userId);
+      // Read under a share lock: a suspension or role change committing now is either seen here or waits for this.
+      const user = await manager.findOne(UserEntity, { where: { id: session.userId }, lock: { mode: 'pessimistic_read' } });
       const role = user ? this.roleOf(user) : null;
       const mfa = await manager.findOne(AdminMfaEntity, { where: { userId: session.userId } });
       if (!user || !role || !mfa?.enabledAt) {
         await this.endSession(manager, session, 'role-removed');
-        throw new AdminAccessRemovedException();
+        return { ok: false, ended: 'access-removed' };
       }
       const refreshToken = randomBytes(32).toString('base64url');
       session.previousTokenHash = session.tokenHash;
@@ -227,8 +256,10 @@ export class AdminAuthService {
       session.ip = meta.ip;
       session.userAgent = meta.userAgent;
       await repo.save(session);
-      return this.issue(user, role, mfa, session, refreshToken);
+      return { ok: true, issued: await this.issue(user, role, mfa, session, refreshToken) };
     });
+    if (!outcome.ok) throw outcome.ended === 'access-removed' ? new AdminAccessRemovedException() : new AdminSessionEndedException();
+    return outcome.issued;
   }
 
   async signOut(rawToken: string | undefined, meta: RequestMeta): Promise<void> {
@@ -278,7 +309,7 @@ export class AdminAuthService {
 
   /** New recovery codes (the old ones stop working). Needs a current authenticator code. */
   async regenerateRecoveryCodes(principal: AdminPrincipal, code: string, meta: RequestMeta): Promise<readonly string[]> {
-    await this.assertNotLocked(`code:${principal.userId}`);
+    await this.takeAttempt(`code:${principal.userId}`);
     const actor = this.actorFromPrincipal(principal, meta);
     const codes = await withTransaction(this.dataSource, async (manager) => {
       const mfa = await manager.findOne(AdminMfaEntity, { where: { userId: principal.userId }, lock: { mode: 'pessimistic_write' } });
@@ -299,10 +330,8 @@ export class AdminAuthService {
       });
       return recoveryCodes;
     });
-    if (!codes) {
-      await this.countFailure(`code:${principal.userId}`);
-      throw new AdminCodeInvalidException();
-    }
+    if (!codes) throw new AdminCodeInvalidException();
+    await this.clearAttempts(`code:${principal.userId}`);
     return codes;
   }
 
@@ -425,10 +454,14 @@ export class AdminAuthService {
     return { userId: user.id, email: user.email, role, ...meta };
   }
 
-  /** Wrong code: count it against the account, audit it, refuse. */
-  private async failCode(user: UserEntity, role: AdminRole, meta: RequestMeta): Promise<never> {
-    await this.countFailure(`code:${user.id}`);
-    await this.audit.recordNow(this.actorOf(user, role, meta), {
+  /** Someone not signed in: failed sign-in steps are theirs, not the admin's whose account they tried. */
+  private anonymousActor(meta: RequestMeta): AuditActor {
+    return { userId: null, email: null, role: 'anonymous', ...meta };
+  }
+
+  /** Wrong code (the attempt was already counted): audit it, refuse. */
+  private async failCode(user: UserEntity, meta: RequestMeta): Promise<never> {
+    await this.audit.recordNow(this.anonymousActor(meta), {
       action: 'admin.sign-in-failed',
       target: { type: 'admin', id: user.id, label: user.email },
       metadata: { step: 'code' },
@@ -442,28 +475,28 @@ export class AdminAuthService {
     if (!account) return;
     const owner = isOwner(account.email, this.config.get('adminEmails', { infer: true }));
     if (!owner && account.role !== 'admin') return;
-    await this.audit.recordNow(this.actorOf(account, owner ? 'owner' : 'admin', meta), {
+    await this.audit.recordNow(this.anonymousActor(meta), {
       action: 'admin.sign-in-failed',
       target: { type: 'admin', id: account.id, label: account.email },
       metadata: { step },
     });
   }
 
-  private async assertNotLocked(subject: string): Promise<void> {
-    const failures = Number((await this.redis.get(failureKey(subject))) ?? 0);
-    if (failures >= FAILURE_LIMIT) {
-      const ttl = await this.redis.ttl(failureKey(subject));
+  /**
+   * Count this attempt first, atomically (INCR, and the window's expiry in the same MULTI), then refuse when it is over
+   * the cap: parallel attempts each get their own number, so they can't slip past it together. Success clears it.
+   */
+  private async takeAttempt(subject: string): Promise<void> {
+    const key = failureKey(subject);
+    const replies = await this.redis.multi().incr(key).expire(key, FAILURE_WINDOW_SECONDS, 'NX').exec();
+    const count = Number(replies?.[0]?.[1] ?? 0);
+    if (count > FAILURE_LIMIT) {
+      const ttl = await this.redis.ttl(key);
       throw new AdminLockedException(Math.max(1, Math.ceil(Math.max(ttl, 60) / 60)));
     }
   }
 
-  private async countFailure(subject: string): Promise<void> {
-    const key = failureKey(subject);
-    const count = await this.redis.incr(key);
-    if (count === 1) await this.redis.expire(key, FAILURE_WINDOW_SECONDS);
-  }
-
-  private async clearFailures(subject: string): Promise<void> {
+  private async clearAttempts(subject: string): Promise<void> {
     await this.redis.del(failureKey(subject));
   }
 }

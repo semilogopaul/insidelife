@@ -20,22 +20,31 @@ export function totpUri(secret: string, accountName: string): string {
   return generateURI({ issuer: TOTP_ISSUER, label: accountName, secret, period: PERIOD_SECONDS, digits: 6 });
 }
 
+/** otplib throws this when the last used step is ahead of now plus the tolerance (the server's clock went back). */
+const isAfterTimeStepError = (error: unknown): boolean => error instanceof Error && error.name.startsWith('AfterTimeStep');
+
 /**
  * Check a code. Returns the time step it belongs to (store it: a code from that step or earlier is a replay and is
- * refused next time), or null when it's wrong.
+ * refused next time), or null when it's wrong. Clock skew that leaves the last used step in the future counts as a
+ * wrong code, never as a server error.
  */
 export async function checkTotp(secret: string, code: string, lastUsedStep: number | null, nowMs = Date.now()): Promise<number | null> {
   const token = code.replace(/\D/g, '');
   if (token.length !== 6) return null;
-  const result = await verify({
-    secret,
-    token,
-    epoch: Math.floor(nowMs / 1000),
-    period: PERIOD_SECONDS,
-    epochTolerance: TOLERANCE_SECONDS,
-    ...(lastUsedStep !== null ? { afterTimeStep: lastUsedStep } : {}),
-  });
-  return result.valid && 'timeStep' in result ? result.timeStep : null;
+  try {
+    const result = await verify({
+      secret,
+      token,
+      epoch: Math.floor(nowMs / 1000),
+      period: PERIOD_SECONDS,
+      epochTolerance: TOLERANCE_SECONDS,
+      ...(lastUsedStep !== null ? { afterTimeStep: lastUsedStep } : {}),
+    });
+    return result.valid && 'timeStep' in result ? result.timeStep : null;
+  } catch (error) {
+    if (isAfterTimeStepError(error)) return null;
+    throw error;
+  }
 }
 
 /** The current code (tests and local tooling only). */

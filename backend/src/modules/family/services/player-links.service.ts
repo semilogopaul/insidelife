@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { In } from 'typeorm';
+import { In, IsNull, Not } from 'typeorm';
 import {
   RING_LIMITS,
   formatNaira,
@@ -134,6 +134,9 @@ export class PlayerLinksService {
     if (!proposal) throw new ResourceNotFoundException('Proposal');
     if (proposal.status !== 'pending') throw new GameRuleException('ALREADY_ANSWERED', 'You already answered that one.');
     const [proposer] = await this.relationships.loadPlayers(ctx, [proposal.fromCharacterId]);
+    // A proposer whose account was deleted can't be answered; the proposal stays as it is in case the account is
+    // restored (and is left out of the list meanwhile).
+    if ((await this.hidden(ctx, [proposal.fromCharacterId])).size > 0) throw new ResourceNotFoundException('Proposal');
     if (!proposer?.alive) {
       proposal.status = 'cancelled';
       proposal.proposerSynced = false;
@@ -171,7 +174,10 @@ export class PlayerLinksService {
       ctx.manager.find(ProposalEntity, { where: { fromCharacterId: me }, order: { createdAtGame: 'DESC' }, take: 20 }),
     ]);
     const ids = [...new Set([...incoming.map((p) => p.fromCharacterId), ...outgoing.map((p) => p.toCharacterId)])];
-    const players = new Map((await this.relationships.loadPlayers(ctx, ids)).map((player) => [player.id, player]));
+    const hidden = await this.hidden(ctx, ids);
+    const players = new Map(
+      (await this.relationships.loadPlayers(ctx, ids)).filter((player) => !hidden.has(player.id)).map((player) => [player.id, player]),
+    );
     const self = this.self(ctx);
     return {
       incoming: incoming.flatMap((p) => {
@@ -479,11 +485,18 @@ export class PlayerLinksService {
 
   private async findPlayer(ctx: SimulationContext, target: ProposalTarget): Promise<PlayerRef> {
     const where = 'handle' in target ? { handle: target.handle.trim().toLowerCase().replace(/^@/, '') } : { id: target.characterId };
-    const row = await ctx.manager.findOne(CharacterEntity, { where, select: { id: true } });
+    const row = await ctx.manager.findOne(CharacterEntity, { where: { ...where, hiddenAt: IsNull() }, select: { id: true } });
     const [player] = row ? await this.relationships.loadPlayers(ctx, [row.id]) : [];
     if (!player || !player.alive) throw new ResourceNotFoundException('Player');
     if (player.id === ctx.character.id) throw new GameRuleException('SELF', 'Love yourself — but not like this.');
     return player;
+  }
+
+  /** Which of these characters are hidden (their account was deleted). */
+  private async hidden(ctx: SimulationContext, ids: readonly string[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await ctx.manager.find(CharacterEntity, { where: { id: In([...ids]), hiddenAt: Not(IsNull()) }, select: { id: true } });
+    return new Set(rows.map((row) => row.id));
   }
 
   private self(ctx: SimulationContext): PlayerRef {
