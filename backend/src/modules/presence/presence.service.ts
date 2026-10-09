@@ -66,6 +66,11 @@ export class PresenceService {
     return this.many(ids);
   }
 
+  /** These players' presence (unknown or offline ones are skipped). */
+  players(ids: readonly string[]): Promise<PresencePlayerDto[]> {
+    return this.many(ids);
+  }
+
   private async many(ids: readonly string[]): Promise<PresencePlayerDto[]> {
     if (ids.length === 0) return [];
     const raws = await this.redis.mget(ids.map(PLAYER_KEY));

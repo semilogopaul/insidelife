@@ -11,10 +11,12 @@ export type GameSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 
 interface ConnectionState {
   readonly status: 'idle' | 'connecting' | 'online' | 'offline';
+  /** Your Lagos instance (who you see on the streets and in Lagos chat), once the server has placed you. */
+  readonly instance: { readonly id: string; readonly players: number } | null;
   set(status: ConnectionState['status']): void;
 }
 
-export const useConnection = create<ConnectionState>()((set) => ({ status: 'idle', set: (status) => set({ status }) }));
+export const useConnection = create<ConnectionState>()((set) => ({ status: 'idle', instance: null, set: (status) => set({ status }) }));
 
 let socket: GameSocket | null = null;
 
@@ -30,6 +32,7 @@ export function getSocket(): GameSocket {
   });
   const connection = useConnection.getState();
   socket.on('connect', () => connection.set('online'));
+  socket.on('world:instance', (instance) => useConnection.setState({ instance }));
   socket.on('disconnect', () => connection.set('offline'));
   socket.on('connect_error', () => {
     connection.set('offline');

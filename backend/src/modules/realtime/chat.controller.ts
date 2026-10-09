@@ -37,9 +37,10 @@ import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
-import { ChatService, dmCounterpart } from './chat.service.js';
+import { ChatService, dmCounterpart, instanceChannel } from './chat.service.js';
 import { MediaLinkQueryDto, UploadChatMediaDto } from './dto/chat.dto.js';
 import type { UploadedChatFile } from './media/chat-media.service.js';
+import { ShardsService } from './shards.service.js';
 
 /** Multer limits: one in-memory file, one short text field, nothing else. */
 const UPLOAD_LIMITS = {
@@ -57,6 +58,7 @@ export class ChatController {
     private readonly chat: ChatService,
     private readonly directory: CharacterDirectory,
     private readonly bus: RealtimeBus,
+    private readonly shards: ShardsService,
   ) {}
 
   @Get('channels/:channel/messages')
@@ -69,7 +71,9 @@ export class ChatController {
     const character = await this.me(user);
     if (!this.chat.canAccess(character, channel))
       throw new ForbiddenActionException('You’re not in that chat');
-    return this.chat.history(channel, cursor ?? null, Math.min(100, Math.max(1, limit)));
+    // Lagos chat is per Lagos instance: read the one you're in.
+    const stored = instanceChannel(channel, channel === 'global' ? await this.shards.shardOf(character.id) : null);
+    return this.chat.history(stored, cursor ?? null, Math.min(100, Math.max(1, limit)));
   }
 
   /** My private conversations and message requests, newest first (including people who messaged me first). */

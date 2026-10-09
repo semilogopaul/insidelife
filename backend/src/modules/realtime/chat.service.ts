@@ -63,6 +63,9 @@ interface DmGate {
 
 export const dmChannel = (a: string, b: string): string => `dm:${[a, b].toSorted().join(':')}`;
 
+/** Where a channel's messages live: Lagos chat (`global`) is kept per Lagos instance. */
+export const instanceChannel = (channel: string, instance: string | null): string => (channel === 'global' && instance ? `global:${instance}` : channel);
+
 /** The other participant of a DM channel (null if `characterId` isn't in it or it isn't a DM). */
 export const dmCounterpart = (channel: string, characterId: string): string | null => {
   if (!channel.startsWith('dm:')) return null;
@@ -98,7 +101,11 @@ export class ChatService {
     return false;
   }
 
-  async send(sender: CharacterEntity, channel: string, rawBody: string): Promise<ChatMessageDto> {
+/**
+   * Send a text. `instance` scopes Lagos chat (`global`) to the sender's Lagos instance: it's stored as
+   * `global:<instance>` and still presented as `global`.
+   */
+  async send(sender: CharacterEntity, channel: string, rawBody: string, instance: string | null = null): Promise<ChatMessageDto> {
     if (!this.canAccess(sender, channel))
       throw new GameRuleException('CHANNEL_FORBIDDEN', 'You’re not in that chat');
     const body = sanitiseChat(rawBody);
@@ -110,7 +117,7 @@ export class ChatService {
       const message = await manager.save(
         manager.create(ChatMessageEntity, {
           ...this.senderColumns(sender),
-          channel,
+          channel: instanceChannel(channel, instance),
           kind: 'text' as ChatMessageKind,
           body,
         }),
@@ -435,7 +442,8 @@ export class ChatService {
   private toDto(entity: ChatMessageEntity): ChatMessageDto {
     return {
       id: entity.id,
-      channel: entity.channel,
+      // Lagos chat is stored per instance (`global:<instance>`) but is just `global` to clients.
+      channel: entity.channel.startsWith('global:') ? 'global' : entity.channel,
       sender: {
         characterId: entity.senderId,
         handle: entity.senderHandle,

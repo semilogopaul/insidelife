@@ -160,6 +160,8 @@ export interface ServerToClientEvents {
   'social:moment': (payload: SocialMomentDto) => void;
   'party:spray': (spray: SprayEventDto) => void;
   'world:online-count': (payload: { readonly count: number }) => void;
+  /** Your Lagos instance (who you see on the streets and in Lagos chat): its id and how many are in it. */
+  'world:instance': (payload: { readonly id: string; readonly players: number }) => void;
   /** Batched positions of players in your district (and neighbours), ~4 Hz. */
   'world:players': (positions: readonly WorldPlayerPositionDto[]) => void;
   /** A milestone moment (first salary, graduation, wedding…) is ready to celebrate full-screen. */

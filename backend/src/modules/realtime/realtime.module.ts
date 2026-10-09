@@ -18,6 +18,7 @@ import { ChatDmThreadEntity } from './entities/chat-dm-thread.entity.js';
 import { ChatMessageEntity } from './entities/chat-message.entity.js';
 import { ChatMediaService } from './media/chat-media.service.js';
 import { RealtimeGateway } from './realtime.gateway.js';
+import { ShardsService } from './shards.service.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { RealtimeGateway } from './realtime.gateway.js';
   controllers: [ChatController],
   providers: [
     RealtimeGateway,
+    ShardsService,
     ChatService,
     ChatMediaService,
     ChatRetentionService,

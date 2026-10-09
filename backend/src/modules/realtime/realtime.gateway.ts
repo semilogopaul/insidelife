@@ -30,7 +30,9 @@ import { CharacterDirectory } from '../characters/character-directory.service.js
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { RealtimeBus, characterRoom } from '../realtime-bus/realtime-bus.service.js';
+import { SocialGuard } from '../social/social-guard.service.js';
 import { ChatService } from './chat.service.js';
+import { ShardsService } from './shards.service.js';
 
 type RealtimeSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
 
@@ -43,6 +45,8 @@ interface SocketData {
   /** Interest cell the player stands in (positions are published here; the 3×3 block around it is joined). */
   cell: string | null;
   cellRooms: ReadonlySet<string>;
+  /** Lagos instance (see ShardsService): positions, arrivals and Lagos chat are scoped to it. */
+  shard: string;
   /** Resolves once the handshake is authenticated; handlers wait on it so early events aren't dropped. */
   ready: Promise<boolean>;
 }
@@ -53,6 +57,12 @@ const POSITION_TICK_MS = 250;
 const MIN_MOVE_INTERVAL_MS = 150;
 
 const districtRoom = (districtId: string): string => `district:${districtId}`;
+/** Everyone in one Lagos instance (arrivals, departures, Lagos chat). */
+const shardRoom = (shard: string): string => `shard:${shard}`;
+/** Players in the arrival snapshot. */
+const PRESENCE_SAMPLE = 80;
+/** The online count is pushed on this beat (not on every connect: that's O(n²) at scale). */
+const ONLINE_COUNT_MS = 20_000;
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 /** A driving player's car look, if it's a known model and a plain hex colour (cosmetic; anything else is dropped). */
@@ -75,6 +85,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   private readonly logger = new Logger(RealtimeGateway.name);
   private readonly pendingPositions = new Map<string, Map<string, WorldPlayerPositionDto>>();
   private flushTimer: NodeJS.Timeout | null = null;
+  private countTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly jwt: JwtService,
@@ -83,16 +94,22 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly chat: ChatService,
     private readonly bus: RealtimeBus,
     private readonly metrics: MetricsService,
+    private readonly shards: ShardsService,
+    private readonly social: SocialGuard,
   ) {}
 
   afterInit(server: Server<ClientToServerEvents, ServerToClientEvents>): void {
     this.bus.attach(server);
     this.flushTimer = setInterval(() => this.flushPositions(), POSITION_TICK_MS);
     this.flushTimer.unref();
+    // Each node tells its own sockets (with the Redis adapter a plain emit would repeat once per node).
+    this.countTimer = setInterval(() => void this.presence.onlineCount().then((count) => this.server.local.emit('world:online-count', { count })), ONLINE_COUNT_MS);
+    this.countTimer.unref();
   }
 
   onModuleDestroy(): void {
     if (this.flushTimer) clearInterval(this.flushTimer);
+    if (this.countTimer) clearInterval(this.countTimer);
   }
 
   async handleConnection(socket: RealtimeSocket): Promise<void> {
@@ -104,6 +121,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       districtRoom: null,
       cell: null,
       cellRooms: new Set(),
+      shard: '',
       ready: ready.promise,
     };
     // Register handlers before any await so events sent right after connecting are queued, not lost.
@@ -121,15 +139,19 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
 
       socket.data.characterId = character.id;
       socket.data.handle = character.handle;
-      await socket.join([characterRoom(character.id), 'global']);
+      const shard = await this.shards.assign(character.id, await this.social.friendIds(character.id));
+      socket.data.shard = shard;
+      await socket.join([characterRoom(character.id), shardRoom(shard)]);
       const player = this.toPresence(character);
       await this.presence.markOnline(player);
       this.metrics.onlinePlayers.inc();
       ready.resolve(true);
 
-      socket.emit('presence:snapshot', await this.presence.sample());
-      socket.broadcast.emit('presence:joined', player);
-      this.server.emit('world:online-count', { count: await this.presence.onlineCount() });
+      // Only your instance hears you arrive; you get a sample of who's in it.
+      socket.emit('presence:snapshot', await this.presence.players(await this.shards.sample(shard, PRESENCE_SAMPLE)));
+      socket.to(shardRoom(shard)).emit('presence:joined', player);
+      socket.emit('world:instance', { id: shard, players: await this.shards.size(shard) });
+      socket.emit('world:online-count', { count: await this.presence.onlineCount() });
     } catch (error) {
       ready.resolve(false);
       this.logger.debug(`Rejected socket: ${error instanceof Error ? error.message : 'unknown'}`);
@@ -148,18 +170,20 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     const remaining = await this.server.in(characterRoom(characterId)).fetchSockets();
     if (remaining.length > 0) return;
     await this.presence.markOffline(characterId);
-    this.server.emit('presence:left', { characterId });
+    await this.shards.leave(characterId);
+    if (socket.data.shard) this.server.to(shardRoom(socket.data.shard)).emit('presence:left', { characterId });
   }
 
   private async onChatSend(socket: RealtimeSocket, channel: string, body: string, ack: (result: RealtimeAck) => void): Promise<void> {
     try {
       const sender = await this.directory.findById(socket.data.characterId);
       if (!sender) throw new DomainException('NO_CHARACTER', 'No character');
-      const message = await this.chat.send(sender, channel, body);
+      const message = await this.chat.send(sender, channel, body, socket.data.shard || null);
       if (channel.startsWith('dm:')) {
         for (const participant of channel.split(':').slice(1)) this.server.to(characterRoom(participant)).emit('chat:message', message);
       } else {
-        this.server.to(channel).emit('chat:message', message);
+        // Lagos chat goes to your instance only.
+        this.server.to(channel === 'global' ? shardRoom(socket.data.shard) : channel).emit('chat:message', message);
       }
       ack({ ok: true });
     } catch (error) {
@@ -173,7 +197,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       ack({ ok: false, error: 'You’re not in that chat' });
       return;
     }
-    if (!channel.startsWith('dm:')) await socket.join(channel);
+    // Lagos chat: you're already in your instance's room.
+    if (!channel.startsWith('dm:') && channel !== 'global') await socket.join(channel);
     ack({ ok: true });
   }
 
@@ -191,8 +216,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       void socket.join(district);
       socket.data.districtRoom = district;
     }
-    const cell = interestCell(point);
-    if (socket.data.cell !== cell) this.moveInterest(socket, cell, new Set(interestNeighbourhood(point)));
+    const cell = `${socket.data.shard}|${interestCell(point)}`;
+    if (socket.data.cell !== cell) this.moveInterest(socket, cell, new Set(interestNeighbourhood(point).map((room) => `${socket.data.shard}|${room}`)));
 
     let batch = this.pendingPositions.get(cell);
     if (!batch) {

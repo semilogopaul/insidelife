@@ -42,6 +42,19 @@ export class SocialGuard {
     return manager.exists(FriendshipEntity, { where: { pairKey: friendshipPairKey(a, b), status: 'accepted' } });
   }
 
+  /** Accepted friends (up to `limit`), e.g. to put friends in the same Lagos instance. */
+  async friendIds(characterId: string, limit = 500, manager: EntityManager = this.dataSource.manager): Promise<string[]> {
+    const rows = await manager.find(FriendshipEntity, {
+      where: [
+        { requesterId: characterId, status: 'accepted' },
+        { addresseeId: characterId, status: 'accepted' },
+      ],
+      select: { requesterId: true, addresseeId: true },
+      take: limit,
+    });
+    return rows.map((row) => (row.requesterId === characterId ? row.addresseeId : row.requesterId));
+  }
+
   /** Everyone this character blocked or was blocked by (for filtering lists). */
   async blockedIds(characterId: string, manager: EntityManager = this.dataSource.manager): Promise<Set<string>> {
     const rows = await manager.find(BlockEntity, {
