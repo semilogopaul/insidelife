@@ -39,6 +39,8 @@ const BADGES: Readonly<Record<string, BadgeDesign>> = {
   Toyota: { frame: 'oval', fill: '#e8ecef', ring: '#b3121b', ink: '#b3121b', mark: { path: RINGS, stroke: true } },
   Honda: { frame: 'square', fill: '#e8ecef', ring: '#7d848c', ink: '#3a3f45', mark: { text: 'H' } },
   Kia: { frame: 'oval', fill: '#e8ecef', ring: '#7d848c', ink: '#3a3f45', mark: { text: 'KY' } },
+  Hyundai: { frame: 'oval', fill: '#1f3b73', ring: '#c9ced3', ink: '#e8ecef', mark: { text: 'HY' } },
+  Peugeot: { frame: 'shield', fill: '#1b1d22', ring: '#c9ced3', ink: '#e8ecef', mark: { text: 'PG' } },
   Innoson: { frame: 'circle', fill: '#0f5132', ring: '#f2b705', ink: '#ffffff', mark: { text: 'IVM' } },
   Mitsubishi: { frame: 'circle', fill: '#e8ecef', ring: '#b3121b', ink: '#b3121b', mark: { text: '◆◆' } },
 };

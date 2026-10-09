@@ -77,7 +77,7 @@ function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number
 }
 
 /** Canvas house ad: Danfo yellow, the double stripe, "Your ad here" and the slot's price. */
-function drawHouseAd(placement: BillboardWorldPlacement, content: HouseAdContent): CanvasTexture {
+export function drawHouseAd(placement: Pick<BillboardWorldPlacement, 'width' | 'height'>, content: Omit<HouseAdContent, 'kind' | 'slotId'>): CanvasTexture {
   const ratio = placement.width / placement.height;
   const canvas = document.createElement('canvas');
   canvas.width = ratio >= 1 ? 768 : 512;
@@ -146,7 +146,7 @@ interface Board {
 }
 
 /** The texture a board should show for its current content (starts loading creatives on first sight). */
-function boardTexture(content: ReturnType<typeof currentBillboard>, house: Texture, cache: Map<string, Texture | 'loading' | 'failed'>): Texture {
+export function boardTexture(content: ReturnType<typeof currentBillboard>, house: Texture, cache: Map<string, Texture | 'loading' | 'failed'>): Texture {
   if (content.kind !== 'creative') return house;
   const cached = cache.get(content.imageUrl);
   if (cached === undefined) {

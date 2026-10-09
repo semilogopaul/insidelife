@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { In, Not, type DataSource, type Repository } from 'typeorm';
-import { findBillboardSlot, type ModerationCampaignDto, type ModerationClubOrderDto, type ModerationQueueDto, type PromotionStatus } from '@insidelife/shared';
+import { findAdSlot, type ModerationCampaignDto, type ModerationClubOrderDto, type ModerationQueueDto, type PromotionStatus } from '@insidelife/shared';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
@@ -121,7 +121,7 @@ export class ModerationService {
     this.campaignFeed.invalidateLive();
     if (decision.action === 'reject') await this.removeCreativeIfUnused(campaign);
     this.logger.log({ campaignId, action: decision.action, status: campaign.status, adminId }, 'Billboard campaign moderated');
-    const subject: NoticeSubject = { noun: 'Billboard', name: campaign.title, where: findBillboardSlot(campaign.slotId)?.name ?? 'your board' };
+    const subject: NoticeSubject = { noun: 'Billboard', name: campaign.title, where: findAdSlot(campaign.slotId)?.name ?? 'your board' };
     await this.notifier.notifyOwner(campaign.ownerUserId, noticeFor(decision, campaign.status, subject, campaign, reason));
     return this.campaignView(campaign, clock, await this.handlesOf([campaign]));
   }

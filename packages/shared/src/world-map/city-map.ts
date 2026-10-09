@@ -671,7 +671,7 @@ function buildCityMap(): CityMap {
   };
   for (const spec of BILLBOARD_SPECS) {
     const slot = BILLBOARD_SLOTS.find((entry) => entry.id === spec.slotId);
-    if (!slot) continue;
+    if (!slot?.districtId) continue;
     const format = BILLBOARD_FORMAT_SPECS[slot.format];
     billboards.push({
       slotId: spec.slotId,

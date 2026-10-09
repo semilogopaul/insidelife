@@ -1,6 +1,7 @@
 'use client';
 
 import { Billboards } from '../billboards/Billboards';
+import { StreetAds } from '../billboards/StreetAds';
 import type { CityPlan } from '../layout/placements';
 import type { QualityProfile } from '../lib/quality';
 import { DoorMarkers } from './DoorMarkers';
@@ -17,6 +18,7 @@ export function CityDetails({ plan, quality }: { readonly plan: CityPlan; readon
       <Landmarks shadows={quality.shadows} />
       <VenueSigns />
       <Billboards shadows={quality.shadows} />
+      <StreetAds shadows={quality.shadows} />
       <DoorMarkers />
       <StreetLights lamps={plan.lamps} />
       {quality.tier !== 'low' && <PowerLines wires={plan.wires} />}

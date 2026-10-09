@@ -1,6 +1,6 @@
 'use client';
 
-import { CITY_MAP } from '@insidelife/shared';
+import { CITY_MAP, findAdPlacement } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { currentBillboard } from '../../city/billboards/billboard-content';
@@ -34,17 +34,23 @@ export function BillboardTracker({ runtime, online }: { readonly runtime: PlayRu
     const cx = camera.position.x;
     const cy = camera.position.y;
     const cz = camera.position.z;
-    for (const board of CITY_MAP.billboards) {
+    const observe = (slotId: string, board: { readonly position: { readonly x: number; readonly z: number }; readonly elevation: number; readonly height: number; readonly width: number; readonly facing: number }, twoSided: boolean): void => {
       const bx = board.position.x;
       const by = board.elevation + board.height / 2;
       const bz = board.position.z;
       const tx = cx - bx;
       const tz = cz - bz;
       const near = Math.hypot(tx, cy - by, tz) <= RANGE;
-      const facing = tx * Math.cos(board.facing) + tz * Math.sin(board.facing) > 0;
+      const facing = twoSided || tx * Math.cos(board.facing) + tz * Math.sin(board.facing) > 0;
       const inView = near && facing && runtime.visible(bx, bz, by, board.width / 2);
-      const content = near ? currentBillboard(board.slotId, liveRef.current, now) : null;
-      tracker.observe(board.slotId, content?.kind === 'creative' ? content.campaignId : null, inView, dtMs, now);
+      const content = near ? currentBillboard(slotId, liveRef.current, now) : null;
+      tracker.observe(slotId, content?.kind === 'creative' ? content.campaignId : null, inView, dtMs, now);
+    };
+    for (const board of CITY_MAP.billboards) observe(board.slotId, board, false);
+    // Street spots only matter while a paid creative runs on them.
+    for (const slot of liveRef.current?.slots ?? []) {
+      const spot = slot.creatives.length > 0 ? findAdPlacement(slot.slotId) : undefined;
+      if (spot) observe(spot.id, spot, spot.doubleSided);
     }
   });
 

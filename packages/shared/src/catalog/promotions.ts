@@ -11,7 +11,10 @@ import { VENUES, type VenueDefinition, type VenueType } from './venues.js';
 
 // ----- Billboards ---------------------------------------------------------------------------------------------------
 
-/** Stable ids — the 3D world places a billboard mesh per id. Never rename; add new ids at the end. */
+/**
+ * The 12 hand-placed premium billboards. Stable ids — the 3D world places a board per id. Never rename; add new ids at
+ * the end. Every other ad surface (street boards, bus shelters, lightboxes, Lagos TV, phone apps) is in `AD_SLOTS`.
+ */
 export const BILLBOARD_SLOT_IDS = [
   'mmia-arrivals',
   'third-mainland-north',
@@ -26,10 +29,12 @@ export const BILLBOARD_SLOT_IDS = [
   'ajah-roundabout',
   'ikorodu-garage',
 ] as const;
-export type BillboardSlotId = (typeof BILLBOARD_SLOT_IDS)[number];
+export type PremiumBillboardId = (typeof BILLBOARD_SLOT_IDS)[number];
+/** Any bookable ad slot id (premium boards, generated placements, Lagos TV, phone apps). */
+export type BillboardSlotId = string;
 
 /** `landscape` 3:1 roadside boards, `portrait` 2:3 building wraps, `square` 1:1 market/rooftop panels. */
-export const BILLBOARD_FORMATS = ['landscape', 'portrait', 'square'] as const;
+export const BILLBOARD_FORMATS = ['landscape', 'portrait', 'square', 'wide'] as const;
 export type BillboardFormat = (typeof BILLBOARD_FORMATS)[number];
 
 export interface BillboardFormatSpec {
@@ -45,6 +50,7 @@ export const BILLBOARD_FORMAT_SPECS: Readonly<Record<BillboardFormat, BillboardF
   landscape: { format: 'landscape', label: 'Landscape', aspect: '3:1', width: 1500, height: 500 },
   portrait: { format: 'portrait', label: 'Portrait', aspect: '2:3', width: 1000, height: 1500 },
   square: { format: 'square', label: 'Square', aspect: '1:1', width: 1000, height: 1000 },
+  wide: { format: 'wide', label: 'Widescreen (TV)', aspect: '16:9', width: 1600, height: 900 },
 };
 
 /** Uploads smaller than this share of the target size on either side are refused (they would look blurry). */
@@ -54,13 +60,14 @@ export const BILLBOARD_MIN_UPLOAD_SCALE = 0.5;
 export const BILLBOARD_VISIBILITY_TIERS = ['premium', 'high', 'standard', 'local'] as const;
 export type BillboardVisibilityTier = (typeof BILLBOARD_VISIBILITY_TIERS)[number];
 
-export const BILLBOARD_PLACEMENTS = ['roadside', 'building', 'terminal'] as const;
+export const BILLBOARD_PLACEMENTS = ['roadside', 'building', 'terminal', 'street', 'shelter', 'totem', 'arena', 'market', 'motor-park', 'broadcast', 'phone'] as const;
 export type BillboardPlacement = (typeof BILLBOARD_PLACEMENTS)[number];
 
 export interface BillboardSlot {
   readonly id: BillboardSlotId;
   readonly name: string;
-  readonly districtId: DistrictId;
+  /** Null for citywide slots (Lagos TV, phone apps). */
+  readonly districtId: DistrictId | null;
   readonly description: string;
   readonly placement: BillboardPlacement;
   readonly format: BillboardFormat;
@@ -223,7 +230,7 @@ export function findBillboardSlot(id: string): BillboardSlot | undefined {
   return SLOT_INDEX.get(id);
 }
 
-export function isBillboardSlotId(id: string): id is BillboardSlotId {
+export function isPremiumBillboardId(id: string): id is PremiumBillboardId {
   return SLOT_INDEX.has(id);
 }
 

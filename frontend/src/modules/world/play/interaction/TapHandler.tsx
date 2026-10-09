@@ -1,6 +1,6 @@
 'use client';
 
-import { isBillboardSlotId, type BillboardSlotId } from '@insidelife/shared';
+import { findAdSlot, type BillboardSlotId } from '@insidelife/shared';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
 import { Raycaster, Vector2, type Object3D } from 'three';
@@ -10,6 +10,7 @@ import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { currentBillboard, type CreativeContent } from '../../city/billboards/billboard-content';
 import { useLiveBillboards } from '../../city/billboards/use-billboards';
+import { safeExternalUrl } from '@/common/promotions/ad-tracking';
 import { promotionsApi } from '../flow/movement.api';
 import { controls } from '../input/controls';
 import type { RemotePlayers } from '../players/remote-players';
@@ -21,15 +22,6 @@ const PLAYER_REACH = 45;
 const raycaster = new Raycaster();
 const ndc = new Vector2();
 
-/** Only plain web links leave the game. */
-export function safeExternalUrl(url: string, base: string): URL | null {
-  try {
-    const parsed = new URL(url, base);
-    return parsed.protocol === 'https:' || parsed.protocol === 'http:' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
 function tagged(object: Object3D | null, key: 'billboardSlotId' | 'playerId'): string | null {
   let node: Object3D | null = object;
@@ -82,7 +74,7 @@ export function TapHandler({ runtime, remotes, online }: { readonly runtime: Pla
       scanned.current = clock.elapsedTime;
       const found: Object3D[] = [];
       scene.traverse((object) => {
-        if (typeof object.userData.billboardSlotId === 'string') found.push(object);
+        if (typeof object.userData.billboardSlotId === 'string' || Array.isArray(object.userData.billboardSlotIds)) found.push(object);
       });
       boards.current = found;
     }
@@ -110,8 +102,10 @@ export function TapHandler({ runtime, remotes, online }: { readonly runtime: Pla
         gameEvents.emit('sfx', { id: 'ui-click' });
         continue;
       }
-      const slotId = tagged(hit.object, 'billboardSlotId');
-      if (slotId && isBillboardSlotId(slotId)) void openBillboard(slotId);
+      // Instanced "Your ad here" faces map their instance to a slot.
+      const ids: unknown = hit.object.userData.billboardSlotIds;
+      const slotId = tagged(hit.object, 'billboardSlotId') ?? (Array.isArray(ids) && hit.instanceId !== undefined ? (ids[hit.instanceId] as string | undefined) ?? null : null);
+      if (slotId && findAdSlot(slotId)) void openBillboard(slotId);
     }
   }, -3);
 

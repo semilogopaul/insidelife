@@ -57,3 +57,5 @@ export * from './contracts/promotions.js';
 export * from './catalog/progression.js';
 export * from './contracts/progression.js';
 export * from './world-map/interest.js';
+export * from './world-map/ad-placements.js';
+export * from './catalog/ad-inventory.js';

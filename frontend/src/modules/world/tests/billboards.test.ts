@@ -4,6 +4,7 @@ import { currentBillboard, rotationFor } from '../city/billboards/billboard-cont
 
 const live: LiveBillboardsDto = {
   generatedAt: '2026-10-08T00:00:00Z',
+  phoneApps: [],
   slots: [
     {
       slotId: 'lekki-toll-gate',

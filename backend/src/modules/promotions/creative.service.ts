@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { MoreThan, type Repository } from 'typeorm';
-import { BILLBOARD_FORMAT_SPECS, CREATIVE_MAX_BYTES, findBillboardSlot, type BillboardSlot, type CreativeDto } from '@insidelife/shared';
+import { BILLBOARD_FORMAT_SPECS, CREATIVE_MAX_BYTES, findAdSlot, type BillboardSlot, type CreativeDto } from '@insidelife/shared';
 import { RateLimitedException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import { CreativeEntity } from './entities/creative.entity.js';
 import { renderCreative } from './media/image-processor.js';
@@ -65,7 +65,7 @@ export class CreativeService {
   }
 
   private requireSlot(slotId: string): BillboardSlot {
-    const slot = findBillboardSlot(slotId);
+    const slot = findAdSlot(slotId);
     if (!slot) throw new ResourceNotFoundException('Billboard');
     return slot;
   }

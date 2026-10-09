@@ -25,6 +25,10 @@ export class AdCampaignEntity {
   @Column({ type: 'varchar', length: 80 })
   title: string;
 
+  /** Phone apps: the one-line pitch under the app name. */
+  @Column({ type: 'varchar', length: 90, nullable: true })
+  tagline: string | null;
+
   @Column({ type: 'varchar', length: 200 })
   creativeKey: string;
 

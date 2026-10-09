@@ -2,7 +2,8 @@
 
 import { Eye, MapPin } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { BILLBOARD_FORMAT_SPECS, DISTRICTS, koboToNaira, type BillboardSlotDto, type BillboardSlotsDto, type CreativeDto } from '@insidelife/shared';
+import { AD_SLOT_KIND_LABELS, BILLBOARD_FORMAT_SPECS, DISTRICTS, koboToNaira, type BillboardSlotDto, type CreativeDto } from '@insidelife/shared';
+import type { SlotCatalog } from '../../services/slot-views';
 import { Button, Money } from '@/common/components';
 import { StepHeader } from '../shared';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
@@ -14,7 +15,7 @@ type Step = 'board' | 'creative' | 'details';
 const STEP_TITLES: Readonly<Record<Step, string>> = { board: 'Board', creative: 'Your image', details: 'Dates & payment' };
 
 /** Board details → upload the creative → title, link, dates, rules, pay. */
-export function BookingFlow({ slot, catalog, onExit }: { readonly slot: BillboardSlotDto; readonly catalog: BillboardSlotsDto; readonly onExit: () => void }) {
+export function BookingFlow({ slot, catalog, onExit }: { readonly slot: BillboardSlotDto; readonly catalog: SlotCatalog; readonly onExit: () => void }) {
   const [step, setStep] = useState<Step>('board');
   const [creative, setCreative] = useState<CreativeDto | null>(null);
   const back = (): void => (step === 'board' ? onExit() : setStep(step === 'details' ? 'creative' : 'board'));
@@ -44,7 +45,7 @@ function BoardDetail({ slot, onBook }: { readonly slot: BillboardSlotDto; readon
         <FormatGlyph format={slot.format} className="text-danfo" />
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 text-xs font-bold text-on-ink-soft">
-            <MapPin size={12} aria-hidden /> {DISTRICTS[slot.districtId].name} · {slot.placement}
+            <MapPin size={12} aria-hidden /> {slot.districtId ? DISTRICTS[slot.districtId].name : 'Citywide'} · {AD_SLOT_KIND_LABELS[slot.kind]}
           </p>
           <p className="mt-1 text-sm">{slot.description}</p>
         </div>

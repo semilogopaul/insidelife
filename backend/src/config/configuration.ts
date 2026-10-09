@@ -34,6 +34,10 @@ export interface AppConfig {
     readonly publicBaseUrl: string;
   };
   readonly adminEmails: readonly string[];
+  readonly ads: {
+    /** Sponsored phone app slots for sale (the catalog defines up to PHONE_APP_SLOT_LIMIT). */
+    readonly phoneAppSlots: number;
+  };
   readonly paystack: {
     readonly secretKey: string;
     readonly callbackUrl: string;
@@ -82,6 +86,9 @@ export const configuration = (): AppConfig => {
       bucket: env.S3_BUCKET ?? 'insidelife-media',
       privateBucket: env.S3_PRIVATE_BUCKET ?? 'insidelife-private',
       publicBaseUrl: env.S3_PUBLIC_BASE_URL ?? '/media',
+    },
+    ads: {
+      phoneAppSlots: Math.min(20, Math.max(0, Number.parseInt(env.PHONE_APP_AD_SLOTS ?? '10', 10) || 0)),
     },
     adminEmails: (env.ADMIN_EMAILS ?? '')
       .split(',')

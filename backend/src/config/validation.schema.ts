@@ -42,6 +42,8 @@ export const validationSchema = Joi.object({
   S3_PRIVATE_BUCKET: Joi.string().min(3).max(63).default('insidelife-private'),
   /** Public base URL the browser uses to load media (e.g. http://localhost:8080/media). */
   S3_PUBLIC_BASE_URL: Joi.string().uri({ allowRelative: true }).required(),
+  /** Sponsored apps sold on the phone's home screen (0-20). */
+  PHONE_APP_AD_SLOTS: Joi.number().integer().min(0).max(20).default(10),
   /** Comma-separated emails that get the admin role (moderation of ads and music). */
   ADMIN_EMAILS: Joi.string().allow('').default(''),
 

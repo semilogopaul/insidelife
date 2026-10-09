@@ -9,6 +9,7 @@ import type {
   TrackContentType,
 } from '../catalog/promotions.js';
 import type { DistrictId } from '../catalog/geography.js';
+import type { AdSlotKind } from '../catalog/ad-inventory.js';
 
 /**
  * Promotions API contracts — owned by the promotions domain. Billboards (players and brands buy ad space on in-world
@@ -48,10 +49,16 @@ export interface BillboardDayAvailability {
   readonly capacity: number;
 }
 
+/**
+ * A slot as the Promote app shows it: the static catalog entry (`findAdSlot`) joined with its live state
+ * (`AdSlotStateDto`). Built on the client; the server only sends the state.
+ */
 export interface BillboardSlotDto {
   readonly id: BillboardSlotId;
+  readonly kind: AdSlotKind;
   readonly name: string;
-  readonly districtId: DistrictId;
+  /** Null for citywide slots (Lagos TV, phone apps). */
+  readonly districtId: DistrictId | null;
   readonly description: string;
   readonly placement: BillboardPlacement;
   readonly format: BillboardFormat;
@@ -68,10 +75,19 @@ export interface BillboardSlotDto {
   readonly availability: readonly BillboardDayAvailability[];
 }
 
-/** `GET /v1/promotions/slots` */
+/** What changes about a slot: bookings per day from today (paid, approved and held) and ads running now. */
+export interface AdSlotStateDto {
+  readonly id: BillboardSlotId;
+  /** `availabilityDays` entries starting today. */
+  readonly occupancy: readonly number[];
+  readonly liveCount: number;
+}
+
+/** `GET /v1/promotions/slots` — every slot for sale (phone app slots up to the server's configured count). */
 export interface BillboardSlotsDto {
   readonly today: IsoDate;
-  readonly slots: readonly BillboardSlotDto[];
+  readonly availabilityDays: number;
+  readonly slots: readonly AdSlotStateDto[];
   readonly minDays: number;
   readonly maxDays: number;
   readonly maxLeadDays: number;
@@ -98,8 +114,10 @@ export interface CreativeDto {
 export interface CreateCampaignRequest {
   readonly slotId: BillboardSlotId;
   readonly creativeKey: string;
-  /** Shown to you and to moderators (and as the billboard's accessible label). 3-60 chars. */
+  /** Shown to you and to moderators (and as the billboard's accessible label). 3-60 chars. For phone apps: the app's name. */
   readonly title: string;
+  /** Phone apps: one-line pitch under the name (≤ 60 chars). Ignored elsewhere. */
+  readonly tagline?: string;
   /** https only, no IPs, localhost, shorteners or file downloads. */
   readonly linkUrl: string;
   /** Today (Lagos) or later, at most `maxLeadDays` ahead. */
@@ -112,6 +130,7 @@ export interface AdCampaignDto {
   readonly slotId: BillboardSlotId;
   readonly slotName: string;
   readonly title: string;
+  readonly tagline: string | null;
   readonly creativeUrl: string;
   readonly linkUrl: string;
   readonly startDate: IsoDate;
@@ -180,9 +199,24 @@ export interface LiveBillboardSlotDto {
 }
 
 /** `GET /v1/promotions/billboards/live` (public, cached 60 s). */
+/** A sponsored app on the phone's home screen (icon = the square creative). */
+export interface LivePhoneAppDto {
+  readonly slotId: BillboardSlotId;
+  readonly campaignId: string;
+  readonly name: string;
+  readonly tagline: string;
+  readonly iconUrl: string;
+  readonly linkUrl: string;
+}
+
+/**
+ * `GET /v1/promotions/billboards/live` (public). `slots` lists the premium boards and every other slot that has a
+ * creative running; anything missing shows the house ad. `phoneApps` is the Sponsored apps shelf, in slot order.
+ */
 export interface LiveBillboardsDto {
   readonly generatedAt: string;
   readonly slots: readonly LiveBillboardSlotDto[];
+  readonly phoneApps: readonly LivePhoneAppDto[];
 }
 
 // ----- Club DJ ------------------------------------------------------------------------------------------------------

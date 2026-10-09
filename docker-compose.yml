@@ -84,7 +84,7 @@ services:
       S3_BUCKET: insidelife-media
       S3_PRIVATE_BUCKET: insidelife-private
       S3_PUBLIC_BASE_URL: /media
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@insidelife.ng}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-oluwasemilogo@insidelife.online}
     depends_on:
       postgres:
         condition: service_healthy

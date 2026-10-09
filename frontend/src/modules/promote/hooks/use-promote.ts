@@ -5,9 +5,10 @@ import { useState } from 'react';
 import type { BillboardSlotId, CreateCampaignRequest, CreateClubOrderRequest } from '@insidelife/shared';
 import { gameEvents } from '@/common/game/game-events';
 import { promoteApi, promoteKeys } from '../services/promote.api';
+import { toSlotCatalog } from '../services/slot-views';
 
 export function useSlots() {
-  return useQuery({ queryKey: promoteKeys.slots, queryFn: promoteApi.slots, staleTime: 30_000 });
+  return useQuery({ queryKey: promoteKeys.slots, queryFn: promoteApi.slots, staleTime: 30_000, select: toSlotCatalog });
 }
 
 export function useCampaigns() {

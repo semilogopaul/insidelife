@@ -9,12 +9,18 @@ import { useNavigation } from '@/common/game/navigation-store';
 const CityPreview = dynamic(() => import('@/modules/world').then((module) => module.CityPreview), { ssr: false });
 const Minimap = dynamic(() => import('@/modules/world').then((module) => module.Minimap), { ssr: false });
 
+/** `at=x,z` aims the viewer at a map point instead of a venue door (dev tool). */
+const parsePoint = (value: string): { readonly x: number; readonly z: number } | undefined => {
+  const parts = value.split(',').map(Number);
+  return parts.length === 2 && parts.every(Number.isFinite) ? { x: parts[0] as number, z: parts[1] as number } : undefined;
+};
+
 const parseOffset = (value: string | null): readonly [number, number, number] | undefined => {
   const parts = value?.split(',').map(Number);
   return parts && parts.length === 3 && parts.every(Number.isFinite) ? [parts[0] as number, parts[1] as number, parts[2] as number] : undefined;
 };
 
-/** Composition root for the dev city viewer (query: hour, weather, at, cam=x,y,z, to, quality, hud=0, play=1, car). */
+/** Composition root for the dev city viewer (query: hour, weather, at=<venue>|x,z, cam=x,y,z, to, quality, hud=0, play=1, car). */
 export function DevWorld() {
   const params = useSearchParams();
   const hourParam = params.get('hour');
@@ -22,7 +28,7 @@ export function DevWorld() {
   const weatherParam = params.get('weather');
   const weather = WEATHER_CONDITIONS.includes(weatherParam as WeatherCondition) ? (weatherParam as WeatherCondition) : 'clear';
   const at = params.get('at') ?? 'unilag';
-  const focus = useMemo(() => venueEntrance(at)?.position ?? { x: 0, z: 0 }, [at]);
+  const focus = useMemo(() => venueEntrance(at)?.position ?? parsePoint(at) ?? { x: 0, z: 0 }, [at]);
   const offset = useMemo(() => parseOffset(params.get('cam')), [params]);
   const qualityParam = params.get('quality');
   const graphics = qualityParam === 'low' || qualityParam === 'high' || qualityParam === 'auto' ? qualityParam : qualityParam === 'medium' ? 'auto' : undefined;

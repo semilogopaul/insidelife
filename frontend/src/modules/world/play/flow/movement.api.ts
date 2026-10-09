@@ -1,12 +1,10 @@
 import type {
   CharacterSnapshotDto,
-  ClickTargetDto,
   DrivenVehicleDto,
   EnterLocationRequest,
   ExitResultDto,
   MovementHeartbeatRequest,
   MovementHeartbeatResultDto,
-  TrackImpressionsRequest,
   VehiclesDto,
 } from '@insidelife/shared';
 import { api } from '@/common/api/http';
@@ -20,10 +18,7 @@ export const movementApi = {
   garage: () => api.get<VehiclesDto>('/vehicles'),
 };
 
-export const promotionsApi = {
-  impressions: (body: TrackImpressionsRequest) => api.post<void>('/promotions/impressions', body),
-  click: (campaignId: string) => api.post<ClickTargetDto>('/promotions/clicks', { campaignId }),
-};
+export { adTrackingApi as promotionsApi } from '@/common/promotions/ad-tracking';
 
 /** The primary drivable car from the garage, in the shape the spawn uses. */
 export async function primaryCar(): Promise<DrivenVehicleDto | null> {

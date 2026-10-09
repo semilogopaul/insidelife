@@ -1,4 +1,4 @@
-import { findBillboardSlot, findClubPlayProduct, type AdCampaignDto, type ClubPlayOrderDto, type ClubTrackDto, type IsoDate } from '@insidelife/shared';
+import { findAdSlot, findClubPlayProduct, type AdCampaignDto, type ClubPlayOrderDto, type ClubTrackDto, type IsoDate } from '@insidelife/shared';
 import type { AdCampaignEntity } from './entities/ad-campaign.entity.js';
 import type { ClubPlayOrderEntity } from './entities/club-play-order.entity.js';
 import type { ClubTrackEntity } from './entities/club-track.entity.js';
@@ -27,7 +27,8 @@ export function toCampaignDto(entity: AdCampaignEntity, clock: Clock): AdCampaig
   return {
     id: entity.id,
     slotId: entity.slotId,
-    slotName: findBillboardSlot(entity.slotId)?.name ?? entity.slotId,
+    slotName: findAdSlot(entity.slotId)?.name ?? entity.slotId,
+    tagline: entity.tagline,
     title: entity.title,
     creativeUrl: entity.creativeUrl,
     linkUrl: entity.linkUrl,

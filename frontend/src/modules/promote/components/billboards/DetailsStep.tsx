@@ -2,12 +2,16 @@
 
 import { CalendarDays, Lock, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
-import { PROMOTION_TITLE_MAX, formatNaira, type BillboardSlotDto, type BillboardSlotsDto, type CreativeDto } from '@insidelife/shared';
+import { PROMOTION_TITLE_MAX, formatNaira, type BillboardSlotDto, type CreativeDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, Money, TextField } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { useCreateCampaign } from '../../hooks/use-promote';
-import { addDays, firstOpenStart, formatDay, formatRange, quoteBillboard, rangeAvailability, validateLink, validateTitle } from '../../services/rules';
+import { addDays, firstOpenStart, formatDay, formatRange, quoteBillboard, rangeAvailability, validateDisplayText, validateLink, validateTitle } from '../../services/rules';
+import type { SlotCatalog } from '../../services/slot-views';
+
+/** Phone apps: the one-line pitch on the app page (the server allows the same). */
+const TAGLINE_MAX = 60;
 import { ContentRules } from '../shared';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 
@@ -15,46 +19,73 @@ const LENGTHS = [1, 3, 7, 14, 30] as const;
 
 export interface DetailsStepProps {
   readonly slot: BillboardSlotDto;
-  readonly catalog: BillboardSlotsDto;
+  readonly catalog: SlotCatalog;
   readonly creative: CreativeDto;
 }
 
 /** Title, https link, start date and length (with the weekly discount), the rules, then pay. */
 export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
+  const isApp = slot.kind === 'phone-app';
   const [title, setTitle] = useState('');
+  const [tagline, setTagline] = useState('');
   const [link, setLink] = useState('https://');
-  const [touched, setTouched] = useState({ title: false, link: false });
+  const [touched, setTouched] = useState({ title: false, tagline: false, link: false });
   const [days, setDays] = useState(7);
   const [start, setStart] = useState(() => firstOpenStart(slot.availability, catalog.today, 7) ?? catalog.today);
   const [accepted, setAccepted] = useState(false);
   const create = useCreateCampaign();
 
   const titleCheck = validateTitle(title);
+  const taglineCheck = isApp ? validateDisplayText(tagline, 'Tagline', 3, TAGLINE_MAX) : null;
   const linkCheck = validateLink(link);
   const quote = quoteBillboard(slot.pricePerDayKobo, days);
   const range = rangeAvailability(slot.availability, start, days);
   const lastStart = addDays(catalog.today, catalog.maxLeadDays);
   const dateProblem = start < catalog.today ? 'Pick today or a later date.' : start > lastStart ? `Bookings can start up to ${formatDay(lastStart)}.` : range.fullDays.length > 0 ? `The board is full on ${range.fullDays.map(formatDay).join(', ')}. Pick other dates.` : null;
-  const ready = titleCheck.ok && linkCheck.ok && quote !== null && dateProblem === null && accepted;
+  const ready = titleCheck.ok && (taglineCheck?.ok ?? true) && linkCheck.ok && quote !== null && dateProblem === null && accepted;
   const leaving = create.isPending || create.isSuccess;
 
   const pay = (): void => {
     if (!ready || !titleCheck.ok || !linkCheck.ok) return;
-    create.mutate({ slotId: slot.id, creativeKey: creative.creativeKey, title: titleCheck.value, linkUrl: linkCheck.value, startDate: start, days });
+    create.mutate({
+      slotId: slot.id,
+      creativeKey: creative.creativeKey,
+      title: titleCheck.value,
+      ...(taglineCheck?.ok ? { tagline: taglineCheck.value } : {}),
+      linkUrl: linkCheck.value,
+      startDate: start,
+      days,
+    });
   };
 
   return (
     <div className="flex flex-col gap-4">
       <TextField
-        label="Ad title"
+        label={isApp ? 'App name' : 'Ad title'}
         value={title}
         maxLength={PROMOTION_TITLE_MAX}
         onChange={(event) => setTitle(event.target.value)}
         onBlur={() => setTouched((state) => ({ ...state, title: true }))}
         error={touched.title && !titleCheck.ok ? titleCheck.reason : null}
-        hint={`What players and moderators see as the ad’s name. ${PROMOTION_TITLE_MAX - title.length} characters left.`}
-        placeholder="Mama Put Jollof — now in Yaba"
+        hint={
+          isApp
+            ? `Shown under your icon on every player’s phone. Keep it short. ${PROMOTION_TITLE_MAX - title.length} characters left.`
+            : `What players and moderators see as the ad’s name. ${PROMOTION_TITLE_MAX - title.length} characters left.`
+        }
+        placeholder={isApp ? 'Mama Put' : 'Mama Put Jollof — now in Yaba'}
       />
+      {isApp && taglineCheck && (
+        <TextField
+          label="Tagline"
+          value={tagline}
+          maxLength={TAGLINE_MAX}
+          onChange={(event) => setTagline(event.target.value)}
+          onBlur={() => setTouched((state) => ({ ...state, tagline: true }))}
+          error={touched.tagline && !taglineCheck.ok ? taglineCheck.reason : null}
+          hint={`One line on your app page. ${TAGLINE_MAX - tagline.length} characters left.`}
+          placeholder="Hot jollof delivered in Yaba in 30 minutes"
+        />
+      )}
       <TextField
         label="Link"
         type="url"

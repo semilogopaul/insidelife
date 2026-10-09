@@ -1,9 +1,13 @@
-import { IsIn, IsInt, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
-import { BILLBOARD_MAX_DAYS, BILLBOARD_MIN_DAYS, BILLBOARD_SLOT_IDS, LINK_URL_MAX, type BillboardSlotId, type CreateCampaignRequest } from '@insidelife/shared';
+import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { BILLBOARD_MAX_DAYS, BILLBOARD_MIN_DAYS, LINK_URL_MAX, type BillboardSlotId, type CreateCampaignRequest } from '@insidelife/shared';
+
+/** Slot ids are short kebab-case catalog keys (`findAdSlot` decides whether one exists and is for sale). */
+const SLOT_ID = /^[a-z0-9-]{2,32}$/;
 
 /** Shape checks only; dates, link safety, text cleaning and capacity are domain rules in CampaignsService. */
 export class CreateCampaignDto implements CreateCampaignRequest {
-  @IsIn(BILLBOARD_SLOT_IDS)
+  @IsString()
+  @Matches(SLOT_ID, { message: 'slotId must be a slot from GET /promotions/slots' })
   readonly slotId: BillboardSlotId;
 
   @IsString()
@@ -13,6 +17,11 @@ export class CreateCampaignDto implements CreateCampaignRequest {
   @IsString()
   @MaxLength(200)
   readonly title: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  readonly tagline?: string;
 
   @IsString()
   @MaxLength(LINK_URL_MAX + 100)
@@ -30,6 +39,7 @@ export class CreateCampaignDto implements CreateCampaignRequest {
 
 /** Multipart text fields of `POST /promotions/creatives`. */
 export class UploadCreativeDto {
-  @IsIn(BILLBOARD_SLOT_IDS)
+  @IsString()
+  @Matches(SLOT_ID, { message: 'slotId must be a slot from GET /promotions/slots' })
   readonly slotId: BillboardSlotId;
 }

@@ -1,23 +1,12 @@
 'use client';
 
-import { billboardPlacement, findBillboardSlot, type BillboardSlot, type BillboardSlotId, type BillboardWorldPlacement, type LiveBillboardsDto } from '@insidelife/shared';
-import { useQuery } from '@tanstack/react-query';
+import { billboardPlacement, findBillboardSlot, type BillboardSlot, type BillboardSlotId, type BillboardWorldPlacement } from '@insidelife/shared';
 import { useCallback, useEffect, useRef } from 'react';
-import { api } from '@/common/api/http';
-import { queryKeys } from '@/common/api/query-keys';
+import { useLiveAds } from '@/common/promotions/use-live-ads';
 import { currentBillboard, type BillboardContent } from './billboard-content';
 
-/** Live billboard creatives (public). A missing endpoint or an error simply means house ads everywhere. */
-export function useLiveBillboards() {
-  return useQuery({
-    queryKey: queryKeys.domain('promotions', 'billboards', 'live'),
-    queryFn: () => api.get<LiveBillboardsDto>('/promotions/billboards/live', { anonymous: true }),
-    staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
-    retry: false,
-    refetchOnWindowFocus: false,
-  });
-}
+/** Live billboard creatives (public); see `useLiveAds`. */
+export const useLiveBillboards = useLiveAds;
 
 export interface BillboardHandle {
   readonly slotId: BillboardSlotId;

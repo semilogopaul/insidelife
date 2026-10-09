@@ -8,6 +8,9 @@ import { useEscapeLayer } from '@/common/hooks/use-escape-layer';
 import type { PhoneAppDefinition } from '@/common/game/phone-apps';
 import { useUi } from '@/common/game/ui-store';
 import { useGameMinute } from '@/common/game/use-game-clock';
+import { useState } from 'react';
+import type { LivePhoneAppDto } from '@insidelife/shared';
+import { SponsoredAppPage, SponsoredShelf } from './SponsoredApps';
 
 export interface PhoneProps {
   /** Supplied by the composition root. */
@@ -18,6 +21,9 @@ export interface PhoneProps {
 export function Phone({ apps }: PhoneProps) {
   const { phoneOpen, phoneApp, openPhone, closePhone } = useUi();
   const app = apps.find((candidate) => candidate.id === phoneApp);
+  const [openSponsored, setSponsored] = useState<LivePhoneAppDto | null>(null);
+  // A sponsored page belongs to the home screen: it only shows while home is.
+  const sponsored = phoneOpen && phoneApp === 'home' ? openSponsored : null;
 
   useEscapeLayer(phoneOpen, closePhone);
 
@@ -41,18 +47,26 @@ export function Phone({ apps }: PhoneProps) {
             <span>9mobile 4G</span>
           </div>
           <header className="flex items-center gap-2 px-4 py-2">
-            {phoneApp !== 'home' ? (
-              <button type="button" onClick={() => openPhone('home')} aria-label="Back to home screen" className="grid size-10 place-items-center rounded-full hover:bg-paper-2">
+            {phoneApp !== 'home' || sponsored ? (
+              <button
+                type="button"
+                onClick={() => (sponsored ? setSponsored(null) : openPhone('home'))}
+                aria-label="Back to home screen"
+                className="grid size-10 place-items-center rounded-full hover:bg-paper-2"
+              >
                 <ChevronLeft size={22} aria-hidden />
               </button>
             ) : (
               <span className="size-10" />
             )}
-            <h2 className="type-title flex-1 text-xl">{app?.name ?? 'Home'}</h2>
+            <h2 className="type-title flex-1 truncate text-xl">
+              {sponsored ? sponsored.name : (app?.name ?? 'Home')}
+            </h2>
             <button
               type="button"
               onClick={() => {
                 gameEvents.emit('sfx', { id: 'ui-close' });
+                setSponsored(null);
                 closePhone();
               }}
               aria-label="Close phone"
@@ -62,29 +76,42 @@ export function Phone({ apps }: PhoneProps) {
             </button>
           </header>
           <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-[max(env(safe-area-inset-bottom),1.25rem)]">
-            {phoneApp === 'home' || !app ? (
-              <ul className="grid grid-cols-4 gap-x-3 gap-y-5 pt-2">
-                {apps.map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          gameEvents.emit('sfx', { id: 'ui-click' });
-                          openPhone(item.id);
-                        }}
-                        className="flex w-full flex-col items-center gap-1.5"
-                      >
-                        <span className="grid size-14 place-items-center rounded-[18px] text-white shadow-[var(--shadow-lift)]" style={{ background: item.tint }}>
-                          <Icon size={26} aria-hidden strokeWidth={2.2} color={item.tint === '#f6b90b' ? '#0e2733' : 'white'} />
-                        </span>
-                        <span className="text-xs font-bold">{item.name}</span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ul>
+            {sponsored ? (
+              <SponsoredAppPage app={sponsored} />
+            ) : phoneApp === 'home' || !app ? (
+              <>
+                <ul className="grid grid-cols-4 gap-x-3 gap-y-5 pt-2">
+                  {apps.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            gameEvents.emit('sfx', { id: 'ui-click' });
+                            openPhone(item.id);
+                          }}
+                          className="flex w-full flex-col items-center gap-1.5"
+                        >
+                          <span
+                            className="grid size-14 place-items-center rounded-[18px] text-white shadow-[var(--shadow-lift)]"
+                            style={{ background: item.tint }}
+                          >
+                            <Icon
+                              size={26}
+                              aria-hidden
+                              strokeWidth={2.2}
+                              color={item.tint === '#f6b90b' ? '#0e2733' : 'white'}
+                            />
+                          </span>
+                          <span className="text-xs font-bold">{item.name}</span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <SponsoredShelf onOpen={setSponsored} />
+              </>
             ) : (
               <app.component />
             )}
