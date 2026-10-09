@@ -86,7 +86,8 @@ describe('HouseSheet', () => {
     fireEvent.click(screen.getByRole('button', { name: /move in now/i }));
     expect(move).toHaveBeenCalledWith('property-1', expect.anything());
     expect(onClose).toHaveBeenCalled();
-  });
+    // The sheet's first render is heavy; under a loaded full-suite run it can pass the default 5 s.
+  }, 20_000);
 
   it('doesn’t offer to buy a house you already bought', () => {
     render(

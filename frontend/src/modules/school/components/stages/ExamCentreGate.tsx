@@ -1,8 +1,8 @@
 'use client';
 
-import { MapPin } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useExamCentre } from '../../hooks/use-exam-centre';
+import { PlaceIcon } from '@/common/brand/place-icons';
 import { GoThere } from '@/common/components';
 
 /**
@@ -32,8 +32,8 @@ export function ExamCentreGate({
   if (!target) return null;
   return (
     <div className="flex flex-col gap-2.5 rounded-card bg-paper-2 p-3.5">
-      <p className="flex items-start gap-2 text-sm">
-        <MapPin size={17} aria-hidden className="mt-0.5 shrink-0 text-okada" />
+      <p className="flex items-start gap-2.5 text-sm">
+        <PlaceIcon kind="exam-centre" size={28} decorative />
         <span>
           {required ? (
             <>

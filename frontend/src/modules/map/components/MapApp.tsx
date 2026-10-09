@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Bike, Bus, Car, CarTaxiFront, Construction, Footprints, House, LandPlot, MapPin, Navigation } from 'lucide-react';
+import { Bike, Bus, Car, CarTaxiFront, Footprints, Navigation } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   DISTRICTS,
@@ -15,6 +15,7 @@ import {
   type VenueType,
 } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
+import { PlaceIcon, propertyPlaceKind, venuePlaceKind } from '@/common/brand/place-icons';
 import { queryKeys } from '@/common/api/query-keys';
 import { Button, Money, Spinner, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
@@ -34,10 +35,10 @@ const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readon
   { label: 'Services', types: ['estate-agency', 'airport', 'motor-park', 'church', 'mosque'] },
 ];
 
-const STAGE: Readonly<Record<OwnedPropertyMarkerDto['stage'], { readonly icon: typeof Bus; readonly label: string }>> = {
-  land: { icon: LandPlot, label: 'Your land' },
-  construction: { icon: Construction, label: 'Building site' },
-  built: { icon: House, label: 'Your house' },
+const STAGE_LABEL: Readonly<Record<OwnedPropertyMarkerDto['stage'], string>> = {
+  land: 'Your land',
+  construction: 'Building site',
+  built: 'Your house',
 };
 
 const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: Bike, keke: CarTaxiFront, danfo: Bus, brt: Bus, bolt: CarTaxiFront, car: Car };
@@ -74,9 +75,7 @@ export function MapApp() {
   return (
     <div className="flex flex-col gap-4">
       <button type="button" onClick={() => setSelected('home')} className="flex items-center gap-3 rounded-card bg-paper-2 p-3 text-left hover:bg-paper-3">
-        <span className="grid size-10 place-items-center rounded-full bg-danfo text-ink">
-          <MapPin size={20} aria-hidden />
-        </span>
+        <PlaceIcon kind="home" size={40} decorative />
         <span>
           <span className="block font-bold">Home</span>
           <span className="text-sm text-text-soft">{snapshot ? DISTRICTS[snapshot.character.homeDistrictId].name : ''}</span>
@@ -84,35 +83,30 @@ export function MapApp() {
       </button>
       {properties.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label="Your properties">
-          {properties.map((property) => {
-            const stage = STAGE[property.stage];
-            return (
-              <li key={property.id}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDestination(`property:${property.id}`, property.label);
-                    gameEvents.emit('sfx', { id: 'ui-success' });
-                    closePhone();
-                  }}
-                  className="flex w-full items-center gap-3 rounded-card bg-paper-2 p-3 text-left hover:bg-paper-3"
-                >
-                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-on-ink">
-                    <stage.icon size={20} aria-hidden />
+          {properties.map((property) => (
+            <li key={property.id}>
+              <button
+                type="button"
+                onClick={() => {
+                  setDestination(`property:${property.id}`, property.label);
+                  gameEvents.emit('sfx', { id: 'ui-success' });
+                  closePhone();
+                }}
+                className="flex w-full items-center gap-3 rounded-card bg-paper-2 p-3 text-left hover:bg-paper-3"
+              >
+                <PlaceIcon kind={propertyPlaceKind(property)} size={40} decorative />
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-bold">{property.label}</span>
+                  <span className="block truncate text-sm text-text-soft">
+                    {STAGE_LABEL[property.stage]} · {DISTRICTS[property.districtId].name}
                   </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate font-bold">{property.label}</span>
-                    <span className="block truncate text-sm text-text-soft">
-                      {stage.label} · {DISTRICTS[property.districtId].name}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-1 text-sm font-bold text-text-soft">
-                    <Navigation size={16} aria-hidden /> GPS
-                  </span>
-                </button>
-              </li>
-            );
-          })}
+                </span>
+                <span className="flex shrink-0 items-center gap-1 text-sm font-bold text-text-soft">
+                  <Navigation size={16} aria-hidden /> GPS
+                </span>
+              </button>
+            </li>
+          ))}
         </ul>
       )}
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Place categories">
@@ -132,8 +126,9 @@ export function MapApp() {
       <ul className="flex flex-col divide-y divide-line">
         {venues.map((venue) => (
           <li key={venue.id}>
-            <button type="button" onClick={() => setSelected(venue)} className="flex w-full items-center justify-between gap-3 py-3 text-left">
-              <span className="min-w-0">
+            <button type="button" onClick={() => setSelected(venue)} className="flex w-full items-center gap-3 py-3 text-left">
+              <PlaceIcon kind={venuePlaceKind(venue)} size={36} decorative />
+              <span className="min-w-0 flex-1">
                 <span className="block truncate font-bold">{venue.name}</span>
                 <span className="block truncate text-sm text-text-soft">
                   {DISTRICTS[venue.districtId].name} — {venue.blurb}
@@ -168,9 +163,12 @@ function Destination({ target, onBack, homeId }: { target: Target; onBack: () =>
       <button type="button" onClick={onBack} className="self-start text-sm font-bold text-text-soft hover:text-text">
         Back to places
       </button>
-      <div>
-        <h3 className="type-title text-2xl">{name}</h3>
-        {target !== 'home' && <p className="text-sm text-text-soft">{target.blurb}</p>}
+      <div className="flex items-center gap-3">
+        <PlaceIcon kind={target === 'home' ? 'home' : venuePlaceKind(target)} size={52} />
+        <div className="min-w-0">
+          <h3 className="type-title text-2xl leading-tight">{name}</h3>
+          {target !== 'home' && <p className="text-sm text-text-soft">{target.blurb}</p>}
+        </div>
       </div>
       <Button icon={<Navigation size={18} aria-hidden />} onClick={startGps} block>
         Start GPS — drive or walk there

@@ -1,6 +1,5 @@
 'use client';
 
-import { Banknote, BookOpen, Briefcase, Car, HeartPulse, House, Map as MapIcon, Megaphone, MessagesSquare, ShoppingBag, Target, TrendingUp, User, Users } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import { Spinner } from '@/common/components';
 import type { PhoneAppDefinition } from '@/common/game/phone-apps';
@@ -27,20 +26,20 @@ const PromoteApp = dynamic(() => import('@/modules/promote').then((m) => m.Promo
 const GoalsApp = dynamic(() => import('@/modules/goals').then((m) => m.GoalsApp), { loading });
 const MeApp = dynamic(() => import('@/modules/me').then((m) => m.MeApp), { loading });
 
-/** The phone's home screen, in order. */
+/** The phone's home screen, in order (each app's icon is its illustrated tile in `common/brand/app-icons`). */
 export const PHONE_APPS: readonly PhoneAppDefinition[] = [
-  { id: 'map', name: 'Map', icon: MapIcon, tint: '#13606b', component: MapApp },
-  { id: 'bank', name: 'Bank', icon: Banknote, tint: '#0f8a4f', component: BankApp },
-  { id: 'jobs', name: 'Jobs', icon: Briefcase, tint: '#2457d6', component: JobsApp },
-  { id: 'school', name: 'School', icon: BookOpen, tint: '#7a3fbf', component: SchoolApp },
-  { id: 'homes', name: 'Homes', icon: House, tint: '#d9692b', component: HomesApp },
-  { id: 'shop', name: 'Shop', icon: ShoppingBag, tint: '#c8287a', component: ShopApp },
-  { id: 'motors', name: 'Motors', icon: Car, tint: '#0e2733', component: MotorsApp },
-  { id: 'health', name: 'Health', icon: HeartPulse, tint: '#e2412e', component: HealthApp },
-  { id: 'family', name: 'Family', icon: Users, tint: '#b8823d', component: FamilyApp },
-  { id: 'invest', name: 'Invest', icon: TrendingUp, tint: '#1e7a62', component: InvestApp },
-  { id: 'gist', name: 'Gist', icon: MessagesSquare, tint: '#25a366', component: GistApp },
-  { id: 'promote', name: 'Promote', icon: Megaphone, tint: '#f6b90b', component: PromoteApp },
-  { id: 'goals', name: 'Goals', icon: Target, tint: '#3d4d6e', component: GoalsApp },
-  { id: 'me', name: 'Me', icon: User, tint: '#4b6470', component: MeApp },
+  { id: 'map', name: 'Map', component: MapApp },
+  { id: 'bank', name: 'Bank', component: BankApp },
+  { id: 'jobs', name: 'Jobs', component: JobsApp },
+  { id: 'school', name: 'School', component: SchoolApp },
+  { id: 'homes', name: 'Homes', component: HomesApp },
+  { id: 'shop', name: 'Shop', component: ShopApp },
+  { id: 'motors', name: 'Motors', component: MotorsApp },
+  { id: 'health', name: 'Health', component: HealthApp },
+  { id: 'family', name: 'Family', component: FamilyApp },
+  { id: 'invest', name: 'Invest', component: InvestApp },
+  { id: 'gist', name: 'Gist', component: GistApp },
+  { id: 'promote', name: 'Promote', component: PromoteApp },
+  { id: 'goals', name: 'Goals', component: GoalsApp },
+  { id: 'me', name: 'Me', component: MeApp },
 ];

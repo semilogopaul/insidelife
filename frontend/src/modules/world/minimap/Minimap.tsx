@@ -1,8 +1,10 @@
 'use client';
 
-import { CITY_MAP, DISTRICTS, districtAt, streetNameAt, type WorldPoint } from '@insidelife/shared';
+import { CITY_MAP, DISTRICTS, districtAt, homeKey, homeLotOf, streetNameAt, type WorldPoint } from '@insidelife/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { drawPlaceMarker } from '@/common/brand/place-icons';
 import { gameEvents } from '@/common/game/game-events';
+import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
 import { cn } from '@/common/utils/cn';
@@ -13,8 +15,9 @@ import { cityRaster, propertyIcons, RASTER_PX_PER_METRE, venueIcons, type MapIco
 
 /**
  * Heading-up minimap: the pre-rendered city raster rotated around the player, the remaining GPS route, the
- * destination pin (clamped to the rim when far) and nearby venue icons. Drawn in requestAnimationFrame at ≤30 fps
- * straight from the live pose — no React updates per frame. Tap opens the phone Map app.
+ * destination pin (clamped to the rim when far) and nearby places as pictogram markers. Drawn in
+ * requestAnimationFrame at ≤30 fps straight from the live pose — no React updates per frame. Tap opens the phone Map
+ * app.
  */
 
 const METRES_ACROSS = 150;
@@ -88,23 +91,12 @@ function drawMinimap(ctx: CanvasRenderingContext2D, size: number, pose: Pose, ic
     ctx.stroke();
   }
 
-  // Venue icons (upright).
-  ctx.font = '700 9px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+  // Place markers (upright): pictograms on their discs, a touch larger on the desktop-sized minimap.
+  const marker = Math.min(8, Math.max(6.5, size * 0.045));
   for (const icon of icons) {
     const [x, y] = project(icon);
-    if (Math.hypot(x - radius, y - radius) > radius - 8) continue;
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(x, y, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = icon.color;
-    ctx.beginPath();
-    ctx.arc(x, y, 5.6, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(icon.glyph, x, y + 0.5);
+    if (Math.hypot(x - radius, y - radius) > radius - marker - 2) continue;
+    drawPlaceMarker(ctx, icon.kind, x, y, marker);
   }
 
   // Destination pin, clamped to the rim when off-map.
@@ -167,19 +159,42 @@ function usePlaceLabel(): { street: string | null; district: string | null } {
   return label;
 }
 
+/** Where you live when it isn't a house you own (family home, rent, hostel): owned homes come with your properties. */
+function useRentedHome(): MapIcon | null {
+  const { data: snapshot } = useSnapshot();
+  const character = snapshot?.character;
+  const id = character?.id;
+  const district = character?.homeDistrictId;
+  const owned = character?.homePropertyId ?? null;
+  return useMemo(() => {
+    if (!id || !district || owned) return null;
+    const lot = homeLotOf(homeKey(id, null), district);
+    if (!lot) return null;
+    return { x: (lot.footprint.minX + lot.footprint.maxX) / 2, z: (lot.footprint.minZ + lot.footprint.maxZ) / 2, kind: 'home', name: 'Home' };
+  }, [id, district, owned]);
+}
+
 export function Minimap({ className }: { readonly className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const north = useRef<HTMLSpanElement>(null);
   const openPhone = useUi((state) => state.openPhone);
   const owned = useOwnedLots();
+  const home = useRentedHome();
   const icons = useMemo(
     () => [
       ...venueIcons(),
+      ...(home ? [home] : []),
       ...propertyIcons(
-        owned.map(({ lot, property }) => ({ x: (lot.footprint.minX + lot.footprint.maxX) / 2, z: (lot.footprint.minZ + lot.footprint.maxZ) / 2, name: property.label, livedIn: property.livedIn })),
+        owned.map(({ lot, property }) => ({
+          x: (lot.footprint.minX + lot.footprint.maxX) / 2,
+          z: (lot.footprint.minZ + lot.footprint.maxZ) / 2,
+          name: property.label,
+          stage: property.stage,
+          livedIn: property.livedIn,
+        })),
       ),
     ],
-    [owned],
+    [owned, home],
   );
   const { street, district } = usePlaceLabel();
 

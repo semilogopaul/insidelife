@@ -1,6 +1,6 @@
 'use client';
 
-import { Store, Truck } from 'lucide-react';
+import { Truck } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   SHOP_CATEGORIES,
@@ -11,6 +11,7 @@ import {
   type ShopProductDto,
   type StoreTier,
 } from '@insidelife/shared';
+import { PlaceIcon, venuePlaceKind } from '@/common/brand/place-icons';
 import { Badge, Money } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { useCatalogue } from '../../hooks/use-shop';
@@ -59,8 +60,8 @@ export function ShopTab({ initialCategory }: { readonly initialCategory: ShopCat
           inStore ? 'bg-naira-soft' : 'bg-paper-2',
         )}
       >
-        {inStore ? (
-          <Store size={18} aria-hidden className="mt-0.5 shrink-0 text-naira" />
+        {inStore && venue ? (
+          <PlaceIcon kind={venuePlaceKind(venue)} size={28} decorative />
         ) : (
           <Truck size={18} aria-hidden className="mt-0.5 shrink-0 text-lagoon" />
         )}
