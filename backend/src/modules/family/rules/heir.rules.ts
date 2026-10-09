@@ -13,7 +13,7 @@ import {
 } from '@insidelife/shared';
 
 /** The heir takes over at this age at the youngest (raised by family until then). */
-export const HEIR_AGE = 17;
+export const HEIR_AGE = 18;
 
 const HAIR_BY_GENDER: Readonly<Record<Gender, readonly HairStyle[]>> = {
   male: ['lowcut', 'fade', 'afro', 'twists', 'locs', 'cornrows', 'bald'],
