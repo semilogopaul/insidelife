@@ -17,7 +17,7 @@ import { approvedNotice, refundedNotice, rejectedNotice, type NoticeSubject } fr
 import { PromotionStateException } from './promotions.errors.js';
 import { PromotionsNotifier, type PromotionNotice } from './promotions-notifier.service.js';
 import { COMMITTED_STATUSES, decideModeration, type ModerationDecision } from './rules/status.rules.js';
-import { StorageService } from './storage/storage.service.js';
+import { StorageService } from '../../common/storage/storage.service.js';
 import { TracksService, trackSubject } from './tracks.service.js';
 
 const QUEUE_LIMIT = 100;

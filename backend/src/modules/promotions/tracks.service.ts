@@ -35,10 +35,10 @@ import { InvalidMediaException, PromotionRuleException, PromotionStateException 
 import { PromotionsNotifier } from './promotions-notifier.service.js';
 import type { UploadedMedia } from './promotions.types.js';
 import { validateDisplayText } from './rules/content.rules.js';
-import { isTrackType, sniffMedia } from './rules/media-sniff.js';
+import { isTrackType, sniffMedia } from '../../common/media/media-sniff.js';
 import { bookingWindowProblem, firstFullClub, rangeOf, type DateRange } from './rules/schedule.rules.js';
 import { admitAfterPayment, COMMITTED_STATUSES, matchPayment } from './rules/status.rules.js';
-import { StorageService } from './storage/storage.service.js';
+import { StorageService } from '../../common/storage/storage.service.js';
 import { CachedValue } from './util/cached-value.js';
 
 const MAX_UNPAID_ORDERS = 3;

@@ -8,3 +8,9 @@ export function chatTime(iso: string, now: number = Date.now()): string {
   if (hours < 24) return `${hours}h`;
   return new Date(iso).toLocaleDateString('en-NG', { weekday: 'short' });
 }
+
+/** Voice-note length or position: "0:07", "1:30". */
+export function clipTime(ms: number): string {
+  const seconds = Math.max(0, Math.round(ms / 1000));
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}

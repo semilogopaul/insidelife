@@ -2,7 +2,7 @@
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
-import type { ChatMessageDto, DmThreadDto, Paginated } from '@insidelife/shared';
+import type { ChatMediaKind, ChatMessageDto, DmStateDto, DmThreadDto, Paginated } from '@insidelife/shared';
 import { getSocket } from '@/common/realtime/socket';
 import { gistApi } from '../services/gist.api';
 import { gistKeys } from '../services/gist-keys';
@@ -29,6 +29,43 @@ export function useChatHistory(channel: string | null) {
 /** Your private conversations, newest first, with unread state (refreshed when a DM arrives). */
 export function useDmThreads() {
   return useQuery({ queryKey: gistKeys.dmThreads, queryFn: gistApi.dmThreads, staleTime: 30_000 });
+}
+
+/** Message-request state of a DM: who may write what (refreshed when messages arrive or a request is answered). */
+export function useDmState(channel: string | null) {
+  return useQuery({
+    queryKey: gistKeys.dmState(channel ?? ''),
+    queryFn: () => gistApi.dmState(channel ?? ''),
+    enabled: channel?.startsWith('dm:') ?? false,
+    staleTime: 15_000,
+  });
+}
+
+/** Accept (`true`) or delete (`false`) a message request someone sent me. */
+export function useRespondToRequest(channel: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (accept: boolean) => (accept ? gistApi.acceptRequest(channel) : gistApi.declineRequest(channel)),
+    onSuccess: (state: DmStateDto) => {
+      client.setQueryData(gistKeys.dmState(channel), state);
+      void client.invalidateQueries({ queryKey: gistKeys.dmThreads });
+    },
+  });
+}
+
+/** Upload a voice note or photo to a DM; the server also pushes it to both of you over the socket. */
+export function useSendMedia(channel: string | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ kind, file }: { readonly kind: ChatMediaKind; readonly file: File }) => {
+      if (!channel) throw new ChatSendError('Pick a chat first.');
+      return gistApi.sendMedia(channel, kind, file);
+    },
+    onSuccess: (message) => {
+      appendMessage(client, message);
+      void client.invalidateQueries({ queryKey: gistKeys.dmThreads });
+    },
+  });
 }
 
 /** Mark a DM conversation read on the server (unread state follows you across devices). */

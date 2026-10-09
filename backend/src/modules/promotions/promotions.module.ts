@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { StorageModule } from '../../common/storage/storage.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { CharactersModule } from '../characters/characters.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
@@ -16,7 +17,6 @@ import { ModerationService } from './moderation.service.js';
 import { PromotionsNotifier } from './promotions-notifier.service.js';
 import { PromotionsWorldController } from './promotions-world.controller.js';
 import { PromotionsController } from './promotions.controller.js';
-import { StorageService } from './storage/storage.service.js';
 import { TracksService } from './tracks.service.js';
 import { TrackingService } from './tracking/tracking.service.js';
 import { ViewerResolver } from './tracking/viewer-resolver.service.js';
@@ -33,10 +33,10 @@ import { ViewerResolver } from './tracking/viewer-resolver.service.js';
     CharactersModule,
     NotificationsModule,
     AuthModule,
+    StorageModule,
   ],
   controllers: [PromotionsController, PromotionsWorldController, ModerationController],
   providers: [
-    StorageService,
     CreativeService,
     CampaignsService,
     TracksService,

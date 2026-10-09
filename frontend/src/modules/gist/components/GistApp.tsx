@@ -8,7 +8,7 @@ import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useRealtimeEvent } from '@/common/realtime/use-realtime';
-import { appendMessage, useJoinedChannel } from '../hooks/use-chat';
+import { appendMessage, useDmThreads, useJoinedChannel } from '../hooks/use-chat';
 import { useGistNav, type GistTab } from '../hooks/use-gist-nav';
 import { useParties } from '../hooks/use-parties';
 import { useFriends } from '../hooks/use-social';
@@ -33,6 +33,7 @@ export function GistApp() {
   const nav = useGistNav();
   const friends = useFriends();
   const parties = useParties();
+  const dmThreads = useDmThreads();
 
   const locationId = snapshot?.character.locationId ?? null;
   const venueId = snapshot && !snapshot.travel && locationId && !isStreetLocation(locationId) && !isHomeLocation(locationId) && findVenue(locationId) ? locationId : null;
@@ -50,7 +51,11 @@ export function GistApp() {
   const meId = snapshot?.character.id ?? null;
   useRealtimeEvent('chat:message', (message) => {
     appendMessage(client, message);
-    if (message.channel.startsWith('dm:')) void client.invalidateQueries({ queryKey: gistKeys.dmThreads });
+    if (message.channel.startsWith('dm:')) {
+      void client.invalidateQueries({ queryKey: gistKeys.dmThreads });
+      // A reply accepts a request; my own sends use up a pending request's allowance.
+      void client.invalidateQueries({ queryKey: gistKeys.dmState(message.channel) });
+    }
     if (!meId || channelKind(message.channel) !== 'dm' || message.sender.characterId === meId) return;
     const { thread, rememberPartner } = useGistNav.getState();
     rememberPartner({ id: message.sender.characterId, handle: message.sender.handle, name: message.sender.firstName });
@@ -65,6 +70,7 @@ export function GistApp() {
   const me = { id: snapshot.character.id, handle: snapshot.character.handle };
   const liveParties = (parties.data ?? []).filter((party) => party.phase === 'live').length;
   const requests = friends.data?.incoming.length ?? 0;
+  const unreadDms = (dmThreads.data ?? []).filter((thread) => thread.unread).length;
 
   return (
     <div className="flex flex-col gap-3">
@@ -75,7 +81,7 @@ export function GistApp() {
         items={[
           { id: 'lagos', label: 'Lagos' },
           { id: 'here', label: 'Here' },
-          { id: 'dms', label: 'DMs' },
+          { id: 'dms', label: 'DMs', badge: unreadDms },
           { id: 'friends', label: 'Friends', badge: requests },
           { id: 'parties', label: 'Parties', badge: liveParties },
         ]}

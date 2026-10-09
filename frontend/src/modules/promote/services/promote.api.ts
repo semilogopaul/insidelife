@@ -11,7 +11,7 @@ import type {
 } from '@insidelife/shared';
 import { api } from '@/common/api/http';
 import { queryKeys } from '@/common/api/query-keys';
-import { uploadMultipart, type UploadOptions } from './upload';
+import { uploadMultipart, type UploadOptions } from '@/common/api/upload';
 
 export const promoteApi = {
   slots: () => api.get<BillboardSlotsDto>('/promotions/slots'),

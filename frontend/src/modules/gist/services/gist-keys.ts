@@ -4,6 +4,7 @@ import { queryKeys } from '@/common/api/query-keys';
 export const gistKeys = {
   chat: (channel: string) => queryKeys.domain('gist', 'chat', channel),
   dmThreads: queryKeys.domain('gist', 'dm-threads'),
+  dmState: (channel: string) => queryKeys.domain('gist', 'dm-state', channel),
   friends: queryKeys.domain('social', 'friends'),
   blocked: queryKeys.domain('social', 'blocked'),
   profile: (handle: string) => queryKeys.domain('social', 'profile', handle.replace(/^@/, '').toLowerCase()),

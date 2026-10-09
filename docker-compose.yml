@@ -82,6 +82,7 @@ services:
       S3_ACCESS_KEY: insidelife
       S3_SECRET_KEY: insidelife-storage-secret
       S3_BUCKET: insidelife-media
+      S3_PRIVATE_BUCKET: insidelife-private
       S3_PUBLIC_BASE_URL: /media
       ADMIN_EMAILS: ${ADMIN_EMAILS:-admin@insidelife.ng}
     depends_on:

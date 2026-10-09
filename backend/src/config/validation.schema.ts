@@ -38,6 +38,8 @@ export const validationSchema = Joi.object({
   S3_ACCESS_KEY: Joi.string().min(3).required(),
   S3_SECRET_KEY: Joi.string().min(8).required(),
   S3_BUCKET: Joi.string().min(3).max(63).required(),
+  /** Bucket for private media (chat voice notes and photos); never readable anonymously. */
+  S3_PRIVATE_BUCKET: Joi.string().min(3).max(63).default('insidelife-private'),
   /** Public base URL the browser uses to load media (e.g. http://localhost:8080/media). */
   S3_PUBLIC_BASE_URL: Joi.string().uri({ allowRelative: true }).required(),
   /** Comma-separated emails that get the admin role (moderation of ads and music). */

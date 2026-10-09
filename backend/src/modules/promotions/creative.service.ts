@@ -7,8 +7,8 @@ import { CreativeEntity } from './entities/creative.entity.js';
 import { renderCreative } from './media/image-processor.js';
 import type { UploadedMedia } from './promotions.types.js';
 import { InvalidMediaException, PromotionRuleException } from './promotions.errors.js';
-import { isCreativeSource, sniffMedia } from './rules/media-sniff.js';
-import { StorageService } from './storage/storage.service.js';
+import { isCreativeSource, sniffMedia } from '../../common/media/media-sniff.js';
+import { StorageService } from '../../common/storage/storage.service.js';
 
 /** Storage-abuse guard: processed images per account per rolling 24 h. */
 const DAILY_CREATIVE_UPLOADS = 20;

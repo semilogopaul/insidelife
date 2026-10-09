@@ -1,10 +1,10 @@
-import type { CreativeSourceType, TrackContentType } from '@insidelife/shared';
+import type { ChatVoiceType, CreativeSourceType, TrackContentType } from '@insidelife/shared';
 
 /**
  * Identify uploads by their leading bytes. The declared Content-Type and file name are attacker-controlled and are
  * never trusted; anything that isn't one of these signatures is refused before a decoder ever sees it.
  */
-export type SniffedMedia = CreativeSourceType | TrackContentType;
+export type SniffedMedia = CreativeSourceType | TrackContentType | ChatVoiceType;
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a] as const;
 const JPEG = [0xff, 0xd8, 0xff] as const;
@@ -12,6 +12,8 @@ const RIFF = [0x52, 0x49, 0x46, 0x46] as const; // "RIFF"
 const WEBP = [0x57, 0x45, 0x42, 0x50] as const; // "WEBP"
 const OGG = [0x4f, 0x67, 0x67, 0x53] as const; // "OggS"
 const ID3 = [0x49, 0x44, 0x33] as const; // "ID3"
+const EBML = [0x1a, 0x45, 0xdf, 0xa3] as const; // Matroska/WebM
+const FTYP = [0x66, 0x74, 0x79, 0x70] as const; // "ftyp" (ISO BMFF / MP4, at offset 4)
 
 function hasBytes(bytes: Uint8Array, signature: readonly number[], offset = 0): boolean {
   if (bytes.length < offset + signature.length) return false;
@@ -45,6 +47,8 @@ export function sniffMedia(bytes: Uint8Array): SniffedMedia | null {
   if (hasBytes(bytes, RIFF) && hasBytes(bytes, WEBP, 8)) return 'image/webp';
   if (hasBytes(bytes, OGG)) return 'audio/ogg';
   if (isId3Header(bytes) || isMp3FrameHeader(bytes)) return 'audio/mpeg';
+  if (hasBytes(bytes, EBML)) return 'audio/webm';
+  if (hasBytes(bytes, FTYP, 4)) return 'audio/mp4';
   return null;
 }
 
@@ -54,4 +58,9 @@ export function isCreativeSource(type: SniffedMedia | null): type is CreativeSou
 
 export function isTrackType(type: SniffedMedia | null): type is TrackContentType {
   return type === 'audio/mpeg' || type === 'audio/ogg';
+}
+
+/** Voice-note recordings: what browsers' MediaRecorder produces (WebM/Opus, Ogg/Opus, MP4/AAC on Safari). */
+export function isChatVoiceType(type: SniffedMedia | null): type is ChatVoiceType {
+  return type === 'audio/webm' || type === 'audio/ogg' || type === 'audio/mp4';
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { ChevronLeft, MessageCirclePlus, UserRound } from 'lucide-react';
-import { useMemo } from 'react';
+import { ChevronDown, ChevronLeft, MailQuestion, MessageCirclePlus, UserRound } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { DmThreadDto } from '@insidelife/shared';
 import { EmptyState, LoadingRows } from '@/common/components';
 import { cn } from '@/common/utils/cn';
@@ -18,7 +18,10 @@ interface Me {
   readonly handle: string;
 }
 
-/** Private conversations: your friends and anyone you've messaged, newest first; tap to open the thread. */
+/**
+ * Private conversations: your friends and anyone you've messaged, newest first; tap to open the thread. Messages from
+ * people who aren't your friends wait under "Message requests" until you accept them.
+ */
 export function DmsTab({ me }: { readonly me: Me }) {
   const thread = useGistNav((state) => state.thread);
   const closeThread = useGistNav((state) => state.closeThread);
@@ -48,6 +51,7 @@ export function DmsTab({ me }: { readonly me: Me }) {
           emptyBody="Only the two of you can see this chat."
           candidates={[{ handle: thread.handle, name: thread.name }]}
           onOpenProfile={openProfile}
+          partner={{ handle: thread.handle, name: thread.name }}
         />
       </div>
     );
@@ -66,12 +70,14 @@ function Conversations() {
   const threads = useDmThreads();
   const partners = useGistNav((state) => state.partners);
   const setTab = useGistNav((state) => state.setTab);
+  const [showRequests, setShowRequests] = useState(false);
   // Conversations from the server (newest first, including people who messaged you first), then friends and people
   // you just opened a chat with who have no messages yet.
   const list = useMemo(() => {
     const online = new Map((friends.data?.friends ?? []).map((friend) => [friend.id, friend.online]));
     const items = new Map<string, ConversationItem>();
     for (const thread of threads.data ?? []) {
+      if (thread.request === 'incoming') continue;
       const { characterId, handle, firstName, lastName } = thread.counterpart;
       items.set(characterId, { partner: { id: characterId, handle, name: `${firstName} ${lastName}` }, thread, online: online.get(characterId) });
     }
@@ -81,7 +87,41 @@ function Conversations() {
     }
     return [...items.values()];
   }, [friends.data, threads.data, partners]);
+  const requests = useMemo(() => (threads.data ?? []).filter((thread) => thread.request === 'incoming'), [threads.data]);
+  const unreadRequests = requests.filter((thread) => thread.unread).length;
 
+  const requestsSection =
+    requests.length > 0 ? (
+      <div className="mb-2">
+        <button
+          type="button"
+          onClick={() => setShowRequests((open) => !open)}
+          aria-expanded={showRequests}
+          className="flex w-full items-center gap-3 rounded-card bg-paper-2 px-3 py-2.5 text-left ring-1 ring-line hover:bg-paper-3"
+        >
+          <MailQuestion size={20} aria-hidden />
+          <span className="flex-1 font-bold">Message requests</span>
+          <span className={cn('tabular rounded-full px-2 py-0.5 text-xs font-bold', unreadRequests > 0 ? 'bg-danfo text-ink' : 'bg-paper-3 text-text-soft')}>{requests.length}</span>
+          <ChevronDown size={18} aria-hidden className={cn('transition-transform', showRequests && 'rotate-180')} />
+        </button>
+        {showRequests && (
+          <ul className="mt-1 flex flex-col gap-1" aria-label="Message requests">
+            {requests.map((thread) => (
+              <ConversationRow
+                key={thread.channel}
+                item={{
+                  partner: { id: thread.counterpart.characterId, handle: thread.counterpart.handle, name: `${thread.counterpart.firstName} ${thread.counterpart.lastName}` },
+                  thread,
+                  online: undefined,
+                }}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+    ) : null;
+
+  if (list.length === 0 && requests.length > 0) return requestsSection;
   if (list.length === 0) {
     if (threads.isPending) return <LoadingRows rows={4} />;
     return (
@@ -98,11 +138,14 @@ function Conversations() {
     );
   }
   return (
-    <ul className="flex flex-col gap-1" aria-label="Conversations">
-      {list.map((item) => (
-        <ConversationRow key={item.partner.id} item={item} />
-      ))}
-    </ul>
+    <>
+      {requestsSection}
+      <ul className="flex flex-col gap-1" aria-label="Conversations">
+        {list.map((item) => (
+          <ConversationRow key={item.partner.id} item={item} />
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -117,7 +160,7 @@ function ConversationRow({ item }: { readonly item: ConversationItem }) {
         <span className="min-w-0 flex-1">
           <span className="block truncate font-bold">{partner.name}</span>
           <span className={cn('block truncate text-sm', unread ? 'font-bold text-text' : 'text-text-soft')}>
-            {thread ? `${thread.lastFromMe ? 'You: ' : ''}${thread.preview}` : `Say hi to @${partner.handle}`}
+            {thread ? `${thread.request === 'outgoing' ? 'Request sent · ' : thread.lastFromMe ? 'You: ' : ''}${thread.preview}` : `Say hi to @${partner.handle}`}
           </span>
         </span>
         {thread && <span className="shrink-0 text-2xs text-text-faint">{chatTime(thread.lastMessageAt)}</span>}

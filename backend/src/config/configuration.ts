@@ -30,6 +30,7 @@ export interface AppConfig {
     readonly accessKey: string;
     readonly secretKey: string;
     readonly bucket: string;
+    readonly privateBucket: string;
     readonly publicBaseUrl: string;
   };
   readonly adminEmails: readonly string[];
@@ -79,6 +80,7 @@ export const configuration = (): AppConfig => {
       accessKey: env.S3_ACCESS_KEY ?? '',
       secretKey: env.S3_SECRET_KEY ?? '',
       bucket: env.S3_BUCKET ?? 'insidelife-media',
+      privateBucket: env.S3_PRIVATE_BUCKET ?? 'insidelife-private',
       publicBaseUrl: env.S3_PUBLIC_BASE_URL ?? '/media',
     },
     adminEmails: (env.ADMIN_EMAILS ?? '')

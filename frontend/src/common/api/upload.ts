@@ -1,4 +1,4 @@
-import { PROMOTION_UPLOAD_FIELD, type ApiErrorBody } from '@insidelife/shared';
+import type { ApiErrorBody } from '@insidelife/shared';
 import { ApiError } from '@/common/api/api-error';
 import { refreshSession } from '@/common/api/http';
 import { useSession } from '@/common/auth/session-store';
@@ -9,10 +9,13 @@ export interface UploadOptions {
   readonly signal?: AbortSignal;
 }
 
+/** The multipart field every upload endpoint reads the file from. */
+const FILE_FIELD = 'file';
+
 /**
  * Authenticated multipart upload with progress (fetch can't report upload progress, so this uses XHR). Mirrors
- * `common/api/http`: bearer token, one refresh-and-retry on 401, failures as `ApiError`.
- * Candidate for `common/api` once another feature uploads files.
+ * `common/api/http`: bearer token, one refresh-and-retry on 401, failures as `ApiError`. Used by billboard creatives,
+ * club tracks and chat voice notes/photos.
  */
 export async function uploadMultipart<T>(path: string, file: File, fields: Readonly<Record<string, string>>, options: UploadOptions = {}): Promise<T> {
   const session = useSession.getState();
@@ -36,7 +39,7 @@ function send<T>(path: string, file: File, fields: Readonly<Record<string, strin
   return new Promise((resolve, reject) => {
     const form = new FormData();
     for (const [key, value] of Object.entries(fields)) form.append(key, value);
-    form.append(PROMOTION_UPLOAD_FIELD, file, file.name);
+    form.append(FILE_FIELD, file, file.name);
 
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${env.apiBase}${path}`);

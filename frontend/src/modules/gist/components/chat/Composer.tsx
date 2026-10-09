@@ -1,14 +1,27 @@
 'use client';
 
-import { SendHorizontal } from 'lucide-react';
+import { ImagePlus, Mic, SendHorizontal, Trash2 } from 'lucide-react';
 import { useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Spinner } from '@/common/components';
 import { cn } from '@/common/utils/cn';
+import { useVoiceRecorder, type VoiceClip } from '../../hooks/use-voice-recorder';
 import { CHAT_MAX_LENGTH, completeMention, mentionAtCaret } from '../../services/chat-channels';
+import { clipTime } from '../../services/chat-time';
 
 export interface MentionCandidate {
   readonly handle: string;
   readonly name: string;
+}
+
+/** Voice notes and photos (private chats only). */
+export interface ComposerMedia {
+  /** False while a message request is pending (the buttons explain why instead). */
+  readonly enabled: boolean;
+  readonly lockedHint: string;
+  /** An upload in flight. */
+  readonly sending: boolean;
+  readonly onVoice: (clip: VoiceClip) => void;
+  readonly onPhoto: (file: File) => void;
 }
 
 export interface ComposerProps {
@@ -19,16 +32,23 @@ export interface ComposerProps {
   readonly candidates: readonly MentionCandidate[];
   readonly onSend: (body: string) => Promise<boolean>;
   readonly onTyping?: () => void;
+  readonly media?: ComposerMedia;
 }
 
-/** Message box with @mention autocomplete, a character budget and the send error (rate limits etc.) inline. */
-export function Composer({ placeholder, sending, error, candidates, onSend, onTyping }: ComposerProps) {
+/**
+ * Message box with @mention autocomplete, a character budget and the send error (rate limits etc.) inline. In private
+ * chats it also takes photos (camera button) and voice notes (mic button while the box is empty; up to 1:30).
+ */
+export function Composer({ placeholder, sending, error, candidates, onSend, onTyping, media }: ComposerProps) {
   const [text, setText] = useState('');
   const [caret, setCaret] = useState(0);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
   const errorId = useId();
+  const photoInput = useRef<HTMLInputElement>(null);
+  const recorder = useVoiceRecorder((clip) => media?.onVoice(clip));
+  const shownError = error ?? recorder.error;
 
   const mention = mentionAtCaret(text, caret);
   const matches = mention ? candidates.filter((candidate) => candidate.handle.toLowerCase().startsWith(mention.query)).slice(0, 5) : [];
@@ -76,6 +96,37 @@ export function Composer({ placeholder, sending, error, candidates, onSend, onTy
     }
   };
 
+  if (recorder.status !== 'idle') {
+    const ratio = Math.min(1, recorder.elapsedMs / recorder.maxMs);
+    return (
+      <div className="flex items-center gap-2" role="group" aria-label="Recording a voice note">
+        <button type="button" onClick={() => recorder.stop(false)} aria-label="Discard voice note" className="grid size-12 shrink-0 place-items-center rounded-full bg-paper-2 text-okada ring-1 ring-line">
+          <Trash2 size={20} aria-hidden />
+        </button>
+        <div className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-full bg-paper-2 px-4 ring-2 ring-okada">
+          <span aria-hidden className="size-2.5 shrink-0 animate-pulse rounded-full bg-okada" />
+          <span className="tabular text-sm font-bold" aria-live="off">
+            {recorder.status === 'starting' ? 'Starting…' : `${clipTime(recorder.elapsedMs)} / ${clipTime(recorder.maxMs)}`}
+          </span>
+          <span aria-hidden className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-ink/10">
+            <span className="block h-full rounded-full bg-okada" style={{ width: `${ratio * 100}%` }} />
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={() => recorder.stop(true)}
+          disabled={recorder.status !== 'recording'}
+          aria-label="Send voice note"
+          className="grid size-12 shrink-0 place-items-center rounded-full bg-danfo text-ink shadow-[0_3px_0_var(--color-danfo-deep)] active:translate-y-px disabled:opacity-40"
+        >
+          <SendHorizontal size={20} aria-hidden />
+        </button>
+      </div>
+    );
+  }
+
+  const micMedia = text.trim().length === 0 ? media : undefined;
+
   return (
     <div className="flex flex-col gap-1.5">
       {showMatches && (
@@ -102,7 +153,34 @@ export function Composer({ placeholder, sending, error, candidates, onSend, onTy
           void submit();
         }}
       >
-        <div className={cn('flex h-12 min-w-0 flex-1 items-center rounded-full bg-paper-2 pl-4 pr-2 ring-1 ring-line focus-within:ring-2 focus-within:ring-ink', error && 'ring-2 ring-okada')}>
+        {media && (
+          <>
+            <button
+              type="button"
+              onClick={() => photoInput.current?.click()}
+              disabled={!media.enabled || media.sending}
+              aria-label="Send a photo"
+              title={media.enabled ? 'Send a photo' : media.lockedHint}
+              className="grid size-12 shrink-0 place-items-center rounded-full bg-paper-2 text-text ring-1 ring-line hover:bg-paper-3 disabled:opacity-40"
+            >
+              <ImagePlus size={20} aria-hidden />
+            </button>
+            <input
+              ref={photoInput}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+              className="sr-only"
+              tabIndex={-1}
+              aria-hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = '';
+                if (file) media.onPhoto(file);
+              }}
+            />
+          </>
+        )}
+        <div className={cn('flex h-12 min-w-0 flex-1 items-center rounded-full bg-paper-2 pl-4 pr-2 ring-1 ring-line focus-within:ring-2 focus-within:ring-ink', shownError && 'ring-2 ring-okada')}>
           <input
             ref={inputRef}
             value={text}
@@ -117,7 +195,7 @@ export function Composer({ placeholder, sending, error, candidates, onSend, onTy
             onKeyDown={onKeyDown}
             placeholder={placeholder}
             aria-label="Message"
-            aria-describedby={error ? errorId : undefined}
+            aria-describedby={shownError ? errorId : undefined}
             aria-autocomplete="list"
             aria-controls={showMatches ? listId : undefined}
             aria-expanded={showMatches}
@@ -126,18 +204,34 @@ export function Composer({ placeholder, sending, error, candidates, onSend, onTy
           />
           {remaining <= 40 && <span className={cn('tabular px-1 text-xs font-bold', remaining <= 10 ? 'text-okada' : 'text-text-faint')}>{remaining}</span>}
         </div>
-        <button
-          type="submit"
-          disabled={sending || text.trim().length === 0}
-          aria-label="Send message"
-          className="grid size-12 shrink-0 place-items-center rounded-full bg-danfo text-ink shadow-[0_3px_0_var(--color-danfo-deep)] active:translate-y-px disabled:opacity-40"
-        >
-          {sending ? <Spinner /> : <SendHorizontal size={20} aria-hidden />}
-        </button>
+        {micMedia ? (
+          <button
+            type="button"
+            onClick={() => {
+              recorder.clearError();
+              void recorder.start();
+            }}
+            disabled={!micMedia.enabled || micMedia.sending || !recorder.supported}
+            aria-label="Record a voice note"
+            title={!recorder.supported ? 'Voice notes aren’t supported in this browser' : micMedia.enabled ? 'Record a voice note (up to 1:30)' : micMedia.lockedHint}
+            className="grid size-12 shrink-0 place-items-center rounded-full bg-danfo text-ink shadow-[0_3px_0_var(--color-danfo-deep)] active:translate-y-px disabled:opacity-40"
+          >
+            {micMedia.sending ? <Spinner /> : <Mic size={20} aria-hidden />}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={sending || text.trim().length === 0}
+            aria-label="Send message"
+            className="grid size-12 shrink-0 place-items-center rounded-full bg-danfo text-ink shadow-[0_3px_0_var(--color-danfo-deep)] active:translate-y-px disabled:opacity-40"
+          >
+            {sending ? <Spinner /> : <SendHorizontal size={20} aria-hidden />}
+          </button>
+        )}
       </form>
-      {error && (
+      {shownError && (
         <p id={errorId} role="alert" className="px-2 text-sm text-okada">
-          {error}
+          {shownError}
         </p>
       )}
     </div>
