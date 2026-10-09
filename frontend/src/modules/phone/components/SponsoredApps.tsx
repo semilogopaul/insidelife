@@ -1,9 +1,10 @@
 'use client';
 
-import { ExternalLink, Megaphone } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { LivePhoneAppDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
+import { AppIcon } from '@/common/brand/app-icons';
 import { Button, Sheet, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
@@ -58,9 +59,7 @@ export function SponsoredShelf({ onOpen }: { readonly onOpen: (app: LivePhoneApp
           onClick={() => useUi.getState().openPhone('promote', 'app-1')}
           className="flex w-full items-center gap-3 rounded-card bg-paper-2 p-3 text-left ring-1 ring-dashed ring-line hover:bg-paper-3"
         >
-          <span className="grid size-11 shrink-0 place-items-center rounded-[14px] bg-danfo text-ink">
-            <Megaphone size={20} aria-hidden />
-          </span>
+          <AppIcon app="promote" size={44} decorative />
           <span className="min-w-0 text-sm">
             <span className="block font-bold">Your app here</span>
             <span className="block text-text-soft">Put your business on every player’s phone. Open Promote.</span>

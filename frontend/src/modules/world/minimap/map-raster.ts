@@ -1,4 +1,5 @@
-import { CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, findVenue, type LotArchetype } from '@insidelife/shared';
+import { CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, findVenue } from '@insidelife/shared';
+import { placeKindOfArchetype, propertyPlaceKind, venuePlaceKind, type PlaceKind } from '@/common/brand/place-icons';
 
 /**
  * The city drawn once into an offscreen canvas (2 px per metre, north up): water, land, parks, beaches and roads with
@@ -91,47 +92,32 @@ export function cityRaster(): HTMLCanvasElement {
   return canvas;
 }
 
+/** A place marker on the minimap: drawn as its pictogram on its disc (`drawPlaceMarker`). */
 export interface MapIcon {
   readonly x: number;
   readonly z: number;
-  readonly color: string;
-  readonly glyph: string;
+  readonly kind: PlaceKind;
   readonly name: string;
 }
 
-const ICON: Readonly<Record<LotArchetype, readonly [string, string]>> = {
-  airport: ['#13606b', '✈'],
-  campus: ['#0f5132', 'U'],
-  market: ['#d0571c', 'M'],
-  mall: ['#2457d6', 'S'],
-  hospital: ['#c62828', '+'],
-  'office-tower': ['#0e2733', 'O'],
-  office: ['#0e2733', 'O'],
-  government: ['#1a8a4a', 'G'],
-  stadium: ['#1a8a4a', '★'],
-  park: ['#3f7d3a', 'P'],
-  beach: ['#d99c00', 'B'],
-  hotel: ['#6b4a1f', 'H'],
-  club: ['#c8287a', '♪'],
-  mosque: ['#1f6b45', 'M'],
-  church: ['#2b3f8f', '✝'],
-  'motor-park': ['#d99c00', 'D'],
-  'car-dealer': ['#c62828', 'C'],
-  shop: ['#e8742b', '•'],
-  school: ['#2457d6', 'S'],
-};
-
-/** Your land and houses: a gold house where you live, green for the rest. */
-export function propertyIcons(owned: readonly { readonly x: number; readonly z: number; readonly name: string; readonly livedIn: boolean }[]): MapIcon[] {
-  return owned.map((place) => ({ x: place.x, z: place.z, color: place.livedIn ? '#d99c00' : '#1a8a4a', glyph: '⌂', name: place.name }));
+/** Your land and houses: the house you live in is home, the rest show what stands on the plot. */
+export function propertyIcons(
+  owned: readonly { readonly x: number; readonly z: number; readonly name: string; readonly stage: 'land' | 'construction' | 'built'; readonly livedIn: boolean }[],
+): MapIcon[] {
+  return owned.map((place) => ({ x: place.x, z: place.z, kind: propertyPlaceKind(place), name: place.name }));
 }
 
 export function venueIcons(): readonly MapIcon[] {
   const icons: MapIcon[] = [];
   for (const lot of CITY_MAP.lots) {
     if (lot.kind !== 'venue' || !lot.entrance || !lot.venueId) continue;
-    const [color, glyph] = ICON[lot.archetype ?? 'shop'];
-    icons.push({ x: (lot.footprint.minX + lot.footprint.maxX) / 2, z: (lot.footprint.minZ + lot.footprint.maxZ) / 2, color, glyph, name: findVenue(lot.venueId)?.name ?? lot.venueId });
+    const venue = findVenue(lot.venueId);
+    icons.push({
+      x: (lot.footprint.minX + lot.footprint.maxX) / 2,
+      z: (lot.footprint.minZ + lot.footprint.maxZ) / 2,
+      kind: venue ? venuePlaceKind(venue) : placeKindOfArchetype(lot.archetype ?? 'shop'),
+      name: venue?.name ?? lot.venueId,
+    });
   }
   return icons;
 }

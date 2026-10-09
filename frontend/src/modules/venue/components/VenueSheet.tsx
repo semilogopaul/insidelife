@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { homeLocationId, formatGameDuration, formatNairaCompact, isHomeLocation, isInterruptibleAction, type ActionDefinition } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
+import { PlaceIcon, venuePlaceKind, type PlaceKind } from '@/common/brand/place-icons';
 import { Button, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
@@ -14,8 +15,12 @@ import { useUi } from '@/common/game/ui-store';
 import { useWorldState } from '@/common/game/use-game-clock';
 import { cn } from '@/common/utils/cn';
 import { useVisits } from '@/common/visits';
-import { usePlaceActions } from '../hooks/use-place-actions';
+import { usePlaceActions, type Place } from '../hooks/use-place-actions';
 import { venueApi } from '../services/venue.api';
+
+/** The pictogram for where you are: your home, a friend's house, or the venue's kind. */
+const placeKind = (place: Place): PlaceKind =>
+  place.kind === 'home' ? 'home' : place.kind === 'visit' || !place.venue ? 'house' : venuePlaceKind(place.venue);
 
 /**
  * "What can I do here?" — shown while inside a place. Collapsed to a handle so the interior stays visible.
@@ -58,6 +63,7 @@ export function VenueSheet() {
     <div className="pointer-events-none absolute inset-x-0 bottom-0 z-30 flex justify-center pb-[max(env(safe-area-inset-bottom),0.75rem)] pl-3 pr-24 sm:px-24">
       <section aria-label={`Things to do at ${place.name}`} className="glass pointer-events-auto w-full max-w-xl rounded-sheet text-on-ink">
         <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} className="flex w-full items-center gap-3 px-4 py-3 text-left">
+          <PlaceIcon kind={placeKind(place)} size={36} decorative />
           <span className="min-w-0 flex-1">
             <span className="type-title block truncate text-lg">{place.name}</span>
             <span className="block truncate text-xs text-on-ink-soft">

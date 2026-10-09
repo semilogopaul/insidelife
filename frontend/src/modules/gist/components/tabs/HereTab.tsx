@@ -2,6 +2,7 @@
 
 import { DoorClosed, Map as MapIcon } from 'lucide-react';
 import { findVenue, isHomeLocation, isStreetLocation, type CharacterSnapshotDto } from '@insidelife/shared';
+import { PlaceIcon, venuePlaceKind } from '@/common/brand/place-icons';
 import { Button, EmptyState, Spinner } from '@/common/components';
 import { useUi } from '@/common/game/ui-store';
 import { useGistNav } from '../../hooks/use-gist-nav';
@@ -37,8 +38,11 @@ export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto 
   return (
     <div className="flex flex-col gap-3">
       <section aria-label={`Who’s at ${venue.name}`} className="rounded-card bg-paper-2 p-3">
-        <div className="flex items-baseline justify-between gap-2">
-          <h3 className="type-title text-lg">At {venue.name}</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="type-title flex min-w-0 items-center gap-2 text-lg">
+            <PlaceIcon kind={venuePlaceKind(venue)} size={28} decorative />
+            <span className="truncate">At {venue.name}</span>
+          </h3>
           <span className="text-xs font-bold text-text-soft">{players.data ? `${players.data.total} here` : ''}</span>
         </div>
         {players.isPending ? (

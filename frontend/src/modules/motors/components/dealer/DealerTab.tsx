@@ -1,6 +1,6 @@
 'use client';
 
-import { Fuel, Store, Users } from 'lucide-react';
+import { Fuel, Users } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   VEHICLE_GRADE_LABELS,
@@ -10,6 +10,7 @@ import {
   type VehiclePaintId,
   type VehiclesDto,
 } from '@insidelife/shared';
+import { PlaceIcon } from '@/common/brand/place-icons';
 import { Badge, Button, Money } from '@/common/components';
 import { useSnapshot } from '@/common/game/snapshot';
 import { filterCatalogue, type SegmentFilter } from '../../services/motors-rules';
@@ -46,7 +47,7 @@ export function DealerTab({ data }: { readonly data: VehiclesDto }) {
   return (
     <div className="flex flex-col gap-4">
       <p className="flex items-start gap-2.5 rounded-card bg-paper-2 p-3 text-sm">
-        <Store size={18} aria-hidden className="mt-0.5 shrink-0 text-lagoon" />
+        <PlaceIcon kind="car-dealer" size={28} decorative />
         <span>
           {dealer ? (
             <>

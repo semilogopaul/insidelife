@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronLeft, X } from 'lucide-react';
 import { formatClock12 } from '@insidelife/shared';
+import { AppIcon } from '@/common/brand/app-icons';
 import { gameEvents } from '@/common/game/game-events';
 import { useEscapeLayer } from '@/common/hooks/use-escape-layer';
 import type { PhoneAppDefinition } from '@/common/game/phone-apps';
@@ -59,6 +60,7 @@ export function Phone({ apps }: PhoneProps) {
             ) : (
               <span className="size-10" />
             )}
+            {app && !sponsored && phoneApp !== 'home' && <AppIcon app={app.id} size={28} decorative />}
             <h2 className="type-title flex-1 truncate text-xl">
               {sponsored ? sponsored.name : (app?.name ?? 'Home')}
             </h2>
@@ -81,34 +83,23 @@ export function Phone({ apps }: PhoneProps) {
             ) : phoneApp === 'home' || !app ? (
               <>
                 <ul className="grid grid-cols-4 gap-x-3 gap-y-5 pt-2">
-                  {apps.map((item) => {
-                    const Icon = item.icon;
-                    return (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            gameEvents.emit('sfx', { id: 'ui-click' });
-                            openPhone(item.id);
-                          }}
-                          className="flex w-full flex-col items-center gap-1.5"
-                        >
-                          <span
-                            className="grid size-14 place-items-center rounded-[18px] text-white shadow-[var(--shadow-lift)]"
-                            style={{ background: item.tint }}
-                          >
-                            <Icon
-                              size={26}
-                              aria-hidden
-                              strokeWidth={2.2}
-                              color={item.tint === '#f6b90b' ? '#0e2733' : 'white'}
-                            />
-                          </span>
-                          <span className="text-xs font-bold">{item.name}</span>
-                        </button>
-                      </li>
-                    );
-                  })}
+                  {apps.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          gameEvents.emit('sfx', { id: 'ui-click' });
+                          openPhone(item.id);
+                        }}
+                        className="group flex w-full flex-col items-center gap-1.5"
+                      >
+                        <span className="rounded-[12px] shadow-[var(--shadow-lift)] motion-safe:transition-transform motion-safe:duration-150 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-active:scale-95">
+                          <AppIcon app={item.id} size={56} decorative className="block" />
+                        </span>
+                        <span className="text-xs font-bold">{item.name}</span>
+                      </button>
+                    </li>
+                  ))}
                 </ul>
                 <SponsoredShelf onOpen={setSponsored} />
               </>
