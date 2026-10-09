@@ -28,6 +28,7 @@ const SHORT_CATEGORY: Record<ShopCategory, string> = {
   phones: 'Phones',
   computers: 'Laptops',
   essentials: 'Essentials',
+  groceries: 'Groceries',
   clothing: 'Clothes',
 };
 

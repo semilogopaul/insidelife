@@ -1,4 +1,5 @@
 import {
+  formatNairaCompact,
   ACTIONS,
   CLOTHING_SLOTS,
   MAX_PURCHASE_QUANTITY,
@@ -36,8 +37,10 @@ export function unlocksFor(
 }
 
 /** Comfort / status / sleep chips for a product card. */
-export function productPerks(product: Pick<ShopProductDto, 'item' | 'clothing' | 'status'>): string[] {
+export function productPerks(product: Pick<ShopProductDto, 'item' | 'clothing' | 'status' | 'price'>): string[] {
   const perks: string[] = [];
+  const meals = product.item?.meals;
+  if (meals) perks.push(`+${meals} meals in your kitchen`, `${formatNairaCompact(Math.round(product.price / meals))}/meal`);
   if (product.item && product.item.comfort > 0) perks.push(`+${product.item.comfort} comfort`);
   if (product.item?.bedQuality !== undefined)
     perks.push(`Sleep ${Math.round(product.item.bedQuality * 100)}%`);

@@ -127,6 +127,8 @@ export interface CharacterSummaryDto {
   readonly children: number;
   /** Catalog ids of belongings that live at home (furniture, appliances, TVs, laptops…) — the 3D home shows them. */
   readonly homeItems: readonly string[];
+  /** Home-cooked meals in the kitchen (groceries stock it; Cook uses one). */
+  readonly pantryMeals: number;
   readonly conditions: readonly ConditionSummaryDto[];
   readonly netWorth: number;
 }

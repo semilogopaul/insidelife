@@ -44,7 +44,10 @@ export class ActionsService {
     await this.assertLocation(ctx, action);
     await this.assertRequirements(ctx, action);
 
-    const cost = ctx.world.price(action.cost, ctx.time);
+    // Cooking with food in the kitchen uses the stock; otherwise it's a market run at the action's price.
+    const fromPantry = action.usesPantry === true && character.pantryMeals > 0;
+    if (fromPantry) character.pantryMeals -= 1;
+    const cost = fromPantry ? 0 : ctx.world.price(action.cost, ctx.time);
     if (cost > 0) {
       await ctx.wallet.pay(cost, 'purchase', action.label, `action:${action.id}:${ctx.time}`);
     }

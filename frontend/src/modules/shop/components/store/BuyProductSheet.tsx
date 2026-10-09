@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { STORE_TIER_LABELS, findVenue, type ShopProductDto } from '@insidelife/shared';
+import {
+  PANTRY_MAX_MEALS, STORE_TIER_LABELS, findVenue, type ShopProductDto } from '@insidelife/shared';
 import { Button, Money, Sheet } from '@/common/components';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useShopCommands } from '../../hooks/use-shop';
@@ -39,7 +40,10 @@ export function BuyProductSheet({
 function BuyForm({ product, onDone }: { readonly product: ShopProductDto; readonly onDone: () => void }) {
   const { purchase } = useShopCommands();
   const { data: snapshot } = useSnapshot();
-  const limit = maxBuyable(product);
+  // Groceries are limited by room in the kitchen, not by how many you own.
+  const meals = product.item?.meals;
+  const pantryRoom = meals ? Math.floor((PANTRY_MAX_MEALS - (snapshot?.summary.pantryMeals ?? 0)) / meals) : Infinity;
+  const limit = Math.min(maxBuyable(product), pantryRoom);
   const [quantity, setQuantity] = useState(1);
   const { lines, total } = purchaseLines(product, quantity);
   const short = snapshot ? total - snapshot.wallet.balance : 0;

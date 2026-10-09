@@ -67,6 +67,8 @@ export interface ActionDefinition {
   readonly durations: readonly number[];
   /** Base cost (₦) per run, before the world price index. */
   readonly cost: number;
+  /** Takes a meal from the kitchen stock instead of charging `cost` when there is one (Cook). */
+  readonly usesPantry?: boolean;
   /** Need drift overrides while running; unspecified needs follow the location's idle profile. */
   readonly drift: Partial<Record<NeedKey, NeedDrift>>;
   /** Skill XP per game hour. */
@@ -214,10 +216,11 @@ export const ACTIONS = [
     where: { home: true },
     durations: [HOUR],
     cost: 3_000,
+    usesPantry: true,
     drift: { hunger: fill(110), fun: { target: 65, rate: 6 } },
     skillXpPerHour: { cooking: 0.5 },
     animation: 'cook',
-    blurb: 'Cheaper than buying food, and you get better at it.',
+    blurb: 'Uses a meal from your kitchen stock; with nothing in, a quick market run. You get better at it.',
   },
   {
     id: 'order-food',

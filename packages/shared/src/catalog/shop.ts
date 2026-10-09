@@ -23,7 +23,7 @@ import { VENUES, findVenue, type VenueType } from './venues.js';
 // Categories, power and rules
 // ---------------------------------------------------------------------------------------------------------------
 
-export const ITEM_CATEGORIES = ['furniture', 'appliances', 'electronics', 'power', 'phones', 'computers', 'essentials'] as const;
+export const ITEM_CATEGORIES = ['furniture', 'appliances', 'electronics', 'power', 'phones', 'computers', 'essentials', 'groceries'] as const;
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
 /** Categories in the Shop app (items plus clothing). */
@@ -38,6 +38,7 @@ export const SHOP_CATEGORY_LABELS: Readonly<Record<ShopCategory, string>> = {
   phones: 'Phones',
   computers: 'Laptops',
   essentials: 'Essentials',
+  groceries: 'Groceries (stock your kitchen)',
   clothing: 'Clothes & Drip',
 };
 
@@ -109,7 +110,12 @@ export interface ItemDefinition {
   readonly maxQuantity: number;
   /** Event/gift only — never on shelves. */
   readonly unlisted?: boolean;
+  /** Groceries: home-cooked meals this stocks the kitchen with (they go into the pantry, not your belongings). */
+  readonly meals?: number;
 }
+
+/** Most home-cooked meals the kitchen holds (a few months of rice and garri). */
+export const PANTRY_MAX_MEALS = 240;
 
 type ItemInput = Omit<ItemDefinition, 'tags' | 'status' | 'wearPerDay' | 'maxQuantity' | 'comfort'> &
   Partial<Pick<ItemDefinition, 'tags' | 'status' | 'wearPerDay' | 'maxQuantity' | 'comfort'>>;
@@ -178,6 +184,12 @@ export const ITEMS: readonly ItemDefinition[] = [
   item({ id: 'mosquito-net', name: 'Treated Mosquito Net', category: 'essentials', emoji: '🦟', blurb: 'Malaria is not your portion. Cheapest health insurance in Lagos.', price: 9_000, store: 'market', tags: ['mosquito-net'], comfort: 0.5, group: 'net', wearPerDay: 0.03, maxQuantity: 4 }),
   item({ id: 'books-past-questions', name: 'JAMB & WAEC Past Questions', category: 'essentials', emoji: '📗', blurb: 'From the Ilupeju bookshop. Answers at the back (mostly correct).', price: 7_500, store: 'market', tags: ['books'], group: 'books' }),
   item({ id: 'books-african-classics', name: 'African Classics Shelf (Achebe, Soyinka, Adichie)', category: 'essentials', emoji: '📚', blurb: 'Things Fall Apart, then things come together.', price: 65_000, store: 'mall', tags: ['books'], comfort: 0.5, group: 'books', status: 1 }),
+  // --- Groceries (stock the kitchen: Cook uses a meal from the pantry instead of a ₦3,000 market run) ------------
+  item({ id: 'groceries-garri', name: 'Garri (paint bucket)', category: 'groceries', emoji: '🥣', blurb: 'Soak it, drink it, eat it with soup. Sapa’s best friend.', price: 9_500, store: 'market', group: 'groceries', meals: 25, maxQuantity: 99 }),
+  item({ id: 'groceries-indomie', name: 'Indomie Carton (40 packs)', category: 'groceries', emoji: '🍜', blurb: 'Two packs and an egg. Every hostel’s emergency plan.', price: 14_000, store: 'market', group: 'groceries', meals: 20, maxQuantity: 99 }),
+  item({ id: 'groceries-weekly', name: 'Weekly Foodstuff Run', category: 'groceries', emoji: '🧺', blurb: 'Rice, beans, tomatoes, pepper, palm oil and a small fish. Mama would approve.', price: 28_000, store: 'market', group: 'groceries', meals: 14, maxQuantity: 99 }),
+  item({ id: 'groceries-rice-bag', name: 'Rice (50kg bag)', category: 'groceries', emoji: '🍚', blurb: 'Buy once, cook for months. Party jollof is now within reach.', price: 95_000, store: 'market', group: 'groceries', meals: 120, maxQuantity: 99 }),
+  item({ id: 'groceries-shoprite', name: 'Shoprite Trolley (chicken, cereal, pasta)', category: 'groceries', emoji: '🛒', blurb: 'Frozen chicken, cornflakes and the good spaghetti. Soft life groceries.', price: 85_000, store: 'mall', group: 'groceries', meals: 25, maxQuantity: 99 }),
   item({ id: 'lantern-rechargeable', name: 'Rechargeable Lantern', category: 'essentials', emoji: '🏮', blurb: 'When NEPA takes light at 8pm and you still have to read.', price: 18_000, store: 'market', tags: ['lamp'], comfort: 0.5, group: 'lamp', wearPerDay: 0.05, maxQuantity: 3 }),
 ];
 
@@ -389,7 +401,7 @@ export interface ShopOutlet {
 const MARKET_OUTLET: ShopOutlet = {
   label: 'Market stalls — cheaper basics, bring your haggling skills',
   clothing: ['okrika', 'market'],
-  itemCategories: ['furniture', 'appliances', 'power', 'essentials'],
+  itemCategories: ['furniture', 'appliances', 'power', 'essentials', 'groceries'],
   itemTiers: ['market'],
 };
 

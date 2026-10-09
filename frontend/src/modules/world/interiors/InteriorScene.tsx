@@ -57,11 +57,12 @@ export function InteriorScene({ locationId, players = [], player, templateId, ho
   // Your own home shows what you own; other places (and other players' homes) show their template.
   const homeItems = snapshot?.summary.homeItems;
   const ownership = snapshot?.summary.home.ownership;
+  const pantryMeals = snapshot?.summary.pantryMeals ?? 0;
   const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
   const template = useMemo(() => {
     if (previewItems) return furnish(base, previewItems, { providedFurniture: base.id === 'home-family' || base.id === 'home-hostel' });
-    return ownHome && homeItems ? furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel' }) : base;
-  }, [base, ownHome, homeItems, ownership, previewItems]);
+    return ownHome && homeItems ? furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals }) : base;
+  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems]);
   const [glass, setGlass] = useState<MeshStandardMaterial | null>(null);
   const onGlass = useCallback((material: MeshStandardMaterial | null) => setGlass(material), []);
 

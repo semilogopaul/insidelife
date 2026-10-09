@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  PANTRY_MAX_MEALS,
   FAULTY_CONDITION,
   MINUTES_PER_DAY,
   findProduct,
@@ -146,6 +147,11 @@ export class InventoryService implements InventoryPort {
    * units); quantities are capped at the product's maximum and clothing at one.
    */
   async add(ctx: SimulationContext, product: ShopProduct, quantity: number, source: InventorySource, unitPrice: number): Promise<InventoryItemEntity | null> {
+    // Groceries stock the kitchen (a meal count), they don't become belongings.
+    if (product.kind === 'item' && product.def.meals) {
+      ctx.character.pantryMeals = Math.min(PANTRY_MAX_MEALS, ctx.character.pantryMeals + product.def.meals * quantity);
+      return null;
+    }
     const max = product.kind === 'item' ? product.def.maxQuantity : 1;
     const existing = (await this.stacks(ctx)).find(({ row }) => row.itemId === product.def.id);
     const room = max - (existing?.row.quantity ?? 0);

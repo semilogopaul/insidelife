@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { LessThanOrEqual } from 'typeorm';
 import {
+  PANTRY_MAX_MEALS,
   findProduct,
   findVenue,
   isVenueOpen,
@@ -157,6 +158,13 @@ export class ShopService {
   private async assertRoom(ctx: SimulationContext, product: ShopProduct, quantity: number): Promise<void> {
     if (product.kind === 'clothing' && quantity !== 1) {
       throw new GameRuleException('ONE_IS_ENOUGH', 'One of each piece of clothing is enough — buy something else');
+    }
+    if (product.kind === 'item' && product.def.meals) {
+      const room = PANTRY_MAX_MEALS - ctx.character.pantryMeals;
+      if (product.def.meals * quantity > room) {
+        throw new GameRuleException('PANTRY_FULL', room < product.def.meals ? 'Your kitchen is full — cook some of it first' : `Your kitchen only has room for ${Math.floor(room / product.def.meals)} more`);
+      }
+      return;
     }
     const max = product.kind === 'item' ? product.def.maxQuantity : 1;
     const have = (await this.ownedOrOnTheWay(ctx)).get(product.def.id) ?? 0;

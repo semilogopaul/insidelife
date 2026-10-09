@@ -174,9 +174,20 @@ const BORROWS: Partial<Record<HomeSlot, HomeSlot>> = { console: 'tv', audio: 'tv
 export interface FurnishOptions {
   /** Family house and hostels come furnished: keep their pieces unless yours are better. */
   readonly providedFurniture: boolean;
+  /** Meals in the kitchen: sacks of foodstuff by the cooker. */
+  readonly pantryMeals?: number;
 }
 
-export function furnish(template: InteriorTemplate, owned: readonly string[], { providedFurniture }: FurnishOptions): InteriorTemplate {
+/** Foodstuff by the cooker: a rice sack, a second sack, then a bucket of garri as the stock grows. */
+function pantryProps(anchor: Anchor, meals: number): PropSpec[] {
+  if (meals <= 0) return [];
+  const props: PropSpec[] = [{ kind: 'box', at: offset(anchor, 0.75, 0.15), rot: anchor.rot + 8, size: [0.36, 0.5, 0.26], color: '#efe6d0', surface: 'cloth' }];
+  if (meals > 20) props.push({ kind: 'box', at: offset(anchor, 1.12, 0.12), rot: anchor.rot - 6, size: [0.34, 0.42, 0.25], color: '#e0d2b4', surface: 'cloth' });
+  if (meals > 60) props.push({ kind: 'bucket', at: offset(anchor, 0.95, 0.5), color: '#f6b90b' });
+  return props;
+}
+
+export function furnish(template: InteriorTemplate, owned: readonly string[], { providedFurniture, pantryMeals = 0 }: FurnishOptions): InteriorTemplate {
   const anchors = new Map<HomeSlot, Anchor>();
   const remember = (slot: HomeSlot | undefined, anchor: Anchor): void => {
     if (slot && !anchors.has(slot)) anchors.set(slot, anchor);
@@ -204,6 +215,9 @@ export function furnish(template: InteriorTemplate, owned: readonly string[], { 
     props.push(...(pieces.props ?? []));
     if (pieces.bedTop !== undefined) bedTop = pieces.bedTop;
   }
+
+  const kitchen = anchors.get('cooker') ?? anchors.get('fridge');
+  if (kitchen) props.push(...pantryProps({ ...kitchen, y: 0 }, pantryMeals));
 
   // Nothing to sleep on: a mat on the floor at the bed's place.
   const bedAnchor = anchors.get('bed');

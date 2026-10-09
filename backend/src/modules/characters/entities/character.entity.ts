@@ -153,6 +153,10 @@ export class CharacterEntity {
   @Column({ type: 'int', default: 0 })
   status: number;
 
+  /** Home-cooked meals in the kitchen (groceries add them, Cook uses one; see PANTRY_MAX_MEALS). */
+  @Column({ type: 'int', default: 0 })
+  pantryMeals: number;
+
   /** "Man know man": network strength 0-100, boosts applications and deals. */
   @Column({ type: 'real', default: 5 })
   connections: number;

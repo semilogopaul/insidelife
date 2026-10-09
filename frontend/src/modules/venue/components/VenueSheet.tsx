@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronUp, DoorOpen } from 'lucide-react';
 import { useState } from 'react';
-import { formatGameDuration, formatNairaCompact, type ActionDefinition } from '@insidelife/shared';
+import { homeLocationId, formatGameDuration, formatNairaCompact, type ActionDefinition } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
 import { Button, toast } from '@/common/components';
@@ -32,6 +32,7 @@ export function VenueSheet() {
 
   if (!snapshot || !place || phoneOpen) return null;
   const busy = snapshot.timeline[0]?.kind === 'action' && snapshot.timeline[0].explicit;
+  const atHome = snapshot.character.locationId === homeLocationId(snapshot.character.id);
   const priceIndex = world?.economy.priceIndex ?? 1;
 
   const stepOutside = async (): Promise<void> => {
@@ -54,7 +55,10 @@ export function VenueSheet() {
         <button type="button" onClick={() => setExpanded((value) => !value)} aria-expanded={expanded} className="flex w-full items-center gap-3 px-4 py-3 text-left">
           <span className="min-w-0 flex-1">
             <span className="type-title block truncate text-lg">{place.name}</span>
-            <span className="block truncate text-xs text-on-ink-soft">{expanded ? place.blurb : `${actions.length} things to do here`}</span>
+            <span className="block truncate text-xs text-on-ink-soft">
+              {expanded ? place.blurb : `${actions.length} things to do here`}
+              {atHome && ` · Kitchen: ${snapshot.summary.pantryMeals > 0 ? `${snapshot.summary.pantryMeals} meals` : 'empty — buy groceries in Shop'}`}
+            </span>
           </span>
           {expanded ? <ChevronDown size={20} aria-hidden /> : <ChevronUp size={20} aria-hidden />}
         </button>
@@ -96,7 +100,11 @@ export function VenueSheet() {
                             className={cn('h-8 rounded-chip bg-danfo px-2.5 text-xs font-bold text-ink disabled:opacity-40')}
                           >
                             {formatGameDuration(minutes)}
-                            {action.cost > 0 ? ` · ${formatNairaCompact(Math.round(action.cost * priceIndex))}` : ''}
+                            {action.usesPantry && snapshot.summary.pantryMeals > 0
+                              ? ' · from your kitchen'
+                              : action.cost > 0
+                                ? ` · ${formatNairaCompact(Math.round(action.cost * priceIndex))}`
+                                : ''}
                           </button>
                         ))}
                       </div>

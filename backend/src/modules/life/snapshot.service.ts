@@ -125,6 +125,7 @@ export class SnapshotService {
       relationship: { status: 'single', partnerName: null },
       children: 0,
       homeItems: [],
+      pantryMeals: character.pantryMeals,
       conditions: [],
       netWorth: character.netWorth,
     };
