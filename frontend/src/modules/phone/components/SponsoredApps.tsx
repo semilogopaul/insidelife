@@ -9,7 +9,7 @@ import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { adTrackingApi, safeExternalUrl } from '@/common/promotions/ad-tracking';
 import { useLiveAds } from '@/common/promotions/use-live-ads';
-import { env } from '@/config/env';
+import { site } from '@/config/site';
 
 /**
  * Sponsored apps on the phone's home screen (real advertisers, booked in Promote). The shelf counts one impression per
@@ -104,8 +104,8 @@ export function SponsoredAppPage({ app }: { readonly app: LivePhoneAppDto }) {
       </Button>
       <p className="text-xs text-text-faint">
         Ads are reviewed by a person before they run. Something wrong?{' '}
-        <a href={`mailto:${env.supportEmail}?subject=${encodeURIComponent(`Ad report: ${app.name}`)}`} className="font-bold underline">
-          {env.supportEmail}
+        <a href={`mailto:${site.supportEmail}?subject=${encodeURIComponent(`Ad report: ${app.name}`)}`} className="font-bold underline">
+          {site.supportEmail}
         </a>
       </p>
       <Sheet open={leaving !== null} onClose={() => setLeaving(null)} title="Open sponsor link?" description="You’re leaving Inside Life for an advertiser’s website." size="sm">

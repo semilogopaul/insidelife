@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { findAdSlot, type BillboardSlotId } from '@insidelife/shared';
 import { Spinner, Tabs } from '@/common/components';
 import { useUi } from '@/common/game/ui-store';
-import { env } from '@/config/env';
+import { site } from '@/config/site';
 import { useSlots } from '../hooks/use-promote';
 import { BillboardsTab, type BillboardsView } from './billboards/BillboardsTab';
 import { BookingFlow } from './billboards/BookingFlow';
@@ -48,8 +48,8 @@ export function PromoteApp() {
       </div>
       <p className="text-center text-xs text-text-soft">
         Questions about ads or a refund?{' '}
-        <a href={`mailto:${env.supportEmail}`} className="font-bold underline">
-          {env.supportEmail}
+        <a href={`mailto:${site.supportEmail}`} className="font-bold underline">
+          {site.supportEmail}
         </a>
       </p>
     </div>
