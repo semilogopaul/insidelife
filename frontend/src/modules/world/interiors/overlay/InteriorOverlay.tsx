@@ -1,0 +1,211 @@
+'use client';
+
+import { ArrowDownRight, ArrowUpRight, DoorOpen, Eye, Footprints, Layers } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { gameEvents } from '@/common/game/game-events';
+import { useUi } from '@/common/game/ui-store';
+import { cn } from '@/common/utils/cn';
+import { PointerLayer } from '../../play/overlay/PointerLayer';
+import { useTouchUi } from '../../play/overlay/PlayOverlay';
+import { levelLabel } from '../layouts/geometry';
+import { portalLabelElements, useHomeView, type PortalTag } from '../walk/home-view-store';
+
+/** Room kept clear at the bottom of a phone for the venue sheet ("Things to do here") and the phone button row. */
+const SHEET_RESERVE_PX = 104;
+
+/**
+ * The DOM half of walking around a home, layered over the canvas (and under the HUD): the touch stick and look pad
+ * (walk camera), door/stairs labels, the camera switch (walk ↔ overview), the rooms menu for bigger homes and the dip
+ * to dark between rooms. Renders nothing outside a walkable home.
+ */
+export function InteriorOverlay() {
+  const house = useHomeView((state) => state.house);
+  const camera = useHomeView((state) => state.camera);
+  const fading = useHomeView((state) => state.fading);
+  const phoneOpen = useUi((state) => state.phoneOpen);
+  const touchUi = useTouchUi();
+  if (!house) return null;
+  return (
+    <>
+      {camera === 'walk' && (
+        <PointerLayer
+          walking
+          touchUi={touchUi}
+          reserveBottom={touchUi ? SHEET_RESERVE_PX : 0}
+          hintClassName="border-white/50 bg-ink/55"
+        />
+      )}
+      <PortalLabels />
+      {!phoneOpen && <HomeControls />}
+      {camera === 'walk' && !touchUi && <KeysHint key={house} />}
+      <div
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute inset-0 bg-ink transition-opacity duration-200',
+          fading ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+    </>
+  );
+}
+
+function PortalIcon({ kind }: { readonly kind: PortalTag['kind'] }) {
+  if (kind === 'stairs-up') return <ArrowUpRight size={14} aria-hidden strokeWidth={2.6} />;
+  if (kind === 'stairs-down') return <ArrowDownRight size={14} aria-hidden strokeWidth={2.6} />;
+  return <DoorOpen size={14} aria-hidden strokeWidth={2.4} />;
+}
+
+function PortalLabel({ tag }: { readonly tag: PortalTag }) {
+  const ref = useCallback(
+    (element: HTMLDivElement | null) => {
+      if (element) portalLabelElements.set(tag.id, element);
+      else portalLabelElements.delete(tag.id);
+    },
+    [tag.id],
+  );
+  return (
+    <div
+      ref={ref}
+      className="pointer-events-none absolute left-0 top-0 flex items-center gap-1 whitespace-nowrap rounded-full bg-ink/80 py-1 pl-2 pr-2.5 text-xs font-bold text-on-ink opacity-0 shadow-[var(--shadow-glass)] will-change-transform"
+    >
+      <span className="text-danfo">
+        <PortalIcon kind={tag.kind} />
+      </span>
+      {tag.label}
+    </div>
+  );
+}
+
+/** Floating labels over the doors and stairs of the current room (positioned by the frame loop). */
+function PortalLabels() {
+  const portals = useHomeView((state) => state.portals);
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
+      {portals.map((tag) => (
+        <PortalLabel key={tag.id} tag={tag} />
+      ))}
+    </div>
+  );
+}
+
+/** Right edge, middle: where you are (and the rooms menu), and the camera switch. Clear of the HUD's corners. */
+function HomeControls() {
+  const camera = useHomeView((state) => state.camera);
+  const rooms = useHomeView((state) => state.rooms);
+  const roomId = useHomeView((state) => state.roomId);
+  const busy = useHomeView((state) => state.busy);
+  const [open, setOpen] = useState(false);
+  const menu = useRef<HTMLDivElement>(null);
+  const current = rooms.find((room) => room.id === roomId);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (event: PointerEvent): void => {
+      if (menu.current && event.target instanceof Node && !menu.current.contains(event.target))
+        setOpen(false);
+    };
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('pointerdown', close);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('pointerdown', close);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const walk = camera === 'walk';
+  return (
+    <div className="pointer-events-none absolute right-[max(env(safe-area-inset-right),0.75rem)] top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-2">
+      {rooms.length > 1 && current && (
+        <div ref={menu} className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              gameEvents.emit('sfx', { id: 'ui-click' });
+              setOpen((value) => !value);
+            }}
+            aria-haspopup="menu"
+            aria-expanded={open}
+            aria-label={`${current.label}, ${levelLabel(current.level)}. Rooms`}
+            className="glass pointer-events-auto flex max-w-[9.5rem] items-center gap-2 rounded-card py-2 pl-2.5 pr-3 text-left text-on-ink"
+          >
+            <Layers size={18} aria-hidden className="shrink-0 text-danfo" />
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-bold leading-tight">{current.label}</span>
+              <span className="block text-2xs text-on-ink-soft">{levelLabel(current.level)}</span>
+            </span>
+          </button>
+          {open && (
+            <div
+              role="menu"
+              aria-label="Go to a room"
+              className="glass pointer-events-auto absolute right-full top-0 mr-2 w-52 rounded-card p-1.5 text-on-ink"
+            >
+              {rooms.map((room) => (
+                <button
+                  key={room.id}
+                  type="button"
+                  role="menuitem"
+                  disabled={busy || room.id === roomId}
+                  onClick={() => {
+                    if (useHomeView.getState().travel(room.id)) gameEvents.emit('sfx', { id: 'door-open' });
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    'flex w-full items-center justify-between gap-2 rounded-chip px-2.5 py-2 text-left text-sm font-bold enabled:hover:bg-white/10 disabled:opacity-45',
+                    room.id === roomId && 'bg-white/10',
+                  )}
+                >
+                  <span className="truncate">{room.label}</span>
+                  <span className="shrink-0 text-2xs font-normal text-on-ink-soft">
+                    {levelLabel(room.level)}
+                  </span>
+                </button>
+              ))}
+              {busy && (
+                <p className="px-2.5 pb-1 pt-1.5 text-2xs text-on-ink-soft">
+                  Finish what you’re doing first.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => {
+          gameEvents.emit('sfx', { id: 'ui-click' });
+          useHomeView.getState().toggleCamera();
+        }}
+        aria-label={walk ? 'See the whole room' : 'Walk around'}
+        title={walk ? 'See the whole room (C)' : 'Walk around (C)'}
+        className="glass pointer-events-auto flex size-14 flex-col items-center justify-center gap-0.5 rounded-card text-on-ink"
+      >
+        {walk ? <Eye size={20} aria-hidden /> : <Footprints size={20} aria-hidden />}
+        <span className="text-2xs font-bold">{walk ? 'Overview' : 'Walk'}</span>
+      </button>
+    </div>
+  );
+}
+
+/** Keyboard players: a short reminder of the controls when they come in. */
+function KeysHint() {
+  const [shown, setShown] = useState(true);
+  useEffect(() => {
+    const id = window.setTimeout(() => setShown(false), 7000);
+    return () => window.clearTimeout(id);
+  }, []);
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        'pointer-events-none absolute bottom-28 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-ink/75 px-3 py-1.5 text-xs font-bold text-on-ink shadow-[var(--shadow-glass)] transition-opacity duration-500',
+        shown ? 'opacity-100' : 'opacity-0',
+      )}
+    >
+      WASD to walk · drag to look · click the floor to go there · C for overview
+    </div>
+  );
+}

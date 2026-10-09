@@ -143,7 +143,7 @@ export function buildGlass(room: RoomSpec): BufferGeometry | null {
         out.positions.push(a, y, -D / 2 - inset);
         out.normals.push(0, 0, 1);
       } else {
-        out.positions.push(-W / 2 - inset, y, -a);
+        out.positions.push(-W / 2 - inset, y, a);
         out.normals.push(1, 0, 0);
       }
       out.uvs.push((a - (w.at - w.width / 2)) / w.width, (y - sill) / (top - sill));

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { cn } from '@/common/utils/cn';
 import { controls, pushTap } from '../input/controls';
 
 /** Stick travel (px) for full deflection; pushing past it breaks into a jog. */
@@ -15,6 +16,9 @@ interface Gesture {
   readonly touch: boolean;
   readonly startX: number;
   readonly startY: number;
+  /** Where the stick's base is drawn (kept clear of the bottom reserve); the knob moves relative to it. */
+  readonly baseX: number;
+  readonly baseY: number;
   readonly startAt: number;
   lastX: number;
   lastY: number;
@@ -26,13 +30,24 @@ interface Gesture {
  * pinch to zoom, tap to pick billboards and players. On touch while walking, the left side is a floating joystick
  * (it appears under your thumb; push it to the edge to jog) and the right side looks around.
  */
-export function PointerLayer({ walking, touchUi }: { readonly walking: boolean; readonly touchUi: boolean }) {
+export interface PointerLayerProps {
+  readonly walking: boolean;
+  readonly touchUi: boolean;
+  /** Pixels at the bottom the stick must not cover (the venue sheet indoors). */
+  readonly reserveBottom?: number;
+  /** Extra classes for the "drag to walk" hint (e.g. a darker disc over light floors). */
+  readonly hintClassName?: string;
+}
+
+export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassName }: PointerLayerProps) {
   const surface = useRef<HTMLDivElement>(null);
   const base = useRef<HTMLDivElement>(null);
   const knob = useRef<HTMLDivElement>(null);
   const gestures = useRef(new Map<number, Gesture>());
   const pinch = useRef<number | null>(null);
   const walkingRef = useRef(walking);
+  // Pixels at the bottom the stick's base must not cover (e.g. the venue sheet indoors).
+  const reserveRef = useRef(reserveBottom);
   // The "drag to walk" hint shows briefly when you step outside, until the first time you use the stick.
   const [hint, setHint] = useState(true);
   useEffect(() => {
@@ -42,6 +57,7 @@ export function PointerLayer({ walking, touchUi }: { readonly walking: boolean; 
   const hideHint = useRef(() => setHint(false)).current;
   useEffect(() => {
     walkingRef.current = walking;
+    reserveRef.current = reserveBottom;
     if (!walking) releaseStick();
   });
 
@@ -82,10 +98,12 @@ export function PointerLayer({ walking, touchUi }: { readonly walking: boolean; 
       const x = event.clientX - rect.left;
       const stickTaken = [...map.values()].some((gesture) => gesture.kind === 'stick');
       const kind: Gesture['kind'] = touch && walkingRef.current && !stickTaken && x < rect.width * 0.45 ? 'stick' : 'look';
-      map.set(event.pointerId, { id: event.pointerId, kind, touch, startX: event.clientX, startY: event.clientY, startAt: performance.now(), lastX: event.clientX, lastY: event.clientY, moved: 0 });
+      const y = event.clientY - rect.top;
+      const baseY = reserveRef.current > 0 ? Math.min(y, rect.height - reserveRef.current - 62) : y;
+      map.set(event.pointerId, { id: event.pointerId, kind, touch, startX: event.clientX, startY: event.clientY, baseX: x, baseY, startAt: performance.now(), lastX: event.clientX, lastY: event.clientY, moved: 0 });
       element.setPointerCapture(event.pointerId);
       if (kind === 'stick') {
-        showStick(x, event.clientY - rect.top, x, event.clientY - rect.top);
+        showStick(x, baseY, x, baseY);
         hideHint();
       }
       pinch.current = pinchDistance();
@@ -108,8 +126,7 @@ export function PointerLayer({ walking, touchUi }: { readonly walking: boolean; 
         controls.stickX = (ox * scale) / STICK_RADIUS;
         controls.stickY = (-oy * scale) / STICK_RADIUS;
         controls.run = length > STICK_RADIUS * 1.35;
-        const rect = element.getBoundingClientRect();
-        showStick(gesture.startX - rect.left, gesture.startY - rect.top, gesture.startX - rect.left + ox * scale, gesture.startY - rect.top + oy * scale);
+        showStick(gesture.baseX, gesture.baseY, gesture.baseX + ox * scale, gesture.baseY + oy * scale);
         return;
       }
       const distance = pinchDistance();
@@ -166,7 +183,10 @@ export function PointerLayer({ walking, touchUi }: { readonly walking: boolean; 
   return (
     <div ref={surface} className="absolute inset-0 touch-none select-none" aria-hidden data-testid="play-surface">
       {touchUi && walking && hint && (
-        <div className="pointer-events-none absolute bottom-[max(env(safe-area-inset-bottom),1rem)] left-[max(env(safe-area-inset-left),1rem)] grid size-[120px] place-items-center rounded-full border-2 border-white/25 bg-ink/15">
+        <div
+          className={cn('pointer-events-none absolute bottom-[max(env(safe-area-inset-bottom),1rem)] left-[max(env(safe-area-inset-left),1rem)] grid size-[120px] place-items-center rounded-full border-2 border-white/25 bg-ink/15', hintClassName)}
+          style={reserveBottom > 0 ? { bottom: `calc(max(env(safe-area-inset-bottom), 1rem) + ${reserveBottom}px)` } : undefined}
+        >
           <span className="text-center text-2xs font-bold uppercase tracking-wide text-white/60">
             Drag
             <br />

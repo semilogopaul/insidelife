@@ -24,7 +24,7 @@ import { isCoarseDevice, resolveQuality, type QualityProfile } from './city/lib/
 import { setWorldTimeOverride } from './city/lib/world-time';
 import { Diagnostics } from './city/stage/Diagnostics';
 import { ReviewCamera } from './city/stage/ReviewCamera';
-import { InteriorScene } from './interiors';
+import { InteriorOverlay, InteriorScene } from './interiors';
 import { NavigationLayer } from './navigation/NavigationLayer';
 import { InteriorSpray, PLAY_LAYER_OWNS_CAMERA, PlayLayer, PlayOverlay, usePlayBridge, type SandboxStart } from './play';
 
@@ -74,6 +74,7 @@ export function WorldCanvas() {
         )}
       </WorldStage>
       <PlayOverlay presence={presence} />
+      {presence === 'inside' && <InteriorOverlay />}
     </>
   );
 }

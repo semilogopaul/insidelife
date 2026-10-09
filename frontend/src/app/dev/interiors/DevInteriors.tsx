@@ -8,8 +8,10 @@ import type { AvatarClip } from '@/common/three/avatar';
 // eslint-disable-next-line no-restricted-imports -- dev-only QA route renders the interiors sub-feature directly (the world feature mounts it in-game).
 import {
   INTERIOR_TEMPLATE_IDS,
+  InteriorOverlay,
   InteriorScene,
   MoneyRain,
+  useHomeView,
   type InteriorPlayer,
   type InteriorTemplateId,
   type MoneyRainHandle,
@@ -36,6 +38,9 @@ const PLAYER: InteriorPlayer = {
   mood: 75,
 };
 
+/** Activities to try in a home (what the server would start); `idle` = free to walk. */
+const ACTIVITIES: readonly AvatarClip[] = ['idle', 'sleep', 'cook', 'sit', 'eat', 'type', 'shower', 'phone'];
+
 interface RendererInfo {
   readonly calls: number;
   readonly triangles: number;
@@ -48,7 +53,13 @@ export function DevInteriors() {
   const type = (params.get('type') ?? 'home-family') as InteriorTemplateId;
   const hourParam = params.get('hour');
   const hour = hourParam === null ? 11 : Number(hourParam);
-  const anim = params.get('anim') as AvatarClip | null;
+  const [anim, setAnim] = useState<AvatarClip | null>(() => params.get('anim') as AvatarClip | null);
+  // Homes are walkable: `view=overview|walk` picks the camera, `room=kitchen` starts in another room of the layout.
+  const view = params.get('view');
+  const startRoom = params.get('room');
+  const house = useHomeView((state) => state.house);
+  const roomId = useHomeView((state) => state.roomId);
+  const homeCamera = useHomeView((state) => state.camera);
   const nepa = params.get('nepa') === '1' ? true : params.get('nepa') === '0' ? false : undefined;
   const spray = params.get('spray') === '1';
   const top = params.get('cam') === 'top';
@@ -68,6 +79,12 @@ export function DevInteriors() {
     return () => window.clearTimeout(id);
   }, [enterAfter]);
   const player = useMemo<InteriorPlayer>(() => ({ ...PLAYER, animation: anim ?? 'idle' }), [anim]);
+  useEffect(() => {
+    if (view === 'overview' || view === 'walk') useHomeView.getState().setCamera(view);
+  }, [view]);
+  useEffect(() => {
+    if (house && startRoom) useHomeView.getState().travel(startRoom);
+  }, [house, startRoom]);
   const [gl, setGl] = useState<WebGLRenderer | null>(null);
   const rain = useRef<MoneyRainHandle>(null);
 
@@ -116,6 +133,7 @@ export function DevInteriors() {
           </InteriorScene>
         )}
       </Canvas>
+      <InteriorOverlay />
       <div className="pointer-events-none absolute left-3 top-3 rounded-card bg-ink/80 px-3 py-2 font-mono text-xs text-on-ink">
         <div>
           {type} · {hour}:00 {nepa ? '· NEPA off' : ''}
@@ -126,8 +144,28 @@ export function DevInteriors() {
           </div>
         )}
         <div className="opacity-60">
-          {INTERIOR_TEMPLATE_IDS.length} templates · ?type= &amp;hour= &amp;anim= &amp;nepa=1 &amp;spray=1
+          {INTERIOR_TEMPLATE_IDS.length} templates · ?type= &amp;hour= &amp;anim= &amp;nepa=1 &amp;spray=1 &amp;room= &amp;view=overview
         </div>
+        {house && (
+          <div>
+            room {roomId} · {homeCamera} camera
+          </div>
+        )}
+        {house && (
+          <div className="pointer-events-auto mt-1.5 flex flex-wrap gap-1" role="group" aria-label="Start an activity">
+            {ACTIVITIES.map((clip) => (
+              <button
+                key={clip}
+                type="button"
+                data-anim={clip}
+                onClick={() => setAnim(clip)}
+                className={(anim ?? 'idle') === clip ? 'rounded-chip bg-danfo px-1.5 py-0.5 text-ink' : 'rounded-chip bg-white/10 px-1.5 py-0.5'}
+              >
+                {clip}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </main>
   );

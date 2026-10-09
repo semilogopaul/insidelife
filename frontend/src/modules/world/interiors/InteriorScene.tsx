@@ -16,10 +16,13 @@ import { InteriorPeople, type InteriorPlayer } from './components/InteriorPeople
 import { RoomShell } from './components/RoomShell';
 import { ShowroomCars } from './components/ShowroomCars';
 import { TvScreens } from './components/TvScreens';
+import { homeLayoutFor } from './layouts/catalog';
 import { applyDecor } from './templates/decor';
 import { furnish } from './templates/furnish';
 import { getTemplate } from './templates/registry';
 import { isNepaOff, resolveTemplateId, type HomeInfo, type InteriorTemplateId } from './templates/resolve';
+import { HomeWalkLayer } from './walk/HomeWalk';
+import { peopleInRoom, useHomeRoom } from './walk/use-home-room';
 
 export interface InteriorSceneProps {
   /** Venue id or `home:<characterId>` the player is inside. */
@@ -52,6 +55,8 @@ export interface InteriorSceneProps {
  * and other players present. Lit by the game clock. ≤ 80 draw calls.
  */
 const NO_PLAYERS: readonly PresencePlayerDto[] = [];
+/** Far below the floor (its light has a 5 m reach): keeps the light rig identical across a home's rooms. */
+const SPARE_LANTERN = [0, -20, 0] as const;
 
 export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, children }: InteriorSceneProps) {
   const snapshot = useSnapshot().data;
@@ -64,7 +69,13 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const hosting = ownHome && (visits?.outgoing.some((candidate) => candidate.status === 'accepted') ?? false);
   const people = useHomePeople(visit || hosting ? hostId : null).data?.people;
   const homeInfo = home === undefined ? (visit?.home ?? snapshot?.summary.home) : home;
-  const base = getTemplate(templateId ?? resolveTemplateId(locationId, homeInfo));
+  const resolvedId = templateId ?? resolveTemplateId(locationId, homeInfo);
+  const segment = snapshot ? segmentAt(snapshot, minute) : undefined;
+  const animation = animationForSegment(segment);
+  // Homes are layouts of one or more walkable rooms; which room is on screen is client view state (`walk/`).
+  const showsPlayer = player !== null && (player !== undefined || snapshot !== undefined);
+  const house = useHomeRoom(homeLayoutFor(resolvedId), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer);
+  const base = house?.room.template ?? getTemplate(resolvedId);
   // Your own home shows what you own; other places show their template.
   const homeItems = snapshot?.summary.homeItems;
   const ownership = snapshot?.summary.home.ownership;
@@ -73,15 +84,17 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const surname = ownHome ? snapshot?.character.lastName : visit?.host.lastName;
   const template = useMemo(() => {
     if (previewItems) return furnish(base, previewItems, { providedFurniture: base.id === 'home-family' || base.id === 'home-hostel' });
+    // Your paint and floor go on every room of the home (and the host's on a visit).
     if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname }), visit.home.decor);
     return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname }), decor) : base;
   }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname, decor]);
-  const players = useMemo(() => (people ? [...present, ...people.map((person) => asPresence(person, locationId))] : present), [present, people, locationId]);
+  const everyone = useMemo(() => (people ? [...present, ...people.map((person) => asPresence(person, locationId))] : present), [present, people, locationId]);
+  const homeLayout = house?.layout ?? null;
+  const homeRoomId = house?.room.id ?? null;
+  const players = useMemo(() => (homeLayout && homeRoomId ? peopleInRoom(homeLayout, homeRoomId, everyone) : everyone), [homeLayout, homeRoomId, everyone]);
   const [glass, setGlass] = useState<MeshStandardMaterial | null>(null);
   const onGlass = useCallback((material: MeshStandardMaterial | null) => setGlass(material), []);
 
-  const segment = snapshot ? segmentAt(snapshot, minute) : undefined;
-  const animation = animationForSegment(segment);
   const resolvedPlayer = useMemo<InteriorPlayer | null>(() => {
     if (player !== undefined) return player;
     if (!snapshot) return null;
@@ -93,8 +106,11 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const dayIndex = gameClock.ready ? toDateParts(minute).dayIndex : 0;
   const powerCut = nepa ?? (isHomeLocation(locationId) && isNepaOff(locationId, dayIndex, h));
   const lanternProp = template.props.find((prop) => prop.kind === 'lantern');
-  const lantern = lanternProp ? ([lanternProp.at[0], lanternProp.y ?? 0, lanternProp.at[1]] as const) : undefined;
+  // Rooms of one home keep the same lights (a spare, unlit lantern where there's none) so moving between them never
+  // changes the light count, which would recompile every shader.
+  const lantern = lanternProp ? ([lanternProp.at[0], lanternProp.y ?? 0, lanternProp.at[1]] as const) : (house?.layout.rooms.length ?? 0) > 1 ? SPARE_LANTERN : undefined;
   const { room } = template;
+  const walking = house?.walkable === true && resolvedPlayer !== null;
 
   return (
     <group name={`interior:${template.id}`}>
@@ -106,8 +122,9 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
         {template.extras?.cars && <ShowroomCars cars={template.extras.cars} />}
       </Suspense>
       {template.extras?.clubLights && <ClubLights floor={template.extras.clubLights} ceiling={room.height} />}
-      <InteriorPeople template={template} locationId={locationId} player={resolvedPlayer} players={players} />
-      {camera === 'dollhouse' && <DollhouseCamera width={room.width} depth={room.depth} height={room.height} interactive={interactiveCamera} />}
+      <InteriorPeople template={template} locationId={locationId} player={walking ? null : resolvedPlayer} players={players} />
+      {walking && house && resolvedPlayer && <HomeWalkLayer home={house} template={template} player={resolvedPlayer} guests={players.length} />}
+      {camera === 'dollhouse' && !(walking && house?.camera === 'walk') && <DollhouseCamera width={room.width} depth={room.depth} height={room.height} interactive={interactiveCamera} />}
       {children}
     </group>
   );

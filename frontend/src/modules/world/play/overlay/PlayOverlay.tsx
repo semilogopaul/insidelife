@@ -32,7 +32,7 @@ function coarseSnapshot(): boolean {
 }
 
 /** Touch-first device (phones, tablets): show on-screen controls. */
-function useTouchUi(): boolean {
+export function useTouchUi(): boolean {
   return useSyncExternalStore(subscribeCoarse, coarseSnapshot, () => false);
 }
 
