@@ -2,13 +2,25 @@
 
 import { useFrame } from '@react-three/fiber';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { PerspectiveCamera, type Object3D } from 'three';
+import {
+  BoxGeometry,
+  EdgesGeometry,
+  LineBasicMaterial,
+  MeshBasicMaterial,
+  PerspectiveCamera,
+  type Object3D,
+} from 'three';
+import type { ThreeEvent } from '@react-three/fiber';
+import { findAction, type ActionDefinition } from '@insidelife/shared';
 import { toast } from '@/common/components';
+import type { GoalHere } from '@/common/places';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { Avatar, type AvatarHandle } from '@/common/three/avatar';
 import { applyKey, isGameKey, isTypingTarget, resetControls } from '../../play/input/controls';
 import type { InteriorPlayer } from '../components/InteriorPeople';
+import { actionSpot, type ActionLike } from '../hotspots/action-spots';
+import { hotspotCard, hotspotInteractable, type ActionStatus, type Hotspot } from '../hotspots/hotspots';
 import {
   isFreeAnimation,
   nextPortalTowards,
@@ -17,7 +29,6 @@ import {
   roomForActivity,
 } from '../layouts/geometry';
 import type { HomeLayout, LayoutRoom } from '../layouts/types';
-import { pickPlayerSpot } from '../templates/spots';
 import type { At, InteriorTemplate } from '../templates/types';
 import { useHomeView } from './home-view-store';
 import { HomeWalkRuntime, buildRoomPhysics } from './home-walk-runtime';
@@ -33,16 +44,44 @@ export interface HomeWalkProps {
   readonly player: InteriorPlayer;
   /** Where NPCs and other people present are (obstacles). */
   readonly people: readonly At[];
+  /** This room's hotspots, and whether they're hidden (something you chose is running). */
+  readonly hotspots: readonly Hotspot[];
+  readonly busy: boolean;
+  /** An action's price note ("₦18,000", "" when free) and why it can't be done now, if it can't. */
+  readonly status: (action: ActionDefinition) => ActionStatus;
+  /** The life goal that brought you here and what advances it (its hotspot is highlighted). */
+  readonly goal: GoalHere | null;
 }
 
 const NUDGE_EVERY_MS = 20_000;
+/** How often what's on offer is published to the HUD (the frame loop works it out every frame). */
+const OFFER_EVERY_MS = 200;
+
+/** The running action (its own spot) when it matches what the avatar plays, else just the animation. */
+function runningAction(
+  actionId: string | null | undefined,
+  animation: InteriorPlayer['animation'],
+): ActionLike {
+  const action = actionId ? findAction(actionId) : undefined;
+  return action && action.animation === animation ? action : { animation };
+}
 
 /**
- * The player on foot inside a home: owns the walk runtime (physics, activities, doors, camera), the player's avatar
- * and the door markers, and the keyboard while inside. The DOM half (stick, camera toggle, rooms) is
- * `InteriorOverlay`.
+ * The player on foot inside a home or venue: owns the walk runtime (physics, activities, doors, hotspots, camera),
+ * the player's avatar and the door markers, and the keyboard while inside. The DOM half (stick, camera toggle, rooms,
+ * hotspot markers) is `InteriorOverlay`.
  */
-export function HomeWalk({ layout, room, template, player, people }: HomeWalkProps) {
+export function HomeWalk({
+  layout,
+  room,
+  template,
+  player,
+  people,
+  hotspots,
+  busy,
+  status,
+  goal,
+}: HomeWalkProps) {
   const [runtime] = useState(() => new HomeWalkRuntime());
   const camera = useHomeView((state) => state.camera);
   const arrivalSeq = useHomeView((state) => state.arrivalSeq);
@@ -61,7 +100,11 @@ export function HomeWalk({ layout, room, template, player, people }: HomeWalkPro
   const animation = player.animation;
   const free = isFreeAnimation(animation);
   const target = free ? null : roomForActivity(layout, animation, room.id);
-  const spot = target === room.id ? pickPlayerSpot(template.player, animation) : null;
+  const action = useMemo(() => runningAction(player.actionId, animation), [player.actionId, animation]);
+  const spot = useMemo(
+    () => (target === room.id ? actionSpot(template, action) : null),
+    [target, room.id, template, action],
+  );
   const via = useMemo(() => {
     if (!target || target === room.id) return null;
     const spec = nextPortalTowards(layout, room.id, target);
@@ -80,6 +123,60 @@ export function HomeWalk({ layout, room, template, player, people }: HomeWalkPro
   useEffect(() => {
     useHomeView.getState().setBusy(!free);
   }, [free]);
+
+  // Hotspots: markers for the overlay, what's on offer for the HUD (published at a low rate), taps on markers.
+  const hidden = busy || !free;
+  useLayoutEffect(() => {
+    runtime.setHotspots(hotspots, hidden);
+  }, [runtime, hotspots, hidden]);
+  useEffect(() => {
+    useHomeView.getState().setHotspots(hotspots.map((hotspot) => hotspotCard(hotspot, status, goal)));
+  }, [hotspots, status, goal]);
+  // The card that's open and what the overview's pointer is over: the highlight box follows them.
+  useEffect(
+    () =>
+      useHomeView.subscribe((state) => {
+        runtime.setFocus(state.hover, state.selected);
+      }),
+    [runtime],
+  );
+  const offerSource = useRef({ hotspots, status });
+  useEffect(() => {
+    offerSource.current = { hotspots, status };
+  });
+  useEffect(() => {
+    const publish = (): void => {
+      const id = runtime.offered;
+      const hotspot = id ? offerSource.current.hotspots.find((candidate) => candidate.id === id) : undefined;
+      useHomeView
+        .getState()
+        .setOffer(
+          hotspot ? hotspot.id : null,
+          hotspot ? hotspotInteractable(hotspot, offerSource.current.status) : null,
+        );
+    };
+    // The thing under the mouse on the walk camera (the overview's pointer events set it themselves).
+    let lastHover: string | null = null;
+    const publishHover = (): void => {
+      if (runtime.cameraMode !== 'walk' || runtime.hovered === lastHover) return;
+      lastHover = runtime.hovered;
+      useHomeView.getState().setHover(lastHover);
+    };
+    publish();
+    const timer = window.setInterval(() => {
+      publish();
+      publishHover();
+    }, OFFER_EVERY_MS);
+    const offPick = useHomeView.subscribe((state, previous) => {
+      if (state.picked && state.picked !== previous.picked && runtime.goToHotspot(state.picked.id)) publish();
+    });
+    return () => {
+      window.clearInterval(timer);
+      offPick();
+      useHomeView.getState().setOffer(null, null);
+      useHomeView.getState().setHotspots([]);
+    };
+  }, [runtime]);
 
   // `portals` is `room.portals` resolved, index for index.
   const tags = useMemo(
@@ -113,6 +210,10 @@ export function HomeWalk({ layout, room, template, player, people }: HomeWalkPro
           ? useHomeView.getState().go(portal.to.room, { kind: 'portal', portal: portal.to.portal })
           : false,
       onStep: () => gameEvents.emit('sfx', { id: 'footstep', volume: 0.25 }),
+      onPick: (id) => {
+        gameEvents.emit('sfx', { id: 'ui-click' });
+        useHomeView.getState().select(id);
+      },
     });
   }, [runtime]);
 
@@ -204,7 +305,94 @@ export function HomeWalk({ layout, room, template, player, people }: HomeWalkPro
         seed={11}
       />
       <PortalMarkers portals={portals} />
+      <HotspotTargets runtime={runtime} hotspots={hotspots} overview={camera === 'overview'} />
     </>
+  );
+}
+
+/** A tap less than this many pixels from where it started is a tap, not an orbit drag. */
+const TAP_SLOP_PX = 8;
+
+/**
+ * The things you can use, in 3D: a glowing edges box round the one under the pointer or whose card is open (one line
+ * draw, placed by the frame loop), and in the overview (where the dollhouse camera takes the pointer) invisible tap
+ * boxes that open a thing's card. On the walk camera the frame loop picks things itself from taps and the mouse.
+ */
+function HotspotTargets({
+  runtime,
+  hotspots,
+  overview,
+}: {
+  readonly runtime: HomeWalkRuntime;
+  readonly hotspots: readonly Hotspot[];
+  readonly overview: boolean;
+}) {
+  const resources = useMemo(() => {
+    const box = new BoxGeometry(1, 1, 1);
+    return {
+      box,
+      edges: new EdgesGeometry(box),
+      line: new LineBasicMaterial({ color: '#f6b90b', transparent: true, opacity: 0.95, toneMapped: false }),
+      hit: new MeshBasicMaterial(),
+    };
+  }, []);
+  useEffect(
+    () => () => {
+      resources.box.dispose();
+      resources.edges.dispose();
+      resources.line.dispose();
+      resources.hit.dispose();
+    },
+    [resources],
+  );
+  const highlight = useCallback((object: Object3D | null) => runtime.registerHighlight(object), [runtime]);
+  useEffect(
+    () => () => {
+      document.body.style.cursor = '';
+    },
+    [],
+  );
+  const view = useHomeView.getState;
+  return (
+    <group name="hotspot-targets">
+      <lineSegments
+        ref={highlight}
+        geometry={resources.edges}
+        material={resources.line}
+        visible={false}
+        renderOrder={4}
+      />
+      {overview &&
+        hotspots
+          .flatMap((hotspot) => [hotspot.box, ...hotspot.aliases].map((b, index) => ({ hotspot, b, index })))
+          .map(({ hotspot, b, index }) => {
+            return (
+              <mesh
+                key={`${hotspot.id}#${index}`}
+                visible={false}
+                geometry={resources.box}
+                material={resources.hit}
+                position={[(b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2]}
+                scale={[b.maxX - b.minX + 0.3, b.maxY - b.minY + 0.2, b.maxZ - b.minZ + 0.3]}
+                onClick={(event: ThreeEvent<MouseEvent>) => {
+                  if (event.delta > TAP_SLOP_PX) return;
+                  event.stopPropagation();
+                  gameEvents.emit('sfx', { id: 'ui-click' });
+                  view().select(hotspot.id);
+                }}
+                onPointerOver={(event: ThreeEvent<PointerEvent>) => {
+                  event.stopPropagation();
+                  view().setHover(hotspot.id);
+                  document.body.style.cursor = 'pointer';
+                }}
+                onPointerOut={() => {
+                  if (view().hover === hotspot.id) view().setHover(null);
+                  document.body.style.cursor = '';
+                }}
+              />
+            );
+          })}
+    </group>
   );
 }
 
@@ -215,19 +403,27 @@ const footOf = (spot: { readonly at: readonly number[] }): At => [
 ];
 
 /**
- * Walking in a home, as mounted by the interior scene: the walk itself (people present are obstacles: the room's
- * NPCs and the guest spots in use) and the other rooms' furniture baked ahead.
+ * Walking in a home or venue, as mounted by the interior scene: the walk itself (people present are obstacles: the
+ * room's NPCs and the guest spots in use) and the other rooms' furniture baked ahead.
  */
 export function HomeWalkLayer({
   home,
   template,
   player,
   guests,
+  hotspots,
+  busy,
+  status,
+  goal,
 }: {
   readonly home: HomeRoom;
   readonly template: InteriorTemplate;
   readonly player: InteriorPlayer;
   readonly guests: number;
+  readonly hotspots: readonly Hotspot[];
+  readonly busy: boolean;
+  readonly status: (action: ActionDefinition) => ActionStatus;
+  readonly goal: GoalHere | null;
 }) {
   const people = useMemo<readonly At[]>(
     () => [...template.npcs.map(footOf), ...template.guests.slice(0, guests).map(footOf)],
@@ -236,7 +432,17 @@ export function HomeWalkLayer({
   const rooms = useMemo(() => home.layout.rooms.map((room) => room.template), [home.layout]);
   return (
     <>
-      <HomeWalk layout={home.layout} room={home.room} template={template} player={player} people={people} />
+      <HomeWalk
+        layout={home.layout}
+        room={home.room}
+        template={template}
+        player={player}
+        people={people}
+        hotspots={hotspots}
+        busy={busy}
+        status={status}
+        goal={goal}
+      />
       {rooms.length > 1 && (
         <Suspense fallback={null}>
           <PrebakeRooms templates={rooms} />

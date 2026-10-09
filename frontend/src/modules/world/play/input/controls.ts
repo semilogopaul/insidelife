@@ -28,6 +28,8 @@ export interface PlayControls {
   lastLookAt: number;
   /** Pending taps in normalised device coordinates. */
   readonly taps: { x: number; y: number }[];
+  /** Where a mouse rests over the canvas (normalised device coordinates), for hover highlights; null when away. */
+  hover: { x: number; y: number } | null;
 }
 
 export const controls: PlayControls = {
@@ -47,6 +49,7 @@ export const controls: PlayControls = {
   zoom: 0,
   lastLookAt: 0,
   taps: [],
+  hover: null,
 };
 
 /** Release everything (window blur, phone opened, layer unmounted). */
@@ -56,6 +59,7 @@ export function resetControls(): void {
   controls.touchSteer = controls.touchGas = controls.touchBrake = 0;
   controls.lookX = controls.lookY = controls.zoom = 0;
   controls.taps.length = 0;
+  controls.hover = null;
 }
 
 export function pushTap(x: number, y: number): void {

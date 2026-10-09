@@ -17,6 +17,8 @@ export const INTERIOR_WALKER_RADIUS = 0.26;
 const ON_SOMETHING = 0.3;
 /** Smaller than this (m) and you step past it. */
 const TINY = 0.14;
+/** Platforms this low (cinema tiers, a bandstand, a riser) are floor you step up onto, not obstacles. */
+export const STEP_HEIGHT = 0.3;
 /** People are obstacles but low enough for the camera to look over. */
 const PERSON_SIZE = 0.38;
 const PERSON_HEIGHT = 0.9;
@@ -142,7 +144,7 @@ function propSize(prop: PropSpec): readonly [number, number, number] | null {
 /** Footprint of a procedural prop, or null when it doesn't block. */
 export function propFootprint(prop: PropSpec): Aabb | null {
   const y = prop.y ?? 0;
-  if (y > ON_SOMETHING) return null;
+  if (y > ON_SOMETHING || isStep(prop)) return null;
   const size = propSize(prop);
   if (!size || Math.max(size[0], size[1]) < TINY) return null;
   // A stairwell's railing sits a touch past its far end (local -z): shift the box with it.
@@ -158,6 +160,41 @@ export function propFootprint(prop: PropSpec): Aabb | null {
     );
   }
   return rotatedBox(prop.at, size[0], size[1], prop.rot ?? 0, y + size[2]);
+}
+
+const isStep = (prop: PropSpec): boolean =>
+  prop.kind === 'stage' && (prop.y ?? 0) <= 0.05 && (prop.height ?? 0.4) <= STEP_HEIGHT;
+
+/** A low platform you can walk onto: its floor rectangle and top. */
+export interface Platform extends Rect {
+  readonly height: number;
+}
+
+/** The low platforms of a room (stepped onto, not bumped into). */
+export function roomPlatforms(template: InteriorTemplate): Platform[] {
+  const platforms: Platform[] = [];
+  for (const prop of template.props) {
+    if (prop.kind !== 'stage' || !isStep(prop)) continue;
+    const box = rotatedBox(prop.at, prop.size[0], prop.size[1], prop.rot ?? 0, prop.height ?? 0.4);
+    platforms.push({ minX: box.minX, maxX: box.maxX, minZ: box.minZ, maxZ: box.maxZ, height: box.height });
+  }
+  return platforms;
+}
+
+/** Floor height at (x, z): the highest low platform there, else 0. */
+export function groundAt(platforms: readonly Platform[], x: number, z: number): number {
+  let height = 0;
+  for (const platform of platforms) {
+    if (
+      x >= platform.minX &&
+      x <= platform.maxX &&
+      z >= platform.minZ &&
+      z <= platform.maxZ &&
+      platform.height > height
+    )
+      height = platform.height;
+  }
+  return height;
 }
 
 /** The floor you can stand on. */

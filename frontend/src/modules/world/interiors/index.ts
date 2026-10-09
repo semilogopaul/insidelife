@@ -3,8 +3,8 @@ export { MoneyRain, type MoneyRainHandle, type MoneyRainProps } from './effects/
 export { ClubLights, type ClubLightsProps } from './effects/ClubLights';
 export { dollhouseFraming, type DollhouseFraming } from './components/DollhouseCamera';
 export type { InteriorPlayer } from './components/InteriorPeople';
-export { INTERIOR_TEMPLATE_IDS, homeTemplateFor, resolveTemplateId, isNepaOff, type HomeInfo, type InteriorTemplateId } from './templates/resolve';
-export { InteriorOverlay } from './overlay/InteriorOverlay';
-export { HOME_LAYOUTS, homeLayoutFor } from './layouts/catalog';
+export { INTERIOR_TEMPLATE_IDS, homeTemplateFor, resolveTemplateId, isNepaOff, venueTypeFor, type HomeInfo, type InteriorTemplateId } from './templates/resolve';
+export { InteriorOverlay, type InteriorOverlayProps } from './overlay/InteriorOverlay';
+export { HOME_LAYOUTS, homeLayoutFor, placeLayoutFor } from './layouts/catalog';
 export type { HomeLayout, LayoutRoom } from './layouts/types';
 export { useHomeView, type HomeCamera } from './walk/home-view-store';

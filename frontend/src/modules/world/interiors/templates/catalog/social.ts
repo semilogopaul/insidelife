@@ -1,5 +1,5 @@
 import type { PropSpec } from '../../props/prop-types';
-import { gridPoints, npc, place, row, seat, stand } from '../helpers';
+import { BAR_STOOL_LIFT, gridPoints, npc, place, row, seat, stand } from '../helpers';
 import type { FurniturePlacement, InteriorTemplate } from '../types';
 
 /** Club: lit dance floor, DJ on a stage, bar, VIP booth behind a rope. */
@@ -41,7 +41,7 @@ export const CLUB: InteriorTemplate = {
     sit: seat([4.5, -1.15], -90),
     talk: seat([4.5, -1.15], -90, 'talk'),
     phone: seat([4.5, -1.15], -90, 'phone'),
-    eat: seat([-3.9, -0.55], 90, 'eat'),
+    eat: seat([-3.9, -0.55], 90, 'eat', { y: BAR_STOOL_LIFT }),
   },
   npcs: [
     npc(stand([0.6, -3.65], 0, 'dance'), 'street', { gender: 'male' }),
@@ -52,7 +52,7 @@ export const CLUB: InteriorTemplate = {
     npc(stand([2.2, -1.5], 260, 'dance'), 'club', { lod: 'low' }),
     npc(stand([-4.95, -0.9], 90, 'talk'), 'club', { gender: 'female', lod: 'low' }),
     npc(seat([3.8, -2.4], 0, 'talk'), 'club', { gender: 'male', lod: 'low' }),
-    npc(seat([-3.9, 0.3], 90, 'phone'), 'club', { lod: 'low' }),
+    npc(seat([-3.9, 0.3], 90, 'phone', { y: BAR_STOOL_LIFT }), 'club', { lod: 'low' }),
   ],
   guests: [stand([1.4, 1.6], 200, 'dance'), stand([-0.6, 2.2], 150, 'dance'), seat([4.5, -0.5], -90, 'talk')],
   lighting: { mood: 'club', practicals: [[-4.4, 2.6, 0.0]], practicalColor: '#ff7ad8' },
@@ -76,7 +76,7 @@ export const BAR: InteriorTemplate = {
   furniture: [
     ...row('stoolBar', 4, [-3.4, -1.6], [0.9, 0], 180),
     place('loungeSofa', [-4.5, 1.6], 90, { palette: { carpet: '#2e5d4a', carpetDarker: '#1f4436' } }),
-    place('loungeChair', [-3.0, 2.8], 160, { palette: { carpet: '#2e5d4a' } }),
+    place('loungeChair', [-2.45, 1.75], -100, { palette: { carpet: '#2e5d4a' } }),
     place('tableCoffee', [-3.4, 1.6], 90),
     ...gridPoints(2, 2, [1.8, 1.2], [1.9, 1.7]).flatMap(([x, z]): FurniturePlacement[] => [place('tableRound', [x, z], 0, { scale: 0.75, palette: { wood: '#3e2723' } }), place('chairCushion', [x - 0.5, z], 90, { palette: { carpet: '#c9a227' } }), place('chairCushion', [x, z - 0.5], 0, { palette: { carpet: '#c9a227' } })]),
     place('cabinetTelevision', [4.5, -1.4], -90, { palette: { wood: '#1c1c1c' } }),
@@ -96,6 +96,8 @@ export const BAR: InteriorTemplate = {
   ],
   player: {
     default: stand([0.5, 0.0], 30),
+    // The free stool at the end of the bar, turned towards the football on the TV.
+    drink: seat([-0.7, -1.6], 115, 'drink', { y: BAR_STOOL_LIFT }),
     sit: seat([-4.4, 1.6], 90),
     talk: seat([-4.4, 1.6], 90, 'talk'),
     eat: seat([0.35, 0.35], 90, 'eat'),
@@ -104,13 +106,13 @@ export const BAR: InteriorTemplate = {
   },
   npcs: [
     npc(stand([-2.0, -2.95], 0, 'talk'), 'casual', { gender: 'male' }),
-    npc(seat([-3.4, -1.6], 180, 'talk'), 'corporate'),
-    npc(seat([-1.6, -1.6], 180, 'phone'), 'club', { gender: 'female' }),
+    npc(seat([-3.4, -1.6], 180, 'talk', { y: BAR_STOOL_LIFT }), 'corporate'),
+    npc(seat([-1.6, -1.6], 180, 'phone', { y: BAR_STOOL_LIFT }), 'club', { gender: 'female' }),
     npc(seat([2.25, 0.35], 90, 'eat'), 'street'),
     npc(seat([2.75, 1.55], 0, 'talk'), 'casual', { lod: 'low' }),
     npc(seat([-4.4, 1.0], 90, 'talk'), 'club', { lod: 'low' }),
   ],
-  guests: [seat([-2.5, -1.6], 180, 'talk'), seat([0.85, 1.55], 0, 'talk'), stand([2.4, -0.6], 230, 'talk')],
+  guests: [seat([-2.5, -1.6], 180, 'talk', { y: BAR_STOOL_LIFT }), seat([0.85, 1.55], 0, 'talk'), stand([2.4, -0.6], 230, 'talk')],
   lighting: { mood: 'bar', practicals: [[-2.0, 2.6, -1.6], [2.0, 2.6, 1.4]] },
 };
 

@@ -2,10 +2,11 @@
 
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { MeshStandardMaterial } from 'three';
-import { homeLocationId, isHomeLocation, toDateParts, type HomePersonDto, type PresencePlayerDto } from '@insidelife/shared';
+import { homeLocationId, isHomeLocation, toDateParts, type ActionDefinition, type HomePersonDto, type PresencePlayerDto } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
+import { isBusy, isPlaceAction, placeActions, servicesAt, useActionAvailability, servicesWithGoal, useGoalHere, type GoalHere, type PlaceService } from '@/common/places';
 import { useHomePeople, useVisits } from '@/common/visits';
 import { animationForSegment } from '@/common/three/avatar';
 import { ClubLights } from './effects/ClubLights';
@@ -16,7 +17,8 @@ import { InteriorPeople, type InteriorPlayer } from './components/InteriorPeople
 import { RoomShell } from './components/RoomShell';
 import { ShowroomCars } from './components/ShowroomCars';
 import { TvScreens } from './components/TvScreens';
-import { homeLayoutFor } from './layouts/catalog';
+import { buildHotspots, hotspotRoom, type ActionStatus } from './hotspots/hotspots';
+import { placeLayoutFor } from './layouts/catalog';
 import { applyDecor } from './templates/decor';
 import { furnish } from './templates/furnish';
 import { getTemplate } from './templates/registry';
@@ -45,20 +47,31 @@ export interface InteriorSceneProps {
   readonly interactiveCamera?: boolean;
   /** Previews: furnish the room with these belongings as if it were your rented/owned home. */
   readonly homeItems?: readonly string[];
+  /** What can be done here (hotspots); defaults to the snapshot's place actions. Previews pass their own. */
+  readonly actions?: readonly ActionDefinition[];
+  /** Something chosen is running (hotspots hidden); defaults to the snapshot. */
+  readonly busy?: boolean;
+  /** Phone-app services found here (browse cars, see a doctor); defaults to the venue's. Previews pass their own. */
+  readonly services?: readonly PlaceService[];
+  /** The life goal that brought you here and what advances it; defaults to the player's goals. Previews pass one. */
+  readonly goal?: GoalHere | null;
   /** Extra scene content (e.g. `<MoneyRain />` triggered by the play layer). */
   readonly children?: ReactNode;
 }
 
 /**
- * A cosy, readable dollhouse of the place the player is in: the template comes from the venue type (or the kind of
- * home), furniture from the Kenney kit, Lagos props, the player animating by their current activity, ambient NPCs
- * and other players present. Lit by the game clock. ≤ 80 draw calls.
+ * A cosy, readable room of the place the player is in: the template comes from the venue type (or the kind of
+ * home), furniture from the Kenney kit, Lagos props, ambient NPCs and other players present, lit by the game clock.
+ * With a player it's walkable (homes are layouts of rooms, venues one room): the avatar walks about, hotspots offer
+ * the place's actions where they happen, and an action walks the avatar to its spot. ≤ ~100 draw calls.
  */
 const NO_PLAYERS: readonly PresencePlayerDto[] = [];
+const NO_ACTIONS: readonly ActionDefinition[] = [];
+const NO_SERVICES: readonly PlaceService[] = [];
 /** Far below the floor (its light has a 5 m reach): keeps the light rig identical across a home's rooms. */
 const SPARE_LANTERN = [0, -20, 0] as const;
 
-export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, children }: InteriorSceneProps) {
+export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, actions: actionsOverride, busy: busyOverride, services: servicesOverride, goal: goalOverride, children }: InteriorSceneProps) {
   const snapshot = useSnapshot().data;
   const minute = useGameMinute(4000);
   const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
@@ -72,9 +85,9 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const resolvedId = templateId ?? resolveTemplateId(locationId, homeInfo);
   const segment = snapshot ? segmentAt(snapshot, minute) : undefined;
   const animation = animationForSegment(segment);
-  // Homes are layouts of one or more walkable rooms; which room is on screen is client view state (`walk/`).
+  // Every place is a layout of walkable rooms (a venue has one); which room is on screen is client view state (`walk/`).
   const showsPlayer = player !== null && (player !== undefined || snapshot !== undefined);
-  const house = useHomeRoom(homeLayoutFor(resolvedId), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer);
+  const house = useHomeRoom(placeLayoutFor(resolvedId), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer);
   const base = house?.room.template ?? getTemplate(resolvedId);
   // Your own home shows what you own; other places show their template.
   const homeItems = snapshot?.summary.homeItems;
@@ -95,12 +108,39 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const [glass, setGlass] = useState<MeshStandardMaterial | null>(null);
   const onGlass = useCallback((material: MeshStandardMaterial | null) => setGlass(material), []);
 
+  const actionId = segment?.actionId ?? null;
   const resolvedPlayer = useMemo<InteriorPlayer | null>(() => {
     if (player !== undefined) return player;
     if (!snapshot) return null;
     const { character } = snapshot;
-    return { appearance: character.appearance, outfit: character.outfit, gender: character.gender, animation, mood: character.mood };
-  }, [player, snapshot, animation]);
+    return { appearance: character.appearance, outfit: character.outfit, gender: character.gender, animation, mood: character.mood, actionId };
+  }, [player, snapshot, animation, actionId]);
+
+  // Hotspots: the place's own actions (not the do-anywhere ones) anchored where they happen in this room.
+  const here = snapshot !== undefined && snapshot.character.locationId === locationId;
+  const listed = useMemo(() => actionsOverride ?? (here ? placeActions(snapshot).actions : NO_ACTIONS), [actionsOverride, here, snapshot]);
+  const venueType = here ? placeActions(snapshot).place?.venue?.type ?? null : null;
+  const services = useMemo(() => servicesOverride ?? (venueType ? servicesAt({ kind: 'venue', venueType }) : NO_SERVICES), [servicesOverride, venueType]);
+  // A goal that sent you here: what advances it is first at its hotspot, and highlighted.
+  const ownActions = useMemo(() => listed.filter(isPlaceAction), [listed]);
+  const goalHere = useGoalHere(goalOverride === undefined ? venueType : null, ownActions, services);
+  const goal = goalOverride === undefined ? goalHere : goalOverride;
+  const busy = busyOverride ?? (here && isBusy(snapshot));
+  // Same rules and reasons as the venue sheet (open hours, age, money…); previews without a session allow everything.
+  const availability = useActionAvailability(here ? snapshot : undefined);
+  const status = useCallback((action: ActionDefinition): ActionStatus => {
+    const { priceNote, reason } = availability(action);
+    return { priceNote, reason };
+  }, [availability]);
+  const houseLayout = house?.layout;
+  const houseRoom = house?.room;
+  const hotspots = useMemo(() => {
+    if (!houseLayout || !houseRoom) return [];
+    const own = listed.filter((action) => isPlaceAction(action) && (houseLayout.rooms.length <= 1 || hotspotRoom(houseLayout, action) === houseRoom.id));
+    // Services belong to the room you come in by (a venue's only room); the goal's own one joins them there.
+    const here = houseRoom.id === houseLayout.entry ? servicesWithGoal(services, goal) : NO_SERVICES;
+    return buildHotspots(template, own, houseRoom.template, here, goal);
+  }, [houseLayout, houseRoom, listed, template, services, goal]);
 
   const h = currentHour(hour);
   const dayIndex = gameClock.ready ? toDateParts(minute).dayIndex : 0;
@@ -123,7 +163,7 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
       </Suspense>
       {template.extras?.clubLights && <ClubLights floor={template.extras.clubLights} ceiling={room.height} />}
       <InteriorPeople template={template} locationId={locationId} player={walking ? null : resolvedPlayer} players={players} />
-      {walking && house && resolvedPlayer && <HomeWalkLayer home={house} template={template} player={resolvedPlayer} guests={players.length} />}
+      {walking && house && resolvedPlayer && <HomeWalkLayer home={house} template={template} player={resolvedPlayer} guests={players.length} hotspots={hotspots} busy={busy} status={status} goal={goal} />}
       {camera === 'dollhouse' && !(walking && house?.camera === 'walk') && <DollhouseCamera width={room.width} depth={room.depth} height={room.height} interactive={interactiveCamera} />}
       {children}
     </group>

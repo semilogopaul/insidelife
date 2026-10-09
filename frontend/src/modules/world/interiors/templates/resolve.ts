@@ -39,7 +39,8 @@ export type InteriorTemplateId = (typeof INTERIOR_TEMPLATE_IDS)[number];
 
 export type HomeInfo = Pick<CharacterSummaryDto['home'], 'label' | 'ownership' | 'comfort'>;
 
-const VENUE_TEMPLATES: Readonly<Record<Exclude<VenueType, 'home'>, InteriorTemplateId>> = {
+/** Each venue type's interior. Partial on purpose: a newly added type falls back to `genericTemplateFor` until it gets one. */
+const VENUE_TEMPLATES: Readonly<Partial<Record<Exclude<VenueType, 'home'>, InteriorTemplateId>>> = {
   campus: 'campus',
   office: 'office',
   market: 'market',
@@ -68,6 +69,34 @@ const VENUE_TEMPLATES: Readonly<Record<Exclude<VenueType, 'home'>, InteriorTempl
   school: 'school',
 };
 
+/** A sensible walkable room for a venue type without its own interior yet (by what its name suggests). */
+export function genericTemplateFor(type: string): InteriorTemplateId {
+  if (/club|disco/.test(type)) return 'club';
+  if (/bar|lounge|pub|shrine/.test(type)) return 'bar';
+  if (/beach|pool|resort/.test(type)) return 'beach';
+  if (/park|garden|zoo/.test(type)) return 'park';
+  if (/hospital|clinic|health|lab/.test(type)) return 'clinic';
+  if (/pharm|chemist/.test(type)) return 'pharmacy';
+  if (/church|cathedral/.test(type)) return 'church';
+  if (/mosque/.test(type)) return 'mosque';
+  if (/school|college|campus|university|library/.test(type)) return 'school';
+  if (/restaurant|eatery|cafe|food|kitchen/.test(type)) return 'restaurant';
+  if (/buka|canteen/.test(type)) return 'buka';
+  if (/gym|fitness|sport|stadium/.test(type)) return 'gym';
+  if (/salon|barb|spa/.test(type)) return 'salon';
+  if (/market/.test(type)) return 'market';
+  if (/mall|shop|store|boutique/.test(type)) return 'mall';
+  if (/hall|event|party/.test(type)) return 'event-centre';
+  if (/car|motor|auto/.test(type)) return 'car-dealer';
+  return 'office';
+}
+
+/** The venue type a (venue) template is the interior of, or null for homes and dev templates. */
+export function venueTypeFor(templateId: string): Exclude<VenueType, 'home'> | null {
+  const entry = Object.entries(VENUE_TEMPLATES).find(([, template]) => template === templateId);
+  return entry ? (entry[0] as Exclude<VenueType, 'home'>) : null;
+}
+
 /** Which home interior fits the player's current home (label keywords first, comfort as a fallback). */
 export function homeTemplateFor(home: HomeInfo | null | undefined): InteriorTemplateId {
   if (!home) return 'home-family';
@@ -92,7 +121,7 @@ export function resolveTemplateId(locationId: string, home?: HomeInfo | null): I
   const venue = findVenue(locationId);
   if (!venue) return (INTERIOR_TEMPLATE_IDS as readonly string[]).includes(locationId) ? (locationId as InteriorTemplateId) : 'home-family';
   if (venue.type === 'home') return homeTemplateFor(home);
-  return VENUE_TEMPLATES[venue.type];
+  return VENUE_TEMPLATES[venue.type] ?? genericTemplateFor(venue.type);
 }
 
 /** NEPA (power) cut: deterministic per location and game day, only at night. */

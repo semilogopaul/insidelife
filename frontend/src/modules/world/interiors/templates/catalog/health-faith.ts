@@ -142,6 +142,9 @@ export const PHARMACY: InteriorTemplate = {
   lighting: { mood: 'shop', practicals: [[0.0, 2.5, -1.0]], practicalColor: '#f2fff6' },
 };
 
+/** Where the church's pews stand: rows far enough apart to walk between them, and a centre aisle. */
+const PEWS = gridPoints(4, 2, [0.6, 0.0], [1.4, 3.4]);
+
 /** Church: pews facing the altar on the left wall, cross, pulpit, choir corner. */
 export const CHURCH: InteriorTemplate = {
   id: 'church',
@@ -165,27 +168,27 @@ export const CHURCH: InteriorTemplate = {
     { kind: 'sign', at: [-5.48, -2.2], rot: 90, y: 2.7, wall: true, size: [1.9, 0.4], lines: ['GRACE ASSEMBLY'], bg: '#7b2d3b', fg: '#f3d27a' },
     { kind: 'sign', at: [-5.48, 2.2], rot: 90, y: 2.7, wall: true, size: [1.9, 0.4], lines: ['JESUS SAVES'], bg: '#7b2d3b', fg: '#f3d27a' },
     { kind: 'sign', at: [0.6, -3.98], y: 2.9, wall: true, size: [2.6, 0.36], lines: ['SUNDAY SERVICE 8AM & 10AM'], bg: '#f3d27a', fg: '#7b2d3b' },
-    ...gridPoints(4, 2, [0.6, 0.0], [1.1, 3.2]).map(([x, z]): PropSpec => ({ kind: 'pew', at: [x, z], rot: -90, length: 2.6, color: '#6b4226' })),
+    ...PEWS.map(([x, z]): PropSpec => ({ kind: 'pew', at: [x, z], rot: -90, length: 2.6, color: '#6b4226' })),
     { kind: 'plastic-chair', at: [-3.6, -2.9], rot: 90, color: '#ecebe6' },
     { kind: 'plastic-chair', at: [-3.6, 2.9], rot: 90, color: '#ecebe6' },
   ],
   player: {
     default: stand([3.4, 2.4], 240),
-    pray: { at: [1.65, 1.0], rot: -90, animation: 'pray', stance: 'kneel' },
-    sit: seat([1.15, 1.0], -90),
-    talk: seat([1.15, 1.0], -90, 'talk'),
+    pray: { at: [1.95, 2.2], rot: -90, animation: 'pray', stance: 'kneel' },
+    sit: seat([1.3, 2.2], -90),
+    talk: seat([1.3, 2.2], -90, 'talk'),
     dance: stand([-2.6, 2.6], 60, 'dance'),
     cheer: stand([-2.6, 2.6], 60, 'cheer'),
   },
   npcs: [
     npc(stand([-4.0, -0.6], 90, 'talk'), 'worship', { gender: 'male' }),
-    ...gridPoints(4, 2, [0.6, 0.0], [1.1, 3.2])
+    ...PEWS
       .flatMap(([x, z]) => [[x, z - 0.6] as const, [x, z + 0.6] as const])
       .filter((_, i) => i % 3 !== 2 && !(i === 13))
       .slice(0, 9)
       .map(([x, z], i): NpcSpot => npc(i % 4 === 1 ? { at: [x + 0.45, z], rot: -90, animation: 'pray', stance: 'stand' } : seat([x, z], -90, i % 4 === 3 ? 'cheer' : 'sit'), 'worship', { lod: i < 3 ? 'high' : 'low' })),
   ],
-  guests: [seat([2.25, 1.0], -90, 'sit'), seat([2.25, -2.2], -90, 'sit')],
+  guests: [seat([2.7, 1.0], -90, 'sit'), seat([2.7, -1.6], -90, 'sit')],
   lighting: { mood: 'worship', practicals: [[-3.6, 3.2, 0.0], [1.4, 3.2, 0.0]] },
 };
 

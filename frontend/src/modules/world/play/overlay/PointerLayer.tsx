@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useUi, type StickSide } from '@/common/game/ui-store';
 import { cn } from '@/common/utils/cn';
 import { controls, pushTap } from '../input/controls';
 
@@ -25,10 +26,19 @@ interface Gesture {
   moved: number;
 }
 
+/** Share of the screen width, from the stick's edge, where a touch grabs the walking stick. */
+const STICK_ZONE = 0.45;
+
+/** Does a touch at `x` (px from the left of a `width`-wide surface) grab the stick on `side`? The rest looks around. */
+export function inStickZone(side: StickSide, x: number, width: number): boolean {
+  return side === 'left' ? x < width * STICK_ZONE : x > width * (1 - STICK_ZONE);
+}
+
 /**
  * The input surface over the canvas (below the HUD, which keeps its own buttons): drag to orbit the camera, wheel or
- * pinch to zoom, tap to pick billboards and players. On touch while walking, the left side is a floating joystick
- * (it appears under your thumb; push it to the edge to jog) and the right side looks around.
+ * pinch to zoom, tap to pick billboards and players. On touch while walking, one side (the player's `walkStick`
+ * setting, right by default) is a floating joystick (it appears under your thumb; push it to the edge to jog) and the
+ * other side looks around.
  */
 export interface PointerLayerProps {
   readonly walking: boolean;
@@ -46,6 +56,8 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
   const gestures = useRef(new Map<number, Gesture>());
   const pinch = useRef<number | null>(null);
   const walkingRef = useRef(walking);
+  const side = useUi((state) => state.settings.walkStick);
+  const sideRef = useRef(side);
   // Pixels at the bottom the stick's base must not cover (e.g. the venue sheet indoors).
   const reserveRef = useRef(reserveBottom);
   // The "drag to walk" hint shows briefly when you step outside, until the first time you use the stick.
@@ -58,6 +70,7 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
   useEffect(() => {
     walkingRef.current = walking;
     reserveRef.current = reserveBottom;
+    sideRef.current = side;
     if (!walking) releaseStick();
   });
 
@@ -97,7 +110,7 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
       const rect = element.getBoundingClientRect();
       const x = event.clientX - rect.left;
       const stickTaken = [...map.values()].some((gesture) => gesture.kind === 'stick');
-      const kind: Gesture['kind'] = touch && walkingRef.current && !stickTaken && x < rect.width * 0.45 ? 'stick' : 'look';
+      const kind: Gesture['kind'] = touch && walkingRef.current && !stickTaken && inStickZone(sideRef.current, x, rect.width) ? 'stick' : 'look';
       const y = event.clientY - rect.top;
       const baseY = reserveRef.current > 0 ? Math.min(y, rect.height - reserveRef.current - 62) : y;
       map.set(event.pointerId, { id: event.pointerId, kind, touch, startX: event.clientX, startY: event.clientY, baseX: x, baseY, startAt: performance.now(), lastX: event.clientX, lastY: event.clientY, moved: 0 });
@@ -112,6 +125,13 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
 
     const onMove = (event: PointerEvent): void => {
       const gesture = map.get(event.pointerId);
+      if (event.pointerType === 'mouse') {
+        // A resting mouse points at things (hover highlights); dragging looks around instead.
+        const rect = element.getBoundingClientRect();
+        controls.hover = gesture
+          ? null
+          : { x: ((event.clientX - rect.left) / rect.width) * 2 - 1, y: -((event.clientY - rect.top) / rect.height) * 2 + 1 };
+      }
       if (!gesture) return;
       const dx = event.clientX - gesture.lastX;
       const dy = event.clientY - gesture.lastY;
@@ -148,7 +168,8 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
       if (!gesture) return;
       map.delete(event.pointerId);
       if (gesture.kind === 'stick') releaseStick();
-      else if (event.type === 'pointerup' && gesture.moved < TAP_SLOP && performance.now() - gesture.startAt < TAP_MS && map.size === 0) {
+      // A quick touch that didn't move is a tap, on the stick's side too (tapping the bar on the right of the screen).
+      if (event.type === 'pointerup' && gesture.moved < TAP_SLOP && performance.now() - gesture.startAt < TAP_MS && map.size === 0) {
         const rect = element.getBoundingClientRect();
         pushTap(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
       }
@@ -161,6 +182,9 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
       controls.lastLookAt = performance.now();
     };
     const onContext = (event: Event): void => event.preventDefault();
+    const onLeave = (): void => {
+      controls.hover = null;
+    };
 
     element.addEventListener('pointerdown', onDown);
     element.addEventListener('pointermove', onMove);
@@ -168,7 +192,9 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
     element.addEventListener('pointercancel', onUp);
     element.addEventListener('wheel', onWheel, { passive: false });
     element.addEventListener('contextmenu', onContext);
+    element.addEventListener('pointerleave', onLeave);
     return () => {
+      element.removeEventListener('pointerleave', onLeave);
       element.removeEventListener('pointerdown', onDown);
       element.removeEventListener('pointermove', onMove);
       element.removeEventListener('pointerup', onUp);
@@ -184,7 +210,13 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
     <div ref={surface} className="absolute inset-0 touch-none select-none" aria-hidden data-testid="play-surface">
       {touchUi && walking && hint && (
         <div
-          className={cn('pointer-events-none absolute bottom-[max(env(safe-area-inset-bottom),1rem)] left-[max(env(safe-area-inset-left),1rem)] grid size-[120px] place-items-center rounded-full border-2 border-white/25 bg-ink/15', hintClassName)}
+          data-testid="stick-hint"
+          data-side={side}
+          className={cn(
+            'pointer-events-none absolute bottom-[max(env(safe-area-inset-bottom),1rem)] grid size-[120px] place-items-center rounded-full border-2 border-white/25 bg-ink/15',
+            side === 'left' ? 'left-[max(env(safe-area-inset-left),1rem)]' : 'right-[max(env(safe-area-inset-right),1rem)]',
+            hintClassName,
+          )}
           style={reserveBottom > 0 ? { bottom: `calc(max(env(safe-area-inset-bottom), 1rem) + ${reserveBottom}px)` } : undefined}
         >
           <span className="text-center text-2xs font-bold uppercase tracking-wide text-white/60">

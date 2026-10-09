@@ -2,7 +2,7 @@
 
 import { useUi, type GraphicsQuality } from '@/common/game/ui-store';
 
-/** Device settings: audio, voice directions and graphics (stored on this device). */
+/** Device settings: audio, voice directions, which thumb walks on touch screens, graphics (stored on this device). */
 export function GameSettings() {
   const settings = useUi((state) => state.settings);
   const updateSettings = useUi((state) => state.updateSettings);
@@ -20,6 +20,23 @@ export function GameSettings() {
         <span>Sound effects</span>
         <input type="range" min={0} max={1} step={0.05} value={settings.sfxVolume} onChange={(event) => updateSettings({ sfxVolume: Number(event.target.value) })} className="w-40 accent-[var(--color-ink)]" />
       </label>
+      <div className="flex min-h-11 items-center justify-between gap-3">
+        <span id="walk-stick-label">Walk stick</span>
+        <div className="flex rounded-chip bg-paper-2 p-0.5" role="radiogroup" aria-labelledby="walk-stick-label">
+          {(['left', 'right'] as const).map((side) => (
+            <button
+              key={side}
+              type="button"
+              role="radio"
+              aria-checked={settings.walkStick === side}
+              onClick={() => updateSettings({ walkStick: side })}
+              className={settings.walkStick === side ? 'h-9 rounded-chip bg-ink px-3 text-sm font-bold text-on-ink' : 'h-9 rounded-chip px-3 text-sm font-bold text-text-soft'}
+            >
+              {side === 'left' ? 'Left hand' : 'Right hand'}
+            </button>
+          ))}
+        </div>
+      </div>
       <label className="flex min-h-11 items-center justify-between gap-3">
         <span>Graphics</span>
         <select value={settings.graphics} onChange={(event) => updateSettings({ graphics: event.target.value as GraphicsQuality })} className="h-10 rounded-chip bg-paper-2 px-2">

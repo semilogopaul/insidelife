@@ -44,6 +44,11 @@ export interface GameEventMap {
   speak: { readonly text: string };
   /** A hug or kiss to show in 3D (you did it; someone doing it to you arrives over realtime). */
   'social-moment': SocialMomentDto;
+  /**
+   * A place feature with its own panel was chosen (a `PlaceService` with `opens: { panel }`, e.g. a club's DJ booth):
+   * the feature that owns the panel shows it.
+   */
+  'open-panel': { readonly panel: string; readonly serviceId: string; readonly locationId: string | null };
 }
 
 type Handler<K extends keyof GameEventMap> = (payload: GameEventMap[K]) => void;
