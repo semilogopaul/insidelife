@@ -7,6 +7,7 @@ import {
   type GameMinute,
   type VenueType,
 } from '@insidelife/shared';
+import { sceneHour } from '@/common/game/daylight';
 import type { PlayerMode } from '@/common/game/world-store';
 import type { MusicContext } from '../../types/audio';
 import { isNightHour, type PlaceType, type SceneKind } from '../ambience/ambience-state';
@@ -60,6 +61,8 @@ export interface SceneInputs {
   /** District under the player's feet in the open world. */
   readonly positionDistrictId: DistrictId | null;
   readonly gameMinute: GameMinute;
+  /** Sound the morning the world is drawn in (`common/game/daylight`), not the game hour. */
+  readonly alwaysDaylight?: boolean;
 }
 
 /** A `music-context` event from another feature; valid until the player moves somewhere else (`key` changes). */
@@ -90,7 +93,7 @@ export function sceneKey(inputs: Pick<SceneInputs, 'mode' | 'locationId'>): stri
 }
 
 export function resolveScene(inputs: SceneInputs, override: MusicOverride | null = null): AudioScene {
-  const night = isNightHour(toDateParts(inputs.gameMinute).hour);
+  const night = isNightHour(sceneHour(toDateParts(inputs.gameMinute).hour, inputs.alwaysDaylight ?? false));
   const driving = inputs.mode === 'driving' || inputs.mode === 'riding';
   const base = resolvePlace(inputs);
   const scene: AudioScene = { ...base, night, driving };

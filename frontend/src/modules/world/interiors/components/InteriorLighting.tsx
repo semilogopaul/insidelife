@@ -4,6 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { Color, type DirectionalLight, type HemisphereLight, type MeshStandardMaterial, type PointLight, type Scene } from 'three';
 import { toDateParts } from '@insidelife/shared';
+import { sceneHour } from '@/common/game/daylight';
 import { gameClock } from '@/common/game/game-clock';
 import type { LightingMood, LightingSpec, RoomSpec } from '../templates/types';
 
@@ -36,12 +37,12 @@ export function daylightAt(hour: number): number {
   return Math.max(0, Math.sin(((hour - 6) / 12) * Math.PI));
 }
 
-/** Current game hour (fractional), or the override. Defaults to late morning before the clock syncs. */
+/** Hour to light the room at: the game hour through the daylight lock, or the override. Late morning before the clock syncs. */
 export function currentHour(override?: number): number {
   if (override !== undefined) return override;
-  if (!gameClock.ready) return 10.5;
+  if (!gameClock.ready) return sceneHour(10.5);
   const parts = toDateParts(gameClock.now());
-  return parts.hour + parts.minute / 60;
+  return sceneHour(parts.hour + parts.minute / 60);
 }
 
 export interface InteriorLightingProps {
