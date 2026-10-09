@@ -105,7 +105,7 @@ export function DevInteriors() {
     // E / 1–4: what the context button offers (the game's HUD does this through the play bridge).
     const onKey = (event: KeyboardEvent): void => {
       if (event.repeat) return;
-      const option = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(event.code);
+      const option = useHomeView.getState().selected ? -1 : ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(event.code);
       if (event.code !== 'KeyE' && option < 0) return;
       const current = useHomeView.getState().offer;
       const target = option >= 0 ? current?.more?.[option] : current;
@@ -150,9 +150,11 @@ export function DevInteriors() {
       <Canvas
         dpr={[1, 1.75]}
         camera={top ? { fov: 38, position: [0, 13, 0.01] } : { fov: 38, position: [8, 8, 8] }}
-        onCreated={({ gl: renderer, scene }) => {
+        onCreated={({ gl: renderer, scene, camera }) => {
           setGl(renderer);
-          (window as unknown as { __il_scene: unknown }).__il_scene = scene;
+          // QA hooks: the scene and camera (scripts project things to tap them).
+          (window as unknown as { __il_scene: unknown; __il_camera: unknown }).__il_scene = scene;
+          (window as unknown as { __il_camera: unknown }).__il_camera = camera;
         }}
       >
         {entered && (
@@ -174,7 +176,7 @@ export function DevInteriors() {
       </Canvas>
       <InteriorOverlay
         onStartAction={setRunning}
-        onOpenService={(service) => toast({ title: service.label, body: `${service.blurb} (opens the ${service.app} app in the game)`, tone: 'neutral' })}
+        onOpenService={(service) => toast({ title: service.label, body: `${service.blurb} (${'panel' in service.opens ? `opens the ${service.opens.panel} panel` : `opens the ${service.opens.app} app`} in the game)`, tone: 'neutral' })}
       />
       <div className="pointer-events-none absolute bottom-4 right-4 flex flex-col items-end gap-1.5" data-testid="dev-context">
         {running && (

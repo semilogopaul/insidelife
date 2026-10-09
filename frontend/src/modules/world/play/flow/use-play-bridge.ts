@@ -122,7 +122,8 @@ export function usePlayBridge(presence: WorldPresence): void {
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
-      const option = OPTION_KEYS.indexOf(event.code);
+      // With a thing's card open, its own keys choose (1–9, Esc).
+      const option = useHomeView.getState().selected ? -1 : OPTION_KEYS.indexOf(event.code);
       if (event.code !== 'KeyE' && event.code !== 'KeyM' && option < 0) return;
       if (isTypingTarget(event.target) || useUi.getState().phoneOpen) return;
       if (event.code === 'KeyM') {

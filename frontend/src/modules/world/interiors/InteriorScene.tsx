@@ -6,7 +6,7 @@ import { homeLocationId, isHomeLocation, toDateParts, type ActionDefinition, typ
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
-import { isBusy, isPlaceAction, placeActions, servicesAt, useActionAvailability, type PlaceService } from '@/common/places';
+import { isBusy, isPlaceAction, placeActions, servicesAt, useActionAvailability, servicesWithGoal, useGoalHere, type GoalHere, type PlaceService } from '@/common/places';
 import { useHomePeople, useVisits } from '@/common/visits';
 import { animationForSegment } from '@/common/three/avatar';
 import { ClubLights } from './effects/ClubLights';
@@ -53,6 +53,8 @@ export interface InteriorSceneProps {
   readonly busy?: boolean;
   /** Phone-app services found here (browse cars, see a doctor); defaults to the venue's. Previews pass their own. */
   readonly services?: readonly PlaceService[];
+  /** The life goal that brought you here and what advances it; defaults to the player's goals. Previews pass one. */
+  readonly goal?: GoalHere | null;
   /** Extra scene content (e.g. `<MoneyRain />` triggered by the play layer). */
   readonly children?: ReactNode;
 }
@@ -69,7 +71,7 @@ const NO_SERVICES: readonly PlaceService[] = [];
 /** Far below the floor (its light has a 5 m reach): keeps the light rig identical across a home's rooms. */
 const SPARE_LANTERN = [0, -20, 0] as const;
 
-export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, actions: actionsOverride, busy: busyOverride, services: servicesOverride, children }: InteriorSceneProps) {
+export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, actions: actionsOverride, busy: busyOverride, services: servicesOverride, goal: goalOverride, children }: InteriorSceneProps) {
   const snapshot = useSnapshot().data;
   const minute = useGameMinute(4000);
   const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
@@ -119,6 +121,10 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const listed = useMemo(() => actionsOverride ?? (here ? placeActions(snapshot).actions : NO_ACTIONS), [actionsOverride, here, snapshot]);
   const venueType = here ? placeActions(snapshot).place?.venue?.type ?? null : null;
   const services = useMemo(() => servicesOverride ?? (venueType ? servicesAt({ kind: 'venue', venueType }) : NO_SERVICES), [servicesOverride, venueType]);
+  // A goal that sent you here: what advances it is first at its hotspot, and highlighted.
+  const ownActions = useMemo(() => listed.filter(isPlaceAction), [listed]);
+  const goalHere = useGoalHere(goalOverride === undefined ? venueType : null, ownActions, services);
+  const goal = goalOverride === undefined ? goalHere : goalOverride;
   const busy = busyOverride ?? (here && isBusy(snapshot));
   // Same rules and reasons as the venue sheet (open hours, age, money…); previews without a session allow everything.
   const availability = useActionAvailability(here ? snapshot : undefined);
@@ -131,9 +137,10 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const hotspots = useMemo(() => {
     if (!houseLayout || !houseRoom) return [];
     const own = listed.filter((action) => isPlaceAction(action) && (houseLayout.rooms.length <= 1 || hotspotRoom(houseLayout, action) === houseRoom.id));
-    // Services belong to the room you come in by (a venue's only room).
-    return buildHotspots(template, own, houseRoom.template, houseRoom.id === houseLayout.entry ? services : NO_SERVICES);
-  }, [houseLayout, houseRoom, listed, template, services]);
+    // Services belong to the room you come in by (a venue's only room); the goal's own one joins them there.
+    const here = houseRoom.id === houseLayout.entry ? servicesWithGoal(services, goal) : NO_SERVICES;
+    return buildHotspots(template, own, houseRoom.template, here, goal);
+  }, [houseLayout, houseRoom, listed, template, services, goal]);
 
   const h = currentHour(hour);
   const dayIndex = gameClock.ready ? toDateParts(minute).dayIndex : 0;
@@ -156,7 +163,7 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
       </Suspense>
       {template.extras?.clubLights && <ClubLights floor={template.extras.clubLights} ceiling={room.height} />}
       <InteriorPeople template={template} locationId={locationId} player={walking ? null : resolvedPlayer} players={players} />
-      {walking && house && resolvedPlayer && <HomeWalkLayer home={house} template={template} player={resolvedPlayer} guests={players.length} hotspots={hotspots} busy={busy} status={status} />}
+      {walking && house && resolvedPlayer && <HomeWalkLayer home={house} template={template} player={resolvedPlayer} guests={players.length} hotspots={hotspots} busy={busy} status={status} goal={goal} />}
       {camera === 'dollhouse' && !(walking && house?.camera === 'walk') && <DollhouseCamera width={room.width} depth={room.depth} height={room.height} interactive={interactiveCamera} />}
       {children}
     </group>

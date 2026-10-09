@@ -2,16 +2,16 @@
 
 import { ArrowDownRight, ArrowUpRight, DoorOpen, Eye, Footprints, Layers } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { findAction, type ActionDefinition } from '@insidelife/shared';
 import { toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { useTouchUi } from '@/common/hooks/use-touch-ui';
-import { serviceOfInteractable, useStartAction, type PlaceService } from '@/common/places';
 import { cn } from '@/common/utils/cn';
+import { isTypingTarget } from '../../play/input/controls';
 import { PointerLayer } from '../../play/overlay/PointerLayer';
-import { actionOfInteractable } from '../hotspots/hotspots';
 import { levelLabel } from '../layouts/geometry';
+import { HotspotCardPanel } from './HotspotCardPanel';
+import { useHotspotDo, type HotspotHandlers } from './use-hotspot-do';
 import {
   hotspotLabelElements,
   portalLabelElements,
@@ -23,43 +23,42 @@ import {
 /** Room kept clear at the bottom of a phone for the venue sheet ("Things to do here") and the phone button row. */
 const SHEET_RESERVE_PX = 104;
 
-export interface InteriorOverlayProps {
-  /**
-   * Start an action chosen at a hotspot (the HUD context button emits `interact` with its id). Defaults to the
-   * server (`POST /characters/me/actions`, like the venue sheet); previews without a session pass their own.
-   */
-  readonly onStartAction?: (action: ActionDefinition) => void;
-  /** Open a place service (defaults to its phone app on the right tab). */
-  readonly onOpenService?: (service: PlaceService) => void;
-}
+/** How hotspot choices are carried out (defaults: the server and your phone apps; previews pass their own). */
+export type InteriorOverlayProps = HotspotHandlers;
 
 /**
  * The DOM half of walking around a home or venue, layered over the canvas (and under the HUD): the touch stick and
- * look pad (walk camera), door/stairs labels, the hotspot markers (tap one to walk there; its action shows on the HUD
- * context button), the camera switch (walk ↔ overview), the rooms menu for bigger homes and the dip to dark between
- * rooms. Starts hotspot actions. Renders nothing outside a walkable place.
+ * look pad (walk camera; things under the mouse get a pointer), door/stairs labels, the hotspot markers, a thing's
+ * card (tap it in 3D, tap its marker, or Enter at it), the camera switch (walk ↔ overview), the rooms menu for bigger
+ * homes and the dip to dark between rooms. Does what's chosen at a hotspot. Renders nothing outside a walkable place.
  */
 export function InteriorOverlay({ onStartAction, onOpenService }: InteriorOverlayProps = {}) {
   const house = useHomeView((state) => state.house);
   const camera = useHomeView((state) => state.camera);
   const fading = useHomeView((state) => state.fading);
+  const hover = useHomeView((state) => state.hover);
   const phoneOpen = useUi((state) => state.phoneOpen);
   const touchUi = useTouchUi();
-  useHotspotActions(onStartAction, onOpenService);
+  const run = useHotspotDo({ onStartAction, onOpenService });
+  useHotspotKeys();
+  useGoalArrival();
   if (!house) return null;
   return (
     <>
       {camera === 'walk' && (
-        <PointerLayer
-          walking
-          touchUi={touchUi}
-          reserveBottom={touchUi ? SHEET_RESERVE_PX : 0}
-          hintClassName="border-white/50 bg-ink/55"
-        />
+        <div className="absolute inset-0" style={hover ? { cursor: 'pointer' } : undefined}>
+          <PointerLayer
+            walking
+            touchUi={touchUi}
+            reserveBottom={touchUi ? SHEET_RESERVE_PX : 0}
+            hintClassName="border-white/50 bg-ink/55"
+          />
+        </div>
       )}
       <PortalLabels />
       {!phoneOpen && <HotspotMarkers />}
       {!phoneOpen && <HomeControls />}
+      {!phoneOpen && <HotspotCardPanel run={run} />}
       {camera === 'walk' && !touchUi && <KeysHint key={house} />}
       <div
         aria-hidden
@@ -111,59 +110,15 @@ function PortalLabels() {
   );
 }
 
-/** A service opens its phone app on the right tab. */
-function openService(service: PlaceService): void {
-  gameEvents.emit('sfx', { id: 'ui-open' });
-  useUi.getState().openPhone(service.app, service.param ?? null);
-}
-
-/**
- * Context-button presses on a hotspot: an action starts (the avatar then walks to its spot), a service opens its app,
- * something greyed out explains why not.
- */
-function useHotspotActions(
-  onStartAction: InteriorOverlayProps['onStartAction'],
-  onOpenService: InteriorOverlayProps['onOpenService'],
-): void {
-  const { start } = useStartAction();
-  const handler = useRef<(action: ActionDefinition) => void>(start);
-  const opener = useRef<(service: PlaceService) => void>(openService);
-  useEffect(() => {
-    handler.current = onStartAction ?? ((action: ActionDefinition) => start(action));
-    opener.current = onOpenService ?? openService;
-  });
-  useEffect(
-    () =>
-      gameEvents.on('interact', ({ interactableId }) => {
-        const service = serviceOfInteractable(interactableId);
-        if (service) {
-          opener.current(service);
-          return;
-        }
-        const actionId = actionOfInteractable(interactableId);
-        const action = actionId ? findAction(actionId) : undefined;
-        if (!action) return;
-        // Greyed out on the HUD: say why instead of asking the server.
-        const offer = useHomeView.getState().offer;
-        const shown = offer
-          ? [offer, ...(offer.more ?? [])].find((option) => option.id === interactableId)
-          : undefined;
-        if (shown?.disabled) {
-          gameEvents.emit('sfx', { id: 'ui-error' });
-          toast({
-            title: `Can’t ${action.label.toLowerCase()} right now`,
-            body: shown.disabled,
-            tone: 'neutral',
-          });
-          return;
-        }
-        handler.current(action);
-      }),
-    [],
-  );
-}
-
-function HotspotMarker({ tag, offered }: { readonly tag: HotspotTag; readonly offered: boolean }) {
+function HotspotMarker({
+  tag,
+  offered,
+  hovered,
+}: {
+  readonly tag: HotspotTag;
+  readonly offered: boolean;
+  readonly hovered: boolean;
+}) {
   const ref = useCallback(
     (element: HTMLButtonElement | null) => {
       if (element) hotspotLabelElements.set(tag.id, element);
@@ -177,10 +132,14 @@ function HotspotMarker({ tag, offered }: { readonly tag: HotspotTag; readonly of
       ref={ref}
       type="button"
       data-hotspot={tag.id}
-      aria-label={tag.count > 1 ? `${tag.label} and ${tag.count - 1} more here` : tag.label}
+      aria-label={`${tag.name}: ${tag.count > 1 ? `${tag.label} and ${tag.count - 1} more` : tag.label}${tag.goal ? ` (for your goal: ${tag.goal})` : ''}`}
       onClick={() => {
         gameEvents.emit('sfx', { id: 'ui-click' });
-        useHomeView.getState().pickHotspot(tag.id);
+        useHomeView.getState().select(tag.id);
+      }}
+      onFocus={() => useHomeView.getState().setHover(tag.id)}
+      onBlur={() => {
+        if (useHomeView.getState().hover === tag.id) useHomeView.getState().setHover(null);
       }}
       // Hidden until the frame loop has placed it; it then owns visibility, opacity and transform.
       style={{ visibility: 'hidden' }}
@@ -190,11 +149,21 @@ function HotspotMarker({ tag, offered }: { readonly tag: HotspotTag; readonly of
       <span
         className={cn(
           'grid size-10 place-items-center rounded-full border-2 text-xl leading-none shadow-[var(--shadow-glass)] transition-[transform,background-color,border-color] duration-200',
-          offered ? 'scale-110 border-danfo bg-ink/85' : 'border-white/45 bg-ink/55',
+          offered || tag.goal ? 'border-danfo bg-ink/85' : 'border-white/45 bg-ink/55',
+          offered && 'scale-110',
+          tag.goal && 'ring-4 ring-danfo/40',
         )}
       >
         <span aria-hidden>{tag.emoji}</span>
       </span>
+      {tag.goal && (
+        <span
+          aria-hidden
+          className="absolute -right-1 -top-1 grid size-5 place-items-center rounded-full bg-danfo text-2xs"
+        >
+          🎯
+        </span>
+      )}
       <span
         aria-hidden
         className={cn(
@@ -202,13 +171,20 @@ function HotspotMarker({ tag, offered }: { readonly tag: HotspotTag; readonly of
           offered ? 'border-danfo bg-ink/85' : 'border-white/45 bg-ink/55',
         )}
       />
-      {offered && (
+      {(offered || hovered || tag.goal) && (
         <span
           aria-hidden
           className="absolute top-1.5 whitespace-nowrap rounded-full bg-ink/85 px-2.5 py-1 text-xs font-bold text-on-ink shadow-[var(--shadow-glass)] group-data-[side=left]:right-full group-data-[side=left]:mr-1.5 group-data-[side=right]:left-full group-data-[side=right]:ml-1.5"
         >
-          {tag.label}
-          {more && <span className="text-danfo">{more}</span>}
+          {tag.goal && !offered && !hovered ? (
+            <span className="text-danfo">For your goal</span>
+          ) : (
+            <>
+              {tag.name}
+              <span className="font-normal text-on-ink-soft"> · {tag.label}</span>
+              {more && <span className="text-danfo">{more}</span>}
+            </>
+          )}
         </span>
       )}
     </button>
@@ -219,13 +195,59 @@ function HotspotMarker({ tag, offered }: { readonly tag: HotspotTag; readonly of
 function HotspotMarkers() {
   const hotspots = useHomeView((state) => state.hotspots);
   const offerId = useHomeView((state) => state.offerId);
+  const hover = useHomeView((state) => state.hover);
+  const selected = useHomeView((state) => state.selected);
   return (
     <div className="pointer-events-none absolute inset-0 overflow-hidden">
       {hotspots.map((tag) => (
-        <HotspotMarker key={tag.id} tag={tag} offered={tag.id === offerId} />
+        <HotspotMarker
+          key={tag.id}
+          tag={tag}
+          offered={tag.id === offerId}
+          hovered={tag.id === hover || tag.id === selected}
+        />
       ))}
     </div>
   );
+}
+
+/** Enter at a thing opens its card (E does its first thing, through the HUD context button). */
+function useHotspotKeys(): void {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Enter' || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (isTypingTarget(event.target) || useUi.getState().phoneOpen) return;
+      if (event.target instanceof HTMLElement && event.target.closest('button, a, [role="button"]')) return;
+      const { offerId, selected, select } = useHomeView.getState();
+      if (!offerId || selected) return;
+      event.preventDefault();
+      gameEvents.emit('sfx', { id: 'ui-click' });
+      select(offerId);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+}
+
+/** Goals already announced this session (`<place>|<goal>`), so coming and going doesn't repeat it. */
+const announcedGoals = new Set<string>();
+
+/** Arriving where a life goal sent you: say what to do for it and where (its hotspot is highlighted too). */
+function useGoalArrival(): void {
+  const house = useHomeView((state) => state.house);
+  const goalCard = useHomeView((state) => state.hotspots.find((hotspot) => hotspot.goal !== null) ?? null);
+  useEffect(() => {
+    if (!house || !goalCard?.goal) return;
+    const key = `${house}|${goalCard.goal}`;
+    if (announcedGoals.has(key)) return;
+    announcedGoals.add(key);
+    const entry = goalCard.entries.find((candidate) => candidate.goal) ?? goalCard.entries[0];
+    toast({
+      title: `For your goal: ${goalCard.goal}`,
+      body: `${entry?.emoji ?? ''} ${entry?.label ?? ''} — at the ${goalCard.name.toLowerCase()}. Tap it or walk up to it.`,
+      tone: 'neutral',
+    });
+  }, [house, goalCard]);
 }
 
 /** Right edge, middle: where you are (and the rooms menu), and the camera switch. Clear of the HUD's corners. */

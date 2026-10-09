@@ -6,6 +6,7 @@ import { angleDelta, clamp, wrapAngle, yawFromHeading } from '../../play/physics
 import { createWalker, stepWalker, type WalkWorld, type WalkerState } from '../../play/physics/walker';
 import { gaitFor } from '../../play/runtime/play-runtime';
 import { hotspotAt, type Hotspot } from '../hotspots/hotspots';
+import { closestOnBox, rayHitsBox, type Box3 } from '../hotspots/objects';
 import type { Arrival, PortalGeometry, Rect } from '../layouts/types';
 import type { At, InteriorTemplate, Spot } from '../templates/types';
 import {
@@ -76,6 +77,8 @@ export interface HomeWalkEvents {
   /** The walker went through a portal: switch rooms. Return false if that can't happen right now. */
   onPortal(portal: PortalGeometry): boolean;
   onStep(): void;
+  /** A hotspot's thing was tapped in 3D: open its card. */
+  onPick?(hotspotId: string): void;
 }
 
 interface Pose {
@@ -175,6 +178,14 @@ export class HomeWalkRuntime {
   private nudged = 0;
   private nudge = false;
   private events: HomeWalkEvents = { onPortal: () => false, onStep: () => undefined };
+  /** The hotspot under the mouse (walk camera), the one hovered in the overview, and the one whose card is open. */
+  hovered: string | null = null;
+  private externalHover: string | null = null;
+  private hitBox: Box3 | null = null;
+  private hoverBox: Box3 | null = null;
+  private selectedId: string | null = null;
+  /** Edges box drawn around the hovered or chosen thing. */
+  private highlight: Object3D | null = null;
   private hotspots: readonly Hotspot[] = [];
   /** Markers hidden and nothing offered (something you chose is running). */
   private hotspotsHidden = false;
@@ -202,7 +213,65 @@ export class HomeWalkRuntime {
   setCameraMode(mode: 'walk' | 'overview'): void {
     if (mode === this.cameraMode) return;
     this.cameraMode = mode;
+    controls.hover = null;
+    this.hovered = null;
     if (mode === 'walk') this.camera.reset();
+  }
+
+  /** The thing hovered in the overview (pointer events there) and the hotspot whose card is open. */
+  setFocus(hover: string | null, selected: string | null): void {
+    this.externalHover = hover;
+    this.selectedId = selected;
+  }
+
+  registerHighlight(object: Object3D | null): void {
+    this.highlight = object;
+  }
+
+  /**
+   * The hotspot whose thing (or one like it) a ray from the camera hits first (`grow` widens every box: fingers are
+   * big). The box it hit is kept for the highlight.
+   */
+  private hotspotUnder(origin: Vector3, direction: Vector3, grow: number): Hotspot | null {
+    if (this.hotspotsHidden) return null;
+    let best: Hotspot | null = null;
+    let bestT = Number.POSITIVE_INFINITY;
+    for (const hotspot of this.hotspots) {
+      for (let i = -1; i < hotspot.aliases.length; i++) {
+        const box = i < 0 ? hotspot.box : (hotspot.aliases[i] as Box3);
+        const t = rayHitsBox(origin.x, origin.y, origin.z, direction.x, direction.y, direction.z, box, grow);
+        if (t !== null && t < bestT) {
+          best = hotspot;
+          bestT = t;
+          this.hitBox = box;
+        }
+      }
+    }
+    return best;
+  }
+
+  /** Hover (walk camera, mouse) and the highlight box round the hovered or chosen thing. */
+  private updateFocus(camera: PerspectiveCamera): void {
+    const hover = this.cameraMode === 'walk' ? controls.hover : null;
+    if (hover) {
+      projected.set(hover.x, hover.y, 0.5).unproject(camera);
+      ray.copy(projected).sub(camera.position).normalize();
+      this.hovered = this.hotspotUnder(camera.position, ray, 0.08)?.id ?? null;
+      if (this.hovered) this.hoverBox = this.hitBox;
+    } else this.hovered = null;
+    const highlight = this.highlight;
+    if (!highlight) return;
+    const id = this.hovered ?? this.externalHover ?? this.selectedId;
+    const target =
+      id && !this.hotspotsHidden ? this.hotspots.find((hotspot) => hotspot.id === id) : undefined;
+    if (!target) {
+      if (highlight.visible) highlight.visible = false;
+      return;
+    }
+    const b = this.hovered === target.id && this.hoverBox ? this.hoverBox : target.box;
+    highlight.visible = true;
+    highlight.position.set((b.minX + b.maxX) / 2, (b.minY + b.maxY) / 2, (b.minZ + b.maxZ) / 2);
+    highlight.scale.set(b.maxX - b.minX + 0.08, b.maxY - b.minY + 0.06, b.maxZ - b.minZ + 0.08);
   }
 
   /** True once after the player tried to walk during an activity (the UI explains why nothing happens). */
@@ -243,10 +312,9 @@ export class HomeWalkRuntime {
     this.offered = id;
     const near = hotspotAt([hotspot], this.walker.x, this.walker.z);
     if (near) return true;
-    const target = physics.nav.nearestFree(hotspot.at[0], hotspot.at[1], hotspot.reach) ?? [
-      hotspot.at[0],
-      hotspot.at[1],
-    ];
+    // The free floor beside the thing, on your side of it (a bar is 5 m long: walk to the near end).
+    const [cx, cz] = closestOnBox(hotspot.box, this.walker.x, this.walker.z);
+    const target = physics.nav.nearestFree(cx, cz, hotspot.reach + 0.6) ?? [hotspot.at[0], hotspot.at[1]];
     this.walkTo(target, 'point');
     return true;
   }
@@ -537,6 +605,7 @@ export class HomeWalkRuntime {
       );
     }
     this.updateOffer();
+    this.updateFocus(camera);
     this.hideOccluders(camera, people);
     this.placeLabels(camera, width, height);
     this.placeMarkers(camera, width, height, now);
@@ -677,13 +746,21 @@ export class HomeWalkRuntime {
     avatar.setTimeScale(timeScale);
   }
 
-  /** A tap on the floor walks there; on a door marker, through the door. Only when you're free. */
+  /**
+   * A tap on a thing (the bar, a bed, the front desk) opens its card; on the floor it walks there; on a door marker,
+   * through the door. Walking only when you're free.
+   */
   private handleTap(camera: PerspectiveCamera): void {
     const tap = controls.taps[controls.taps.length - 1];
-    if (!tap || this.locked > 0 || this.activity || (this.phase !== 'free' && this.phase !== 'walking'))
-      return;
+    if (!tap) return;
     projected.set(tap.x, tap.y, 0.5).unproject(camera);
     ray.copy(projected).sub(camera.position).normalize();
+    const thing = this.hotspotUnder(camera.position, ray, 0.22);
+    if (thing) {
+      this.events.onPick?.(thing.id);
+      return;
+    }
+    if (this.locked > 0 || this.activity || (this.phase !== 'free' && this.phase !== 'walking')) return;
     if (ray.y > -0.02) return;
     const t = -camera.position.y / ray.y;
     const x = camera.position.x + ray.x * t;

@@ -1,24 +1,71 @@
 import type { VenueType } from '@insidelife/shared';
-import type { PhoneApp } from '@/common/game/ui-store';
+import { gameEvents } from '@/common/game/game-events';
+import { useUi, type PhoneApp } from '@/common/game/ui-store';
 import type { PlaceKind } from './place-actions';
 
 /**
- * What a place offers through one of your phone apps rather than as a timed action: browse the cars at a showroom
- * (Motors), see a doctor at the hospital's front desk (Health), listings at an estate agency (Homes)… Shown where they
- * happen like any hotspot and listed in "Things to do here"; choosing one opens the app on the right tab. By venue type,
- * so new venues of a type get them for free.
+ * What a place offers that isn't a timed action from the catalog: browse the cars at a showroom (Motors), see a doctor
+ * at the hospital's front desk (Health), listings at an estate agency (Homes)… Shown where they happen like any hotspot
+ * and listed in "Things to do here"; choosing one opens a phone app on the right tab, or a panel.
+ *
+ * **Hook for place features with their own UI** (e.g. club nights: bottles for people at the bar, shoutouts at the DJ
+ * booth): add an entry to `PLACE_SERVICES` for the venue type with `at: { object: 'dj-booth' }` (any
+ * `PlaceObjectKind`) and `opens: { panel: 'club-shoutout' }`, then listen for it where the panel lives:
+ * `gameEvents.on('open-panel', ({ panel, venueId }) => …)`. The object gets a hotspot (tap it in 3D, walk up to it, or
+ * find it in "Things to do here") as soon as it has an entry. By venue type, so new venues of a type get them free.
  */
+
+/** Things in a room that hotspots attach to (the world reads them from the room's furniture and props). */
+export const PLACE_OBJECT_KINDS = [
+  'bar',
+  'dj-booth',
+  'dance-floor',
+  'stage',
+  'bed',
+  'sofa',
+  'table',
+  'chair',
+  'desk',
+  'counter',
+  'tv',
+  'cooker',
+  'shower',
+  'pew',
+  'mat',
+  'gym-machine',
+  'shelf',
+  'stall',
+  'car',
+  'seats',
+  'salon-chair',
+  'pulpit',
+  'bench',
+  'spot',
+] as const;
+export type PlaceObjectKind = (typeof PLACE_OBJECT_KINDS)[number];
+
+/** What choosing a service does: open a phone app (on a tab), or a panel another feature shows. */
+export type ServiceTarget =
+  { readonly app: Exclude<PhoneApp, 'home'>; readonly param?: string } | { readonly panel: string };
 
 export interface PlaceService {
   readonly id: string;
   readonly label: string;
   readonly emoji: string;
   readonly blurb: string;
-  readonly app: Exclude<PhoneApp, 'home'>;
-  /** Deep link into the app (a tab). */
-  readonly param?: string;
-  /** Where it's found in the room: the counter, the cars on show, or the desk/person you'd talk to. */
-  readonly at: 'counter' | 'cars' | 'desk';
+  readonly opens: ServiceTarget;
+  /**
+   * Where it's found in the room: the counter, the cars on show, the staffed desk (front desk, doctor, agent), or a
+   * particular kind of object (the DJ booth, the bar). Falls back to the counter/desk when the room has no such thing.
+   */
+  readonly at: 'counter' | 'cars' | 'desk' | { readonly object: PlaceObjectKind };
+}
+
+/** "Opens Motors" / "Opens on your phone" for a service's button. */
+export function serviceOpensLabel(service: PlaceService): string {
+  if ('panel' in service.opens) return 'Open';
+  const app = service.opens.app;
+  return `Open ${app.charAt(0).toUpperCase()}${app.slice(1)}`;
 }
 
 const DOCTOR: PlaceService = {
@@ -26,8 +73,7 @@ const DOCTOR: PlaceService = {
   label: 'See a doctor',
   emoji: '🩺',
   blurb: 'Check-ups and treatment — in the Health app.',
-  app: 'health',
-  param: 'me',
+  opens: { app: 'health', param: 'me' },
   at: 'desk',
 };
 const SCHOOL: PlaceService = {
@@ -35,7 +81,7 @@ const SCHOOL: PlaceService = {
   label: 'Courses & exams',
   emoji: '🎓',
   blurb: 'Admissions, courses and exam registration — in the School app.',
-  app: 'school',
+  opens: { app: 'school' },
   at: 'desk',
 };
 const SHOP: PlaceService = {
@@ -43,7 +89,7 @@ const SHOP: PlaceService = {
   label: 'Shop here',
   emoji: '🛍️',
   blurb: 'Clothes, gadgets and things for the house — in the Shop app.',
-  app: 'shop',
+  opens: { app: 'shop' },
   at: 'counter',
 };
 
@@ -54,8 +100,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'Browse cars',
       emoji: '🚗',
       blurb: 'Prices, specs and paint — buy in the Motors app.',
-      app: 'motors',
-      param: 'dealer',
+      opens: { app: 'motors', param: 'dealer' },
       at: 'cars',
     },
   ],
@@ -65,8 +110,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'See listings',
       emoji: '🏠',
       blurb: 'Flats to rent and houses to buy — in the Homes app.',
-      app: 'homes',
-      param: 'rent',
+      opens: { app: 'homes', param: 'rent' },
       at: 'desk',
     },
   ],
@@ -78,8 +122,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'Ask the pharmacist',
       emoji: '💊',
       blurb: 'Drugs for what ails you — in the Health app.',
-      app: 'health',
-      param: 'me',
+      opens: { app: 'health', param: 'me' },
       at: 'counter',
     },
   ],
@@ -89,7 +132,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'Register for exams',
       emoji: '📝',
       blurb: 'JAMB, WAEC and GCE — in the School app.',
-      app: 'school',
+      opens: { app: 'school' },
       at: 'desk',
     },
   ],
@@ -103,8 +146,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'Jobs board',
       emoji: '💼',
       blurb: 'Openings and applications — in the Jobs app.',
-      app: 'jobs',
-      param: 'board',
+      opens: { app: 'jobs', param: 'board' },
       at: 'desk',
     },
   ],
@@ -114,8 +156,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'Driving licence',
       emoji: '🪪',
       blurb: 'Apply and book the FRSC test — in the Motors app.',
-      app: 'motors',
-      param: 'licence',
+      opens: { app: 'motors', param: 'licence' },
       at: 'desk',
     },
   ],
@@ -125,7 +166,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'Book a ride',
       emoji: '🚌',
       blurb: 'Danfo, BRT, keke or okada — pick a destination on the Map.',
-      app: 'map',
+      opens: { app: 'map' },
       at: 'counter',
     },
   ],
@@ -135,7 +176,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       label: 'Travel',
       emoji: '✈️',
       blurb: 'Out of Lagos — pick a destination on the Map.',
-      app: 'map',
+      opens: { app: 'map' },
       at: 'counter',
     },
   ],
@@ -160,4 +201,13 @@ export function serviceOfInteractable(interactableId: string): PlaceService | nu
     if (found) return found;
   }
   return null;
+}
+
+/** Choose a service: open its phone app on the right tab, or ask for its panel (`open-panel`). */
+export function openService(service: PlaceService, locationId: string | null = null): void {
+  gameEvents.emit('sfx', { id: 'ui-open' });
+  const target = service.opens;
+  if ('panel' in target)
+    gameEvents.emit('open-panel', { panel: target.panel, serviceId: service.id, locationId });
+  else useUi.getState().openPhone(target.app, target.param ?? null);
 }

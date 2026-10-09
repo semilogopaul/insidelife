@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import {
+  NEED_KEYS,
   SKILL_LABELS,
   findVenue,
   formatNaira,
@@ -132,4 +133,29 @@ export function useActionAvailability(
       actionAvailability(action, actionContextOf(snapshot, hour * 60, priceIndex)),
     [snapshot, hour, priceIndex],
   );
+}
+
+const NEED_WORDS: Readonly<Record<(typeof NEED_KEYS)[number], string>> = {
+  energy: 'Energy',
+  hunger: 'Food',
+  hygiene: 'Hygiene',
+  fun: 'Fun',
+  social: 'Social',
+};
+
+/**
+ * What an action does to you, in a few words for its card: needs it fills or drains ("Fun ↑", "Energy ↓"), skills it
+ * trains, fitness and status. At most `max` items, needs first.
+ */
+export function actionEffects(action: ActionDefinition, max = 4): string[] {
+  const effects: string[] = [];
+  for (const need of NEED_KEYS) {
+    const drift = action.drift[need];
+    if (drift) effects.push(`${NEED_WORDS[need]} ${drift.target >= 50 ? '↑' : '↓'}`);
+  }
+  for (const skill of Object.keys(action.skillXpPerHour ?? {}) as SkillKey[])
+    effects.push(`${SKILL_LABELS[skill]} +`);
+  if (action.fitnessPerHour) effects.push('Fitness +');
+  if (action.statusOnComplete) effects.push(`Status +${action.statusOnComplete}`);
+  return effects.slice(0, max);
 }

@@ -1,4 +1,4 @@
-import type { PlaceService } from '@/common/places';
+import type { PlaceObjectKind, PlaceService } from '@/common/places';
 import { AVATAR_CLIPS, AVATAR_SEAT_HEIGHT, type AvatarClip } from '@/common/three/avatar';
 import { FURNITURE_SCALE } from '../kit/furniture-kit';
 import { FURNITURE_MANIFEST } from '../kit/kit-manifest';
@@ -6,6 +6,7 @@ import type { PropSpec } from '../props/prop-types';
 import { forward, seat, stand } from '../templates/helpers';
 import type { At, FurniturePlacement, HomeSlot, InteriorTemplate, Spot } from '../templates/types';
 import { furnitureFootprint, propFootprint } from '../walk/colliders';
+import { distanceToBox, roomObjects, type PlaceObject } from './objects';
 
 /**
  * Where an action happens in a room, generically: by its animation first (what the template authored for it), then by
@@ -282,17 +283,44 @@ function hasLike(template: InteriorTemplate, piece: FurniturePlacement): boolean
   );
 }
 
-/** Cars on show are big: you're "at" one from this far from its middle. */
-const CAR_REACH = 2.6;
-
 /**
- * Anchor for a place service (opens a phone app): the first car on show at a showroom, the counter, or the desk —
- * wherever you'd talk to someone (the front desk, the agent, the doctor).
+ * Where a place service is found (it opens a phone app or a panel): a particular kind of object when it names one (the
+ * DJ booth), the first car on show, the staffed desk or counter (front desk, doctor, agent, pharmacist — whoever has
+ * staff beside it), the counter; else wherever you'd talk to someone.
  */
-export function serviceAnchor(template: InteriorTemplate, service: Pick<PlaceService, 'at'>): ActionAnchor {
-  const car = service.at === 'cars' ? template.extras?.cars?.[0] : undefined;
-  if (car) return { at: car.at, y: 2.0, reach: CAR_REACH };
-  const counter = service.at === 'counter' ? counterSpot(template, ['bar-counter', 'stall', 'shelf']) : null;
+export function serviceAnchor(
+  template: InteriorTemplate,
+  service: Pick<PlaceService, 'at'>,
+  objects: readonly PlaceObject[] = roomObjects(template),
+): ActionAnchor {
+  const where = service.at;
+  const staff = template.npcs.map(footOf);
+  const staffDistance = (object: PlaceObject): number =>
+    staff.reduce((best, [x, z]) => Math.min(best, distanceToBox(object.box, x, z)), Number.POSITIVE_INFINITY);
+  const pick = (kinds: readonly PlaceObjectKind[]): PlaceObject | undefined =>
+    objects
+      .filter((object) => kinds.includes(object.kind))
+      .sort((a, b) => staffDistance(a) - staffDistance(b))[0];
+  const object =
+    typeof where === 'object'
+      ? pick([where.object])
+      : where === 'cars'
+        ? pick(['car'])
+        : where === 'desk'
+          ? pick(['desk', 'counter', 'bar'])
+          : pick(['counter', 'bar', 'stall', 'shelf']);
+  if (object) return objectAnchor(object);
+  const counter = where === 'counter' ? counterSpot(template, ['bar-counter', 'stall', 'shelf']) : null;
   const spot = counter ?? actionSpot(template, { animation: 'talk', category: 'service' });
   return spotAnchor(spot, spot.animation);
+}
+
+/** Anchor over an object: its middle, the marker just above it. */
+export function objectAnchor(object: PlaceObject): ActionAnchor {
+  const { box } = object;
+  return {
+    at: [(box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2],
+    y: Math.max(box.maxY + 0.45, 1.25),
+    reach: SPOT_REACH,
+  };
 }

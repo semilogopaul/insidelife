@@ -125,6 +125,13 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
 
     const onMove = (event: PointerEvent): void => {
       const gesture = map.get(event.pointerId);
+      if (event.pointerType === 'mouse') {
+        // A resting mouse points at things (hover highlights); dragging looks around instead.
+        const rect = element.getBoundingClientRect();
+        controls.hover = gesture
+          ? null
+          : { x: ((event.clientX - rect.left) / rect.width) * 2 - 1, y: -((event.clientY - rect.top) / rect.height) * 2 + 1 };
+      }
       if (!gesture) return;
       const dx = event.clientX - gesture.lastX;
       const dy = event.clientY - gesture.lastY;
@@ -161,7 +168,8 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
       if (!gesture) return;
       map.delete(event.pointerId);
       if (gesture.kind === 'stick') releaseStick();
-      else if (event.type === 'pointerup' && gesture.moved < TAP_SLOP && performance.now() - gesture.startAt < TAP_MS && map.size === 0) {
+      // A quick touch that didn't move is a tap, on the stick's side too (tapping the bar on the right of the screen).
+      if (event.type === 'pointerup' && gesture.moved < TAP_SLOP && performance.now() - gesture.startAt < TAP_MS && map.size === 0) {
         const rect = element.getBoundingClientRect();
         pushTap(((event.clientX - rect.left) / rect.width) * 2 - 1, -((event.clientY - rect.top) / rect.height) * 2 + 1);
       }
@@ -174,6 +182,9 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
       controls.lastLookAt = performance.now();
     };
     const onContext = (event: Event): void => event.preventDefault();
+    const onLeave = (): void => {
+      controls.hover = null;
+    };
 
     element.addEventListener('pointerdown', onDown);
     element.addEventListener('pointermove', onMove);
@@ -181,7 +192,9 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
     element.addEventListener('pointercancel', onUp);
     element.addEventListener('wheel', onWheel, { passive: false });
     element.addEventListener('contextmenu', onContext);
+    element.addEventListener('pointerleave', onLeave);
     return () => {
+      element.removeEventListener('pointerleave', onLeave);
       element.removeEventListener('pointerdown', onDown);
       element.removeEventListener('pointermove', onMove);
       element.removeEventListener('pointerup', onUp);
