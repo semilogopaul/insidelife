@@ -5,6 +5,8 @@ export interface AppConfig {
   readonly env: 'development' | 'test' | 'production';
   readonly port: number;
   readonly corsOrigins: readonly string[];
+  /** Reverse proxies in front of the API (Express `trust proxy`). */
+  readonly trustProxyHops: number;
   readonly logLevel: string;
   readonly database: {
     readonly url: string;
@@ -59,6 +61,7 @@ export const configuration = (): AppConfig => {
       .split(',')
       .map((origin) => origin.trim())
       .filter(Boolean),
+    trustProxyHops: Number(env.TRUST_PROXY_HOPS ?? 1),
     logLevel: env.LOG_LEVEL ?? 'info',
     database: {
       url: env.DATABASE_URL ?? '',

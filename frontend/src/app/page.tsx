@@ -67,6 +67,17 @@ export default function LandingPage() {
           </span>
         </div>
         <p className="mt-3">Game money can’t be cashed out. Top-ups are processed securely by Paystack.</p>
+        <nav aria-label="Legal" className="mt-3 flex flex-wrap gap-4">
+          <Link href="/terms" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
+            Terms
+          </Link>
+          <Link href="/privacy" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
+            Privacy
+          </Link>
+          <Link href="/refunds" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
+            Refunds
+          </Link>
+        </nav>
       </footer>
     </main>
   );

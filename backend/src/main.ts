@@ -15,7 +15,8 @@ async function bootstrap(): Promise<void> {
   const config = app.get<ConfigService<AppConfig, true>>(ConfigService);
   app.useLogger(app.get(Logger));
 
-  app.set('trust proxy', 1);
+  // Proxies in front of the API (nginx = 1; an edge such as Caddy in front of nginx = 2), so rate limits see real IPs.
+  app.set('trust proxy', config.get('trustProxyHops', { infer: true }));
   app.disable('x-powered-by');
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
   app.use(cookieParser());

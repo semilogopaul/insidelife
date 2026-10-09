@@ -5,7 +5,9 @@ import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
-import { RedisModule } from './common/redis/redis.module.js';
+import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage.js';
+import { REDIS, RedisModule } from './common/redis/redis.module.js';
+import type { Redis } from 'ioredis';
 import { resolveTraceId, TRACE_HEADER } from './common/utils/trace.js';
 import { configuration, type AppConfig } from './config/configuration.js';
 import { validationSchema } from './config/validation.schema.js';
@@ -53,7 +55,11 @@ import { DOMAIN_MODULES } from './modules/domain-modules.js';
         };
       },
     }),
-    ThrottlerModule.forRoot([{ name: 'default', ttl: 60_000, limit: 240 }]),
+    // Counters live in Redis so the limits hold across every API node.
+    ThrottlerModule.forRootAsync({
+      inject: [REDIS],
+      useFactory: (redis: Redis) => ({ throttlers: [{ name: 'default', ttl: 60_000, limit: 240 }], storage: new RedisThrottlerStorage(redis) }),
+    }),
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<AppConfig, true>) => ({

@@ -1,0 +1,177 @@
+# Inside Life — the live site (insidelife.online) on one server.
+#
+#   cp .env.production.example .env.production   # fill in every secret (see docs/DEPLOY.md)
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#
+# Only the edge (Caddy, ports 80/443) is reachable from the internet. Postgres, Redis and object storage have no
+# published ports; the API and web app sit behind the nginx gateway. Database dumps land in ./backups every night.
+name: insidelife-prod
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  DEPLOYMENT: public
+  PORT: 4000
+  LOG_LEVEL: info
+  CORS_ORIGINS: https://insidelife.online,https://www.insidelife.online
+  TRUST_PROXY_HOPS: 2
+  DATABASE_URL: postgres://insidelife:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/insidelife
+  DATABASE_POOL_SIZE: 30
+  DATABASE_RUN_MIGRATIONS: "true"
+  REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
+  JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET}
+  COOKIE_SECURE: "true"
+  GAME_EPOCH: ${GAME_EPOCH:?set GAME_EPOCH}
+  GAME_TIME_SCALE: ${GAME_TIME_SCALE:-120}
+  WORLD_SEED: ${WORLD_SEED:-eko-o-ni-baje}
+  MARKET_SEED: ${MARKET_SEED:?set MARKET_SEED}
+  PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:?set PAYSTACK_SECRET_KEY}
+  PAYSTACK_CALLBACK_URL: https://insidelife.online/payments/callback
+  TOPUP_DAILY_LIMIT_NGN: ${TOPUP_DAILY_LIMIT_NGN:-20000}
+  ALLOW_PAYMENT_SANDBOX: "false"
+  S3_ENDPOINT: http://storage:8333
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY}
+  S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY}
+  S3_BUCKET: insidelife-media
+  S3_PRIVATE_BUCKET: insidelife-private
+  S3_PUBLIC_BASE_URL: /media
+  ADMIN_EMAILS: ${ADMIN_EMAILS:?set ADMIN_EMAILS}
+  PHONE_APP_AD_SLOTS: ${PHONE_APP_AD_SLOTS:-10}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: insidelife
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: insidelife
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=512MB"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U insidelife -d insidelife"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    # BullMQ needs noeviction; AOF keeps queues across restarts; a password even on the private network.
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD}"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD}
+
+  # S3-compatible storage (SeaweedFS). Credentials come from the env file, written into its config at start.
+  storage:
+    image: chrislusf/seaweedfs:4.48
+    restart: always
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?set S3_SECRET_KEY}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mkdir -p /etc/seaweedfs &&
+        printf '{"identities":[{"name":"anonymous","actions":["Read:insidelife-media"]},{"name":"insidelife-api","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","List","Tagging","Write"]}]}' "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /etc/seaweedfs/s3.json &&
+        exec weed server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3.json -master.volumeSizeLimitMB=1024 -volume.max=0
+    volumes:
+      - storagedata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9333/cluster/status >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    environment: *backend-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      storage:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    restart: always
+    environment:
+      BACKEND_INTERNAL_URL: http://backend:4000
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  gateway:
+    image: nginx:1.27-alpine
+    restart: always
+    volumes:
+      - ./infra/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+  # The only service on the internet: HTTPS with free automatic certificates.
+  edge:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - gateway
+
+  # Nightly compressed database dumps into ./backups (kept 14 days). Copy them off the server too (docs/DEPLOY.md).
+  backup:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        while true; do
+        pg_dump -h postgres -U insidelife -Fc insidelife > /backups/insidelife-$$(date +%Y%m%d-%H%M).dump.partial &&
+        mv /backups/insidelife-*.dump.partial "/backups/insidelife-$$(date +%Y%m%d-%H%M).dump" ;
+        find /backups -name 'insidelife-*.dump' -mtime +14 -delete ;
+        sleep 86400 ;
+        done
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  redisdata:
+  storagedata:
+  caddydata:
+  caddyconfig:

@@ -1,0 +1,20 @@
+# Edge for the live site: free automatic HTTPS (Let's Encrypt) in front of the nginx gateway.
+# Point the DNS A/AAAA records for insidelife.online and www.insidelife.online at this server first.
+{
+	email {$ACME_EMAIL}
+}
+
+insidelife.online {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	reverse_proxy gateway:80
+}
+
+www.insidelife.online {
+	redir https://insidelife.online{uri} permanent
+}
