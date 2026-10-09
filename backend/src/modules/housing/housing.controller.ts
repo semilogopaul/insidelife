@@ -1,8 +1,16 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import type { HousingActionResultDto, HousingOverviewDto, LandOfferDto, RentalListingDto } from '@insidelife/shared';
+import type {
+  BuyHouseResultDto,
+  HouseListingDto,
+  HousingActionResultDto,
+  HousingOverviewDto,
+  LandOfferDto,
+  RentalListingDto,
+} from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
+import { BuyHouseDto, HouseListingsQueryDto } from './dto/houses.dto.js';
 import { BuyLandDto, LandQueryDto, StartConstructionDto, TenancyDto } from './dto/property.dto.js';
 import { ListingsQueryDto, MoveHomeDto, SignLeaseDto } from './dto/rentals.dto.js';
 import { HousingService } from './housing.service.js';
@@ -76,5 +84,17 @@ export class HousingController {
   @Delete('properties/:id/sale')
   cancelSale(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<HousingActionResultDto> {
     return this.session.run({ userId: user.userId }, (ctx) => this.housing.cancelSale(ctx, id), { touch: true });
+  }
+
+  // ----- Houses for sale (ready-built) ------------------------------------------------------------------------------
+
+  @Get('houses')
+  houses(@CurrentUser() user: AuthUser, @Query() query: HouseListingsQueryDto): Promise<HouseListingDto[]> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.housing.houseListings(ctx, query.districtId));
+  }
+
+  @Post('houses')
+  buyHouse(@CurrentUser() user: AuthUser, @Body() body: BuyHouseDto): Promise<BuyHouseResultDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.housing.buyHouse(ctx, body.listingId), { touch: true });
   }
 }

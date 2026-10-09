@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { In } from 'typeorm';
+import { In, MoreThanOrEqual } from 'typeorm';
 import { BACKGROUNDS } from '@insidelife/shared';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
@@ -128,6 +128,11 @@ export class HousingStore {
       if (building.propertyId === propertyId && (!latest || building.startedAt >= latest.startedAt)) latest = building;
     }
     return latest;
+  }
+
+  /** Every property the character acquired at or after `since`, whatever happened to it since (sold and lost included). */
+  async acquiredSince(ctx: SimulationContext, since: number): Promise<PropertyEntity[]> {
+    return ctx.manager.find(PropertyEntity, { where: { characterId: ctx.character.id, acquiredAt: MoreThanOrEqual(since) } });
   }
 
   saleOf(portfolio: Portfolio, propertyId: string): PropertySaleEntity | null {

@@ -3,8 +3,12 @@ import { rentQuote, type HousingOverviewDto } from '@insidelife/shared';
 import {
   comfortRows,
   constructionMilestones,
+  filterHouses,
   filterListings,
   homeNextStep,
+  houseAge,
+  houseCondition,
+  houseLines,
   landLines,
   looksSuspicious,
   marketLabel,
@@ -94,6 +98,59 @@ describe('land', () => {
     expect(oddsPerYear(0)).toBe('No known risk');
     expect(oddsPerYear(0.01)).toBe('About 1 in 100 a year');
     expect(oddsPerYear(0.18)).toBe('About 1 in 6 a year');
+  });
+});
+
+describe('houses for sale', () => {
+  it('itemises price, agency, legal and survey and sums to the total', () => {
+    const listing = {
+      price: 40_000_000,
+      costs: { agency: 2_000_000, legal: 1_000_000, survey: 600_000, total: 3_600_000 },
+      total: 43_600_000,
+    };
+    const { lines, total } = houseLines(listing);
+    expect(lines.map((line) => line.label)).toEqual([
+      'House & land',
+      'Agency fee',
+      'Legal fee',
+      'Survey plan',
+    ]);
+    expect(lines.reduce((sum, line) => sum + line.amount, 0)).toBe(total);
+    expect(total).toBe(43_600_000);
+  });
+
+  it('describes condition and age in words', () => {
+    expect(houseCondition(100)).toEqual({ label: 'Brand new', tone: 'good' });
+    expect(houseCondition(92).label).toBe('Excellent');
+    expect(houseCondition(84).label).toBe('Good');
+    expect(houseCondition(71)).toEqual({ label: 'Needs touch-ups', tone: 'warn' });
+    expect(houseAge(0)).toBe('Never lived in');
+    expect(houseAge(1)).toBe('1 year old');
+    expect(houseAge(9)).toBe('9 years old');
+  });
+
+  it('filters by district, kind and budget, cheapest all-in first', () => {
+    const house = (
+      id: string,
+      districtId: 'ikorodu' | 'lekki',
+      blueprintId: 'bungalow' | 'duplex',
+      total: number,
+      affordable: boolean,
+    ) => ({ id, districtId, blueprintId, total, affordable });
+    const all = [
+      house('a', 'lekki', 'duplex', 800_000_000, false),
+      house('b', 'ikorodu', 'bungalow', 40_000_000, true),
+      house('c', 'ikorodu', 'duplex', 70_000_000, false),
+    ];
+    expect(
+      filterHouses(all, { district: 'all', blueprint: 'all', affordableOnly: false }).map((h) => h.id),
+    ).toEqual(['b', 'c', 'a']);
+    expect(
+      filterHouses(all, { district: 'all', blueprint: 'all', affordableOnly: true }).map((h) => h.id),
+    ).toEqual(['b']);
+    expect(
+      filterHouses(all, { district: 'ikorodu', blueprint: 'duplex', affordableOnly: false }).map((h) => h.id),
+    ).toEqual(['c']);
   });
 });
 

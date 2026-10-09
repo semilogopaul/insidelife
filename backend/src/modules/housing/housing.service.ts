@@ -10,9 +10,11 @@ import {
   homePrestige,
   portfolioPrestige,
   type BlueprintId,
+  type BuyHouseResultDto,
   type BuyLandRequest,
   type ConstructionPaymentPlan,
   type DistrictId,
+  type HouseListingDto,
   type HousingActionResultDto,
   type HousingOverviewDto,
   type LandOfferDto,
@@ -26,6 +28,7 @@ import { ComfortService } from './comfort.service.js';
 import { ConstructionService } from './construction.service.js';
 import { ResidenceEntity } from './entities/residence.entity.js';
 import { HomeService } from './home.service.js';
+import { HousePurchasesService } from './house-purchases.service.js';
 import { toConstructionDto, toHomeDto, toLeaseDto, toPropertyDto } from './housing.mapper.js';
 import { propertyValue } from './housing.rules.js';
 import { HousingStore } from './housing.store.js';
@@ -55,6 +58,7 @@ export class HousingService implements HouseholdPort {
     private readonly construction: ConstructionService,
     private readonly lettings: LettingsService,
     private readonly sales: PropertySalesService,
+    private readonly houses: HousePurchasesService,
   ) {}
 
   // ----- HouseholdPort ----------------------------------------------------------------------------------------------
@@ -291,6 +295,25 @@ export class HousingService implements HouseholdPort {
   async cancelSale(ctx: SimulationContext, propertyId: string): Promise<HousingActionResultDto> {
     const property = await this.sales.cancel(ctx, propertyId);
     return this.result(ctx, { outcome: 'sale-cancelled', title: 'Sale cancelled', message: `${property.label} is off the market.`, tone: 'neutral' });
+  }
+
+  // ----- Houses for sale (ready-built) ------------------------------------------------------------------------------
+
+  houseListings(ctx: SimulationContext, districtId?: DistrictId): Promise<HouseListingDto[]> {
+    return this.houses.listings(ctx, districtId);
+  }
+
+  async buyHouse(ctx: SimulationContext, listingId: string): Promise<BuyHouseResultDto> {
+    const { property, building } = await this.houses.buy(ctx, listingId);
+    const title = LAND_TITLES[property.title];
+    const warning = title.disputePerYear >= 0.08 ? ' Weak papers attract omonile — consider perfecting the title.' : '';
+    const result = await this.result(ctx, {
+      outcome: 'house-purchased',
+      title: 'The keys are yours!',
+      message: `The ${BLUEPRINTS[building.blueprintId].label.toLowerCase()} at ${property.label}, ${DISTRICTS[property.districtId].name} (${title.shortLabel}) is yours for ${formatNaira(property.costBasis)} all-in. Move in today, or let it out and collect rent.${warning}`,
+      tone: 'good',
+    });
+    return { ...result, propertyId: property.id };
   }
 
   private async result(ctx: SimulationContext, copy: ActionCopy): Promise<HousingActionResultDto> {

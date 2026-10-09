@@ -10,6 +10,7 @@ import type { BackgroundId } from './life.js';
 import { rngFor } from '../random/rng.js';
 import { rentUpfront } from '../rules/finance.js';
 import { DAYS_PER_WEEK, DAYS_PER_YEAR, MINUTES_PER_DAY, type GameMinute } from '../time/calendar.js';
+import { economyOn } from '../world/world.js';
 
 // ---------------------------------------------------------------------------------------------------------------
 // Housing types (rentals)
@@ -260,6 +261,11 @@ export function weekIndexOf(t: GameMinute): number {
 /** Game minute at which a listing week ends. */
 export function weekEndsAt(weekIndex: number): GameMinute {
   return (weekIndex + 1) * DAYS_PER_WEEK * MINUTES_PER_DAY;
+}
+
+/** Game minute at which a listing week starts. */
+export function weekStartsAt(weekIndex: number): GameMinute {
+  return weekIndex * DAYS_PER_WEEK * MINUTES_PER_DAY;
 }
 
 export function listingId(districtId: DistrictId, typeId: HousingTypeId, weekIndex: number, n: number): string {
@@ -623,6 +629,210 @@ export const OVERRUN_RANGE = { min: 0.04, max: 0.12 } as const;
 export function annualRentRoll(blueprintId: BlueprintId, districtId: DistrictId): number {
   const blueprint = BLUEPRINTS[blueprintId];
   return blueprint.units * marketRent(districtId, blueprint.unitType);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Houses for sale (ready-built; deterministic per district × week)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** A finished building is valued at what it cost to build plus this premium (construction uses the same rule). */
+export const BUILDING_COMPLETION_PREMIUM = 0.1;
+/** Finished houses on the market per district per week. */
+export const HOUSE_LISTINGS_PER_WEEK = 3;
+/** What sellers and developers add on top of the valuation for a house you can move into today. */
+export const HOUSE_SELLER_PREMIUM = { min: 0.15, max: 0.35 } as const;
+/** Condition (0-100) of houses on the market: nobody lists a ruin, few are brand new. */
+export const HOUSE_CONDITION = { min: 70, max: 100 } as const;
+/** At or above this condition the house is a new build nobody has lived in. */
+export const NEW_BUILD_CONDITION = 97;
+
+/** Which blueprints come up for sale, by district prestige: mansions on the prime Island, bungalows and blocks of flats on the mainland. */
+export function houseBlueprintWeights(districtId: DistrictId): Readonly<Record<BlueprintId, number>> {
+  const prestige = DISTRICTS[districtId].prestige;
+  if (prestige >= 85) return { bungalow: 0, duplex: 3, 'block-of-flats': 1, mansion: 6 };
+  if (prestige >= 70) return { bungalow: 0, duplex: 5, 'block-of-flats': 2, mansion: 3 };
+  if (prestige >= 40) return { bungalow: 4, duplex: 4, 'block-of-flats': 3, mansion: 0 };
+  return { bungalow: 6, duplex: 1, 'block-of-flats': 3, mansion: 0 };
+}
+
+/** Finished houses mostly come with good papers; dodgy titles only where the land market sells them. */
+const HOUSE_TITLE_WEIGHTS: Readonly<Record<LandTitleId, number>> = { 'c-of-o': 5, 'governors-consent': 4, excision: 2, survey: 1 };
+
+/** Plots a blueprint needs (its minimum size in 600 sqm plots). */
+export function minPlotsFor(blueprintId: BlueprintId): number {
+  return Math.ceil(BLUEPRINTS[blueprintId].minSqm / PLOT_SQM);
+}
+
+/** What a contractor would charge to build a blueprint in a listing week (world price index on its first day). */
+export function blueprintBuildCost(seed: string, blueprintId: BlueprintId, weekIndex: number): number {
+  const priceIndex = economyOn(seed, weekIndex * DAYS_PER_WEEK).priceIndex;
+  return roundTo(BLUEPRINTS[blueprintId].baseCost * priceIndex, 10_000);
+}
+
+export interface HouseQuoteInput {
+  readonly districtId: DistrictId;
+  readonly blueprintId: BlueprintId;
+  readonly title: LandTitleId;
+  readonly plots: number;
+  /** 0-100. */
+  readonly condition: number;
+  /** Seller's premium over the valuation (0.25 = 25%). */
+  readonly premium: number;
+  readonly weekIndex: number;
+}
+
+export interface HouseQuote {
+  /** The land under the house, priced exactly like plots on the land market this week. */
+  readonly land: LandQuote;
+  /** What a contractor would charge to build the same house this week. */
+  readonly buildCost: number;
+  /** The structure in perfect condition: build cost + completion premium (what a finished construction is worth). */
+  readonly structureValue: number;
+  /** Land + structure × condition: what the property is worth on the books the day you buy it. */
+  readonly valuation: number;
+  readonly premium: number;
+  /** Valuation × (1 + premium), rounded to ₦100k. */
+  readonly price: number;
+  /** The price split between land and building in proportion to their value (sums to `price`). */
+  readonly landShare: number;
+  readonly buildingShare: number;
+  /** Agency 5% + legal 2.5% + survey 1.5%, exactly as for land. */
+  readonly costs: LandCosts;
+  readonly total: number;
+}
+
+/**
+ * The asking price of a ready-built house. It is the property's valuation by the same rules that value land and
+ * finished buildings — land at this week's land price for its title and plots, plus the structure (build cost at
+ * today's prices + the completion premium) discounted by its condition — times the seller's premium:
+ *
+ *   price = (landPrice + buildCost × (1 + completion premium) × condition / 100) × (1 + premium)
+ *
+ * Null where that land isn't sold (district or title) or the plots are too small for the blueprint.
+ */
+export function houseQuote(seed: string, input: HouseQuoteInput): HouseQuote | null {
+  if (input.plots * PLOT_SQM < BLUEPRINTS[input.blueprintId].minSqm) return null;
+  const land = landQuote(seed, input.districtId, input.title, input.plots, input.weekIndex);
+  if (!land) return null;
+  const condition = Math.max(0, Math.min(100, input.condition));
+  const buildCost = blueprintBuildCost(seed, input.blueprintId, input.weekIndex);
+  const structureValue = Math.round(buildCost * (1 + BUILDING_COMPLETION_PREMIUM));
+  const valuation = land.price + Math.round((structureValue * condition) / 100);
+  const price = roundTo(valuation * (1 + input.premium), 100_000);
+  const landShare = Math.round((price * land.price) / valuation);
+  const costs = landPurchaseCosts(price);
+  return {
+    land,
+    buildCost,
+    structureValue,
+    valuation,
+    premium: input.premium,
+    price,
+    landShare,
+    buildingShare: price - landShare,
+    costs,
+    total: price + costs.total,
+  };
+}
+
+export interface HouseListing {
+  /** Deterministic: `house.<districtId>.<weekIndex>.<n>`. */
+  readonly id: string;
+  readonly districtId: DistrictId;
+  readonly weekIndex: number;
+  readonly blueprintId: BlueprintId;
+  /** Street address — also the property's name once bought: "14 Admiralty Way". */
+  readonly label: string;
+  readonly street: string;
+  readonly title: LandTitleId;
+  readonly plots: number;
+  /** 0-100. */
+  readonly condition: number;
+  readonly ageYears: number;
+  /** Why it's on the market. */
+  readonly story: string;
+  readonly features: readonly string[];
+  readonly quote: HouseQuote;
+}
+
+const NEW_BUILD_STORIES = [
+  'Developer’s last unit — never occupied',
+  'Newly completed, keys never used',
+  'Off-plan buyer pulled out — brand new',
+];
+const RESALE_STORIES = [
+  'Owner is relocating abroad (japa)',
+  'Family selling after the old man passed',
+  'Owner upgrading to a bigger place',
+  'Landlord downsizing — children have left',
+  'Distress sale: owner needs cash quick',
+  'Returnee moving back to Abuja',
+  'Bank sale after a business loan went bad',
+];
+
+export function houseListingId(districtId: DistrictId, weekIndex: number, n: number): string {
+  return `house.${districtId}.${weekIndex}.${n}`;
+}
+
+export function parseHouseListingId(id: string): { districtId: DistrictId; weekIndex: number; n: number } | null {
+  const [prefix, districtId, week, n, ...rest] = id.split('.');
+  if (prefix !== 'house' || rest.length > 0 || !districtId || week === undefined || n === undefined) return null;
+  if (!(DISTRICT_IDS as readonly string[]).includes(districtId)) return null;
+  if (!/^\d+$/.test(week) || !/^\d+$/.test(n)) return null;
+  return { districtId: districtId as DistrictId, weekIndex: Number(week), n: Number(n) };
+}
+
+/** This week's finished houses for sale in one district (only where land is sold). Pure: same inputs, same houses. */
+export function generateHouseListings(seed: string, districtId: DistrictId, weekIndex: number): HouseListing[] {
+  if (DISTRICTS[districtId].landPricePerPlot === null) return [];
+  const weights = houseBlueprintWeights(districtId);
+  const blueprints = BLUEPRINT_IDS.filter((id) => weights[id] > 0).map((id) => ({ value: id, weight: weights[id] }));
+  const titles = availableTitles(districtId).map((id) => ({ value: id, weight: HOUSE_TITLE_WEIGHTS[id] }));
+  const streets = LAGOS_STREETS[districtId];
+  const labels = new Set<string>();
+  const listings: HouseListing[] = [];
+  for (let n = 1; n <= HOUSE_LISTINGS_PER_WEEK; n++) {
+    const rng = rngFor(seed, 'house-listing', districtId, weekIndex, n);
+    const blueprintId = rng.weighted(blueprints);
+    const title = rng.weighted(titles);
+    const plots = Math.min(MAX_PLOTS_PER_PURCHASE, minPlotsFor(blueprintId) + (rng.chance(0.25) ? 1 : 0));
+    const condition = rng.int(HOUSE_CONDITION.min, HOUSE_CONDITION.max);
+    const isNew = condition >= NEW_BUILD_CONDITION;
+    const ageYears = isNew ? 0 : Math.max(1, Math.min(15, Math.round((100 - condition) / 2.5) + rng.int(-1, 2)));
+    const premium = Math.round(rng.float(HOUSE_SELLER_PREMIUM.min, HOUSE_SELLER_PREMIUM.max) * 100) / 100;
+    const street = rng.pick(streets);
+    let houseNumber = rng.int(1, 60);
+    while (labels.has(`${houseNumber} ${street}`)) houseNumber += 1;
+    const label = `${houseNumber} ${street}`;
+    labels.add(label);
+    const story = rng.pick(isNew ? NEW_BUILD_STORIES : RESALE_STORIES);
+    const features = rng.shuffle(featurePool(BLUEPRINTS[blueprintId].unitType)).slice(0, rng.int(2, 4));
+    const quote = houseQuote(seed, { districtId, blueprintId, title, plots, condition, premium, weekIndex });
+    if (!quote) continue;
+    listings.push({
+      id: houseListingId(districtId, weekIndex, n),
+      districtId,
+      weekIndex,
+      blueprintId,
+      label,
+      street,
+      title,
+      plots,
+      condition,
+      ageYears,
+      story,
+      features,
+      quote,
+    });
+  }
+  return listings;
+}
+
+/** Re-derive a house listing from its id (null if malformed or it doesn't exist). */
+export function findHouseListing(seed: string, id: string): HouseListing | null {
+  const parsed = parseHouseListingId(id);
+  if (!parsed) return null;
+  return generateHouseListings(seed, parsed.districtId, parsed.weekIndex).find((listing) => listing.id === id) ?? null;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -1,11 +1,14 @@
 import {
   BLUEPRINTS,
+  BUILDING_COMPLETION_PREMIUM,
   LAND_TITLES,
   LAND_USE_CHARGE_RATE,
   MAX_RENT_INCREASE,
   MINUTES_PER_DAY,
   MINUTES_PER_YEAR,
   OVERRUN_RANGE,
+  weekIndexOf,
+  type HouseListing,
   type LandTitleId,
   type Rng,
 } from '@insidelife/shared';
@@ -37,8 +40,8 @@ export const TENANT_SEARCH_DAYS = { min: 7, max: 45 } as const;
 export const VACANCY_DAYS = { min: 15, max: 90 } as const;
 /** An unfinished building is worth this share of what has been spent on it. */
 export const UNFINISHED_BUILDING_VALUE = 0.6;
-/** A newly completed building is valued at cost plus this premium. */
-export const COMPLETION_PREMIUM = 0.1;
+/** A newly completed building is valued at cost plus this premium (shared, so house listings price it the same way). */
+export const COMPLETION_PREMIUM = BUILDING_COMPLETION_PREMIUM;
 /** Structures lose this much value a year to age. */
 export const BUILDING_DEPRECIATION = 0.015;
 /** Months of value history kept for the chart. */
@@ -172,4 +175,17 @@ const TENANT_NAMES = [
 
 export function tenantName(rng: Rng): string {
   return rng.pick(TENANT_NAMES);
+}
+
+/**
+ * A bought house becomes a property named after its address, acquired in the listing's week — so whether this
+ * character already bought a listing is read off their properties (sold or lost ones included), no extra table.
+ */
+export function isHouseListingBought(
+  listing: Pick<HouseListing, 'districtId' | 'label' | 'weekIndex'>,
+  properties: readonly Pick<PropertyEntity, 'districtId' | 'label' | 'acquiredAt'>[],
+): boolean {
+  return properties.some(
+    (property) => property.districtId === listing.districtId && property.label === listing.label && weekIndexOf(property.acquiredAt) === listing.weekIndex,
+  );
 }
