@@ -1,4 +1,5 @@
 import {
+  findItem,
   NEW_BUILD_CONDITION,
   SCAM_PRICE_THRESHOLD,
   type BlueprintId,
@@ -202,7 +203,23 @@ export type HomeNextStep =
   | { readonly kind: 'renewal' }
   | { readonly kind: 'power' }
   | { readonly kind: 'move-out' }
+  | { readonly kind: 'furnish' }
   | null;
+
+/** What furnishes a room: furniture, appliances and TV & gaming (not a mattress on the floor, a phone or a lantern). */
+const FURNISHING = new Set(['furniture', 'appliances', 'electronics']);
+
+/**
+ * A home you rent or own starts empty (only fixtures). Bare until you own something that furnishes it beyond a bed:
+ * a chair, a fan, a cooker, a TV…
+ */
+export function isBareHome(ownership: HousingOverviewDto['home']['ownership'], homeItems: readonly string[]): boolean {
+  if (ownership !== 'rented' && ownership !== 'owned') return false;
+  return !homeItems.some((id) => {
+    const item = findItem(id);
+    return item !== undefined && FURNISHING.has(item.category) && item.group !== 'bed';
+  });
+}
 
 const RENEWAL_WINDOW_MINUTES = 60 * 24 * 60;
 
@@ -210,6 +227,8 @@ const RENEWAL_WINDOW_MINUTES = 60 * 24 * 60;
 export function homeNextStep(
   overview: Pick<HousingOverviewDto, 'home' | 'lease' | 'power'>,
   now: number,
+  /** Belongings at home (snapshot `summary.homeItems`): an empty place gets a nudge to furnish it. */
+  homeItems?: readonly string[],
 ): HomeNextStep {
   const lease = overview.lease;
   if (lease?.status === 'grace') return { kind: 'rent-overdue' };
@@ -217,6 +236,7 @@ export function homeNextStep(
   if (lease && lease.status === 'active' && !lease.nonRenewing && lease.endAt - now <= RENEWAL_WINDOW_MINUTES)
     return { kind: 'renewal' };
   if (overview.home.ownership === 'family') return { kind: 'move-out' };
+  if (homeItems && isBareHome(overview.home.ownership, homeItems)) return { kind: 'furnish' };
   if (overview.power.backup === 'none' && overview.power.comfortPenalty >= 4) return { kind: 'power' };
   return null;
 }

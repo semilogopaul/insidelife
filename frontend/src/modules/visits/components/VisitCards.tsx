@@ -1,8 +1,8 @@
 'use client';
 
 import { motion, useReducedMotion } from 'motion/react';
-import type { ReactNode } from 'react';
-import { DoorOpen, House, Navigation, X } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
+import { DoorOpen, HandHeart, House, Navigation, UtensilsCrossed, X } from 'lucide-react';
 import type { VisitDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, toast } from '@/common/components';
@@ -10,20 +10,31 @@ import { gameEvents } from '@/common/game/game-events';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useVisitActions, useVisits } from '@/common/visits';
+import { useThankHost } from '../hooks/use-hosting';
+import { HostSheet } from './HostSheet';
+
+/** Treats a guest hasn't said thanks for yet. */
+const unthanked = (visit: VisitDto) => visit.treats.filter((treat) => !treat.thanked);
 
 /**
- * Home visits on the HUD: an invite to answer, the place you're expected (with GPS to the door), or who's coming to
- * yours (with "see them out"). At most two cards; nothing when there's nothing to do.
+ * Home visits on the HUD: an invite to answer, the place you're expected (with GPS to the door), who's coming to
+ * yours (with "see them out" and, once they're in, "Host" to treat them), or a treat to say thanks for. At most two
+ * cards; nothing when there's nothing to do.
  */
 export function VisitCards() {
   const { data: snapshot } = useSnapshot();
   const { data } = useVisits(snapshot !== undefined);
+  const [hosting, setHosting] = useState(false);
   if (!snapshot || !data) return null;
   const here = snapshot.character.locationId;
   const cards: VisitDto[] = [
     ...data.incoming.filter((visit) => visit.status === 'invited'),
     // Expected somewhere and not there yet.
     ...data.incoming.filter((visit) => visit.status === 'accepted' && here !== visit.home.locationId),
+    // Inside, and the host treated you.
+    ...data.incoming.filter(
+      (visit) => visit.status === 'accepted' && here === visit.home.locationId && unthanked(visit).length > 0,
+    ),
     // Guests coming, or in your house.
     ...data.outgoing.filter((visit) => visit.status === 'accepted'),
   ];
@@ -31,15 +42,17 @@ export function VisitCards() {
   return (
     <>
       {cards.slice(0, 2).map((visit) => (
-        <VisitCard key={visit.id} visit={visit} />
+        <VisitCard key={visit.id} visit={visit} onHost={() => setHosting(true)} />
       ))}
+      <HostSheet open={hosting} onClose={() => setHosting(false)} />
     </>
   );
 }
 
-function VisitCard({ visit }: { readonly visit: VisitDto }) {
+function VisitCard({ visit, onHost }: { readonly visit: VisitDto; readonly onHost: () => void }) {
   const reduceMotion = useReducedMotion();
   const actions = useVisitActions();
+  const thank = useThankHost();
   const setDestination = useNavigation((state) => state.setDestination);
   const busy = actions.accept.isPending || actions.decline.isPending || actions.end.isPending;
   const fail = (title: string) => (error: unknown) => {
@@ -91,6 +104,33 @@ function VisitCard({ visit }: { readonly visit: VisitDto }) {
         </Button>
       </>
     );
+  } else if (visit.role === 'guest' && unthanked(visit).length > 0) {
+    const treats = unthanked(visit);
+    title = `${visit.host.firstName} treated you ${treats[0]?.emoji ?? ''}`.trim();
+    body = treats.map((treat) => treat.name).join(', ') + '. A thank-you is free.';
+    buttons = (
+      <Button
+        size="sm"
+        variant="ink"
+        icon={<HandHeart size={15} aria-hidden />}
+        disabled={thank.isPending}
+        onClick={() =>
+          thank.mutate(visit.id, {
+            onSuccess: () => {
+              gameEvents.emit('sfx', { id: 'ui-success' });
+              toast({
+                title: `You thanked ${visit.host.firstName}`,
+                body: 'Good manners cost nothing.',
+                tone: 'good',
+              });
+            },
+            onError: fail('Couldn’t say thanks'),
+          })
+        }
+      >
+        Say thanks
+      </Button>
+    );
   } else if (visit.role === 'guest') {
     title = `${visit.host.firstName} is expecting you`;
     body = `${visit.home.label}. Walk up to their gate to go in.`;
@@ -113,28 +153,38 @@ function VisitCard({ visit }: { readonly visit: VisitDto }) {
     title = visit.guestInside
       ? `${visit.guest.firstName} is at your place`
       : `${visit.guest.firstName} is coming over`;
+    const thanks = visit.treats.filter((treat) => treat.thanked).length;
     body = visit.guestInside
-      ? 'Hang out together — you’ll see them inside.'
+      ? thanks > 0
+        ? `${visit.guest.firstName} said thanks for the ${visit.treats.find((treat) => treat.thanked)?.name.toLowerCase() ?? 'treat'}.`
+        : 'Hang out together — or treat them to something.'
       : `@${visit.guest.handle} accepted your invite.`;
     buttons = (
-      <Button
-        size="sm"
-        variant="paper"
-        icon={visit.guestInside ? <DoorOpen size={15} aria-hidden /> : <X size={15} aria-hidden />}
-        disabled={busy}
-        onClick={() =>
-          actions.end.mutate(visit.id, {
-            onSuccess: () =>
-              toast({
-                title: visit.guestInside ? `You saw ${visit.guest.firstName} out` : 'Visit cancelled',
-                tone: 'neutral',
-              }),
-            onError: fail('Couldn’t end the visit'),
-          })
-        }
-      >
-        {visit.guestInside ? 'See them out' : 'Cancel visit'}
-      </Button>
+      <>
+        {visit.guestInside && (
+          <Button size="sm" variant="ink" icon={<UtensilsCrossed size={15} aria-hidden />} onClick={onHost}>
+            Host
+          </Button>
+        )}
+        <Button
+          size="sm"
+          variant="paper"
+          icon={visit.guestInside ? <DoorOpen size={15} aria-hidden /> : <X size={15} aria-hidden />}
+          disabled={busy}
+          onClick={() =>
+            actions.end.mutate(visit.id, {
+              onSuccess: () =>
+                toast({
+                  title: visit.guestInside ? `You saw ${visit.guest.firstName} out` : 'Visit cancelled',
+                  tone: 'neutral',
+                }),
+              onError: fail('Couldn’t end the visit'),
+            })
+          }
+        >
+          {visit.guestInside ? 'See them out' : 'Cancel visit'}
+        </Button>
+      </>
     );
   }
 

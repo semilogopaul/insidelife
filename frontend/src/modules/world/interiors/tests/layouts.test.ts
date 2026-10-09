@@ -13,7 +13,7 @@ import {
 import type { HomeLayout } from '../layouts/types';
 import { pickPlayerSpot } from '../templates/spots';
 import { INTERIOR_TEMPLATE_IDS } from '../templates/resolve';
-import type { HomeSlot, InteriorTemplate } from '../templates/types';
+import { HOME_WIDE_SLOTS, type HomeSlot, type InteriorTemplate } from '../templates/types';
 import { buildRoomPhysics, portalApproach } from '../walk/home-walk-runtime';
 import { approachPoint } from '../walk/nav-grid';
 
@@ -83,11 +83,12 @@ describe('home layouts', () => {
     }
   });
 
-  it('puts every home slot in at most one room, so a purchase shows up once', () => {
+  it('puts every home slot in at most one room (home-wide decor aside), so a purchase shows up once', () => {
     for (const layout of multiRoom) {
       const seen = new Map<HomeSlot, string>();
       for (const room of layout.rooms) {
         for (const slot of slotsOf(room.template)) {
+          if (HOME_WIDE_SLOTS.has(slot)) continue;
           expect(seen.get(slot), `${layout.id}: ${slot} in ${seen.get(slot)} and ${room.id}`).toBeUndefined();
           seen.set(slot, room.id);
         }

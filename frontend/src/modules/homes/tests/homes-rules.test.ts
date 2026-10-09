@@ -9,6 +9,7 @@ import {
   houseAge,
   houseCondition,
   houseLines,
+  isBareHome,
   landLines,
   looksSuspicious,
   marketLabel,
@@ -200,5 +201,23 @@ describe('home next step', () => {
     expect(
       homeNextStep(overview({ home: { ownership: 'rented' } as HousingOverviewDto['home'], lease }), 0),
     ).toEqual({ kind: 'power' });
+  });
+
+  it('nudges furnishing a bare place you rent or own (before power)', () => {
+    const lease = { status: 'active', endAt: 10_000_000, nonRenewing: false } as HousingOverviewDto['lease'];
+    const rented = overview({ home: { ownership: 'rented' } as HousingOverviewDto['home'], lease });
+    expect(homeNextStep(rented, 0, ['bed-foam-mattress', 'phone-tecno-spark'])).toEqual({ kind: 'furnish' });
+    expect(homeNextStep(rented, 0, ['bed-foam-mattress', 'fan-standing'])).toEqual({ kind: 'power' });
+    expect(homeNextStep(overview({ home: { ownership: 'owned' } as HousingOverviewDto['home'] }), 0, [])).toEqual({ kind: 'furnish' });
+    // The family house comes furnished.
+    expect(homeNextStep(overview({}), 0, [])).toEqual({ kind: 'move-out' });
+  });
+
+  it('calls a home bare until something beyond a bed furnishes it', () => {
+    expect(isBareHome('rented', [])).toBe(true);
+    expect(isBareHome('rented', ['bed-spring', 'lantern-rechargeable', 'laptop-hp-uk'])).toBe(true);
+    expect(isBareHome('owned', ['chairs-plastic'])).toBe(false);
+    expect(isBareHome('owned', ['microwave'])).toBe(false);
+    expect(isBareHome('family', [])).toBe(false);
   });
 });

@@ -560,7 +560,7 @@ export function buildProp(kit: PropKit, spec: PropSpec): void {
       for (let i = 0; i < (spec.count ?? 3); i++) {
         const x = rng.float(-0.18, 0.18);
         const z = rng.float(-0.12, 0.12);
-        const color = rng.pick(['#2e7d32', '#6d4c41', '#c9a64a', '#b71c1c']);
+        const color = rng.pick(spec.colors ?? ['#2e7d32', '#6d4c41', '#c9a64a', '#b71c1c']);
         kit.cylinder(0.03, 0.03, 0.17, [x, 0, z], color, 'gloss', [0, 0, 0], 8);
         kit.cylinder(0.012, 0.012, 0.07, [x, 0.17, z], color, 'gloss', [0, 0, 0], 6);
       }
@@ -573,6 +573,21 @@ export function buildProp(kit: PropKit, spec: PropSpec): void {
         kit.cylinder(0.07, 0.08, 0.02, [0.05, 0.025, 0.02], '#2e7d32', 'gloss', [0, 0, 0], 12);
       } else if (spec.food === 'suya') {
         for (let i = 0; i < 5; i++) kit.box([0.18, 0.025, 0.03], [0, 0.04, -0.06 + i * 0.03], '#7a3b1d', 'cloth', [0, i * 0.3, 0], 0.5);
+      } else if (spec.food === 'pizza') {
+        kit.cylinder(0.125, 0.125, 0.018, [0, 0.025, 0], '#e2a54b', 'cloth', [0, 0, 0], 18);
+        kit.cylinder(0.11, 0.11, 0.006, [0, 0.043, 0], '#c62828', 'cloth', [0, 0, 0], 18, false);
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          kit.cylinder(0.018, 0.018, 0.006, [Math.cos(a) * 0.065, 0.048, Math.sin(a) * 0.065], i % 2 ? '#fff3c4' : '#6d1b1b', 'cloth', [0, 0, 0], 8);
+        }
+      } else if (spec.food === 'small-chops') {
+        // Puff-puff, samosa and spring rolls.
+        for (let i = 0; i < 4; i++) kit.sphere(0.028, [-0.06 + (i % 2) * 0.045, 0.045, -0.04 + Math.floor(i / 2) * 0.045], '#c77d2e', 'cloth');
+        for (let i = 0; i < 3; i++) kit.box([0.07, 0.025, 0.025], [0.055, 0.04, -0.05 + i * 0.045], '#d9a441', 'cloth', [0, 0.4, 0], 0.4);
+      } else if (spec.food === 'chicken') {
+        kit.sphere(0.08, [-0.025, 0.04, 0], '#d9531e', 'cloth', [1, 0.45, 1]);
+        kit.sphere(0.04, [0.06, 0.06, 0.02], '#9c5a1c', 'cloth', [1.5, 0.9, 1]);
+        kit.cylinder(0.01, 0.01, 0.06, [0.1, 0.06, 0.04], '#f3e5c8', 'cloth', [0, 0, Math.PI / 2.3], 6);
       } else kit.sphere(0.09, [0, 0.04, 0], '#d9531e', 'cloth', [1, 0.45, 1]);
       return;
     }
