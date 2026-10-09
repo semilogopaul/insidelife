@@ -315,7 +315,7 @@ export class ChatService {
     const counterpartId = dmCounterpart(channel, sender.id);
     if (!counterpartId) throw new ForbiddenActionException('You’re not in that chat');
     const counterpart = await this.directory.findById(counterpartId);
-    if (!counterpart?.alive) throw new ForbiddenActionException('You can’t message this player');
+    if (!counterpart?.alive || counterpart.hiddenAt) throw new ForbiddenActionException('You can’t message this player');
     if (await this.social.isBlocked(sender.id, counterpartId, manager))
       throw new ForbiddenActionException('You can’t message this player');
 

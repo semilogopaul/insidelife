@@ -58,7 +58,7 @@ export class TransfersService {
 
   async send(userId: string, request: TransferRequest): Promise<TransferResultDto> {
     const recipient = await this.directory.findByHandle(request.toHandle);
-    if (!recipient) throw new ResourceNotFoundException('Player');
+    if (!recipient || recipient.hiddenAt) throw new ResourceNotFoundException('Player');
 
     return this.session.run(
       { userId },

@@ -88,6 +88,28 @@ export class RateLimitedException extends DomainException {
   }
 }
 
+/** An admin suspended this account: no sign-in and no play until it's lifted. */
+export class AccountSuspendedException extends DomainException {
+  constructor() {
+    super(
+      'ACCOUNT_SUSPENDED',
+      'This account is suspended. If you think this is a mistake, email hello@insidelife.online',
+      HttpStatus.FORBIDDEN,
+    );
+  }
+}
+
+/** The account was deleted (soft delete). Support can restore it until the restore window ends. */
+export class AccountDeletedException extends DomainException {
+  constructor(restorableUntil: Date | null) {
+    const until =
+      restorableUntil && restorableUntil.getTime() > Date.now()
+        ? ` To get it back, email hello@insidelife.online from this address before ${restorableUntil.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Africa/Lagos' })}.`
+        : '';
+    super('ACCOUNT_DELETED', `This account was deleted.${until}`, HttpStatus.FORBIDDEN);
+  }
+}
+
 export class ExternalServiceException extends DomainException {
   constructor(service: string) {
     super('EXTERNAL_SERVICE_ERROR', `${service} is not responding right now. Try again shortly`, HttpStatus.BAD_GATEWAY);

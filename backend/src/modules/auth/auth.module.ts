@@ -12,6 +12,7 @@ import { AuthService } from './auth.service.js';
 import { EmailVerificationService } from './email-verification.service.js';
 import { RefreshTokenEntity } from './entities/refresh-token.entity.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
+import { SessionRevocationService } from './session-revocation.service.js';
 
 @Module({
   imports: [
@@ -30,7 +31,13 @@ import { JwtAuthGuard } from './jwt-auth.guard.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, EmailVerificationService, JwtAuthGuard, { provide: APP_GUARD, useExisting: JwtAuthGuard }],
-  exports: [JwtAuthGuard],
+  providers: [
+    AuthService,
+    EmailVerificationService,
+    SessionRevocationService,
+    JwtAuthGuard,
+    { provide: APP_GUARD, useExisting: JwtAuthGuard },
+  ],
+  exports: [JwtAuthGuard, AuthService, SessionRevocationService],
 })
 export class AuthModule {}

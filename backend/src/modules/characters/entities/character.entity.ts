@@ -219,6 +219,13 @@ export class CharacterEntity {
   @Column({ type: 'timestamptz', default: () => 'now()' })
   lastActiveAt: Date;
 
+  /**
+   * Set while the owner's account is deleted (soft delete): other players can't find, message, visit, pay or rank
+   * this character. The simulation keeps running like any offline player's, so a restored account picks up normally.
+   */
+  @Column({ type: 'timestamptz', nullable: true })
+  hiddenAt: Date | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

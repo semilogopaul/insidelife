@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { PROGRESSION_SIGNALS_PORT, type ProgressionSignalsPort } from '../../common/ports/progression.port.js';
 import { InjectDataSource } from '@nestjs/typeorm';
-import type { DataSource, EntityManager } from 'typeorm';
+import { IsNull, type DataSource, type EntityManager } from 'typeorm';
 import {
   FRIEND_LIMITS,
   type FriendDto,
@@ -215,7 +215,7 @@ export class FriendsService {
   }
 
   private async findLiving(manager: EntityManager, handle: string): Promise<CharacterEntity> {
-    const target = await manager.findOne(CharacterEntity, { where: { handle: normaliseHandle(handle), alive: true } });
+    const target = await manager.findOne(CharacterEntity, { where: { handle: normaliseHandle(handle), alive: true, hiddenAt: IsNull() } });
     if (!target) throw playerNotFound();
     return target;
   }
@@ -232,7 +232,7 @@ export class FriendsService {
     const rows: Array<{ id: string; location_id: string; location_visibility: ProfileLocationVisibility | null }> = await manager.query(
       `SELECT c.id, c.location_id, p.location_visibility
          FROM characters c LEFT JOIN social_profiles p ON p.character_id = c.id
-        WHERE c.id = ANY($1::uuid[]) AND c.alive`,
+        WHERE c.id = ANY($1::uuid[]) AND c.alive AND c.hidden_at IS NULL`,
       [ids],
     );
     return new Map(

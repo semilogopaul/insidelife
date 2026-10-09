@@ -177,7 +177,7 @@ export class ProfilesService {
       `SELECT ${CARD_COLUMNS}
          FROM characters c
     LEFT JOIN social_profiles p ON p.character_id = c.id
-        WHERE c.alive AND c.id <> $1
+        WHERE c.alive AND c.hidden_at IS NULL AND c.id <> $1
           AND (c.handle LIKE $2 OR (c.first_name || ' ' || c.last_name) ILIKE $3)
           AND NOT EXISTS (
                 SELECT 1 FROM social_blocks b
@@ -192,7 +192,7 @@ export class ProfilesService {
 
   async profile(viewer: CharacterEntity, handle: string): Promise<PlayerProfileDto> {
     const target = await this.directory.findByHandle(handle);
-    if (!target || !target.alive) throw playerNotFound();
+    if (!target || !target.alive || target.hiddenAt) throw playerNotFound();
     const isSelf = target.id === viewer.id;
     const [blockedByYou, blockedYou] = isSelf
       ? [false, false]
@@ -272,7 +272,7 @@ export class ProfilesService {
       `SELECT ${CARD_COLUMNS}, c.gender, c.appearance, c.outfit, c.activity, COUNT(*) OVER () AS total
          FROM characters c
     LEFT JOIN social_profiles p ON p.character_id = c.id
-        WHERE c.alive AND c.location_id = $1 AND c.id <> $2
+        WHERE c.alive AND c.hidden_at IS NULL AND c.location_id = $1 AND c.id <> $2
           AND NOT EXISTS (
                 SELECT 1 FROM social_blocks b
                  WHERE (b.blocker_id = $2 AND b.blocked_id = c.id) OR (b.blocker_id = c.id AND b.blocked_id = $2))

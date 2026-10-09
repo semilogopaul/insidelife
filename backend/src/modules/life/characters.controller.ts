@@ -82,7 +82,7 @@ export class CharactersController {
   @Get(':handle')
   async profile(@Param('handle') handle: string): Promise<PublicCharacterDto> {
     const character = await this.directory.findByHandle(handle);
-    if (!character) throw new ResourceNotFoundException('Player');
+    if (!character || character.hiddenAt) throw new ResourceNotFoundException('Player');
     const online = await this.presence.isOnline(character.id);
     return this.snapshots.publicDto(character, this.world.now(), online, null);
   }

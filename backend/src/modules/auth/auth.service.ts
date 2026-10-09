@@ -15,6 +15,8 @@ import {
 } from '@insidelife/shared';
 import type { AppConfig } from '../../config/configuration.js';
 import {
+  AccountDeletedException,
+  AccountSuspendedException,
   AuthenticationRequiredException,
   ConflictException,
   InvalidCredentialsException,
@@ -76,7 +78,12 @@ export class AuthService {
    */
   async register(email: string, password: string, birthDate: string, userAgent: string | undefined): Promise<RegisteredSession> {
     assertOldEnough(birthDate, Date.now());
-    if (await this.users.findByEmail(email)) {
+    const existing = await this.users.findByEmail(email);
+    if (existing?.deletedAt) {
+      // The address stays reserved while the deleted account can still be restored.
+      throw new ConflictException('EMAIL_TAKEN', 'That email belongs to a recently deleted account. Email hello@insidelife.online to restore it, or use another email');
+    }
+    if (existing) {
       throw new ConflictException('EMAIL_TAKEN', 'An account with that email already exists — sign in instead');
     }
     const user = await this.users.create(email, await argon2.hash(password, ARGON2_OPTIONS), birthDate);
@@ -86,12 +93,30 @@ export class AuthService {
   }
 
   async login(email: string, password: string, userAgent: string | undefined): Promise<IssuedSession> {
+    const user = await this.checkCredentials(email, password);
+    if (!user) throw new InvalidCredentialsException();
+    // Only after the password checks out, so the account's status never leaks to someone guessing emails.
+    assertMaySignIn(user);
+    await this.users.touchLogin(user.id);
+    return this.issueSession(user, randomUUID(), userAgent);
+  }
+
+  /**
+   * The account when the email and password match, else null. Takes the same time whether or not the email exists.
+   * Doesn't look at the account's status (callers decide). Also used by the admin portal's sign-in.
+   */
+  async checkCredentials(email: string, password: string): Promise<UserEntity | null> {
     const user = await this.users.findByEmail(email);
     const hash = user?.passwordHash ?? (await DUMMY_HASH_PROMISE);
     const valid = await argon2.verify(hash, password).catch(() => false);
-    if (!user || !valid) throw new InvalidCredentialsException();
-    await this.users.touchLogin(user.id);
-    return this.issueSession(user, randomUUID(), userAgent);
+    return user && valid ? user : null;
+  }
+
+  /** Check a signed-in player's password again (before deleting the account). */
+  async verifyPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.users.findById(userId);
+    if (!user) return false;
+    return argon2.verify(user.passwordHash, password).catch(() => false);
   }
 
   /**
@@ -111,6 +136,10 @@ export class AuthService {
     if (stored.expiresAt.getTime() <= Date.now()) throw new AuthenticationRequiredException('Your session expired. Please sign in again');
 
     const user = await this.requireUser(stored.userId);
+    if (user.suspendedAt || user.deletedAt) {
+      await this.revokeFamily(stored.familyId);
+      throw new AuthenticationRequiredException(user.deletedAt ? 'This account was deleted' : 'This account is suspended');
+    }
     const issued = await this.issueSession(user, stored.familyId, userAgent);
     const replacement = await this.refreshTokens.findOne({ where: { tokenHash: sha256(issued.refreshToken) } });
     await this.refreshTokens.update({ id: stored.id }, { revokedAt: new Date(), replacedById: replacement?.id ?? null });
@@ -178,7 +207,7 @@ export class AuthService {
   private async accessSession(user: UserEntity): Promise<AuthSessionDto> {
     const auth = this.config.get('auth', { infer: true });
     const role = this.config.get('adminEmails', { infer: true }).includes(user.email) ? 'admin' : user.role;
-    const payload: AccessTokenPayload = { sub: user.id, email: user.email, role, ev: user.emailVerifiedAt !== null };
+    const payload: AccessTokenPayload = { sub: user.id, email: user.email, role, ev: user.emailVerifiedAt !== null, ia: Date.now() };
     return {
       accessToken: await this.jwt.signAsync(payload, { expiresIn: auth.accessTtlSeconds }),
       accessTokenExpiresAt: Date.now() + auth.accessTtlSeconds * 1000,
@@ -217,6 +246,12 @@ export class AuthService {
       hasCharacter: await this.characters.hasLivingCharacter(user.id),
     };
   }
+}
+
+/** Suspended and deleted accounts can't start a session (checked after the password). */
+export function assertMaySignIn(user: Pick<UserEntity, 'suspendedAt' | 'deletedAt' | 'purgeAfter'>): void {
+  if (user.deletedAt) throw new AccountDeletedException(user.purgeAfter);
+  if (user.suspendedAt) throw new AccountSuspendedException();
 }
 
 /** Sign-up age rules (shared with the client): a real date, not in the future, 13 or older. */

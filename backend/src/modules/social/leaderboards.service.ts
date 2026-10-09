@@ -142,7 +142,7 @@ export class LeaderboardsService {
       `SELECT ${CHARACTER_COLUMNS}, ${value} AS value, RANK() OVER (ORDER BY ${value} DESC) AS rank
          FROM characters c
     LEFT JOIN social_profiles p ON p.character_id = c.id
-        WHERE c.alive AND ${qualifies}
+        WHERE c.alive AND c.hidden_at IS NULL AND ${qualifies}
      ORDER BY ${value} DESC, c.id
         LIMIT ${LEADERBOARD_SIZE}`,
     );
@@ -163,7 +163,7 @@ export class LeaderboardsService {
       `SELECT COUNT(*) AS ahead
          FROM characters c
     LEFT JOIN social_profiles p ON p.character_id = c.id
-        WHERE c.alive AND ${qualifies} AND ${value} > $1`,
+        WHERE c.alive AND c.hidden_at IS NULL AND ${qualifies} AND ${value} > $1`,
       [row.value],
     );
     return { rank: Number(ahead[0]?.ahead ?? 0) + 1, row: this.toRow(row) };
@@ -177,7 +177,7 @@ export class LeaderboardsService {
               RANK() OVER (ORDER BY d.value DESC) AS rank
          FROM d
          JOIN characters h ON h.dynasty_id = d.dynasty_id AND h.generation = d.head_generation
-        WHERE d.value > 0
+        WHERE d.value > 0 AND h.hidden_at IS NULL
      ORDER BY d.value DESC, h.id
         LIMIT ${LEADERBOARD_SIZE}`,
     );

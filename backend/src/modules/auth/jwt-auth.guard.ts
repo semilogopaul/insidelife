@@ -4,18 +4,21 @@ import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import type { Request } from 'express';
 import type { AppConfig } from '../../config/configuration.js';
+import { ADMIN_ROUTE } from '../../common/decorators/admin-route.decorator.js';
 import { ALLOW_UNVERIFIED_EMAIL } from '../../common/decorators/allow-unverified-email.decorator.js';
 import { IS_PUBLIC } from '../../common/decorators/public.decorator.js';
 import { AuthenticationRequiredException, EmailUnverifiedException } from '../../common/exceptions/domain.exception.js';
 import type { AccessTokenPayload, AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { UsersService } from '../users/users.service.js';
+import { SessionRevocationService } from './session-revocation.service.js';
 
 export type AuthenticatedRequest = Request & { user?: AuthUser };
 
 /**
  * Global guard: every route needs a valid Bearer access token unless marked @Public(). When
- * REQUIRE_EMAIL_VERIFICATION is on, also a confirmed email unless marked @AllowUnverifiedEmail(). Also the token
- * verifier for the realtime gateway and optional-auth endpoints.
+ * REQUIRE_EMAIL_VERIFICATION is on, also a confirmed email unless marked @AllowUnverifiedEmail(). Tokens issued
+ * before the account was suspended or deleted are refused (`SessionRevocationService`). Admin API routes are left to
+ * the admin guard. Also the token verifier for the realtime gateway and optional-auth endpoints.
  */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -26,6 +29,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly jwt: JwtService,
     private readonly users: UsersService,
     config: ConfigService<AppConfig, true>,
+    private readonly revocations: SessionRevocationService,
   ) {
     this.emailRequired = config.get('auth', { infer: true }).requireEmailVerification;
   }
@@ -34,6 +38,7 @@ export class JwtAuthGuard implements CanActivate {
     if (context.getType() !== 'http') return true;
     const targets = [context.getHandler(), context.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, targets)) return true;
+    if (this.reflector.getAllAndOverride<boolean>(ADMIN_ROUTE, targets)) return true;
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const header = request.headers.authorization;
@@ -59,11 +64,16 @@ export class JwtAuthGuard implements CanActivate {
   }
 
   private async decode(token: string): Promise<AccessTokenPayload> {
+    let payload: AccessTokenPayload;
     try {
-      return await this.jwt.verifyAsync<AccessTokenPayload>(token);
+      payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
     } catch {
       throw new AuthenticationRequiredException('Your session expired. Please sign in again');
     }
+    // `ia` is the issue time in ms; tokens without it count from the start of their `iat` second (the safe side).
+    const issuedAtMs = payload.ia ?? (payload.iat === undefined ? undefined : payload.iat * 1000);
+    if (await this.revocations.isCutOff(payload.sub, issuedAtMs)) throw new AuthenticationRequiredException('Your session ended. Please sign in again');
+    return payload;
   }
 
   /**

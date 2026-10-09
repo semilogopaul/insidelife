@@ -11,6 +11,17 @@ export const MAX_PLAYER_AGE = 120;
 /** Digits in an email verification code. */
 export const EMAIL_CODE_LENGTH = 6;
 
+/** Typed by the player to confirm deleting their account (case and surrounding spaces don't matter). */
+export const ACCOUNT_DELETION_PHRASE = 'DELETE MY ACCOUNT';
+
+/** Days support can still restore a deleted account before it is anonymised (the server's default; it may differ). */
+export const ACCOUNT_RESTORE_WINDOW_DAYS = 30;
+
+/** Did the player type the confirmation phrase? */
+export function isAccountDeletionPhrase(typed: string): boolean {
+  return typed.trim().replace(/\s+/g, ' ').toUpperCase() === ACCOUNT_DELETION_PHRASE;
+}
+
 /** A date with no time or time zone. `month` is 1-12. */
 export interface CalendarDate {
   readonly year: number;

@@ -20,7 +20,14 @@ async function bootstrap(): Promise<void> {
   app.disable('x-powered-by');
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
   app.use(cookieParser());
-  app.enableCors({ origin: [...config.get('corsOrigins', { infer: true })], credentials: true });
+  // The game's origins plus the separate admin portal's (ADMIN_ORIGINS). Credentials carry the refresh cookies, which
+  // the admin portal can only send because its subdomain is same-site with the API.
+  app.enableCors({
+    origin: [...config.get('corsOrigins', { infer: true }), ...config.get('adminOrigins', { infer: true })],
+    credentials: true,
+    exposedHeaders: ['Content-Disposition', 'X-Trace-Id'],
+    maxAge: 600,
+  });
   app.useBodyParser('json', { limit: '64kb' });
 
   // Everything lives under /api (probes at /api/health and /api/metrics); nginx maps the public /health probe.

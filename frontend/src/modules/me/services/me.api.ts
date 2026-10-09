@@ -1,5 +1,7 @@
 import type {
+  AccountDeletionDto,
   CharacterSnapshotDto,
+  DeleteAccountRequest,
   Habit,
   InventoryDto,
   LeaderboardBoardId,
@@ -18,6 +20,8 @@ export const meApi = {
   leaderboard: (board: LeaderboardBoardId) => api.get<LeaderboardDto>(`/leaderboards/${board}`),
   privacy: () => api.get<SocialPrivacyDto>('/players/me/privacy'),
   updatePrivacy: (body: UpdateSocialPrivacyRequest) => api.patch<SocialPrivacyDto>('/players/me/privacy', body),
+  /** Soft delete: signs out everywhere; support can restore it within the restore window. */
+  deleteAccount: (body: DeleteAccountRequest) => api.post<AccountDeletionDto>('/account/deletion', body),
 };
 
 /** Habits and inventory tags (for habit requirements). */

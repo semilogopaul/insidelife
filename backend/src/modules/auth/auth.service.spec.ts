@@ -1,4 +1,5 @@
 import type { ConfigService } from '@nestjs/config';
+import argon2 from 'argon2';
 import type { JwtService } from '@nestjs/jwt';
 import { FindOperator, type Repository } from 'typeorm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,6 +56,13 @@ const USER: UserEntity = {
   birthDate: '2000-01-01',
   role: 'player',
   lastLoginAt: null,
+  suspendedAt: null,
+  suspensionReason: null,
+  suspendedBy: null,
+  deletedAt: null,
+  deletedBy: null,
+  purgeAfter: null,
+  purgedAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };
@@ -250,3 +258,51 @@ describe('sign-up', () => {
     expect(JSON.parse(session.accessToken)).toMatchObject({ sub: 'u1', ev: true });
   });
 });
+
+describe('suspended and deleted accounts', () => {
+  const PASSWORD = 'Correct-horse-1';
+  let hash = '';
+  beforeEach(async () => {
+    hash ||= await argon2.hash(PASSWORD);
+  });
+
+  function withAccount(overrides: Partial<UserEntity>) {
+    const context = setup();
+    context.users.record = { ...context.users.record, passwordHash: hash, ...overrides };
+    context.users.findByEmail.mockImplementation(async () => ({ ...context.users.record }) as unknown as null);
+    return context;
+  }
+
+  it('refuses to sign in a deleted account, saying how long it can be restored', async () => {
+    const { service } = withAccount({ deletedAt: new Date(), purgeAfter: new Date(Date.now() + 10 * 86_400_000) });
+    const error = await errorOf(service.login(USER.email, PASSWORD, 'ua'));
+    expect(error?.errorCode).toBe('ACCOUNT_DELETED');
+    expect(error?.message).toMatch(/hello@insidelife\.online/);
+  });
+
+  it('refuses to sign in a suspended account', async () => {
+    const { service } = withAccount({ suspendedAt: new Date() });
+    expect((await errorOf(service.login(USER.email, PASSWORD, 'ua')))?.errorCode).toBe('ACCOUNT_SUSPENDED');
+  });
+
+  it('never reveals the status to someone without the password', async () => {
+    const { service } = withAccount({ deletedAt: new Date() });
+    expect((await errorOf(service.login(USER.email, 'wrong-password-1', 'ua')))?.errorCode).toBe('INVALID_CREDENTIALS');
+  });
+
+  it('ends existing sessions at the next refresh once the account is suspended or deleted', async () => {
+    const context = withAccount({});
+    const issued = await context.service.login(USER.email, PASSWORD, 'ua');
+    context.users.record = { ...context.users.record, suspendedAt: new Date() };
+    expect((await errorOf(context.service.refresh(issued.refreshToken, 'ua')))?.errorCode).toBe('UNAUTHENTICATED');
+    expect(context.tokens.rows.every((row) => row.revokedAt !== null)).toBe(true);
+  });
+
+  it('keeps a deleted account’s email reserved at sign-up', async () => {
+    const { service } = withAccount({ deletedAt: new Date() });
+    const error = await errorOf(service.register(USER.email, 'secret123', '2000-01-01', 'ua'));
+    expect(error?.errorCode).toBe('EMAIL_TAKEN');
+    expect(error?.message).toMatch(/deleted/);
+  });
+});
+

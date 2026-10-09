@@ -6,6 +6,7 @@ import { Button, Section, Tabs } from '@/common/components';
 import { useSignOut } from '@/common/auth/use-sign-out';
 import { useSnapshot } from '@/common/game/snapshot';
 import { InstallAppPanel } from '@/common/pwa';
+import { DeleteAccount } from './DeleteAccount';
 import { EmailSettings } from './EmailSettings';
 import { GameSettings } from './GameSettings';
 import { HabitsPanel } from './HabitsPanel';
@@ -62,6 +63,9 @@ export function MeApp() {
           <Button variant="paper" icon={<LogOut size={18} aria-hidden />} onClick={() => signOut.mutate()} loading={signOut.isPending}>
             Sign out
           </Button>
+          <Section title="Delete account">
+            <DeleteAccount />
+          </Section>
         </div>
       )}
     </div>

@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { LeaderboardBoardId, SocialPrivacyDto, UpdateSocialPrivacyRequest } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
+import { useSession } from '@/common/auth/session-store';
+import { disconnectSocket } from '@/common/realtime/socket';
 import { meApi } from '../services/me.api';
 
 const privacyKey = queryKeys.domain('social', 'privacy');
@@ -46,3 +48,18 @@ export function useUpdatePrivacy() {
     },
   });
 }
+
+/**
+ * Delete my account. On success the server has already ended every session; this drops the socket and the local
+ * session (the page that follows leaves for the landing page).
+ */
+export function useDeleteAccount() {
+  return useMutation({
+    mutationFn: meApi.deleteAccount,
+    onSuccess: () => {
+      disconnectSocket();
+      useSession.getState().clear();
+    },
+  });
+}
+

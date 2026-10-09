@@ -12,7 +12,7 @@ const user = (hasCharacter: boolean, mustVerifyEmail = false): AuthUserDto => ({
 
 describe('destinationFor', () => {
   it('returns to safe next paths, even without a character outside the game', () => {
-    expect(destinationFor(user(false), '/admin/moderation')).toBe('/admin/moderation');
+    expect(destinationFor(user(false), '/refunds')).toBe('/refunds');
     expect(destinationFor(user(true), '/payments/callback?reference=x')).toBe('/payments/callback?reference=x');
   });
 

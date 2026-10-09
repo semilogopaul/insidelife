@@ -30,6 +30,12 @@ export class RealtimeBus {
     this.emit(room, event, ...args);
   }
 
+  /** Close every socket of a character on every node (account suspended or deleted). The handshake then refuses them. */
+  disconnectCharacter(characterId: string): void {
+    if (!this.server) return;
+    this.server.in(characterRoom(characterId)).disconnectSockets(true);
+  }
+
   broadcast<E extends EventName>(event: E, ...args: Parameters<ServerToClientEvents[E]>): void {
     if (!this.server) return;
     this.server.emit(event, ...args);

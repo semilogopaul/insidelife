@@ -64,7 +64,10 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 | `PAYSTACK_SECRET_KEY` | `sk_test_…` / `sk_live_…`. Empty in development → sandbox checkout. Required in production. |
 | `PAYSTACK_CALLBACK_URL` | Where Paystack returns players after checkout (`/payments/callback`). |
 | `TOPUP_DAILY_LIMIT_NGN` | Real-money spending cap per account per day (responsible play). |
-| `ADMIN_EMAILS` | Accounts that can moderate billboard ads and club tracks. |
+| `ADMIN_EMAILS` | Owners of the admin portal (moderation, players, payments, audit log); they can grant the admin role to others. |
+| `ADMIN_ORIGINS` | Origins of the separate admin portal (`insidelife-admin` repo), e.g. `https://admin.insidelife.online`. |
+| `ADMIN_MFA_KEY` | Encrypts admins' authenticator secrets (required on the live site; never change it). |
+| `ACCOUNT_RESTORE_DAYS` | How long a deleted account can be restored before it's anonymised (default 30). |
 | `S3_*` | Object storage for ad creatives and music (SeaweedFS locally; any S3-compatible store in production). |
 
 ### Paystack
