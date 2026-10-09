@@ -36,6 +36,8 @@ export interface HudProps {
    * look); top-right under the wallet on phones, where the bottom-left thumb is busy with the joystick.
    */
   readonly map?: ReactNode;
+  /** Cards from other features under the GPS banner (e.g. home visit invites); render nothing when idle. */
+  readonly notices?: ReactNode;
 }
 
 /**
@@ -43,7 +45,7 @@ export interface HudProps {
  * Bottom: smart suggestions + current activity (left), speed/fuel, context action and phone (right). Inside a
  * building the bottom-left stack lifts above the venue sheet so they never overlap.
  */
-export function Hud({ tray, map }: HudProps) {
+export function Hud({ tray, map, notices }: HudProps) {
   const data = useHudData();
   const openPhone = useUi((state) => state.openPhone);
   const phoneOpen = useUi((state) => state.phoneOpen);
@@ -78,12 +80,13 @@ export function Hud({ tray, map }: HudProps) {
     />
   ) : null;
   const routinePrompt = routine ? <RoutinePrompt suggestion={routine} now={data.minute} onSkip={() => setSkipped((current) => new Set(current).add(routine.id))} /> : null;
-  const centre = gps || routinePrompt ? (
+  const centre = (
     <>
       {gps}
       {routinePrompt}
+      {notices}
     </>
-  ) : null;
+  );
 
   return (
     <div className="safe-pad pointer-events-none absolute inset-0 flex flex-col">
@@ -92,7 +95,7 @@ export function Hud({ tray, map }: HudProps) {
           <ClockCard clock={data.clock} date={data.date} hour={data.hour} weather={data.weather} place={data.place} />
           <VitalsPanel needs={data.needs} mood={data.mood} health={data.health} />
         </div>
-        {wide && centre && <div className="pointer-events-auto flex max-w-md flex-1 flex-col gap-2">{centre}</div>}
+        {wide && <div className="pointer-events-auto flex max-w-md flex-1 flex-col gap-2 empty:hidden">{centre}</div>}
         <div className="pointer-events-auto flex flex-col items-end gap-2">
           <WalletChip balance={data.snapshot.wallet.balance} />
           {tray && <div className="flex flex-col items-end gap-2">{tray}</div>}
@@ -100,7 +103,7 @@ export function Hud({ tray, map }: HudProps) {
         </div>
       </div>
 
-      {!wide && centre && <div className="pointer-events-auto mt-2 flex flex-col gap-2">{centre}</div>}
+      {!wide && <div className="pointer-events-auto mt-2 flex flex-col gap-2 empty:hidden">{centre}</div>}
 
       <div className="mt-auto flex items-end justify-between gap-3">
         <div className={cn('pointer-events-auto flex min-w-0 flex-col items-start gap-2', data.inside && !phoneOpen && 'mb-[4.75rem] lg:mb-0')}>

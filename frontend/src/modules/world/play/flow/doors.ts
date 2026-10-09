@@ -1,7 +1,8 @@
 import { CITY_MAP, findVenue, type WorldPoint } from '@insidelife/shared';
 
 /**
- * Doors the player can walk through: every in-city venue plus their own home. Pure lookups for the context button.
+ * Doors the player can walk through: every in-city venue, their own home, and the homes of hosts whose invite they
+ * accepted. Pure lookups for the context button.
  */
 
 export interface Door {
@@ -20,8 +21,8 @@ const VENUE_DOORS: readonly Door[] = CITY_MAP.lots
     z: (lot.entrance as NonNullable<typeof lot.entrance>).position.z,
   }));
 
-/** Nearest door within `radius` of a point (the home door, when given, is considered too). */
-export function nearestDoor(point: WorldPoint, radius: number, home: Door | null, doors: readonly Door[] = VENUE_DOORS): Door | null {
+/** Nearest door within `radius` of a point (private doors — home, a host's — are considered too). */
+export function nearestDoor(point: WorldPoint, radius: number, privateDoors: readonly Door[], doors: readonly Door[] = VENUE_DOORS): Door | null {
   let best: Door | null = null;
   let bestDistance = radius * radius;
   const consider = (door: Door): void => {
@@ -34,7 +35,7 @@ export function nearestDoor(point: WorldPoint, radius: number, home: Door | null
     }
   };
   for (const door of doors) consider(door);
-  if (home) consider(home);
+  for (const door of privateDoors) consider(door);
   return best;
 }
 

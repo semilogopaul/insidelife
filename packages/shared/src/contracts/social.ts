@@ -14,7 +14,9 @@ import type {
   ProfileLocationVisibility,
   SocialBadgeId,
 } from '../catalog/social.js';
+import type { DistrictId } from '../catalog/geography.js';
 import type { GameMinute } from '../time/calendar.js';
+import type { Entrance } from '../world-map/types.js';
 import type { PublicCharacterDto } from './core.js';
 
 // ----- Shared bits -------------------------------------------------------------------------------------------------
@@ -313,4 +315,70 @@ export interface SprayResultDto {
   readonly nairaAbuse: { readonly fined: boolean; readonly fine: number; readonly message: string } | null;
   /** True when this idempotency key was already used (nothing moved this time). */
   readonly replayed: boolean;
+}
+
+// ----- Home visits -------------------------------------------------------------------------------------------------
+
+export const VISIT_STATUSES = ['invited', 'accepted', 'declined', 'ended'] as const;
+export type VisitStatus = (typeof VISIT_STATUSES)[number];
+
+/** Someone in a visit, with what's needed to draw them in the house. */
+export interface VisitPersonDto {
+  readonly id: string;
+  readonly handle: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly gender: Gender;
+  readonly appearance: Appearance;
+  readonly outfit: Outfit;
+}
+
+/** The host's home as the guest will see it (captured when the invite is sent). */
+export interface VisitHomeDto {
+  /** `home:<hostId>`: walk through this door (or GPS/ride to it). */
+  readonly locationId: string;
+  readonly label: string;
+  readonly districtId: DistrictId;
+  readonly ownership: 'family' | 'rented' | 'owned' | 'hostel';
+  readonly comfort: number;
+  /** Shop items in the home (furnishing), so the guest sees the real room. */
+  readonly items: readonly string[];
+  /** The host's front door right now. */
+  readonly entrance: Entrance;
+}
+
+export interface VisitDto {
+  readonly id: string;
+  readonly status: VisitStatus;
+  /** Your side of it. */
+  readonly role: 'host' | 'guest';
+  readonly host: VisitPersonDto;
+  readonly guest: VisitPersonDto;
+  readonly home: VisitHomeDto;
+  readonly createdAt: GameMinute;
+  readonly expiresAt: GameMinute;
+  /** The guest is inside the host's home right now. */
+  readonly guestInside: boolean;
+}
+
+/** Open invites and visits (invited or accepted, not expired). */
+export interface VisitsDto {
+  readonly incoming: readonly VisitDto[];
+  readonly outgoing: readonly VisitDto[];
+}
+
+export interface InviteVisitRequest {
+  readonly handle: string;
+}
+
+/** Who else is in a home right now (the host and guests), for drawing them in the room. */
+export interface HomePeopleDto {
+  readonly locationId: string;
+  readonly people: readonly HomePersonDto[];
+}
+
+export interface HomePersonDto extends VisitPersonDto {
+  /** Running action id (sleeping, cooking, hanging out…), for the pose. */
+  readonly activity: string | null;
+  readonly role: 'host' | 'guest';
 }

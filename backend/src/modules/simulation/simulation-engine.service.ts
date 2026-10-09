@@ -9,7 +9,7 @@ import {
   computeMood,
   findAction,
   findVenue,
-  isHomeLocation,
+  homeLocationId,
   moodPerformanceMultiplier,
   projectNeeds,
   startOfDay,
@@ -211,7 +211,8 @@ export class SimulationEngine {
     character.travel = null;
     character.locationId = travel.toLocationId;
     character.regionId = (await this.planner.place(ctx, travel.toLocationId)).regionId;
-    if (travel.explicit && !isHomeLocation(travel.toLocationId)) this.hangAround(ctx, travel.arriveAt);
+    // Anywhere but your own home (a venue, a friend's place): autopilot waits a while before taking you home.
+    if (travel.explicit && travel.toLocationId !== homeLocationId(character.id)) this.hangAround(ctx, travel.arriveAt);
     for (const system of this.registry.all) if (system.onArrival) await hookProfiler.time(`${system.key}.onArrival`, () => system.onArrival!(ctx, travel));
   }
 

@@ -29,6 +29,8 @@ export type PropSpec =
       readonly wall?: boolean;
       readonly frame?: string;
       readonly style?: 'painted' | 'board' | 'poster' | 'screen';
+      /** A family sign ("THE ADEYEMIS"): in a player's home the first line becomes their own surname. */
+      readonly familyName?: boolean;
     })
   | (Base & { readonly kind: 'pot'; readonly r?: number; readonly color?: string })
   | (Base & { readonly kind: 'cooler'; readonly color: string })

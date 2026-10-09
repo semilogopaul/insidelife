@@ -8,6 +8,7 @@ import { useWorldState } from '@/common/game/use-game-clock';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
+import { useVisits } from '@/common/visits';
 import { PAVEMENT_Y } from '../city/layout/placements';
 import { useCityPlan } from '../city/layout/use-city-plan';
 import { setProps } from '../city/lib/mutate';
@@ -82,7 +83,7 @@ function BlobLayer({ blobs }: { readonly blobs: BlobShadows }) {
   return <primitive object={blobs.mesh} />;
 }
 
-/** A Danfo-yellow ring at your own front door (venues get theirs from the city). */
+/** A Danfo-yellow ring at your own front door and at a host's gate (venues get theirs from the city). */
 function HomeDoorRing({ door }: { readonly door: Door }) {
   const resources = useMemo(
     () => ({
@@ -129,6 +130,16 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
     const entrance = homeEntrance(homeKey(character.id, character.homePropertyId), character.homeDistrictId as DistrictId);
     return { locationId: `home:${character.id}`, name: 'Home', x: entrance.position.x, z: entrance.position.z };
   }, [character]);
+
+  // Hosts expecting you: their gate is a door you can walk through.
+  const visits = useVisits(online).data;
+  const visitDoors = useMemo<readonly Door[]>(
+    () =>
+      (visits?.incoming ?? [])
+        .filter((visit) => visit.status === 'accepted')
+        .map((visit) => ({ locationId: visit.home.locationId, name: `${visit.host.firstName}’s place`, x: visit.home.entrance.position.x, z: visit.home.entrance.position.z })),
+    [visits],
+  );
 
   // Where we start: the door just used (handed over by whoever stepped outside), the pose before a reload, or a
   // pavement in our district. Read without consuming during render; consumed in an effect.
@@ -216,7 +227,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
     else if (useWorld.getState().mode === 'riding') useWorld.getState().setMode(runtime.mode === 'drive' ? 'driving' : 'walking');
   }, [runtime, riding]);
 
-  const heartbeats = useWorldSync(runtime, { online, characterId, homeDoor, fuelPrice });
+  const heartbeats = useWorldSync(runtime, { online, characterId, homeDoor, visitDoors, fuelPrice });
   useWorldActions(runtime, { online, heartbeats });
 
   const look: PlayerLook = character ? { appearance: character.appearance, outfit: character.outfit, gender: character.gender, mood: character.mood } : sandboxLook;
@@ -227,6 +238,9 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
       <Director runtime={runtime} />
       <PlayerAvatar runtime={runtime} look={look} castShadow={shadows} />
       {homeDoor && <HomeDoorRing door={homeDoor} />}
+      {visitDoors.map((door) => (
+        <HomeDoorRing key={door.locationId} door={door} />
+      ))}
       <BlobLayer blobs={blobs} />
       <Pedestrians runtime={runtime} count={PEDESTRIANS[tier]} seed={characterId ?? 'sandbox'} blobs={blobs} blobBase={0} />
       <Suspense fallback={null}>

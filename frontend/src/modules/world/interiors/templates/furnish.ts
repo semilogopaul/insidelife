@@ -176,6 +176,8 @@ export interface FurnishOptions {
   readonly providedFurniture: boolean;
   /** Meals in the kitchen: sacks of foodstuff by the cooker. */
   readonly pantryMeals?: number;
+  /** Whose home it is: family signs carry their surname. */
+  readonly surname?: string;
 }
 
 /** Foodstuff by the cooker: a rice sack, a second sack, then a bucket of garri as the stock grows. */
@@ -187,7 +189,7 @@ function pantryProps(anchor: Anchor, meals: number): PropSpec[] {
   return props;
 }
 
-export function furnish(template: InteriorTemplate, owned: readonly string[], { providedFurniture, pantryMeals = 0 }: FurnishOptions): InteriorTemplate {
+export function furnish(template: InteriorTemplate, owned: readonly string[], { providedFurniture, pantryMeals = 0, surname }: FurnishOptions): InteriorTemplate {
   const anchors = new Map<HomeSlot, Anchor>();
   const remember = (slot: HomeSlot | undefined, anchor: Anchor): void => {
     if (slot && !anchors.has(slot)) anchors.set(slot, anchor);
@@ -224,6 +226,13 @@ export function furnish(template: InteriorTemplate, owned: readonly string[], { 
   if (bedAnchor && !mine.has('bed') && !providedFurniture) {
     props.push({ kind: 'mat', at: bedAnchor.at, rot: bedAnchor.rot, size: [0.9, 1.9], color: '#8d6e63', border: '#5d4037' });
     bedTop = 0.08;
+  }
+
+  if (surname) {
+    const family = `THE ${surname.toUpperCase()}S`;
+    props.forEach((prop, index) => {
+      if (prop.kind === 'sign' && prop.familyName) props[index] = { ...prop, lines: [family, ...prop.lines.slice(1)] };
+    });
   }
 
   const sleep = template.player.sleep;

@@ -403,3 +403,15 @@ export const REPORT_RULES = {
   maxPerDay: 10,
   detailsMaxLength: 500,
 } as const;
+
+// ----- Home visits -------------------------------------------------------------------------------------------------
+
+/**
+ * Inviting a player over: the invite (and the visit once accepted) lasts `ttlMinutes` of game time — ten game days,
+ * about two real hours at the default clock — unless the host or guest ends it. A guest still inside when it ends
+ * heads home.
+ */
+export const VISIT_RULES = {
+  ttlMinutes: 10 * 24 * 60,
+  maxOpenInvites: 10,
+} as const;

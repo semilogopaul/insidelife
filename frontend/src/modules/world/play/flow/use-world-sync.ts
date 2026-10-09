@@ -31,8 +31,14 @@ export interface WorldSyncOptions {
   readonly online: boolean;
   readonly characterId: string | null;
   readonly homeDoor: Door | null;
+  /** Doors of hosts whose invite you accepted. */
+  readonly visitDoors: readonly Door[];
   /** ₦ per litre right now. */
   readonly fuelPrice: number;
+}
+
+function privateDoors(options: WorldSyncOptions): readonly Door[] {
+  return options.homeDoor ? [options.homeDoor, ...options.visitDoors] : options.visitDoors;
 }
 
 function isTouchDevice(): boolean {
@@ -147,7 +153,7 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
       let next: Interactable | null = null;
       if (runtime.mode === 'walk') {
         const destinationId = useNavigation.getState().destinationId;
-        const door = nearestDoor({ x: c.walker.x, z: c.walker.z }, ENTRY_RADIUS, optionsRef.current.homeDoor);
+        const door = nearestDoor({ x: c.walker.x, z: c.walker.z }, ENTRY_RADIUS, privateDoors(optionsRef.current));
         const doorClose = door && (Math.hypot(door.x - c.walker.x, door.z - c.walker.z) <= DOOR_PROMPT_RADIUS || door.locationId === destinationId);
         const selected = runtime.selectedPlayer && performance.now() - runtime.selectedAt < PLAYER_PROMPT_SECONDS * 1000 ? runtime.selectedPlayer : null;
         // A player you just tapped wins for a few seconds (explicit intent), then your car, then the nearest door.
@@ -155,7 +161,7 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
         else if (c.canEnterCar()) next = { id: CAR_ENTER_ID, kind: 'car', label: 'Get in car' };
         else if (door && doorClose) next = { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, false, door === optionsRef.current.homeDoor), locationId: door.locationId };
       } else if (runtime.mode === 'drive') {
-        const door = Math.abs(c.speed) < 2.5 ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, optionsRef.current.homeDoor) : null;
+        const door = Math.abs(c.speed) < 2.5 ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, privateDoors(optionsRef.current)) : null;
         // Touch screens have their own "Get out" next to the pedals; the HUD button is kept for doors there.
         next = door
           ? { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, true, door === optionsRef.current.homeDoor), locationId: door.locationId }

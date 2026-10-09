@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   findAction,
   findVenue,
   formatGameDuration,
   homeLocationId,
+  isHomeLocation,
   isStreetLocation,
   isVenueOpen,
   toDateParts,
@@ -13,6 +14,7 @@ import {
   isInterruptibleActivity,
 } from '@insidelife/shared';
 import { GameRuleException } from '../../common/exceptions/domain.exception.js';
+import { HOME_ACCESS_PORT, type HomeAccessPort } from '../../common/ports/home-access.port.js';
 import type { ActivityState } from '../characters/entities/character.entity.js';
 import { unmetRequirement } from '../simulation/action-requirements.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
@@ -28,6 +30,7 @@ export class ActionsService {
   constructor(
     private readonly engine: SimulationEngine,
     private readonly planner: TimelinePlanner,
+    @Inject(HOME_ACCESS_PORT) private readonly homes: HomeAccessPort,
   ) {}
 
   async start(ctx: SimulationContext, actionId: string, durationMinutes?: number, targetId?: string): Promise<void> {
@@ -93,6 +96,12 @@ export class ActionsService {
     const residence = await this.planner.residence(ctx, ctx.time);
     const atHome = character.locationId === residence.locationId || character.locationId === homeLocationId(character.id);
     if (atHome && action.where.home) return;
+    // At someone else's place on an accepted invite: only what a guest does there.
+    if (!atHome && isHomeLocation(character.locationId)) {
+      if (action.where.visit && (await this.homes.invitedDoor(ctx, character.locationId.slice('home:'.length)))) return;
+      throw new GameRuleException('WRONG_PLACE', action.where.home ? 'Do this in your own house' : 'You can’t do that at someone else’s house');
+    }
+    if (action.where.visit) throw new GameRuleException('WRONG_PLACE', 'Do this at a friend’s place');
 
     const venue = findVenue(character.locationId);
     if (!venue || isStreetLocation(character.locationId)) {

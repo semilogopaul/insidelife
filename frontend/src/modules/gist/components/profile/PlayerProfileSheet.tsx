@@ -1,6 +1,6 @@
 'use client';
 
-import { Ban, Banknote, Check, Flag, GraduationCap, Heart, HeartHandshake, MapPin, MessageCircle, UserCheck, UserPlus, Users, Wallet } from 'lucide-react';
+import { Ban, Banknote, Check, Flag, GraduationCap, Heart, HeartHandshake, House, MapPin, MessageCircle, UserCheck, UserPlus, Users, Wallet } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { RING_LIMITS, formatNaira, type PlayerProfileDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
@@ -8,6 +8,7 @@ import { Badge, Button, HoldButton, Sheet, Spinner, toast } from '@/common/compo
 import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
+import { useVisitActions } from '@/common/visits';
 import { useGistNav } from '../../hooks/use-gist-nav';
 import { useFriendActions, usePlayerProfile, usePropose, useRelationships } from '../../hooks/use-social';
 import { PlayerAvatar } from '../PlayerAvatar';
@@ -132,6 +133,7 @@ function Fact({ icon, label, value, detail, wide = false }: { readonly icon: Rea
 function Actions({ profile, onView, onDone }: { readonly profile: PlayerProfileDto; readonly onView: (view: View) => void; readonly onDone: () => void }) {
   const friends = useFriendActions();
   const propose = usePropose();
+  const visits = useVisitActions();
   const relationships = useRelationships(true);
   const myAge = useSnapshot().data?.character.age ?? 18;
   const tooYoung = profile.age < 18 || myAge < 18;
@@ -259,6 +261,23 @@ function Actions({ profile, onView, onDone }: { readonly profile: PlayerProfileD
           </Button>
         )}
       </div>
+      <Button
+        variant="paper"
+        icon={<House size={18} aria-hidden />}
+        disabled={profile.blockedByYou}
+        loading={visits.invite.isPending}
+        onClick={() =>
+          visits.invite.mutate(profile.handle, {
+            onSuccess: () => {
+              gameEvents.emit('sfx', { id: 'ui-success' });
+              toast({ title: `Invited ${profile.firstName} over`, body: 'Once they accept they can walk in or ride to your place. End it anytime from the visit card.', tone: 'good' });
+            },
+            onError: fail('Couldn’t send the invite'),
+          })
+        }
+      >
+        Invite to my place
+      </Button>
       {tooYoung && !romance && <p className="text-xs text-text-soft">Dating unlocks at 18 — for both of you.</p>}
       <div className="flex justify-end gap-1 pt-1">
         {profile.relationship === 'friends' && (

@@ -26,6 +26,7 @@ import {
   isInterruptibleActivity,
 } from '@insidelife/shared';
 import { GameRuleException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import { HOME_ACCESS_PORT, type HomeAccessPort } from '../../common/ports/home-access.port.js';
 import { VEHICLE_PORT, type VehiclePort } from '../../common/ports/vehicle.port.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationEngine } from '../simulation/simulation-engine.service.js';
@@ -60,16 +61,17 @@ export class MovementService {
     private readonly engine: SimulationEngine,
     private readonly tracker: MovementTracker,
     @Inject(VEHICLE_PORT) private readonly vehicles: VehiclePort,
+    @Inject(HOME_ACCESS_PORT) private readonly homes: HomeAccessPort,
   ) {}
 
   /** Step out of the current building onto the street. */
   async exit(ctx: SimulationContext): Promise<SpawnPoint> {
     const character = ctx.character;
     this.assertCanMove(ctx);
-    const entrance = this.entranceOf(ctx, character.locationId);
+    const entrance = await this.entranceOf(ctx, character.locationId, 'exit');
     if (!entrance) throw new GameRuleException('NO_EXIT', 'You can only step outside in Lagos — take a bus back first');
 
-    const district = isHomeLocation(character.locationId) ? character.homeDistrictId : districtAt(entrance.position);
+    const district = character.locationId === homeLocationId(character.id) ? character.homeDistrictId : districtAt(entrance.position);
     character.locationId = streetLocationId(district);
     character.activity = { actionId: 'explore', startedAt: ctx.time, endsAt: ctx.time + EXPLORE_WINDOW, locationId: character.locationId, cost: 0 };
     await this.tracker.anchor(character.id, entrance.position, 'walk', entrance.heading);
@@ -97,11 +99,10 @@ export class MovementService {
   async enter(ctx: SimulationContext, locationId: string, position: WorldPoint, mode: 'walk' | 'car'): Promise<void> {
     const character = ctx.character;
     if (!isStreetLocation(character.locationId)) throw new GameRuleException('NOT_OUTSIDE', 'You’re already inside somewhere');
-    if (isHomeLocation(locationId) && locationId !== homeLocationId(character.id)) {
-      throw new GameRuleException('NOT_YOUR_HOUSE', 'Knock first — you can’t walk into someone else’s house');
+    const entrance = await this.entranceOf(ctx, locationId, 'enter');
+    if (!entrance && isHomeLocation(locationId) && locationId !== homeLocationId(character.id)) {
+      throw new GameRuleException('NOT_YOUR_HOUSE', 'Knock first — you need an invite to walk into someone else’s house');
     }
-
-    const entrance = this.entranceOf(ctx, locationId);
     if (!entrance) throw new ResourceNotFoundException('Place');
     if (straightDistance(position, entrance.position) > ENTRY_RADIUS) {
       throw new GameRuleException('TOO_FAR', 'Walk up to the entrance first');
@@ -123,7 +124,8 @@ export class MovementService {
     const fromLocationId = character.locationId;
     character.locationId = locationId;
     character.activity = null;
-    if (!isHomeLocation(locationId)) this.engine.hangAround(ctx, ctx.time);
+    // At a venue or a friend's place the autopilot waits a while before taking you home.
+    if (locationId !== homeLocationId(character.id)) this.engine.hangAround(ctx, ctx.time);
     const departAt = check.from ? Math.max(0, ctx.time - Math.round(((Date.now() - check.from.at) / 60_000) * ctx.world.clock.scale)) : ctx.time;
     await this.engine.dispatchArrival(ctx, {
       fromLocationId,
@@ -140,7 +142,7 @@ export class MovementService {
   /** Every mode's time and fare to a destination right now. */
   async quotes(ctx: SimulationContext, destinationId: string): Promise<TravelQuoteDto[]> {
     const character = ctx.character;
-    this.assertDestination(ctx, destinationId);
+    await this.assertDestination(ctx, destinationId);
     const tags = await this.planner.itemTags(ctx);
     const results: TravelQuoteDto[] = [];
     for (const mode of TRANSPORT_MODES) {
@@ -168,7 +170,7 @@ export class MovementService {
   async travel(ctx: SimulationContext, destinationId: string, mode: TransportMode): Promise<void> {
     const character = ctx.character;
     this.assertCanMove(ctx);
-    this.assertDestination(ctx, destinationId);
+    await this.assertDestination(ctx, destinationId);
     if (destinationId === character.locationId) throw new GameRuleException('ALREADY_THERE', 'You’re already there');
 
     const tags = await this.planner.itemTags(ctx);
@@ -178,7 +180,7 @@ export class MovementService {
     if (quote.mode !== mode && !quote.intercity) {
       throw new GameRuleException('MODE_UNAVAILABLE', `${TRANSPORT[mode].label} can’t make this trip — try danfo or Bolt`);
     }
-    const destination = findVenue(destinationId)?.name ?? 'home';
+    const destination = findVenue(destinationId)?.name ?? (destinationId === homeLocationId(character.id) ? 'home' : 'a friend’s place');
     if (quote.fare > 0) {
       await ctx.wallet.pay(quote.fare, 'transport', `${quote.intercity ? 'Interstate bus' : TRANSPORT[mode].label} to ${destination}`, `trip:${ctx.time}:${destinationId}`);
     }
@@ -210,18 +212,22 @@ export class MovementService {
     }
   }
 
-  private entranceOf(ctx: SimulationContext, locationId: string): Entrance | null {
+  /** A door: venues, your own home, or a host's home (to go in you need an accepted invite; leaving never does). */
+  private async entranceOf(ctx: SimulationContext, locationId: string, way: 'enter' | 'exit'): Promise<Entrance | null> {
     if (isHomeLocation(locationId)) {
       const ownerId = locationId.slice('home:'.length);
-      return ownerId === ctx.character.id
-        ? homeEntrance(homeKey(ownerId, ctx.character.homePropertyId), ctx.character.homeDistrictId as DistrictId)
-        : null;
+      if (ownerId === ctx.character.id) return homeEntrance(homeKey(ownerId, ctx.character.homePropertyId), ctx.character.homeDistrictId as DistrictId);
+      return way === 'exit' ? this.homes.doorOf(ctx, ownerId) : this.homes.invitedDoor(ctx, ownerId);
     }
     return venueEntrance(locationId);
   }
 
-  private assertDestination(ctx: SimulationContext, destinationId: string): void {
+  private async assertDestination(ctx: SimulationContext, destinationId: string): Promise<void> {
     if (destinationId === homeLocationId(ctx.character.id)) return;
+    if (isHomeLocation(destinationId)) {
+      if (await this.homes.invitedDoor(ctx, destinationId.slice('home:'.length))) return;
+      throw new GameRuleException('NOT_INVITED', 'You need an invite to go to someone’s house');
+    }
     if (!findVenue(destinationId)) throw new ResourceNotFoundException('Destination');
   }
 

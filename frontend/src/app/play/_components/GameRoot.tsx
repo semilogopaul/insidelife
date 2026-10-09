@@ -13,6 +13,7 @@ import { useSnapshot } from '@/common/game/snapshot';
 import { useClockSync } from '@/common/game/use-game-clock';
 import { connectSocket, disconnectSocket } from '@/common/realtime/socket';
 import { useRealtimeEvent } from '@/common/realtime/use-realtime';
+import { visitsKey } from '@/common/visits';
 import { AudioDirector } from '@/modules/audio';
 import { AwayReport } from '@/modules/away-report';
 import { CelebrationLayer, isCelebratedNotification } from '@/modules/celebrations';
@@ -22,6 +23,7 @@ import { LifeEventsLayer, PendingDecisionsChip } from '@/modules/life-events';
 import { NotificationBell, NotificationCenter } from '@/modules/notifications';
 import { Phone } from '@/modules/phone';
 import { VenueSheet } from '@/modules/venue';
+import { VisitCards } from '@/modules/visits';
 import { LoadingScreen } from './LoadingScreen';
 import { PHONE_APPS } from './phone-apps';
 
@@ -60,6 +62,7 @@ export function GameRoot() {
   useRealtimeEvent('character:invalidate', () => {
     void client.invalidateQueries({ queryKey: queryKeys.snapshot });
     void client.invalidateQueries({ queryKey: queryKeys.lifeEvents });
+    void client.invalidateQueries({ queryKey: visitsKey });
   });
 
   useRealtimeEvent('notification', (notification) => {
@@ -91,6 +94,7 @@ export function GameRoot() {
           </>
         }
         map={<Minimap className="w-[118px] sm:w-[188px]" />}
+        notices={<VisitCards />}
       />
       <VenueSheet />
       <Phone apps={PHONE_APPS} />

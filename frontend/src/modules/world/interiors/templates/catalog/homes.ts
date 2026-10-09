@@ -285,7 +285,7 @@ export const HOME_DUPLEX: InteriorTemplate = {
     { kind: 'chandelier', at: [1.75, 1.3], height: 2.15 },
     { kind: 'chandelier', at: [-2.5, 1.4], height: 2.25 },
     { kind: 'aircon', at: [-4.18, 0.4], rot: 90, y: 2.5, slot: 'ac' },
-    { kind: 'sign', at: [-4.18, 1.5], rot: 90, y: 1.85, wall: true, size: [1.3, 0.75], lines: ['THE ADEYEMIS', 'EST. 1998'], bg: '#2b1b15', fg: '#f3d27a', accent: '#c9a227', frame: '#c9a227', style: 'poster' },
+    { kind: 'sign', at: [-4.18, 1.5], rot: 90, y: 1.85, wall: true, size: [1.3, 0.75], lines: ['THE ADEYEMIS', 'EST. 1998'], bg: '#2b1b15', fg: '#f3d27a', accent: '#c9a227', frame: '#c9a227', style: 'poster', familyName: true },
     { kind: 'sign', at: [-0.3, -3.08], y: 1.95, wall: true, size: [0.9, 0.55], lines: ['GOD', 'DID IT'], bg: '#fff8e1', fg: '#3e2723', accent: '#c9a227', frame: '#c9a227' },
     { kind: 'food-plate', at: [1.75, 1.2], y: 0.5, food: 'jollof' },
     { kind: 'bottles', at: [3.62, -0.45], y: 0.63, count: 3 },

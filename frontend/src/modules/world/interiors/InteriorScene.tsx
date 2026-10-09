@@ -2,10 +2,11 @@
 
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { MeshStandardMaterial } from 'three';
-import { homeLocationId, isHomeLocation, toDateParts, type PresencePlayerDto } from '@insidelife/shared';
+import { homeLocationId, isHomeLocation, toDateParts, type HomePersonDto, type PresencePlayerDto } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
+import { useHomePeople, useVisits } from '@/common/visits';
 import { animationForSegment } from '@/common/three/avatar';
 import { ClubLights } from './effects/ClubLights';
 import { DollhouseCamera } from './components/DollhouseCamera';
@@ -49,20 +50,31 @@ export interface InteriorSceneProps {
  * home), furniture from the Kenney kit, Lagos props, the player animating by their current activity, ambient NPCs
  * and other players present. Lit by the game clock. ≤ 80 draw calls.
  */
-export function InteriorScene({ locationId, players = [], player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, children }: InteriorSceneProps) {
+const NO_PLAYERS: readonly PresencePlayerDto[] = [];
+
+export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, children }: InteriorSceneProps) {
   const snapshot = useSnapshot().data;
   const minute = useGameMinute(4000);
-  const homeInfo = home === undefined ? snapshot?.summary.home : home;
+  const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
+  // Someone else's home you were invited to: their room and furniture (as of the invite), and them in it.
+  const hostId = isHomeLocation(locationId) && templateId === undefined ? locationId.slice('home:'.length) : null;
+  const visits = useVisits(snapshot !== undefined && hostId !== null).data;
+  const visit = !ownHome && hostId ? visits?.incoming.find((candidate) => candidate.home.locationId === locationId) : undefined;
+  const hosting = ownHome && (visits?.outgoing.some((candidate) => candidate.status === 'accepted') ?? false);
+  const people = useHomePeople(visit || hosting ? hostId : null).data?.people;
+  const homeInfo = home === undefined ? (visit?.home ?? snapshot?.summary.home) : home;
   const base = getTemplate(templateId ?? resolveTemplateId(locationId, homeInfo));
-  // Your own home shows what you own; other places (and other players' homes) show their template.
+  // Your own home shows what you own; other places show their template.
   const homeItems = snapshot?.summary.homeItems;
   const ownership = snapshot?.summary.home.ownership;
   const pantryMeals = snapshot?.summary.pantryMeals ?? 0;
-  const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
+  const surname = ownHome ? snapshot?.character.lastName : visit?.host.lastName;
   const template = useMemo(() => {
     if (previewItems) return furnish(base, previewItems, { providedFurniture: base.id === 'home-family' || base.id === 'home-hostel' });
-    return ownHome && homeItems ? furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals }) : base;
-  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems]);
+    if (visit) return furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname });
+    return ownHome && homeItems ? furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname }) : base;
+  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname]);
+  const players = useMemo(() => (people ? [...present, ...people.map((person) => asPresence(person, locationId))] : present), [present, people, locationId]);
   const [glass, setGlass] = useState<MeshStandardMaterial | null>(null);
   const onGlass = useCallback((material: MeshStandardMaterial | null) => setGlass(material), []);
 
@@ -97,4 +109,19 @@ export function InteriorScene({ locationId, players = [], player, templateId, ho
       {children}
     </group>
   );
+}
+
+/** A host or guest in the home, drawn like any other player present. */
+function asPresence(person: HomePersonDto, locationId: string): PresencePlayerDto {
+  return {
+    characterId: person.id,
+    handle: person.handle,
+    firstName: person.firstName,
+    gender: person.gender,
+    appearance: person.appearance,
+    outfit: person.outfit,
+    locationId,
+    activity: person.activity,
+    status: 0,
+  };
 }

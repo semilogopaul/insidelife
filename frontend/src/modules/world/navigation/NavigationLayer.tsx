@@ -14,6 +14,7 @@ import {
   type CityRoute,
   type DistrictId,
   type Entrance,
+  type VisitsDto,
   type WorldPoint,
 } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
@@ -22,6 +23,7 @@ import { gameEvents } from '@/common/game/game-events';
 import { useNavigation, type NavigationInstruction } from '@/common/game/navigation-store';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useWorld } from '@/common/game/world-store';
+import { useVisits } from '@/common/visits';
 import { ownedLots } from '../city/layout/owned-lots';
 import { DestinationBeacon } from './DestinationBeacon';
 import { etaSeconds, instructionText, projectOnRoute, upcomingManeuver, VoicePrompter, type TravelMode } from './guidance';
@@ -48,13 +50,18 @@ interface Destination {
   readonly entrance: Entrance;
 }
 
-/** Resolves a navigation destination id to a door (venues, the player's own home, or `property:<id>` they own). */
-export function resolveDestination(id: string, name: string | null, snapshot: CharacterSnapshotDto | undefined): Destination | null {
+/**
+ * Resolves a navigation destination id to a door: venues, the player's own home, `property:<id>` they own, or the
+ * home of a host whose invite they accepted.
+ */
+export function resolveDestination(id: string, name: string | null, snapshot: CharacterSnapshotDto | undefined, visits?: VisitsDto): Destination | null {
   if (snapshot && id === homeLocationId(snapshot.character.id)) {
     return { id, name: name ?? 'home', entrance: homeEntrance(homeKey(snapshot.character.id, snapshot.character.homePropertyId), snapshot.character.homeDistrictId as DistrictId) };
   }
   const owned = snapshot ? ownedLots(snapshot.summary.properties).find(({ property }) => `property:${property.id}` === id) : undefined;
   if (owned?.lot.entrance) return { id, name: name ?? owned.property.label, entrance: owned.lot.entrance };
+  const visit = visits?.incoming.find((candidate) => candidate.home.locationId === id && candidate.status === 'accepted');
+  if (visit) return { id, name: name ?? `${visit.host.firstName}’s place`, entrance: visit.home.entrance };
   const entrance = venueEntrance(id);
   if (!entrance) return null;
   return { id, name: name ?? findVenue(id)?.name ?? 'your destination', entrance };
@@ -82,11 +89,15 @@ export function NavigationLayer() {
   // Depend on the few snapshot fields that matter so refetches don't reroute (and repeat voice prompts).
   const characterId = snapshot?.character.id;
   const homeDistrictId = snapshot?.character.homeDistrictId;
+  const homePropertyId = snapshot?.character.homePropertyId;
   const locationId = snapshot?.character.locationId;
+  const visits = useVisits(snapshot !== undefined).data;
+  // A host's door only matters while it's your destination.
+  const visitDoor = destinationId ? visits?.incoming.find((visit) => visit.home.locationId === destinationId)?.home.entrance.position : undefined;
   const destination = useMemo(
-    () => (destinationId ? resolveDestination(destinationId, destinationName, snapshot) : null),
+    () => (destinationId ? resolveDestination(destinationId, destinationName, snapshot, visits) : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [destinationId, destinationName, characterId, homeDistrictId],
+    [destinationId, destinationName, characterId, homeDistrictId, homePropertyId, visitDoor?.x, visitDoor?.z],
   );
   // The drawn route, tagged with the destination it belongs to (stale routes are never drawn).
   const [drawn, setDrawn] = useState<{ readonly id: string; readonly route: CityRoute } | null>(null);

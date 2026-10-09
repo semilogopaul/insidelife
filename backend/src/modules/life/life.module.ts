@@ -4,6 +4,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { SimulationModule } from '../simulation/simulation.module.js';
 import { VehiclesModule } from '../vehicles/vehicles.module.js';
+import { VisitsModule } from '../visits/visits.module.js';
 import { ActionsService } from './actions.service.js';
 import { SettingsService } from './settings.service.js';
 import { ActivitiesController } from './activities.controller.js';
@@ -16,7 +17,7 @@ import { SnapshotService } from './snapshot.service.js';
 
 /** Player-facing character lifecycle: creation, snapshot, settings, actions and movement. */
 @Module({
-  imports: [CharactersModule, SimulationModule, NotificationsModule, PresenceModule, VehiclesModule],
+  imports: [CharactersModule, SimulationModule, NotificationsModule, PresenceModule, VehiclesModule, VisitsModule],
   controllers: [CharactersController, ActivitiesController, NotificationsController],
   providers: [CharacterCreationService, SnapshotService, ActionsService, SettingsService, MovementService, MovementTracker],
   exports: [SnapshotService],

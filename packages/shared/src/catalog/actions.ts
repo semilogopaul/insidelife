@@ -62,8 +62,11 @@ export interface ActionDefinition {
   readonly verb: string;
   readonly emoji: string;
   readonly category: ActionCategory;
-  /** Where it can be done. `home` = own home; `anywhere` overrides everything. */
-  readonly where: { readonly home?: boolean; readonly venueTypes?: readonly VenueType[]; readonly anywhere?: boolean };
+  /**
+   * Where it can be done. `home` = own home; `visit` = someone else's home you were invited to; `anywhere` overrides
+   * everything.
+   */
+  readonly where: { readonly home?: boolean; readonly visit?: boolean; readonly venueTypes?: readonly VenueType[]; readonly anywhere?: boolean };
   readonly durations: readonly number[];
   /** Base cost (₦) per run, before the world price index. */
   readonly cost: number;
@@ -307,6 +310,19 @@ export const ACTIONS = [
     requires: { itemTag: 'tv' },
     animation: 'sit',
     blurb: 'Needs a TV. NEPA permitting.',
+  },
+  {
+    id: 'visit-hangout',
+    label: 'Hang out',
+    verb: 'Hanging out',
+    emoji: '🛋️',
+    category: 'social',
+    where: { visit: true },
+    durations: [HOUR, 2 * HOUR, 3 * HOUR],
+    cost: 0,
+    drift: { social: fill(30, 92), fun: fill(14, 80) },
+    animation: 'talk',
+    blurb: 'Gist, music and small chops at their place. Free — just don’t finish their Fanta.',
   },
   {
     id: 'scroll',

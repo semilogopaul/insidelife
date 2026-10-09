@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'motion/react';
 import { ChevronDown, ChevronUp, DoorOpen } from 'lucide-react';
 import { useState } from 'react';
-import { homeLocationId, formatGameDuration, formatNairaCompact, type ActionDefinition } from '@insidelife/shared';
+import { homeLocationId, formatGameDuration, formatNairaCompact, isHomeLocation, isInterruptibleAction, type ActionDefinition } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
 import { Button, toast } from '@/common/components';
@@ -13,6 +13,7 @@ import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useWorldState } from '@/common/game/use-game-clock';
 import { cn } from '@/common/utils/cn';
+import { useVisits } from '@/common/visits';
 import { usePlaceActions } from '../hooks/use-place-actions';
 import { venueApi } from '../services/venue.api';
 
@@ -24,14 +25,18 @@ export function VenueSheet() {
   const { data: snapshot } = useSnapshot();
   const phoneOpen = useUi((state) => state.phoneOpen);
   const { data: world } = useWorldState();
-  const { place, actions } = usePlaceActions(snapshot);
+  const visiting = snapshot !== undefined && isHomeLocation(snapshot.character.locationId) && snapshot.character.locationId !== homeLocationId(snapshot.character.id);
+  const visits = useVisits(visiting).data;
+  const host = visits?.incoming.find((visit) => visit.home.locationId === snapshot?.character.locationId)?.host ?? null;
+  const { place, actions } = usePlaceActions(snapshot, host?.firstName ?? null);
   const [expanded, setExpanded] = useState(false);
   const client = useQueryClient();
   const start = useSnapshotMutation(({ action, minutes }: { action: ActionDefinition; minutes: number }) => venueApi.startAction(action.id, minutes));
   const [exiting, setExiting] = useState(false);
 
   if (!snapshot || !place || phoneOpen) return null;
-  const busy = snapshot.timeline[0]?.kind === 'action' && snapshot.timeline[0].explicit;
+  // Hanging around after arriving (or exploring) never blocks a new choice.
+  const busy = snapshot.timeline[0]?.kind === 'action' && snapshot.timeline[0].explicit && !isInterruptibleAction(snapshot.timeline[0].actionId);
   const atHome = snapshot.character.locationId === homeLocationId(snapshot.character.id);
   const priceIndex = world?.economy.priceIndex ?? 1;
 
