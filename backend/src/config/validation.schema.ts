@@ -58,9 +58,21 @@ export const validationSchema = Joi.object({
   /** Secret seed for market prices (the world seed is public). Set it in production; derived from JWT secret otherwise. */
   MARKET_SEED: Joi.string().min(16).max(128).optional(),
 
-  PAYSTACK_SECRET_KEY: Joi.string().allow('').pattern(/^(sk_(test|live)_[A-Za-z0-9]+)?$/).default(''),
-  PAYSTACK_CALLBACK_URL: Joi.string().uri().required(),
-  TOPUP_DAILY_LIMIT_NGN: Joi.number().integer().min(0).default(20_000),
+  /** Flutterwave v3 secret key: `FLWSECK_TEST-…` locally, `FLWSECK-…` (live) on the public site. Empty → sandbox in development. */
+  FLUTTERWAVE_SECRET_KEY: Joi.string().allow('').pattern(/^(FLWSECK(_TEST)?-[A-Za-z0-9-]+)?$/).default(''),
+  /** Not used by the server (hosted checkout needs no public key); validated so a live site never ships a test key. */
+  FLUTTERWAVE_PUBLIC_KEY: Joi.string().allow('').pattern(/^(FLWPUBK(_TEST)?-[A-Za-z0-9-]+)?$/).default(''),
+  /** The secret hash set in Flutterwave → Settings → Webhooks; sent verbatim in the `verif-hash` header. */
+  FLUTTERWAVE_WEBHOOK_SECRET_HASH: Joi.string().allow('').max(256).default(''),
+  /**
+   * Where Flutterwave returns the player after checkout (the web app's /payments/callback). Required in production;
+   * in development it defaults to http://localhost:3100/payments/callback.
+   */
+  PAYMENT_CALLBACK_URL: Joi.string().uri().allow('').default(''),
+  /** Real naira one account may spend on top-ups per UTC day; 0 (the default) = no cap. A lever against chargebacks. */
+  TOPUP_DAILY_LIMIT_NGN: Joi.number().integer().min(0).max(1_000_000_000).default(0),
+  /** Largest single top-up in real naira (pack or custom amount). */
+  TOPUP_MAX_PER_PAYMENT_NGN: Joi.number().integer().min(500).max(100_000_000).default(10_000_000),
   /** Object storage (SeaweedFS locally, any S3-compatible store in production) for ad creatives and club tracks. */
   S3_ENDPOINT: Joi.string().uri().required(),
   S3_REGION: Joi.string().default('us-east-1'),
@@ -83,7 +95,7 @@ export const validationSchema = Joi.object({
   /** Days a deleted account can still be restored before it is anonymised. */
   ACCOUNT_RESTORE_DAYS: Joi.number().integer().min(1).max(365).default(30),
 
-  /** Allow the fake checkout when no Paystack key is set. Never enable on a public deployment. */
+  /** Allow the fake checkout when no Flutterwave key is set. Never enable on a public deployment. */
   ALLOW_PAYMENT_SANDBOX: Joi.boolean().default(false),
 
   /**
@@ -106,8 +118,10 @@ export const validationSchema = Joi.object({
 interface EnvForChecks {
   readonly NODE_ENV: string;
   readonly DEPLOYMENT: 'local' | 'public';
-  readonly PAYSTACK_SECRET_KEY: string;
-  readonly PAYSTACK_CALLBACK_URL: string;
+  readonly FLUTTERWAVE_SECRET_KEY: string;
+  readonly FLUTTERWAVE_PUBLIC_KEY?: string;
+  readonly FLUTTERWAVE_WEBHOOK_SECRET_HASH?: string;
+  readonly PAYMENT_CALLBACK_URL: string;
   readonly JWT_ACCESS_SECRET: string;
   readonly CORS_ORIGINS: string;
   readonly ADMIN_ORIGINS?: string;
@@ -138,11 +152,16 @@ function isOrigin(value: string): boolean {
   }
 }
 
+/** Flutterwave test-mode keys carry `_TEST` (`FLWSECK_TEST-…`, `FLWPUBK_TEST-…`). */
+const TEST_KEY = /^FLW(SECK|PUBK)_TEST-/;
+
 /** Why this environment must not boot (null = fine). Exported for tests. */
 export function productionProblem(value: EnvForChecks): string | null {
   const smtp = value.SMTP_URL || value.SMTP_HOST || '';
+  const webhookHash = value.FLUTTERWAVE_WEBHOOK_SECRET_HASH ?? '';
   if (value.NODE_ENV === 'production') {
-    if (!value.PAYSTACK_SECRET_KEY && !value.ALLOW_PAYMENT_SANDBOX) return 'PAYSTACK_SECRET_KEY is required in production';
+    if (!value.FLUTTERWAVE_SECRET_KEY && !value.ALLOW_PAYMENT_SANDBOX) return 'FLUTTERWAVE_SECRET_KEY is required in production';
+    if (!value.PAYMENT_CALLBACK_URL) return 'PAYMENT_CALLBACK_URL is required in production';
     // With verification required and no mail, nobody could confirm their email, so nobody could play.
     if (value.REQUIRE_EMAIL_VERIFICATION && !smtp) return 'SMTP_URL (or SMTP_HOST) is required in production when REQUIRE_EMAIL_VERIFICATION is on';
     // A placeholder signing key lets anyone mint tokens: refused in production whatever else is set.
@@ -153,7 +172,13 @@ export function productionProblem(value: EnvForChecks): string | null {
   if (value.DEPLOYMENT === 'public') {
     if (value.NODE_ENV !== 'production') return 'DEPLOYMENT=public needs NODE_ENV=production';
     if (value.ALLOW_PAYMENT_SANDBOX) return 'ALLOW_PAYMENT_SANDBOX must be off on the live site';
-    if (!value.PAYSTACK_SECRET_KEY) return 'PAYSTACK_SECRET_KEY is required on the live site';
+    if (!value.FLUTTERWAVE_SECRET_KEY) return 'FLUTTERWAVE_SECRET_KEY is required on the live site';
+    if (TEST_KEY.test(value.FLUTTERWAVE_SECRET_KEY)) return 'FLUTTERWAVE_SECRET_KEY must be the live key (FLWSECK-…), not a test key, on the live site';
+    if (value.FLUTTERWAVE_PUBLIC_KEY && TEST_KEY.test(value.FLUTTERWAVE_PUBLIC_KEY)) return 'FLUTTERWAVE_PUBLIC_KEY must be the live key (FLWPUBK-…), not a test key, on the live site';
+    // Without the hash every webhook is refused, so missed redirects would wait for the reconciler.
+    if (webhookHash.length < 32 || PLACEHOLDER.test(webhookHash)) {
+      return 'FLUTTERWAVE_WEBHOOK_SECRET_HASH must be a long random value (32+ characters, the same as in the Flutterwave dashboard) on the live site';
+    }
     if (!value.COOKIE_SECURE) return 'COOKIE_SECURE must be true on the live site (HTTPS)';
     if (value.JWT_ACCESS_SECRET.length < 48 || PLACEHOLDER.test(value.JWT_ACCESS_SECRET)) return 'JWT_ACCESS_SECRET must be a long random secret (48+ characters) on the live site';
     if (!value.MARKET_SEED || PLACEHOLDER.test(value.MARKET_SEED)) return 'MARKET_SEED must be set to a private random value on the live site';
@@ -162,7 +187,7 @@ export function productionProblem(value: EnvForChecks): string | null {
     const adminOrigins = (value.ADMIN_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean);
     if (adminOrigins.some((origin) => !origin.startsWith('https://'))) return 'ADMIN_ORIGINS must be https:// origins on the live site';
     if (!value.ADMIN_MFA_KEY || value.ADMIN_MFA_KEY.length < 32 || PLACEHOLDER.test(value.ADMIN_MFA_KEY)) return 'ADMIN_MFA_KEY must be a long random secret (32+ characters) on the live site';
-    if (!value.PAYSTACK_CALLBACK_URL.startsWith('https://')) return 'PAYSTACK_CALLBACK_URL must be https:// on the live site';
+    if (!value.PAYMENT_CALLBACK_URL.startsWith('https://')) return 'PAYMENT_CALLBACK_URL must be https:// on the live site';
     if (smtp && MAIL_CATCHER.test(smtp)) return 'SMTP_URL must be a real mail server on the live site (not a local mail catcher)';
   }
   return null;

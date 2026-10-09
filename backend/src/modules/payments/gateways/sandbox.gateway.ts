@@ -2,15 +2,22 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Repository } from 'typeorm';
 import { PaymentEntity } from '../entities/payment.entity.js';
-import type { GatewayCharge, GatewayChargeStatus, GatewayInitializeInput, PaymentGateway } from './payment-gateway.interface.js';
+import type {
+  GatewayCharge,
+  GatewayChargeStatus,
+  GatewayInitializeInput,
+  GatewayRefund,
+  GatewayRefundInput,
+  PaymentGateway,
+} from './payment-gateway.interface.js';
 
 /** Where the frontend renders the fake checkout. */
 export const sandboxCheckoutUrl = (reference: string): string => `/payments/sandbox?reference=${encodeURIComponent(reference)}`;
 
 /**
- * Local stand-in for Paystack (development without a secret key). The "customer" decides on the fake checkout page
- * via `POST /v1/payments/sandbox/:reference/{succeed|fail}`; verify then reports what was decided. Never enabled in
- * production unless ALLOW_PAYMENT_SANDBOX is set (config validation).
+ * Local stand-in for Flutterwave (development without a secret key). The "customer" decides on the fake checkout page
+ * via `POST /v1/payments/sandbox/:reference/{succeed|fail}`; verify then reports what was decided, and refunds are
+ * accepted instantly. Never enabled in production unless ALLOW_PAYMENT_SANDBOX is set (config validation).
  */
 @Injectable()
 export class SandboxGateway implements PaymentGateway {
@@ -26,27 +33,35 @@ export class SandboxGateway implements PaymentGateway {
     const payment = await this.payments.findOne({ where: { reference } });
     if (!payment) return null;
     const status: GatewayChargeStatus = payment.status === 'initialized' ? 'pending' : payment.status;
-    return {
-      reference,
-      status,
-      amountKobo: payment.amountKobo,
-      currency: payment.currency,
-      channel: 'sandbox',
-      paidAt: payment.verifiedAt,
-      details: { sandbox: true, status },
-    };
+    return this.charge(payment, status);
+  }
+
+  /** The sandbox has no transaction ids of its own: the redirect never carries one. */
+  async verifyTransaction(): Promise<GatewayCharge | null> {
+    return null;
+  }
+
+  async refund(input: GatewayRefundInput): Promise<GatewayRefund> {
+    const payment = await this.payments.findOne({ where: { reference: input.reference } });
+    return { refundId: `sandbox-${input.reference.slice(0, 8)}`, amountKobo: input.amountKobo ?? payment?.amountKobo ?? 0, status: 'completed' };
   }
 
   /** The charge the fake checkout produces when the player taps Pay / Decline. */
   simulatedCharge(payment: PaymentEntity, outcome: 'success' | 'failed'): GatewayCharge {
+    return { ...this.charge(payment, outcome), paidAt: outcome === 'success' ? new Date() : null };
+  }
+
+  private charge(payment: PaymentEntity, status: GatewayChargeStatus): GatewayCharge {
     return {
       reference: payment.reference,
-      status: outcome,
+      transactionId: null,
+      status,
       amountKobo: payment.amountKobo,
+      chargedAmountKobo: payment.amountKobo,
       currency: payment.currency,
       channel: 'sandbox',
-      paidAt: outcome === 'success' ? new Date() : null,
-      details: { sandbox: true, status: outcome },
+      paidAt: payment.verifiedAt,
+      details: { sandbox: true, status },
     };
   }
 }

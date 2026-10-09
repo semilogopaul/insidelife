@@ -6,3 +6,9 @@ export interface UploadedMedia {
   readonly buffer: Buffer;
   readonly size: number;
 }
+
+/** The buyer's character, when they have one (brands may not): its id is stored, its @handle shown on the checkout. */
+export interface Buyer {
+  readonly id: string;
+  readonly handle: string;
+}

@@ -11,7 +11,7 @@ import { StatementScreen } from './statement/StatementScreen';
 import { TopUpScreen } from './topup/TopUpScreen';
 
 /**
- * Bank phone app: balances, statement, send to @handle, savings and Paystack top-ups. Deep links:
+ * Bank phone app: balances, statement, send to @handle, savings and real-money top-ups. Deep links:
  * `openPhone('bank', 'send' | 'topup' | 'savings' | 'statement')`.
  */
 export function BankApp() {

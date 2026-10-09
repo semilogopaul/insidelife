@@ -40,6 +40,8 @@ export const AUDIT_ACTIONS = [
   'club-order.mark-refunded',
   'report.resolve',
   'report.dismiss',
+  // Prices
+  'ad-rate.update',
   // Data leaving the system
   'export.players',
   'export.payments',

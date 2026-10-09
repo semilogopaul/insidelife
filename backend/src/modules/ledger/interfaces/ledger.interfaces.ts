@@ -9,7 +9,7 @@ export const SYSTEM_ACCOUNTS = {
   burn: 'system:burn',
   tax: 'system:tax',
   fees: 'system:fees',
-  /** Paystack top-ups (real money in). */
+  /** Real-money top-ups (Flutterwave) come in here; refunded top-ups clawed back go out to it. */
   topup: 'system:topup',
   /** Counterparty for investment trades; its balance is the market's net position. */
   market: 'system:market',

@@ -1,6 +1,152 @@
 import { describe, expect, it } from 'vitest';
-import { AD_PLACEMENTS } from '../world-map/ad-placements.js';
-import { AD_SLOTS, DEFAULT_PHONE_APP_SLOTS, findAdSlot, phoneAppSlotNumber } from './ad-inventory.js';
+import { AD_PLACEMENT_KINDS, AD_PLACEMENTS } from '../world-map/ad-placements.js';
+import {
+  AD_RATE_DEFINITIONS,
+  AD_RATE_KEYS,
+  AD_SLOTS,
+  DEFAULT_PHONE_APP_SLOTS,
+  adRateKeyOf,
+  adWeekPriceKobo,
+  districtPriceFactor,
+  findAdSlot,
+  isAdRateKey,
+  phoneAppSlotNumber,
+  type AdSlot,
+} from './ad-inventory.js';
+import {
+  AD_MAX_PRICE_KOBO,
+  AD_MIN_PRICE_KOBO,
+  BILLBOARD_SLOT_IDS,
+  CLUB_PLAY_PRODUCTS,
+  TRACK_MAX_SECONDS,
+  adQuote,
+  adWeekPriceLabel,
+  adWeeksProblem,
+  findBillboardSlot,
+  friendlyWeekPriceKobo,
+  isValidAdPriceKobo,
+} from './promotions.js';
+
+const NAIRA = 100;
+const ofKind = (kind: AdSlot['kind']): readonly AdSlot[] => AD_SLOTS.filter((slot) => slot.kind === kind);
+
+/** The day rates before the switch to weekly pricing (₦/day). */
+const OLD_DAILY = {
+  premium: {
+    'mmia-arrivals': 25_000,
+    'third-mainland-north': 20_000,
+    'third-mainland-south': 20_000,
+    'lekki-toll-gate': 15_000,
+    'ozumba-mbadiwe': 12_000,
+    'vi-towers': 12_000,
+    'ikeja-allen': 8_000,
+    'balogun-market': 7_500,
+    'yaba-hub': 6_000,
+    'surulere-stadium': 5_000,
+    'ajah-roundabout': 4_000,
+    'ikorodu-garage': 2_500,
+  },
+  'street-billboard': 1_800,
+  'bus-shelter': 900,
+  totem: 600,
+  'stadium-led': 2_500,
+  'market-banner': 1_000,
+  'park-board': 1_500,
+  'lagos-tv': 6_000,
+} as const;
+
+describe('ad prices: per 7 days, 7 × the old day rate', () => {
+  it('prices every premium board at 7 × its old day rate', () => {
+    for (const id of BILLBOARD_SLOT_IDS) expect(findBillboardSlot(id)?.weekPriceKobo, id).toBe(7 * OLD_DAILY.premium[id] * NAIRA);
+    expect(findAdSlot('mmia-arrivals')?.weekPriceKobo).toBe(175_000 * NAIRA);
+    expect(findAdSlot('ikorodu-garage')?.weekPriceKobo).toBe(17_500 * NAIRA);
+  });
+
+  it('keeps venue, stadium, market, park and Lagos TV prices flat at 7 × the day rate', () => {
+    for (const kind of ['stadium-led', 'market-banner', 'park-board', 'lagos-tv'] as const) {
+      for (const slot of ofKind(kind)) expect(slot.weekPriceKobo, slot.id).toBe(7 * OLD_DAILY[kind] * NAIRA);
+    }
+  });
+
+  it('scales roadside kinds by district prestige, rounded to ₦500', () => {
+    for (const kind of ['street-billboard', 'bus-shelter', 'totem'] as const) {
+      for (const slot of ofKind(kind)) {
+        const expected = friendlyWeekPriceKobo(7 * OLD_DAILY[kind] * NAIRA * districtPriceFactor(slot.districtId!));
+        expect(slot.weekPriceKobo, slot.id).toBe(expected);
+        expect(slot.weekPriceKobo % (500 * NAIRA)).toBe(0);
+      }
+    }
+    const shelters = ofKind('bus-shelter');
+    const mushin = shelters.find((slot) => slot.districtId === 'mushin');
+    const vi = shelters.find((slot) => slot.districtId === 'victoria-island');
+    if (mushin && vi) expect(vi.weekPriceKobo).toBeGreaterThan(mushin.weekPriceKobo);
+  });
+
+  it('sells the phone app at ₦100,000 per 7 days and songs at ₦5,000 (under 5 minutes)', () => {
+    for (const app of ofKind('phone-app')) expect(app.weekPriceKobo, app.id).toBe(100_000 * NAIRA);
+    expect(CLUB_PLAY_PRODUCTS).toEqual([expect.objectContaining({ id: 'all-clubs-7d', days: 7, priceKobo: 5_000 * NAIRA })]);
+    expect(TRACK_MAX_SECONDS).toBe(300);
+  });
+
+  it('never prices an ad under ₦2,000 a week', () => {
+    for (const slot of AD_SLOTS) expect(slot.weekPriceKobo, slot.id).toBeGreaterThanOrEqual(AD_MIN_PRICE_KOBO);
+    expect(friendlyWeekPriceKobo(400 * NAIRA)).toBe(AD_MIN_PRICE_KOBO);
+  });
+
+  it('quotes 1–4 consecutive weeks with no discount', () => {
+    expect(adQuote(175_000 * NAIRA, 1)).toEqual({ weeks: 1, days: 7, weekPriceKobo: 17_500_000, totalKobo: 17_500_000 });
+    expect(adQuote(175_000 * NAIRA, 4)).toMatchObject({ days: 28, totalKobo: 70_000_000 });
+    for (const weeks of [0, 5, 1.5]) {
+      expect(adWeeksProblem(weeks)).toMatch(/1 to 4 weeks/);
+      expect(() => adQuote(175_000 * NAIRA, weeks)).toThrow(RangeError);
+    }
+    expect(() => adQuote(1_999 * NAIRA, 1)).toThrow(/₦2,000/);
+    expect(() => adQuote(2_000 * NAIRA + 50, 1)).toThrow(RangeError);
+    expect(adWeekPriceLabel(17_500 * NAIRA)).toBe('₦17,500/week');
+  });
+});
+
+describe('ad rates (admin-editable)', () => {
+  it('has one rate per placement kind, Lagos TV, the phone apps, each premium board and the club song', () => {
+    expect(AD_RATE_KEYS).toEqual([...AD_PLACEMENT_KINDS, 'lagos-tv', 'phone-app', ...BILLBOARD_SLOT_IDS, 'club-song']);
+    expect(AD_RATE_DEFINITIONS['street-billboard']).toMatchObject({ unit: 'week', byDistrict: true, defaultKobo: 12_600 * NAIRA });
+    expect(AD_RATE_DEFINITIONS['stadium-led']).toMatchObject({ byDistrict: false, defaultKobo: 17_500 * NAIRA });
+    expect(AD_RATE_DEFINITIONS['phone-app'].defaultKobo).toBe(100_000 * NAIRA);
+    expect(AD_RATE_DEFINITIONS['club-song']).toMatchObject({ unit: 'song', defaultKobo: 5_000 * NAIRA });
+    for (const key of AD_RATE_KEYS) expect(isValidAdPriceKobo(AD_RATE_DEFINITIONS[key].defaultKobo), key).toBe(true);
+    expect(isAdRateKey('totem')).toBe(true);
+    expect(isAdRateKey('toString')).toBe(false);
+  });
+
+  it('maps every slot to its rate and derives the slot price from it', () => {
+    for (const slot of AD_SLOTS) {
+      const key = adRateKeyOf(slot);
+      expect(adWeekPriceKobo(slot, AD_RATE_DEFINITIONS[key].defaultKobo), slot.id).toBe(slot.weekPriceKobo);
+    }
+    const shelter = ofKind('bus-shelter')[0]!;
+    // Doubling a byDistrict base rate roughly doubles every spot of that kind (still on the ₦500 grid).
+    expect(adWeekPriceKobo(shelter, 2 * AD_RATE_DEFINITIONS['bus-shelter'].defaultKobo) % (500 * NAIRA)).toBe(0);
+    expect(adWeekPriceKobo(findAdSlot('lagos-tv')!, 50_000 * NAIRA)).toBe(50_000 * NAIRA);
+  });
+
+  it('clamps a district-scaled price to the ₦100m cap, so a rate near it stays bookable', () => {
+    const rich = AD_SLOTS.filter((slot) => slot.kind === 'street-billboard').toSorted((a, b) => districtPriceFactor(b.districtId!) - districtPriceFactor(a.districtId!))[0]!;
+    expect(districtPriceFactor(rich.districtId!)).toBeGreaterThan(1);
+    const price = adWeekPriceKobo(rich, AD_MAX_PRICE_KOBO);
+    expect(price).toBe(AD_MAX_PRICE_KOBO);
+    expect(isValidAdPriceKobo(price)).toBe(true);
+    expect(() => adQuote(price, 4)).not.toThrow();
+  });
+
+  it('accepts only whole naira from ₦2,000 to ₦100m', () => {
+    expect(isValidAdPriceKobo(2_000 * NAIRA)).toBe(true);
+    expect(isValidAdPriceKobo(100_000_000 * NAIRA)).toBe(true);
+    expect(isValidAdPriceKobo(1_999 * NAIRA)).toBe(false);
+    expect(isValidAdPriceKobo(100_000_001 * NAIRA)).toBe(false);
+    expect(isValidAdPriceKobo(2_000 * NAIRA + 1)).toBe(false);
+    expect(isValidAdPriceKobo(Number.NaN)).toBe(false);
+  });
+});
 
 describe('ad inventory', () => {
   it('offers more than 500 places to advertise with the default 10 phone apps', () => {
@@ -18,20 +164,10 @@ describe('ad inventory', () => {
     for (const spot of AD_PLACEMENTS) {
       const slot = findAdSlot(spot.id);
       expect(slot, spot.id).toBeDefined();
-      expect(slot?.pricePerDayKobo).toBeGreaterThan(0);
+      expect(slot?.weekPriceKobo).toBeGreaterThan(0);
       expect(slot?.maxConcurrentAds).toBeGreaterThan(0);
       expect(slot?.format).toBe(spot.format);
     }
-  });
-
-  it('prices roadside spots by district prestige', () => {
-    const shelters = AD_SLOTS.filter((slot) => slot.kind === 'bus-shelter');
-    const cheapest = Math.min(...shelters.map((slot) => slot.pricePerDayKobo));
-    const dearest = Math.max(...shelters.map((slot) => slot.pricePerDayKobo));
-    expect(dearest).toBeGreaterThan(cheapest);
-    const mushin = shelters.find((slot) => slot.districtId === 'mushin');
-    const vi = shelters.find((slot) => slot.districtId === 'victoria-island');
-    if (mushin && vi) expect(vi.pricePerDayKobo).toBeGreaterThan(mushin.pricePerDayKobo);
   });
 
   it('keeps generated spots clear of each other', () => {

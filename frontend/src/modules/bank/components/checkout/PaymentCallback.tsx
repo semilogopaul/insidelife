@@ -17,16 +17,24 @@ import { CashBurst } from './CashBurst';
 import { CheckoutShell, SessionGate } from './CheckoutShell';
 
 /**
- * Where Paystack (or the sandbox) sends the browser back: `/payments/callback?reference=…`. Verifies the charge
- * (idempotent), celebrates a success, explains a failure and offers the way back into the game.
+ * Where Flutterwave sends the browser back: `/payments/callback?status=…&tx_ref=…&transaction_id=…` (the sandbox uses
+ * `?reference=…`). Nothing in the URL is trusted: the server verifies the charge with Flutterwave (idempotent). Then
+ * we celebrate a success, explain a failure and offer the way back into the game.
  */
 export function PaymentCallback() {
   const params = useSearchParams();
-  const reference = params.get('reference') ?? params.get('trxref');
+  const reference = params.get('tx_ref') ?? params.get('reference');
+  const transactionId = params.get('transaction_id') ?? undefined;
+  const closed = params.get('status') === 'cancelled';
+  const query = new URLSearchParams({ tx_ref: reference ?? '', ...(transactionId ? { transaction_id: transactionId } : {}), ...(closed ? { status: 'cancelled' } : {}) });
   return (
     <CheckoutShell label="Payment">
-      <SessionGate returnTo={`/payments/callback?reference=${encodeURIComponent(reference ?? '')}`}>
-        {isPaymentReference(reference) ? <Verification reference={reference} /> : <NoReference />}
+      <SessionGate returnTo={`/payments/callback?${query.toString()}`}>
+        {isPaymentReference(reference) ? (
+          <Verification reference={reference} transactionId={transactionId && /^\d{1,20}$/.test(transactionId) ? transactionId : undefined} closed={closed} />
+        ) : (
+          <NoReference />
+        )}
       </SessionGate>
     </CheckoutShell>
   );
@@ -40,8 +48,15 @@ const OUTCOME_ICON: Readonly<Record<PaymentOutcome, { readonly icon: LucideIcon;
   abandoned: { icon: CircleSlash, className: 'bg-paper-3 text-text' },
 };
 
-function Verification({ reference }: { readonly reference: string }) {
-  const verification = usePaymentVerification(reference, true);
+interface VerificationProps {
+  readonly reference: string;
+  readonly transactionId?: string;
+  /** Flutterwave said the checkout was closed (a hint for the copy only; the server still checks). */
+  readonly closed: boolean;
+}
+
+function Verification({ reference, transactionId, closed }: VerificationProps) {
+  const verification = usePaymentVerification(reference, true, transactionId);
   const reduceMotion = useReducedMotion();
 
   if (verification.isPending) {
@@ -49,7 +64,7 @@ function Verification({ reference }: { readonly reference: string }) {
       <div className="flex flex-col items-center gap-3 py-10 text-center" role="status">
         <Spinner size={28} className="text-text-soft" />
         <p className="type-title text-xl">Confirming your payment…</p>
-        <p className="text-sm text-text-soft">Checking with Paystack. Don’t close this page.</p>
+        <p className="text-sm text-text-soft">Checking with Flutterwave. Don’t close this page.</p>
       </div>
     );
   }
@@ -57,7 +72,7 @@ function Verification({ reference }: { readonly reference: string }) {
     return (
       <div className="py-4 text-center">
         <p className="type-title text-2xl">We couldn’t confirm this payment</p>
-        <p className="mt-2 text-sm text-text-soft">{errorMessage(verification.error)} If you were charged, it will be credited automatically once Paystack confirms.</p>
+        <p className="mt-2 text-sm text-text-soft">{errorMessage(verification.error)} If you were charged, it will be credited automatically once Flutterwave confirms.</p>
         <div className="mt-5 flex flex-col gap-2">
           <Button block onClick={verification.checkAgain} icon={<RotateCcw size={18} aria-hidden />}>
             Check again
@@ -69,8 +84,9 @@ function Verification({ reference }: { readonly reference: string }) {
   }
 
   const { payment } = verification.data;
-  const outcome = verification.outcome;
-  const copy = outcomeCopy(payment);
+  // Closed on Flutterwave's page and nothing paid: say so instead of "waiting for your bank".
+  const outcome = closed && verification.outcome === 'pending' ? 'abandoned' : verification.outcome;
+  const copy = outcomeCopy(outcome === 'abandoned' ? { ...payment, status: 'abandoned' } : payment);
   const { icon: Icon, className } = OUTCOME_ICON[outcome];
   const waiting = outcome === 'pending' || outcome === 'delivering';
 
@@ -139,7 +155,8 @@ function NewBalance() {
 function Retry({ payment }: { readonly payment: PaymentDto }) {
   const start = useStartTopup();
   if (payment.purpose !== 'topup' || !payment.topup) return null;
-  const packageId = payment.topup.packageId;
+  // The same pack, or the same custom amount (re-quoted by the server).
+  const again = payment.topup.packageId ? { packageId: payment.topup.packageId } : { amountNgn: payment.amountNgn };
   return (
     <>
       {start.isError && (
@@ -147,7 +164,7 @@ function Retry({ payment }: { readonly payment: PaymentDto }) {
           {errorMessage(start.error)}
         </p>
       )}
-      <Button size="lg" block loading={start.isPending || start.isSuccess} onClick={() => start.mutate(packageId)} icon={<RotateCcw size={18} aria-hidden />}>
+      <Button size="lg" block loading={start.isPending || start.isSuccess} onClick={() => start.mutate(again)} icon={<RotateCcw size={18} aria-hidden />}>
         Try again
       </Button>
     </>

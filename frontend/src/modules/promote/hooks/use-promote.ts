@@ -19,7 +19,7 @@ export function useTracks() {
   return useQuery({ queryKey: promoteKeys.tracks, queryFn: promoteApi.tracks, staleTime: 15_000 });
 }
 
-/** Leave for checkout (Paystack or the dev sandbox). The browser returns to /payments/callback. */
+/** Leave for checkout (Flutterwave or the dev sandbox). The browser returns to /payments/callback. */
 function leaveForCheckout(url: string): void {
   gameEvents.emit('sfx', { id: 'ui-click' });
   window.location.assign(url);
@@ -33,7 +33,11 @@ export function useCreateCampaign() {
       void client.invalidateQueries({ queryKey: promoteKeys.campaigns });
       leaveForCheckout(checkout.authorizationUrl);
     },
-    onError: () => gameEvents.emit('sfx', { id: 'ui-error' }),
+    onError: () => {
+      gameEvents.emit('sfx', { id: 'ui-error' });
+      // The slot may have filled up (DATES_CHANGED, SLOT_FULL): show the new next free dates.
+      void client.invalidateQueries({ queryKey: promoteKeys.slots });
+    },
   });
 }
 
@@ -56,7 +60,11 @@ export function useOrderRotation() {
       void client.invalidateQueries({ queryKey: promoteKeys.tracks });
       leaveForCheckout(checkout.authorizationUrl);
     },
-    onError: () => gameEvents.emit('sfx', { id: 'ui-error' }),
+    onError: () => {
+      gameEvents.emit('sfx', { id: 'ui-error' });
+      // The rotation's next free day (and the price) come with the slots: refresh them after a refusal.
+      void client.invalidateQueries({ queryKey: promoteKeys.slots });
+    },
   });
 }
 

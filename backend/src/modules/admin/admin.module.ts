@@ -8,6 +8,7 @@ import { PromotionsModule } from '../promotions/promotions.module.js';
 import { SimulationModule } from '../simulation/simulation.module.js';
 import { SocialModule } from '../social/social.module.js';
 import { UsersModule } from '../users/users.module.js';
+import { AdminAdRatesController } from './ad-rates/admin-ad-rates.controller.js';
 import { AdminAccountsController } from './admins/admin-accounts.controller.js';
 import { AdminAccountsService } from './admins/admin-accounts.service.js';
 import { AdminAuditController } from './audit/admin-audit.controller.js';
@@ -30,7 +31,8 @@ import { AdminReportsService } from './reports/admin-reports.service.js';
 
 /**
  * The admin API (`/api/v1/admin/*`) behind the separate admin portal: its own sign-in (password + authenticator code,
- * short-lived admin tokens), players, moderation, reports, payments, the dashboard, the audit log and admin accounts.
+ * short-lived admin tokens), players, moderation, reports, payments, ad prices, the dashboard, the audit log and admin
+ * accounts.
  * Reads are read models over the domain tables; every change goes through the owning module's service and is audited
  * in the same transaction. Sits on top of every other module; nothing imports it.
  */
@@ -48,6 +50,7 @@ import { AdminReportsService } from './reports/admin-reports.service.js';
   ],
   controllers: [
     AdminAuthController,
+    AdminAdRatesController,
     AdminDashboardController,
     AdminPlayersController,
     AdminModerationController,

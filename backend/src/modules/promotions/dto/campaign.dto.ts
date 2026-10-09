@@ -1,5 +1,5 @@
 import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
-import { BILLBOARD_MAX_DAYS, BILLBOARD_MIN_DAYS, LINK_URL_MAX, type BillboardSlotId, type CreateCampaignRequest } from '@insidelife/shared';
+import { AD_MAX_WEEKS, LINK_URL_MAX, type BillboardSlotId, type CreateCampaignRequest } from '@insidelife/shared';
 
 /** Slot ids are short kebab-case catalog keys (`findAdSlot` decides whether one exists and is for sale). */
 const SLOT_ID = /^[a-z0-9-]{2,32}$/;
@@ -27,14 +27,22 @@ export class CreateCampaignDto implements CreateCampaignRequest {
   @MaxLength(LINK_URL_MAX + 100)
   readonly linkUrl: string;
 
-  @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'startDate must be YYYY-MM-DD' })
-  readonly startDate: string;
-
+  /** Consecutive 7-day blocks; the server picks the start (the slot's next free day). */
   @IsInt()
-  @Min(BILLBOARD_MIN_DAYS)
-  @Max(BILLBOARD_MAX_DAYS)
-  readonly days: number;
+  @Min(1)
+  @Max(AD_MAX_WEEKS)
+  readonly weeks: number;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expectedStartDate must be YYYY-MM-DD' })
+  readonly expectedStartDate?: string;
+
+  /** The total the buyer was shown, in kobo; a re-priced slot is refused with PRICE_CHANGED. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  readonly expectedPriceKobo?: number;
 }
 
 /** Multipart text fields of `POST /promotions/creatives`. */

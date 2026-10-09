@@ -7,9 +7,10 @@ import {
   PROMOTION_TITLE_MAX,
   TRACK_ACCEPTED_TYPES,
   TRACK_MAX_BYTES,
-  billboardQuote,
+  TRACK_MAX_SECONDS,
+  TRACK_MIN_SECONDS,
+  adQuote,
   koboToNaira,
-  type BillboardDayAvailability,
   type BillboardFormat,
   type IsoDate,
   type PromotionQuote,
@@ -102,6 +103,17 @@ export function checkTrackFile(file: Pick<File, 'type' | 'size'>): string | null
   return null;
 }
 
+/**
+ * The browser's reading of a song's length, checked against the rule (30 s to under 5 minutes). The server measures
+ * the file itself and has the last word.
+ */
+export function trackDurationProblem(seconds: number | null): string | null {
+  if (seconds === null) return null;
+  if (seconds < TRACK_MIN_SECONDS) return `Songs need at least ${TRACK_MIN_SECONDS} seconds.`;
+  if (seconds >= TRACK_MAX_SECONDS) return `Songs must be under ${TRACK_MAX_SECONDS / 60} minutes. This one is ${formatDuration(Math.floor(seconds))}: trim it or use a radio edit.`;
+  return null;
+}
+
 /** Smallest source image the server accepts for a format (half the target on each side). */
 export function minimumImageSize(format: BillboardFormat): { readonly width: number; readonly height: number } {
   const spec = BILLBOARD_FORMAT_SPECS[format];
@@ -144,7 +156,7 @@ const dayFormat = new Intl.DateTimeFormat('en-NG', { weekday: 'short', day: 'num
 const shortFormat = new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 /** "Thu 8 Oct" (real Lagos calendar day). */
-export const formatDay = (date: IsoDate): string => dayFormat.format(new Date(utc(date)));
+export const formatDay = (date: IsoDate): string => dayFormat.format(new Date(utc(date))).replace(',', '');
 export const formatShortDay = (date: IsoDate): string => shortFormat.format(new Date(utc(date)));
 
 /** "8 Oct – 14 Oct" for an exclusive end date. */
@@ -153,65 +165,30 @@ export function formatRange(startDate: IsoDate, endDate: IsoDate): string {
   return startDate === last ? formatShortDay(startDate) : `${formatShortDay(startDate)} – ${formatShortDay(last)}`;
 }
 
+/** "Fri 9 Oct – Thu 15 Oct" for an exclusive end date (the run's first and last day). */
+export function formatRunDays(startDate: IsoDate, endDate: IsoDate): string {
+  return `${formatDay(startDate)} – ${formatDay(addDays(endDate, -1))}`;
+}
+
 export interface QuotePreview extends PromotionQuote {
-  readonly unitNaira: number;
-  readonly subtotalNaira: number;
-  readonly discountNaira: number;
+  readonly weekNaira: number;
   readonly totalNaira: number;
 }
 
-/** Shared `billboardQuote` (weekly bundle discount) in naira, or null when the length is out of range. */
-export function quoteBillboard(pricePerDayKobo: number, days: number): QuotePreview | null {
+/** Shared `adQuote` (consecutive 7-day blocks at the current weekly price) in naira, or null when it can't be sold. */
+export function quoteWeeks(weekPriceKobo: number, weeks: number): QuotePreview | null {
   try {
-    const quote = billboardQuote({ pricePerDayKobo }, days);
-    return {
-      ...quote,
-      unitNaira: koboToNaira(quote.unitPriceKobo),
-      subtotalNaira: koboToNaira(quote.subtotalKobo),
-      discountNaira: koboToNaira(quote.discountKobo),
-      totalNaira: koboToNaira(quote.totalKobo),
-    };
+    const quote = adQuote(weekPriceKobo, weeks);
+    return { ...quote, weekNaira: koboToNaira(quote.weekPriceKobo), totalNaira: koboToNaira(quote.totalKobo) };
   } catch {
     return null;
   }
 }
 
-export type DayState = 'open' | 'filling' | 'full';
-
-export function dayState(day: Pick<BillboardDayAvailability, 'booked' | 'capacity'>): DayState {
-  if (day.booked >= day.capacity) return 'full';
-  if (day.booked / day.capacity >= 0.5) return 'filling';
-  return 'open';
-}
-
-export interface RangeAvailability {
-  /** Days in the range that are already full. */
-  readonly fullDays: readonly IsoDate[];
-  /** Days beyond the published calendar (checked at checkout). */
-  readonly unknownDays: number;
-}
-
-export function rangeAvailability(availability: readonly BillboardDayAvailability[], startDate: IsoDate, days: number): RangeAvailability {
-  const byDate = new Map(availability.map((day) => [day.date, day]));
-  const fullDays: IsoDate[] = [];
-  let unknownDays = 0;
-  for (let offset = 0; offset < days; offset++) {
-    const date = addDays(startDate, offset);
-    const day = byDate.get(date);
-    if (!day) unknownDays++;
-    else if (day.booked >= day.capacity) fullDays.push(date);
-  }
-  return { fullDays, unknownDays };
-}
-
-/** First start date (from `from`) whose whole run fits in the published calendar without a full day. */
-export function firstOpenStart(availability: readonly BillboardDayAvailability[], from: IsoDate, days: number): IsoDate | null {
-  for (const day of availability) {
-    if (day.date < from) continue;
-    const check = rangeAvailability(availability, day.date, days);
-    if (check.fullDays.length === 0) return day.date;
-  }
-  return null;
+/** A slot's next free day in words: "Free from today" / "Next free: Thu 15 Oct" / "Fully booked for 2 months". */
+export function nextFreeLabel(nextStart: IsoDate | null | undefined, today: IsoDate): string {
+  if (!nextStart) return 'Fully booked for 2 months';
+  return nextStart <= today ? 'Free from today' : `Next free: ${formatDay(nextStart)}`;
 }
 
 /** "3:24" from seconds. */

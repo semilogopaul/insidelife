@@ -52,7 +52,7 @@ export class AdminModerationController {
   @HttpCode(HttpStatus.OK)
   @Post('campaigns/:id/reject')
   rejectCampaign(@Actor() actor: AuditActor, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: AdminRejectDto): Promise<ModerationCampaignDto> {
-    return this.moderation.decideCampaign(actor, id, 'reject', body.reason.trim(), body.refund ?? true);
+    return this.moderation.decideCampaign(actor, id, 'reject', body.reason.trim(), body.refund);
   }
 
   @HttpCode(HttpStatus.OK)
@@ -70,7 +70,7 @@ export class AdminModerationController {
   @HttpCode(HttpStatus.OK)
   @Post('club-orders/:id/reject')
   rejectClubOrder(@Actor() actor: AuditActor, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: AdminRejectDto): Promise<ModerationClubOrderDto> {
-    return this.moderation.decideClubOrder(actor, id, 'reject', body.reason.trim(), body.refund ?? true);
+    return this.moderation.decideClubOrder(actor, id, 'reject', body.reason.trim(), body.refund);
   }
 
   @HttpCode(HttpStatus.OK)

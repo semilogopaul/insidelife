@@ -8,20 +8,20 @@ import { paymentOutcome } from '../services/payment-status';
 import { useRefreshMoney } from './use-wallet';
 
 const POLL_MS = 3_000;
-/** Give Paystack ~30 s to confirm slow channels (bank transfer, USSD) before asking the player to check later. */
+/** Give Flutterwave ~30 s to confirm slow channels (bank transfer, USSD) before asking the player to check later. */
 const MAX_POLLS = 10;
 
 /**
  * Verifies a returning checkout. Idempotent on the server (verifying twice never credits twice), so it's modelled as
  * a query: StrictMode double-mounts and reloads are harmless. Polls while the bank hasn't confirmed yet.
  */
-export function usePaymentVerification(reference: string, enabled: boolean) {
+export function usePaymentVerification(reference: string, enabled: boolean, transactionId?: string) {
   const refresh = useRefreshMoney();
   const client = useQueryClient();
   const key = queryKeys.domain('bank', 'verification', reference);
   const query = useQuery({
     queryKey: key,
-    queryFn: () => bankApi.verify(reference),
+    queryFn: () => bankApi.verify(reference, transactionId),
     enabled,
     staleTime: Number.POSITIVE_INFINITY,
     retry: 1,

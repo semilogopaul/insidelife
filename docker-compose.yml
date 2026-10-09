@@ -76,10 +76,14 @@ services:
       GAME_TIME_SCALE: ${GAME_TIME_SCALE:-120}
       WORLD_SEED: ${WORLD_SEED:-eko-o-ni-baje}
       MARKET_SEED: ${MARKET_SEED:-docker-local-market-seed-0123456789}
-      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
-      PAYSTACK_CALLBACK_URL: http://localhost:8080/payments/callback
-      TOPUP_DAILY_LIMIT_NGN: 20000
-      # Production mode demands a Paystack key; locally we allow the sandbox checkout instead.
+      # Empty → the sandbox checkout. Set Flutterwave TEST keys to try the real hosted checkout locally.
+      FLUTTERWAVE_SECRET_KEY: ${FLUTTERWAVE_SECRET_KEY:-}
+      FLUTTERWAVE_PUBLIC_KEY: ${FLUTTERWAVE_PUBLIC_KEY:-}
+      FLUTTERWAVE_WEBHOOK_SECRET_HASH: ${FLUTTERWAVE_WEBHOOK_SECRET_HASH:-}
+      PAYMENT_CALLBACK_URL: http://localhost:8080/payments/callback
+      TOPUP_DAILY_LIMIT_NGN: ${TOPUP_DAILY_LIMIT_NGN:-0}
+      TOPUP_MAX_PER_PAYMENT_NGN: ${TOPUP_MAX_PER_PAYMENT_NGN:-10000000}
+      # Production mode demands a Flutterwave key; locally we allow the sandbox checkout instead.
       ALLOW_PAYMENT_SANDBOX: "true"
       S3_ENDPOINT: http://storage:8333
       S3_REGION: us-east-1

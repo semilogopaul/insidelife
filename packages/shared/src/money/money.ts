@@ -2,7 +2,7 @@
  * Money.
  *
  * In-game naira are whole units stored as BIGINT on the server and handled as
- * safe JS integers (well below 2^53). Real-money amounts for Paystack are kobo.
+ * safe JS integers (well below 2^53). Real-money amounts (Flutterwave checkouts) are kobo.
  */
 
 export const KOBO_PER_NAIRA = 100;

@@ -13,8 +13,8 @@ import { isPaymentReference, paymentOutcome, PURPOSE_LABELS } from '../../servic
 import { CheckoutShell, SessionGate } from './CheckoutShell';
 
 /**
- * Local development checkout (the server returns this page instead of Paystack when it runs the sandbox gateway).
- * The buttons decide the outcome; then we hop to the same callback a real Paystack redirect lands on.
+ * Local development checkout (the server returns this page instead of Flutterwave when it runs the sandbox gateway).
+ * The buttons decide the outcome; then we hop to the same callback a real Flutterwave redirect lands on.
  */
 export function SandboxCheckout() {
   const params = useSearchParams();

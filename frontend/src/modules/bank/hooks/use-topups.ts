@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery } from '@tanstack/react-query';
-import type { TopupPackageId } from '@insidelife/shared';
+import type { CreateTopupRequest } from '@insidelife/shared';
 import { gameEvents } from '@/common/game/game-events';
 import { useSession } from '@/common/auth/session-store';
 import { bankKeys } from '../services/bank-keys';
@@ -17,10 +17,10 @@ export function usePaymentHistory() {
   return useQuery({ queryKey: bankKeys.payments, queryFn: bankApi.payments, enabled: authenticated, staleTime: 10_000 });
 }
 
-/** Start a Paystack checkout and leave for it. The browser comes back to /payments/callback. */
+/** Start a Flutterwave checkout and leave for it. The browser comes back to /payments/callback. */
 export function useStartTopup() {
   return useMutation({
-    mutationFn: (packageId: TopupPackageId) => bankApi.startTopup(packageId),
+    mutationFn: (body: CreateTopupRequest) => bankApi.startTopup(body),
     onSuccess: (started) => {
       gameEvents.emit('sfx', { id: 'ui-click' });
       window.location.assign(started.authorizationUrl);
@@ -29,7 +29,7 @@ export function useStartTopup() {
   });
 }
 
-/** Ask the server to confirm a payment with Paystack (idempotent; delivers if paid). */
+/** Ask the server to confirm a payment with Flutterwave (idempotent; delivers if paid). */
 export function useVerifyPayment() {
   const refresh = useRefreshMoney();
   return useMutation({

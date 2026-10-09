@@ -63,22 +63,39 @@ export function firstFullDay(bookings: readonly DateRange[], range: DateRange, c
   return index === -1 ? null : addDays(range.startDate, index);
 }
 
-export interface BookingWindowLimits {
-  readonly minDays: number;
-  readonly maxDays: number;
-  /** Latest start, counted from today (today = 0). */
-  readonly maxLeadDays: number;
+/**
+ * First start offset (0 = today, at most `maxLeadDays`) from which `days` consecutive days are all free, given which
+ * days from today are full. Skips past a full day at once, so a run starts on the first day it fits: today, or the day
+ * the earliest blocking booking ends.
+ */
+function firstFittingOffset(full: readonly boolean[], days: number, maxLeadDays: number): number | null {
+  for (let start = 0; start <= maxLeadDays; start++) {
+    let blockedAt = -1;
+    for (let day = start; day < start + days; day++) {
+      if (full[day]) {
+        blockedAt = day;
+        break;
+      }
+    }
+    if (blockedAt === -1) return start;
+    start = blockedAt;
+  }
+  return null;
 }
 
-export type BookingWindowProblem = 'invalid-date' | 'in-past' | 'too-far' | 'invalid-length';
-
-/** Validate a requested run against today's Lagos date. */
-export function bookingWindowProblem(startDate: string, days: number, today: IsoDate, limits: BookingWindowLimits): BookingWindowProblem | null {
-  if (!isIsoDate(startDate)) return 'invalid-date';
-  if (!Number.isInteger(days) || days < limits.minDays || days > limits.maxDays) return 'invalid-length';
-  if (startDate < today) return 'in-past';
-  if (daysBetween(today, startDate) > limits.maxLeadDays) return 'too-far';
-  return null;
+/**
+ * Where a new run of `days` goes on a slot holding at most `capacity` bookings a day: today if every day of the run
+ * has room, otherwise the first later day from which the whole run fits — the day the earliest blocking booking
+ * ends — so runs follow each other without gaps. Null when it can't start within `maxLeadDays`.
+ */
+export function nextFreeStart(bookings: readonly DateRange[], today: IsoDate, days: number, capacity: number, maxLeadDays: number): IsoDate | null {
+  const counts = dailyOccupancy(bookings, today, maxLeadDays + days);
+  const offset = firstFittingOffset(
+    counts.map((count) => count >= capacity),
+    days,
+    maxLeadDays,
+  );
+  return offset === null ? null : addDays(today, offset);
 }
 
 export interface ClubBooking extends DateRange {
@@ -99,4 +116,28 @@ export function firstFullClub(
     if (date) return { club, date };
   }
   return null;
+}
+
+/** `nextFreeStart` across several clubs at once: a day is blocked when any target club's rotation is full. */
+export function nextFreeClubStart(
+  bookings: readonly ClubBooking[],
+  targetClubs: readonly string[],
+  today: IsoDate,
+  days: number,
+  capacity: number,
+  maxLeadDays: number,
+): IsoDate | null {
+  const full = Array.from({ length: maxLeadDays + days }, () => false);
+  for (const club of targetClubs) {
+    const counts = dailyOccupancy(
+      bookings.filter((booking) => booking.allClubs || booking.clubs.includes(club)),
+      today,
+      full.length,
+    );
+    counts.forEach((count, day) => {
+      if (count >= capacity) full[day] = true;
+    });
+  }
+  const offset = firstFittingOffset(full, days, maxLeadDays);
+  return offset === null ? null : addDays(today, offset);
 }

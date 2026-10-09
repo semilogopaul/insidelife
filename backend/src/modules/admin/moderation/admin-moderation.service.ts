@@ -134,7 +134,7 @@ export class AdminModerationService {
     return this.moderation.queue();
   }
 
-  decideCampaign(actor: AuditActor, id: string, verb: Verb, reason: string | null, refund = true): Promise<ModerationCampaignDto> {
+  decideCampaign(actor: AuditActor, id: string, verb: Verb, reason: string | null, refund?: boolean): Promise<ModerationCampaignDto> {
     return this.moderation.decideCampaign(actor.userId ?? '', id, this.decision(verb, refund), reason, async (manager, change) => {
       const campaign = change.entity;
       await this.audit.record(manager, actor, {
@@ -153,7 +153,7 @@ export class AdminModerationService {
     });
   }
 
-  decideClubOrder(actor: AuditActor, id: string, verb: Verb, reason: string | null, refund = true): Promise<ModerationClubOrderDto> {
+  decideClubOrder(actor: AuditActor, id: string, verb: Verb, reason: string | null, refund?: boolean): Promise<ModerationClubOrderDto> {
     return this.moderation.decideClubOrder(actor.userId ?? '', id, this.decision(verb, refund), reason, async (manager, change) => {
       const { order, track } = change.entity;
       await this.audit.record(manager, actor, {
@@ -212,7 +212,8 @@ export class AdminModerationService {
       .when(query.to, (p, to) => `p.created_at < ${p(new Date(to))}`);
   }
 
-  private decision(verb: Verb, refund: boolean): ModerationDecision {
+  /** `refund` undefined = the policy: refund what hasn't started running, never what has. */
+  private decision(verb: Verb, refund?: boolean): ModerationDecision {
     if (verb === 'approve') return { action: 'approve' };
     if (verb === 'reject') return { action: 'reject', refund };
     return { action: 'mark-refunded' };

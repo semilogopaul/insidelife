@@ -1,4 +1,4 @@
-import { BILLBOARD_ROTATION_SECONDS, findBillboardSlot, type BillboardSlotId, type LiveBillboardsDto } from '@insidelife/shared';
+import { BILLBOARD_ROTATION_SECONDS, adWeekPriceLabel, findAdSlot, type BillboardSlotId, type LiveBillboardsDto } from '@insidelife/shared';
 
 /**
  * What a board shows right now — pure, so the renderer and the (future) tap handler always agree.
@@ -24,17 +24,16 @@ export interface HouseAdContent {
 
 export type BillboardContent = CreativeContent | HouseAdContent;
 
-const naira = (kobo: number): string => `₦${Math.round(kobo / 100).toLocaleString('en-NG')}`;
-
 export function houseAdFor(slotId: BillboardSlotId, live?: LiveBillboardsDto): HouseAdContent {
   const fromServer = live?.slots.find((slot) => slot.slotId === slotId)?.houseAd;
-  const slot = findBillboardSlot(slotId);
+  const slot = findAdSlot(slotId);
   return {
     kind: 'house',
     slotId,
     headline: fromServer?.headline ?? 'Your ad here',
     body: fromServer?.body ?? 'Open Promote on your phone',
-    priceLabel: fromServer?.priceLabel ?? (slot ? `From ${naira(slot.pricePerDayKobo)}/day` : ''),
+    // "₦175,000/week": the server's label carries the current rate; the catalog default is the fallback.
+    priceLabel: fromServer?.priceLabel ?? (slot ? adWeekPriceLabel(slot.weekPriceKobo) : ''),
   };
 }
 

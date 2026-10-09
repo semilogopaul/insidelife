@@ -5,9 +5,11 @@ import { AuthModule } from '../auth/auth.module.js';
 import { CharactersModule } from '../characters/characters.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PaymentsModule } from '../payments/payments.module.js';
+import { AdRatesService } from './ad-rates.service.js';
 import { CampaignsService } from './campaigns.service.js';
 import { CreativeService } from './creative.service.js';
 import { AdCampaignEntity } from './entities/ad-campaign.entity.js';
+import { AdRateEntity } from './entities/ad-rate.entity.js';
 import { ClubPlayOrderEntity } from './entities/club-play-order.entity.js';
 import { ClubTrackEntity } from './entities/club-track.entity.js';
 import { CreativeEntity } from './entities/creative.entity.js';
@@ -23,11 +25,12 @@ import { ViewerResolver } from './tracking/viewer-resolver.service.js';
 /**
  * Real-money promotions: Billboards (ads on in-world billboards) and Club DJ (paid club rotation). Payments go through
  * the payments module's CHECKOUT_PORT; this module registers the 'billboard' and 'club-play' fulfillers on init.
- * AuthModule is imported only for optional viewer auth on the public tracking endpoints.
+ * AuthModule is imported only for optional viewer auth on the public tracking endpoints. `AdRatesService` (the
+ * editable price list: `list()`, `setRate()`, `resetRate()`) is exported for the admin routes.
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AdCampaignEntity, CreativeEntity, ClubTrackEntity, ClubPlayOrderEntity, ModerationLogEntity]),
+    TypeOrmModule.forFeature([AdCampaignEntity, CreativeEntity, ClubTrackEntity, ClubPlayOrderEntity, ModerationLogEntity, AdRateEntity]),
     PaymentsModule,
     CharactersModule,
     NotificationsModule,
@@ -36,6 +39,7 @@ import { ViewerResolver } from './tracking/viewer-resolver.service.js';
   ],
   controllers: [PromotionsController, PromotionsWorldController],
   providers: [
+    AdRatesService,
     CreativeService,
     CampaignsService,
     TracksService,
@@ -44,7 +48,8 @@ import { ViewerResolver } from './tracking/viewer-resolver.service.js';
     ViewerResolver,
     PromotionsNotifier,
   ],
-  // The admin API (modules/admin) reviews paid ads and club orders through ModerationService.
-  exports: [ModerationService],
+  // The admin API (modules/admin) reviews paid ads and club orders through ModerationService and edits ad prices
+  // through AdRatesService.
+  exports: [ModerationService, AdRatesService],
 })
 export class PromotionsModule {}
