@@ -122,7 +122,7 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
     optionsRef.current = options;
   });
   // The server sees things differently (taken inside, car unavailable): refresh our view of the character.
-  const [heartbeats] = useState(() => new Heartbeats(runtime, () => void client.invalidateQueries({ queryKey: queryKeys.snapshot })));
+  const [heartbeats] = useState(() => new Heartbeats(runtime, () => void client.invalidateQueries({ queryKey: queryKeys.snapshot }, { cancelRefetch: false })));
   useEffect(() => {
     heartbeats.setOnline(options.online);
   }, [heartbeats, options.online]);
