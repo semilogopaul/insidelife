@@ -9,7 +9,7 @@ import { gameClock } from './game-clock';
 
 /** Fetch and apply the clock config once per session (re-synced hourly to absorb drift). */
 export function useClockSync(): boolean {
-  const { data } = useQuery({
+  const { data, refetch } = useQuery({
     queryKey: queryKeys.clock,
     queryFn: async () => {
       const started = Date.now();
@@ -23,7 +23,12 @@ export function useClockSync(): boolean {
     retry: true,
     retryDelay: (attempt) => Math.min(30_000, 1_000 * 2 ** attempt),
   });
-  return data !== undefined;
+  // A cached answer without a synced clock (the clock was recreated after the fetch): fetch again, don't trust minute 0.
+  const synced = data !== undefined && gameClock.ready;
+  useEffect(() => {
+    if (data !== undefined && !gameClock.ready) void refetch();
+  }, [data, refetch]);
+  return synced;
 }
 
 /** Re-renders every `intervalMs` with the current game minute. Use sparingly (HUD clock, need bars). */

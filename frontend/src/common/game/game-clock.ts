@@ -54,4 +54,9 @@ class GameClock {
   }
 }
 
-export const gameClock = new GameClock();
+/**
+ * One clock per page. Kept on `globalThis` so a module reload (dev hot reload, a re-imported chunk) can't swap in a
+ * fresh, unsynced clock that reads minute 0 while the rest of the app keeps going.
+ */
+const holder = globalThis as typeof globalThis & { __insidelifeGameClock?: GameClock };
+export const gameClock: GameClock = (holder.__insidelifeGameClock ??= new GameClock());

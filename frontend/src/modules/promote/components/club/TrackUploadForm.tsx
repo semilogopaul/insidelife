@@ -90,7 +90,7 @@ export function TrackUploadForm({ onUploaded, onCancel, priceKobo = CLUB_PLAY_PR
           {file ? 'Choose a different song' : 'Choose an MP3 or OGG'}
         </label>
         <p className="mt-1 text-xs text-text-soft">
-          MP3 or OGG, up to {TRACK_MAX_BYTES / 1024 / 1024} MB, from {TRACK_MIN_SECONDS} seconds to <strong>under {TRACK_MAX_SECONDS / 60} minutes</strong>. {formatNaira(koboToNaira(priceKobo))} plays it in every club and lounge for {CLUB_PLAY_PRODUCT.days} days.
+          MP3 or OGG, up to {TRACK_MAX_BYTES / 1024 / 1024} MB, from {TRACK_MIN_SECONDS} seconds to <strong>up to {TRACK_MAX_SECONDS / 60} minutes</strong>. {formatNaira(koboToNaira(priceKobo))} plays it in every club and lounge for {CLUB_PLAY_PRODUCT.days} days.
         </p>
       </div>
       {picked && (

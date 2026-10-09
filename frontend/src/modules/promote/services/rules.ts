@@ -110,7 +110,7 @@ export function checkTrackFile(file: Pick<File, 'type' | 'size'>): string | null
 export function trackDurationProblem(seconds: number | null): string | null {
   if (seconds === null) return null;
   if (seconds < TRACK_MIN_SECONDS) return `Songs need at least ${TRACK_MIN_SECONDS} seconds.`;
-  if (seconds >= TRACK_MAX_SECONDS) return `Songs must be under ${TRACK_MAX_SECONDS / 60} minutes. This one is ${formatDuration(Math.floor(seconds))}: trim it or use a radio edit.`;
+  if (seconds > TRACK_MAX_SECONDS + 0.5) return `Songs can be at most ${TRACK_MAX_SECONDS / 60} minutes. This one is ${formatDuration(Math.floor(seconds))}: trim it or use a radio edit.`;
   return null;
 }
 

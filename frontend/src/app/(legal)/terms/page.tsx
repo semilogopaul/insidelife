@@ -49,7 +49,7 @@ export default function TermsPage() {
         <li>Every ad and song is reviewed before it runs. We can reject anything that breaks these terms or the law; rejected orders are refunded.</li>
         <li>Once an ad or song has started running, it can’t be cancelled or refunded.</li>
         <li>
-          You must own or have permission to use everything you upload (images, logos, music). Songs must be under 5 minutes.
+          You must own or have permission to use everything you upload (images, logos, music). Songs can be at most 3 minutes long.
           You’re responsible for your ad’s claims and for the business behind it.
         </li>
       </ul>

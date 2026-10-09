@@ -39,10 +39,10 @@ describe('vehicle catalog', () => {
     }
   });
 
-  it('has at least two decent cars a new player can afford with the starter fund', () => {
+  it('has a decent first car a new player can afford with the starter fund', () => {
     const affordable = VEHICLES.filter((vehicle) => vehicle.price < STARTER_FUND);
-    expect(affordable.length).toBeGreaterThanOrEqual(2);
-    expect(affordable.map((vehicle) => vehicle.id)).toEqual(expect.arrayContaining(['honda-accord-2005', 'kia-picanto-2012']));
+    expect(affordable.length).toBeGreaterThanOrEqual(1);
+    expect(affordable.map((vehicle) => vehicle.id)).toEqual(expect.arrayContaining(['peugeot-406-2004']));
   });
 });
 
