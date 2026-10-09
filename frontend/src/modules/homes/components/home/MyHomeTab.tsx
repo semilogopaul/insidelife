@@ -1,6 +1,6 @@
 'use client';
 
-import { House, KeyRound, PaintRoller } from 'lucide-react';
+import { House, KeyRound, PaintRoller, Sofa } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import {
   HOUSING_TYPES,
@@ -11,6 +11,7 @@ import {
   type LeaseStatus,
 } from '@insidelife/shared';
 import { Badge, Button, Money, Section } from '@/common/components';
+import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useHousingCommands } from '../../hooks/use-housing';
 import { relativeGameTime } from '@/common/utils/game-time';
@@ -55,7 +56,8 @@ export function MyHomeTab({
   const { move } = useHousingCommands();
   const [moving, setMoving] = useState<MoveOption | null>(null);
   const [decorating, setDecorating] = useState(false);
-  const step = homeNextStep(overview, now);
+  const homeItems = useSnapshot().data?.summary.homeItems;
+  const step = homeNextStep(overview, now, homeItems);
   const typeLabel = home.typeId
     ? HOUSING_TYPES[home.typeId].label
     : home.blueprintId
@@ -130,6 +132,18 @@ export function MyHomeTab({
                 ' (landlord increased it)'}
               . It’s taken from your account automatically.
             </>
+          }
+        />
+      )}
+      {step?.kind === 'furnish' && (
+        <NextStep
+          kicker="Moving in"
+          title="Your place is empty — furnish it"
+          body="New homes come bare: walls, floor, the kitchen sink. A bed, a fan, somewhere to sit — whatever you buy shows up in your house."
+          actions={
+            <Button icon={<Sofa size={16} aria-hidden />} onClick={() => openPhone('shop', 'furniture')}>
+              Shop furniture
+            </Button>
           }
         />
       )}

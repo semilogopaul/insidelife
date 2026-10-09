@@ -9,7 +9,6 @@ import {
   type Entrance,
   type HomePeopleDto,
   type VisitDto,
-  type VisitPersonDto,
   type VisitsDto,
 } from '@insidelife/shared';
 import { In, MoreThan, type EntityManager } from 'typeorm';
@@ -27,25 +26,11 @@ import { CharacterSession } from '../simulation/character-session.service.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SocialGuard } from '../social/social-guard.service.js';
 import { HomeVisitEntity, type VisitHomeSnapshot } from './entities/home-visit.entity.js';
+import { HostingService } from './hosting.service.js';
+import { PERSON_COLUMNS, toPersonDto, type Person } from './visit-people.js';
 import { canEnter, hostOf, isOpenVisit, normaliseHandle, visitExpiry } from './visits.rules.js';
 
 const OPEN = ['invited', 'accepted'] as const;
-const PERSON_COLUMNS = {
-  id: true,
-  handle: true,
-  firstName: true,
-  lastName: true,
-  gender: true,
-  appearance: true,
-  outfit: true,
-  locationId: true,
-  homePropertyId: true,
-  homeDistrictId: true,
-  activity: true,
-  alive: true,
-} as const;
-
-type Person = Pick<CharacterEntity, keyof typeof PERSON_COLUMNS>;
 
 /**
  * Inviting players over. The host invites by handle (blocks respected); the guest accepts and can then walk in
@@ -63,6 +48,7 @@ export class VisitsService {
     private readonly guard: SocialGuard,
     private readonly notifications: NotificationsService,
     private readonly bus: RealtimeBus,
+    private readonly hosting: HostingService,
   ) {}
 
   async list(ctx: SimulationContext): Promise<VisitsDto> {
@@ -225,10 +211,11 @@ export class VisitsService {
       people: here
         .filter((person) => person.id !== me.id)
         .map((person) => ({
-          ...this.person(person),
+          ...toPersonDto(person),
           activity: person.activity?.actionId ?? null,
           role: person.id === hostId ? 'host' : 'guest',
         })),
+      treats: await this.hosting.activeAt(ctx.manager, hostId, ctx.time),
     };
   }
 
@@ -301,22 +288,14 @@ export class VisitsService {
     };
   }
 
-  private person(character: Person): VisitPersonDto {
-    return {
-      id: character.id,
-      handle: character.handle,
-      firstName: character.firstName,
-      lastName: character.lastName,
-      gender: character.gender,
-      appearance: character.appearance,
-      outfit: character.outfit,
-    };
-  }
-
   private async toDtos(ctx: SimulationContext, visits: readonly HomeVisitEntity[]): Promise<VisitDto[]> {
     if (visits.length === 0) return [];
     const ids = [...new Set(visits.flatMap((visit) => [visit.hostId, visit.guestId]))];
     const people = new Map((await this.load(ctx.manager, ids)).map((person) => [person.id, person]));
+    const treats = await this.hosting.visitTreats(
+      ctx.manager,
+      visits.map((visit) => visit.id),
+    );
     const me = ctx.character.id;
     return visits.flatMap((visit): VisitDto[] => {
       const host = people.get(visit.hostId);
@@ -328,8 +307,8 @@ export class VisitsService {
           id: visit.id,
           status: visit.status,
           role: visit.hostId === me ? 'host' : 'guest',
-          host: this.person(host),
-          guest: this.person(guest),
+          host: toPersonDto(host),
+          guest: toPersonDto(guest),
           home: {
             locationId,
             ...visit.home,
@@ -339,6 +318,7 @@ export class VisitsService {
           createdAt: visit.invitedAt,
           expiresAt: visit.expiresAt,
           guestInside: guest.locationId === locationId,
+          treats: treats.get(visit.id) ?? [],
         },
       ];
     });

@@ -13,13 +13,66 @@ export type At = readonly [number, number];
 /**
  * What a piece of home furniture stands for. In homes you rent or own, pieces tagged with a slot only appear when you
  * own an item that fills it (and your item decides the look); family and hostel rooms keep theirs as provided.
+ * `pantry` is filled by meals in the kitchen (a plate on the table), not by a shop item. See `furnish.ts`.
  */
-export const HOME_SLOTS = ['bed', 'seating', 'dining', 'rug', 'plants', 'storage', 'fan', 'ac', 'fridge', 'cooker', 'laundry', 'tv', 'console', 'audio', 'laptop', 'books', 'lamp'] as const;
+export const HOME_SLOTS = [
+  'bed',
+  'seating',
+  'dining',
+  'rug',
+  'plants',
+  'storage',
+  'fan',
+  'ac',
+  'fridge',
+  'cooker',
+  'laundry',
+  'tv',
+  'console',
+  'audio',
+  'laptop',
+  'books',
+  'lamp',
+  'desk',
+  'lights',
+  'clock',
+  'mirror',
+  'art',
+  'chandelier',
+  'bar',
+  'aquarium',
+  'cinema',
+  'microwave',
+  'blender',
+  'toaster',
+  'dispenser',
+  'coffee',
+  'buckets',
+  'generator',
+  'pantry',
+] as const;
 export type HomeSlot = (typeof HOME_SLOTS)[number];
 
-export interface FurniturePlacement {
-  readonly model: KitModel;
+/**
+ * Slots that dress every room of a multi-room home (one purchase, a clock or a painting in each room). Every other
+ * slot lives in exactly one room of a layout, so a purchase shows up once.
+ */
+export const HOME_WIDE_SLOTS: ReadonlySet<HomeSlot> = new Set(['plants', 'lights', 'clock', 'art', 'bar', 'buckets', 'pantry']);
+
+/** How a home piece relates to what you own (all optional; see `furnish.ts`). */
+export interface HomePiece {
   readonly slot?: HomeSlot;
+  /**
+   * Comes with any item in its slot and is never replaced by the item's own look: the cabinet under the TV, the
+   * bedside drawers by a bed frame, the pot on the cooker.
+   */
+  readonly base?: boolean;
+  /** Part of the building (a shower screen, a shower tray) when its kind alone doesn't say so. */
+  readonly fixture?: boolean;
+}
+
+export interface FurniturePlacement extends HomePiece {
+  readonly model: KitModel;
   readonly at: At;
   readonly rot?: Deg;
   /** Lift off the floor (e.g. on a counter). */

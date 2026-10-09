@@ -18,6 +18,7 @@ import type { DistrictId } from '../catalog/geography.js';
 import type { HomeDecor } from '../catalog/home-style.js';
 import type { GameMinute } from '../time/calendar.js';
 import type { Entrance } from '../world-map/types.js';
+import type { HomeTreatDto, VisitTreatDto } from './hosting.js';
 import type { PublicCharacterDto } from './core.js';
 
 // ----- Shared bits -------------------------------------------------------------------------------------------------
@@ -385,6 +386,8 @@ export interface VisitDto {
   readonly expiresAt: GameMinute;
   /** The guest is inside the host's home right now. */
   readonly guestInside: boolean;
+  /** Treats in this visit, newest first (what the guest got / what the host gave them). */
+  readonly treats: readonly VisitTreatDto[];
 }
 
 /** Open invites and visits (invited or accepted, not expired). */
@@ -401,6 +404,8 @@ export interface InviteVisitRequest {
 export interface HomePeopleDto {
   readonly locationId: string;
   readonly people: readonly HomePersonDto[];
+  /** What the host has put on the table right now (plates, drinks, cake), drawn in the room for everyone inside. */
+  readonly treats: readonly HomeTreatDto[];
 }
 
 export interface HomePersonDto extends VisitPersonDto {

@@ -5,13 +5,15 @@ import type { SimulationSystem } from '../simulation/interfaces/simulation-syste
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationEngine } from '../simulation/simulation-engine.service.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
+import { HostingService } from './hosting.service.js';
 import { VisitsService } from './visits.service.js';
 
 /**
  * Guests on a visit:
  * - stay at the host's place while the visit is on (autopilot keeps hanging around instead of heading home), unless
  *   they're worn out or hungry — then it takes them home to sleep or eat, and they can come back;
- * - head home on their next update once the visit ended (host called it, or it ran out). O(1) otherwise.
+ * - head home on their next update once the visit ended (host called it, or it ran out);
+ * - feel the treats a host served them, in their own session (one indexed lookup of pending rows per settle).
  */
 /** Below this energy or fullness a guest's autopilot takes them home. */
 const STAY_MIN_NEED = 25;
@@ -25,6 +27,7 @@ export class VisitsSystem implements SimulationSystem, OnModuleInit {
     private readonly registry: SimulationRegistry,
     private readonly engine: SimulationEngine,
     private readonly visits: VisitsService,
+    private readonly hosting: HostingService,
   ) {}
 
   onModuleInit(): void {
@@ -44,6 +47,7 @@ export class VisitsSystem implements SimulationSystem, OnModuleInit {
   }
 
   async onSettled(ctx: SimulationContext): Promise<void> {
+    await this.hosting.applyPending(ctx);
     await this.visits.evictIfUninvited(ctx);
   }
 }

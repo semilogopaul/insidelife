@@ -1,17 +1,19 @@
-import type { HomeSlot } from '../templates/types';
+import type { HomePiece } from '../templates/types';
 
 /** Procedural props (anything Kenney's kit doesn't have, made for Lagos). Positions in room space. */
 
 type At = readonly [number, number];
+
+/** What's on a plate. */
+export type FoodOnPlate = 'jollof' | 'amala' | 'suya' | 'pizza' | 'small-chops' | 'chicken';
 type Vec3 = readonly [number, number, number];
 
-interface Base {
+/** Home props may stand for belongings (`slot`, see `HomeSlot`), come with them (`base`) or be part of the building. */
+interface Base extends HomePiece {
   readonly at: At;
   /** Degrees about +Y (0 faces +Z). */
   readonly rot?: number;
   readonly y?: number;
-  /** Home belongings this prop stands for (see `HomeSlot`). */
-  readonly slot?: HomeSlot;
 }
 
 export type SurfaceKind = 'wood' | 'metal' | 'plastic' | 'cloth' | 'stone' | 'gloss' | 'paint' | 'rubber';
@@ -77,8 +79,9 @@ export type PropSpec =
   | (Base & { readonly kind: 'pillar'; readonly height: number; readonly color: string })
   | (Base & { readonly kind: 'planter'; readonly size: readonly [number, number] })
   | (Base & { readonly kind: 'drink-crate'; readonly color?: string })
-  | (Base & { readonly kind: 'bottles'; readonly count?: number })
-  | (Base & { readonly kind: 'food-plate'; readonly food?: 'jollof' | 'amala' | 'suya' })
+  /** `colors` picks the bottles (malt brown, beer green, champagne…); mixed when omitted. */
+  | (Base & { readonly kind: 'bottles'; readonly count?: number; readonly colors?: readonly string[] })
+  | (Base & { readonly kind: 'food-plate'; readonly food?: FoodOnPlate })
   | (Base & { readonly kind: 'stairs'; readonly size: Vec3; readonly color: string })
   /** Upstairs: the opening of a staircase going down (local -z), railed on three sides, open at local +z. */
   | (Base & { readonly kind: 'stairwell'; readonly size: readonly [number, number]; readonly color: string; readonly rail?: string })

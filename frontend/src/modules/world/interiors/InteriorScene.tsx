@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { MeshStandardMaterial } from 'three';
-import { homeLocationId, isHomeLocation, toDateParts, type HomePersonDto, type PresencePlayerDto } from '@insidelife/shared';
+import { homeLocationId, isHomeLocation, toDateParts, type HomePersonDto, type HostTreatId, type PresencePlayerDto } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
@@ -67,7 +67,12 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const visits = useVisits(snapshot !== undefined && hostId !== null).data;
   const visit = !ownHome && hostId ? visits?.incoming.find((candidate) => candidate.home.locationId === locationId) : undefined;
   const hosting = ownHome && (visits?.outgoing.some((candidate) => candidate.status === 'accepted') ?? false);
-  const people = useHomePeople(visit || hosting ? hostId : null).data?.people;
+  const homePeople = useHomePeople(visit || hosting ? hostId : null).data;
+  const people = homePeople?.people;
+  // What the host put out for guests: plates and drinks on the table, for host and guests alike (keyed by ids, so a
+  // poll that only changes who's doing what doesn't rebuild the room).
+  const treatIds = homePeople?.treats.map((treat) => treat.treatId).join(',') ?? '';
+  const treats = useMemo(() => (treatIds ? (treatIds.split(',') as HostTreatId[]) : undefined), [treatIds]);
   const homeInfo = home === undefined ? (visit?.home ?? snapshot?.summary.home) : home;
   const resolvedId = templateId ?? resolveTemplateId(locationId, homeInfo);
   const segment = snapshot ? segmentAt(snapshot, minute) : undefined;
@@ -85,9 +90,9 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const template = useMemo(() => {
     if (previewItems) return furnish(base, previewItems, { providedFurniture: base.id === 'home-family' || base.id === 'home-hostel' });
     // Your paint and floor go on every room of the home (and the host's on a visit).
-    if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname }), visit.home.decor);
-    return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname }), decor) : base;
-  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname, decor]);
+    if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname, treats }), visit.home.decor);
+    return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname, treats }), decor) : base;
+  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname, decor, treats]);
   const everyone = useMemo(() => (people ? [...present, ...people.map((person) => asPresence(person, locationId))] : present), [present, people, locationId]);
   const homeLayout = house?.layout ?? null;
   const homeRoomId = house?.room.id ?? null;
