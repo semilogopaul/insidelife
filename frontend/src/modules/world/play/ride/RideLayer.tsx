@@ -24,7 +24,7 @@ import { ROAD_Y } from '../../city/layout/placements';
 import { damp, dampAngle, yawFromHeading } from '../physics/math';
 import { groundHeightAt } from '../physics/surface';
 import { PLAYER_SCALE, type PlayRuntime } from '../runtime/play-runtime';
-import { isKitCarModel, vehicleScale, type RenderVehicleModel } from '../vehicles/vehicle-kit';
+import { isDrivableModel, vehicleScale, type RenderVehicleModel } from '../vehicles/vehicle-kit';
 import { DanfoConductor, useDanfoDoor } from '../vehicles/DanfoConductor';
 import { useKit } from '../vehicles/VehicleKitProvider';
 import { buildRidePath, pointAlong, rideProgress, type PathPoint, type RidePath } from './ride-path';
@@ -43,7 +43,7 @@ function modelFor(travel: TravelDto, ownCar: string | null): RenderVehicleModel 
     case 'okada':
       return 'okada';
     case 'car':
-      return ownCar && isKitCarModel(ownCar) ? ownCar : 'sedan';
+      return ownCar && isDrivableModel(ownCar) ? ownCar : 'sedan';
     case 'walk':
       return null;
   }

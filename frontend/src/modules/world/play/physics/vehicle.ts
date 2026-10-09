@@ -1,5 +1,6 @@
-import type { VehiclePerformance } from '@insidelife/shared';
+import { LUXURY_BODY_MODELS, type LuxuryBodyModel, type VehiclePerformance } from '@insidelife/shared';
 import { VEHICLE_SCALE } from '../../city/layout/placements';
+import { luxuryHalfLength } from '../vehicles/luxury-specs';
 import type { MutablePoint, PushResult } from './collision';
 import { clamp, damp, lerp, wrapAngle } from './math';
 import { drivable, type Surface } from './surface';
@@ -88,12 +89,18 @@ const MODEL_HALF_LENGTH: Readonly<Record<string, number>> = {
   ambulance: 1.45,
 };
 
+/** Body half-length in the world (m): kit models are scaled to the city, procedural luxury bodies are in metres. */
+function halfLengthOf(model: string): number {
+  if ((LUXURY_BODY_MODELS as readonly string[]).includes(model)) return luxuryHalfLength(model as LuxuryBodyModel);
+  return (MODEL_HALF_LENGTH[model] ?? 1.3) * VEHICLE_SCALE;
+}
+
 export function vehicleSpecFor(model: string, performance?: VehiclePerformance): VehicleSpec {
   const zeroToHundred = performance?.zeroToHundredSeconds ?? 10.5;
   const handling = clamp(performance?.handling ?? 0.6, 0, 1);
   const braking = clamp(performance?.braking ?? 0.6, 0, 1);
   const top = Math.min(CITY_SPEED_CAP, (performance?.topSpeedKmh ?? 180) / 3.6);
-  const halfLength = (MODEL_HALF_LENGTH[model] ?? 1.3) * VEHICLE_SCALE;
+  const halfLength = halfLengthOf(model);
   return {
     maxSpeed: top,
     // The compact city wants punchy launches: real 0-100 times scaled into the 0-60 band.

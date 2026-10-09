@@ -13,7 +13,7 @@ import { groundHeightAt } from '../physics/surface';
 import { PLAYER_SCALE, gaitFor, type PlayRuntime } from '../runtime/play-runtime';
 import { tagElements, usePlayUi, type RemoteTag } from '../state/play-ui-store';
 import { REMOTE_CAR_SLOTS } from '../traffic/TrafficLayer';
-import { isKitCarModel } from '../vehicles/vehicle-kit';
+import { isDrivableModel } from '../vehicles/vehicle-kit';
 import { handleOf, presenceOf, subscribePresence } from './presence-directory';
 import type { RemotePlayers } from './remote-players';
 
@@ -114,7 +114,7 @@ export function OtherPlayers({ runtime, remotes, maxAvatars, blobs, blobBase }: 
       if (driving) {
         if (batch && carSlot < REMOTE_CAR_SLOTS && player.distance < 260) {
           const look = player.vehicle;
-          const model = look && isKitCarModel(look.model) ? look.model : 'sedan';
+          const model = look && isDrivableModel(look.model) ? look.model : 'sedan';
           batch.set(carBase + carSlot++, model, player.x, ROAD_Y, player.z, player.heading, look ? paintTint(look.color) : 0xffffff);
         }
         if (player.avatar?.object) player.avatar.object.visible = false;

@@ -14,6 +14,7 @@ import { Badge, Button, Money } from '@/common/components';
 import { useSnapshot } from '@/common/game/snapshot';
 import { filterCatalogue, type SegmentFilter } from '../../services/motors-rules';
 import { CarArt } from '../CarArt';
+import { MakeBadge } from '../MakeBadge';
 import { FilterChips } from '@/common/components';
 import { BuyCarSheet, type BuyChoice } from './BuyCarSheet';
 import { PaintSwatches } from './PaintSwatches';
@@ -25,6 +26,7 @@ const SEGMENTS: ReadonlyArray<{ readonly id: SegmentFilter; readonly label: stri
   { id: 'family', label: 'Family' },
   { id: 'executive', label: 'Executive' },
   { id: 'luxury', label: 'Luxury' },
+  { id: 'exotic', label: 'Exotic' },
   { id: 'commercial', label: 'Work' },
 ];
 
@@ -94,9 +96,12 @@ function CarCard({
   return (
     <li className="flex flex-col gap-3 rounded-card bg-paper-2 p-3.5">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="type-slogan text-[1.6rem] text-ink">“{vehicle.nickname}”</p>
-          <p className="truncate text-sm font-bold">{vehicle.name}</p>
+        <div className="flex min-w-0 items-start gap-2">
+          <MakeBadge make={vehicle.make} className="mt-1" />
+          <div className="min-w-0">
+            <p className="type-slogan text-[1.6rem] text-ink">“{vehicle.nickname}”</p>
+            <p className="truncate text-sm font-bold">{vehicle.name}</p>
+          </div>
         </div>
         <p className="shrink-0 text-right leading-tight">
           <Money amount={entry.price} compact className="type-figure text-xl" />
@@ -129,6 +134,7 @@ function CarCard({
         paints={vehicle.paints}
         value={paint}
         onChange={setPaint}
+        fees={entry.paintFees}
       />
       <Button variant={entry.buyHere ? 'danfo' : 'ink'} onClick={() => onBuy(paint)}>
         {entry.buyHere ? 'Buy and drive off' : 'Buy or order delivery'}

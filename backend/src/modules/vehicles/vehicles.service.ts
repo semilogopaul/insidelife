@@ -13,6 +13,7 @@ import {
   findVenue,
   formatNaira,
   isVehiclePaintId,
+  paintSurcharge,
   startOfDay,
   toDateParts,
   vehiclePaint,
@@ -124,8 +125,9 @@ export class VehiclesService {
 
     const dealerId = dealerHere(this.position(ctx), def);
     const price = ctx.world.price(def.price, ctx.time);
+    const paintFee = this.paintFee(ctx, def, paintId);
     const deliveryFee = dealerId ? 0 : ctx.world.price(VEHICLE_DELIVERY_FEE, ctx.time);
-    if (!ctx.wallet.canAfford(price + deliveryFee)) throw new InsufficientFundsException(price + deliveryFee);
+    if (!ctx.wallet.canAfford(price + paintFee + deliveryFee)) throw new InsufficientFundsException(price + paintFee + deliveryFee);
 
     const rng = ctx.rng('vehicle-purchase', def.id, ctx.time);
     const registeredIn = (dealerId ? findVenue(dealerId)?.districtId : undefined) ?? ctx.character.homeDistrictId;
@@ -152,6 +154,9 @@ export class VehiclesService {
     const dealer = dealerId ? findVenue(dealerId)?.name : undefined;
     const metadata = { vehicleId: def.id, ownedVehicleId: row.id, plate: row.plate };
     await ctx.wallet.pay(price, 'purchase', `${def.name} (${def.nickname}) — ${dealer ?? 'remote purchase'}`, `vehicle-purchase:${row.id}`, { metadata });
+    if (paintFee > 0) {
+      await ctx.wallet.pay(paintFee, 'purchase', `${VEHICLE_PAINTS[paintId].label} paint: ${def.name}`, `vehicle-purchase:${row.id}:paint`, { metadata });
+    }
     if (deliveryFee > 0) {
       await ctx.wallet.pay(deliveryFee, 'fee', `Car delivery: ${def.name}`, `vehicle-purchase:${row.id}:delivery`, { sink: 'fees', metadata });
     }
@@ -163,7 +168,7 @@ export class VehiclesService {
         : { kind: 'system', title: 'Car on the way 🚚', body: `The dealer's driver will bring your ${def.name} (${row.plate}) by tomorrow night.`, tone: 'neutral' },
     );
     const car = (await this.garage(ctx)).find((candidate) => candidate.row.id === row.id) ?? { row, def };
-    return { channel: dealer ? 'in-person' : 'delivery', vehicle: this.toDto(ctx, car), price, deliveryFee, balance: ctx.wallet.cash };
+    return { channel: dealer ? 'in-person' : 'delivery', vehicle: this.toDto(ctx, car), price, paintFee, deliveryFee, balance: ctx.wallet.cash };
   }
 
   async setPrimary(ctx: SimulationContext, id: string): Promise<OwnedVehicleDto> {
@@ -285,6 +290,12 @@ export class VehiclesService {
     }
   }
 
+  /** What a paint adds today (metallic, pearl, matte and special finishes; the colour on the lot is free). */
+  private paintFee(ctx: SimulationContext, def: VehicleDefinition, paintId: string): number {
+    const surcharge = paintSurcharge(def, paintId);
+    return surcharge > 0 ? ctx.world.price(surcharge, ctx.time) : 0;
+  }
+
   // ----- Views -----------------------------------------------------------------------------------------------------
 
   async view(ctx: SimulationContext, licence: DriverLicenceDto): Promise<VehiclesDto> {
@@ -294,6 +305,7 @@ export class VehiclesService {
       vehicle,
       price: ctx.world.price(vehicle.price, ctx.time),
       deliveryFee,
+      paintFees: Object.fromEntries(vehicle.paints.map((paint) => [paint, this.paintFee(ctx, vehicle, paint)]).filter(([, fee]) => (fee as number) > 0)),
       dealerIds: DEALER_IDS.filter((venueId) => dealerStocks(venueId, vehicle)),
       buyHere: dealerHere(position, vehicle) !== null,
     }));

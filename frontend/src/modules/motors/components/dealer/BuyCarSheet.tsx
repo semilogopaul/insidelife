@@ -15,6 +15,7 @@ import { announce, complain } from '@/common/game/feedback';
 import { gameDateTime } from '@/common/utils/game-time';
 import { purchaseLines } from '../../services/motors-rules';
 import { CarArt } from '../CarArt';
+import { MakeBadge } from '../MakeBadge';
 import { GoThere } from '@/common/components';
 import { Receipt } from '@/common/components';
 
@@ -35,8 +36,9 @@ export function BuyCarSheet({
   const { data: snapshot } = useSnapshot();
   const entry = choice?.entry;
   const inPerson = entry?.buyHere ?? false;
-  const { lines, total } = entry
-    ? purchaseLines(entry.price, entry.deliveryFee, inPerson)
+  const paintFee = entry && choice ? (entry.paintFees[choice.paint] ?? 0) : 0;
+  const { lines, total } = entry && choice
+    ? purchaseLines(entry.price, entry.deliveryFee, inPerson, { label: VEHICLE_PAINTS[choice.paint].label, fee: paintFee })
     : { lines: [], total: 0 };
   const short = snapshot ? total - snapshot.wallet.balance : 0;
   const dealer = entry ? findVenue(entry.dealerIds[0] ?? '') : undefined;
@@ -50,7 +52,8 @@ export function BuyCarSheet({
     >
       {choice && entry && (
         <div className="flex flex-col gap-4 pb-2">
-          <div className="rounded-card bg-paper-2 px-6 py-3">
+          <div className="relative rounded-card bg-paper-2 px-6 py-3">
+            <MakeBadge make={entry.vehicle.make} className="absolute left-3 top-3" />
             <CarArt model={entry.vehicle.model} color={VEHICLE_PAINTS[choice.paint].hex} />
             <p className="mt-1 text-center text-xs font-bold text-text-soft">
               {VEHICLE_PAINTS[choice.paint].label}
@@ -94,13 +97,13 @@ export function BuyCarSheet({
                       });
                       announce('Keys in hand 🔑', {
                         body: `Your ${result.vehicle.name} is parked outside. Plate ${result.vehicle.plate}.`,
-                        amount: -result.price,
+                        amount: -(result.price + result.paintFee),
                         sfx: 'car-start',
                       });
                     } else {
                       announce('Car ordered', {
                         body: `The dealer’s driver brings it ${result.vehicle.arrivesAt !== null ? gameDateTime(result.vehicle.arrivesAt, now) : 'soon'}.`,
-                        amount: -(result.price + result.deliveryFee),
+                        amount: -(result.price + result.paintFee + result.deliveryFee),
                       });
                     }
                     onClose();

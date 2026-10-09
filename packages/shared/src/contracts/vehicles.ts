@@ -8,6 +8,8 @@ export interface VehicleCatalogEntryDto {
   readonly price: number;
   /** Extra for remote purchase (the dealer's driver brings it). */
   readonly deliveryFee: number;
+  /** Extra per paint that costs more than the colour on the lot (price index applied; missing = free). */
+  readonly paintFees: Readonly<Partial<Record<VehiclePaintId, number>>>;
   /** Dealer venue ids with this car on the lot. */
   readonly dealerIds: readonly string[];
   /** You are standing in a dealer that stocks it (buy in person, drive it off today). */
@@ -78,6 +80,8 @@ export interface VehiclePurchaseResultDto {
   readonly channel: 'in-person' | 'delivery';
   readonly vehicle: OwnedVehicleDto;
   readonly price: number;
+  /** Extra for a non-default metallic/pearl/matte/special paint (0 for the colour on the lot). */
+  readonly paintFee: number;
   readonly deliveryFee: number;
   readonly balance: number;
 }

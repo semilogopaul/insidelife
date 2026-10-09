@@ -13,7 +13,7 @@ import { useDisposeOnUnmount } from '../lib/use-dispose';
 /** Extra batch slots for other players' cars. */
 export const REMOTE_CAR_SLOTS = 16;
 
-const CAR_MODELS: readonly RenderVehicleModel[] = ['sedan', 'taxi', 'suv', 'hatchback-sports', 'sedan', 'van', 'sedan-sports', 'taxi', 'suv-luxury', 'truck', 'delivery', 'sedan'];
+const CAR_MODELS: readonly RenderVehicleModel[] = ['sedan', 'taxi', 'suv', 'hatchback-sports', 'sedan', 'van', 'sedan-sports', 'taxi', 'suv-luxury', 'truck', 'delivery', 'sedan', 'grand-suv', 'sedan', 'taxi', 'box-suv', 'suv', 'coupe-suv'];
 /** Near-white multipliers so identical models don't look cloned. */
 const TINTS = [0xffffff, 0xf2f2f2, 0xfff4e6, 0xe9eef5, 0xf7f7f0];
 

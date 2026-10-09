@@ -5,7 +5,7 @@ import { carShape, type CarShape } from '../services/motors-rules';
 /** Side-view silhouettes (facing right) drawn on a 160×64 canvas: body outline + glass. */
 const SHAPES: Record<
   CarShape,
-  { readonly body: string; readonly glass: string; readonly wheels: readonly [number, number] }
+  { readonly body: string; readonly glass: string; readonly wheels: readonly [number, number]; readonly trim?: string }
 > = {
   sedan: {
     body: 'M10 48 C8 40 12 35 22 34 L48 31 L62 19 C64 17 67 16 71 16 L103 16 C108 16 111 18 114 21 L126 31 L144 33 C151 34 154 38 154 44 L154 48 Z',
@@ -37,6 +37,52 @@ const SHAPES: Record<
     body: 'M6 48 L6 30 L66 30 L70 16 C71 13 74 11 78 11 L112 11 C118 11 121 13 124 17 L132 30 L146 32 C152 33 156 38 156 43 L156 48 Z',
     glass: 'M76 15 L94 15 L94 28 L72 28 Z M98 15 L111 15 C115 15 117 16 119 19 L125 28 L98 28 Z',
     wheels: [36, 128],
+  },
+  // Low wedge: long raked screen, engine behind the seats, rear wing.
+  supercar: {
+    body: 'M6 48 L6 36 L30 33 L52 31 L66 23 C70 21 76 20 82 20 L94 21 L126 33 L150 38 C155 39 157 42 157 46 L157 48 Z',
+    glass: 'M68 25 L77 23 L91 23 L114 32 L62 32 Z',
+    wheels: [36, 128],
+    trim: 'M3 27 L28 27 L28 30 L3 30 Z M13 30 L16 30 L16 33 L13 33 Z',
+  },
+  // Rounded hypercar with a small wing.
+  hypercar: {
+    body: 'M8 48 C7 40 10 35 18 34 L48 32 L64 23 C68 20 76 19 84 19 L96 20 C102 21 108 24 114 28 L130 34 L148 37 C155 38 157 42 157 46 L157 48 Z',
+    glass: 'M67 25 L77 22 L93 22 C99 23 104 26 108 29 L111 32 L60 32 Z',
+    wheels: [38, 126],
+    trim: 'M8 29 L28 29 L28 31 L8 31 Z',
+  },
+  // Long bonnet, fastback roof.
+  gt: {
+    body: 'M8 48 C7 40 10 36 18 35 L30 33 L54 21 C57 19 62 18 68 18 L88 18 C94 18 98 21 102 25 L110 31 L146 34 C153 35 156 39 156 44 L156 48 Z',
+    glass: 'M56 23 L64 21 L84 21 L84 30 L46 30 Z M88 21 C92 21 95 23 98 26 L102 30 L88 30 Z',
+    wheels: [38, 128],
+  },
+  // Long and formal, upright nose, bonnet ornament.
+  limo: {
+    body: 'M4 48 L4 34 C4 31 6 30 10 30 L32 29 L44 14 C46 12 49 11 53 11 L106 11 C110 11 113 13 115 16 L124 28 L152 30 C156 31 158 34 158 38 L158 48 Z',
+    glass: 'M48 15 L52 14 L76 14 L76 26 L38 26 Z M80 14 L104 14 C107 14 109 15 110 17 L117 26 L80 26 Z',
+    wheels: [32, 132],
+    trim: 'M148 26 L150 26 L150 29 L148 29 Z',
+  },
+  // The box: flat sides, upright screen, flared arches.
+  gbox: {
+    body: 'M8 48 L8 10 C8 8 9 7 11 7 L112 7 C115 7 116 8 117 10 L120 24 L150 25 C153 25 155 27 155 30 L155 48 Z',
+    glass: 'M14 11 L50 11 L50 23 L14 23 Z M54 11 L86 11 L86 23 L54 23 Z M90 11 L111 11 L114 23 L90 23 Z',
+    wheels: [36, 128],
+    trim: 'M22 34 L50 34 L50 37 L22 37 Z M114 34 L142 34 L142 37 L114 37 Z',
+  },
+  // Big three-row SUV.
+  grand: {
+    body: 'M6 48 L6 12 C6 9 8 8 11 8 L112 8 C117 8 120 10 122 13 L130 27 L150 29 C155 30 157 33 157 37 L157 48 Z',
+    glass: 'M12 12 L44 12 L44 25 L12 25 Z M48 12 L82 12 L82 25 L48 25 Z M86 12 L111 12 C115 12 117 13 119 16 L124 25 L86 25 Z',
+    wheels: [36, 130],
+  },
+  // Sporty SUV with a sloping coupe roof.
+  'coupe-suv': {
+    body: 'M8 48 C7 38 10 33 18 32 L28 30 L52 14 C55 12 59 11 64 11 L100 11 C106 11 110 13 113 17 L122 28 L148 31 C154 32 156 36 156 42 L156 48 Z',
+    glass: 'M54 16 L62 14 L84 14 L84 27 L40 27 Z M88 14 L99 14 C103 14 106 15 108 18 L114 27 L88 27 Z',
+    wheels: [38, 128],
   },
 };
 
@@ -82,6 +128,7 @@ export function CarArt({
         strokeOpacity="0.3"
         strokeWidth="0.6"
       />
+      {shape.trim && <path d={shape.trim} fill="#1b1f22" />}
       {shape.wheels.map((cx) => (
         <g key={cx}>
           <circle cx={cx} cy="48" r="10.5" fill="#1b1f22" />

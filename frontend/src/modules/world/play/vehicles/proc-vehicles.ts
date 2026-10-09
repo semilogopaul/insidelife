@@ -10,7 +10,9 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 /** Colormap swatch (column 0–15, row 0–3) → UV inside it (the upper, lighter part of the gradient). */
 const swatch = (column: number, row: number, shade = 0.3): readonly [number, number] => [(column + 0.5) / 16, (row + shade) / 4];
 
-const SWATCH = {
+export const SWATCH = {
+  /** Body paint of procedural cars: a light silver that the paint shader recolours (see LUXURY_PAINT_RECT). */
+  paint: swatch(8, 2),
   yellow: swatch(2, 3),
   green: swatch(6, 1),
   black: swatch(10, 0),
@@ -25,10 +27,10 @@ const SWATCH = {
   orange: swatch(10, 1),
 } as const;
 
-type SwatchName = keyof typeof SWATCH;
+export type SwatchName = keyof typeof SWATCH;
 
 /** Give every vertex the same UV (one flat colormap colour). */
-function tint(geometry: BufferGeometry, name: SwatchName): BufferGeometry {
+export function tint(geometry: BufferGeometry, name: SwatchName): BufferGeometry {
   const [u, v] = SWATCH[name];
   const count = geometry.getAttribute('position').count;
   const uv = new Float32Array(count * 2);
@@ -40,13 +42,13 @@ function tint(geometry: BufferGeometry, name: SwatchName): BufferGeometry {
   return geometry;
 }
 
-const box = (w: number, h: number, d: number, x: number, y: number, z: number, name: SwatchName): BufferGeometry => tint(new BoxGeometry(w, h, d).translate(x, y + h / 2, z), name);
+export const box = (w: number, h: number, d: number, x: number, y: number, z: number, name: SwatchName): BufferGeometry => tint(new BoxGeometry(w, h, d).translate(x, y + h / 2, z), name);
 
 function wheel(radius: number, width: number, x: number, z: number, name: SwatchName = 'tyre'): BufferGeometry {
   return tint(new CylinderGeometry(radius, radius, width, 12).rotateZ(Math.PI / 2).translate(x, radius, z), name);
 }
 
-function merge(parts: BufferGeometry[]): BufferGeometry {
+export function merge(parts: BufferGeometry[]): BufferGeometry {
   const merged = mergeGeometries(parts, false);
   for (const part of parts) part.dispose();
   if (!merged) throw new Error('Could not merge vehicle parts');

@@ -1,8 +1,9 @@
 /**
  * Vehicles catalog — owned by the vehicles domain.
  *
- * Every car maps to a Kenney Car Kit model (`model`) and a paint (`color` hex) that the 3D client renders; the
- * `performance` block feeds the client's arcade driving model. Prices are 2026 Lagos prices (₦) before the world
+ * Every car maps to a body (`model`: a Kenney Car Kit model, or one of the client's procedural luxury bodies) and a
+ * paint (`color` hex) that the 3D client renders; the `performance` block feeds the client's arcade driving model.
+ * Makes and model names are the real ones Lagos buyers know; the 3D bodies and badges are look-alikes, not copies. Prices are 2026 Lagos prices (₦) before the world
  * price index. Grades follow the Lagos market: Naija-used (already driven in Nigeria), tokunbo (foreign-used,
  * imported) and brand-new.
  */
@@ -11,7 +12,7 @@ import type { DistrictId } from './geography.js';
 import { findVenue } from './venues.js';
 
 /** Kenney Car Kit models available to the 3D client. */
-export const VEHICLE_MODELS = [
+export const KIT_VEHICLE_MODELS = [
   'sedan',
   'sedan-sports',
   'hatchback-sports',
@@ -24,6 +25,13 @@ export const VEHICLE_MODELS = [
   'police',
   'danfo',
 ] as const;
+
+/** Procedural luxury bodies the client builds itself (look-alike silhouettes, no real-brand details). */
+export const LUXURY_BODY_MODELS = ['supercar', 'hypercar', 'gt-coupe', 'limousine', 'box-suv', 'grand-suv', 'coupe-suv'] as const;
+export type LuxuryBodyModel = (typeof LUXURY_BODY_MODELS)[number];
+
+/** Every body a car can have. */
+export const VEHICLE_MODELS = [...KIT_VEHICLE_MODELS, ...LUXURY_BODY_MODELS] as const;
 export type VehicleModel = (typeof VEHICLE_MODELS)[number];
 
 const VEHICLE_MODEL_SET: ReadonlySet<string> = new Set(VEHICLE_MODELS);
@@ -41,27 +49,59 @@ export const VEHICLE_GRADE_LABELS: Readonly<Record<VehicleGrade, string>> = {
   'brand-new': 'Brand new',
 };
 
-export const VEHICLE_SEGMENTS = ['economy', 'family', 'executive', 'luxury', 'commercial'] as const;
+export const VEHICLE_SEGMENTS = ['economy', 'family', 'executive', 'luxury', 'exotic', 'commercial'] as const;
 export type VehicleSegment = (typeof VEHICLE_SEGMENTS)[number];
+
+/** How a paint is finished: solid colours cost nothing extra; the rest are priced as a share of the car. */
+export const PAINT_FINISHES = ['solid', 'metallic', 'pearl', 'matte', 'special'] as const;
+export type PaintFinish = (typeof PAINT_FINISHES)[number];
+
+export const PAINT_FINISH_LABELS: Readonly<Record<PaintFinish, string>> = {
+  solid: 'Solid',
+  metallic: 'Metallic',
+  pearl: 'Pearl',
+  matte: 'Matte',
+  special: 'Special order',
+};
+
+/** Share of the car's price a non-default paint adds, by finish (the colour on the lot is always free). */
+export const PAINT_FINISH_RATES: Readonly<Record<PaintFinish, number>> = {
+  solid: 0,
+  metallic: 0.01,
+  pearl: 0.025,
+  matte: 0.04,
+  special: 0.07,
+};
 
 export interface VehiclePaint {
   readonly label: string;
   readonly hex: string;
+  readonly finish: PaintFinish;
 }
 
 export const VEHICLE_PAINTS = {
-  'pearl-white': { label: 'Pearl white', hex: '#f1f1ee' },
-  silver: { label: 'Silver', hex: '#b9bec4' },
-  'gun-grey': { label: 'Gunmetal grey', hex: '#4a4f55' },
-  black: { label: 'Black on black', hex: '#15171a' },
-  'matte-black': { label: 'Matte black', hex: '#262626' },
-  champagne: { label: 'Champagne gold', hex: '#c8b27d' },
-  navy: { label: 'Navy blue', hex: '#1f2f4f' },
-  wine: { label: 'Wine', hex: '#6b1f2a' },
-  'army-green': { label: 'Army green', hex: '#4b5d3a' },
-  'sky-blue': { label: 'Sky blue', hex: '#5aa9e6' },
-  'tomato-red': { label: 'Tomato red', hex: '#c0392b' },
-  'danfo-yellow': { label: 'Danfo yellow', hex: '#f2b705' },
+  'pearl-white': { label: 'Pearl white', hex: '#f1f1ee', finish: 'pearl' },
+  silver: { label: 'Silver', hex: '#b9bec4', finish: 'metallic' },
+  'gun-grey': { label: 'Gunmetal grey', hex: '#4a4f55', finish: 'metallic' },
+  black: { label: 'Black on black', hex: '#15171a', finish: 'solid' },
+  'matte-black': { label: 'Matte black', hex: '#262626', finish: 'matte' },
+  champagne: { label: 'Champagne gold', hex: '#c8b27d', finish: 'metallic' },
+  navy: { label: 'Navy blue', hex: '#1f2f4f', finish: 'solid' },
+  wine: { label: 'Wine', hex: '#6b1f2a', finish: 'metallic' },
+  'army-green': { label: 'Army green', hex: '#4b5d3a', finish: 'solid' },
+  'sky-blue': { label: 'Sky blue', hex: '#5aa9e6', finish: 'solid' },
+  'tomato-red': { label: 'Tomato red', hex: '#c0392b', finish: 'solid' },
+  'danfo-yellow': { label: 'Danfo yellow', hex: '#f2b705', finish: 'solid' },
+  'racing-red': { label: 'Racing red', hex: '#b3121b', finish: 'metallic' },
+  'royal-blue': { label: 'Royal blue', hex: '#1f4fbf', finish: 'metallic' },
+  emerald: { label: 'Emerald green', hex: '#0f5f45', finish: 'metallic' },
+  'satin-grey': { label: 'Satin grey', hex: '#6b6f75', finish: 'matte' },
+  'arctic-pearl': { label: 'Arctic pearl', hex: '#f7f7f4', finish: 'pearl' },
+  'sunset-orange': { label: 'Sunset orange', hex: '#f26b1d', finish: 'pearl' },
+  'lime-green': { label: 'Lime green', hex: '#8cc63f', finish: 'pearl' },
+  'midnight-purple': { label: 'Midnight purple', hex: '#3b1f5c', finish: 'special' },
+  'rose-gold': { label: 'Rose gold', hex: '#c98f7a', finish: 'special' },
+  'chrome-gold': { label: 'Gold chrome', hex: '#d4a52a', finish: 'special' },
 } as const satisfies Readonly<Record<string, VehiclePaint>>;
 export type VehiclePaintId = keyof typeof VEHICLE_PAINTS;
 export const VEHICLE_PAINT_IDS = Object.keys(VEHICLE_PAINTS) as readonly VehiclePaintId[];
@@ -145,7 +185,30 @@ export const VEHICLES: readonly VehicleDefinition[] = [
   // --- Luxury ---------------------------------------------------------------------------------------------------
   car({ id: 'toyota-prado-2021', name: 'Toyota Land Cruiser Prado 2021', nickname: 'Prado', make: 'Toyota', year: 2021, grade: 'tokunbo', segment: 'luxury', model: 'suv', defaultPaint: 'black', paints: ['black', 'pearl-white', 'silver', 'army-green'], price: 85_000_000, performance: perf(175, 9.5, 0.62, 0.7), fuelType: 'diesel', fuelEconomyKmPerLitre: 8, seats: 7, status: 110, depreciationPerYear: 0.1, maintenancePerYear: 0.04, blurb: 'Big Man energy. Climbs kerbs, floods and the social ladder.' }),
   car({ id: 'range-rover-sport-2021', name: 'Range Rover Sport 2021', nickname: 'Range', make: 'Land Rover', year: 2021, grade: 'tokunbo', segment: 'luxury', model: 'suv-luxury', defaultPaint: 'pearl-white', paints: ['pearl-white', 'black', 'matte-black', 'gun-grey', 'navy'], price: 150_000_000, performance: perf(225, 6.2, 0.75, 0.8), fuelType: 'petrol', fuelEconomyKmPerLitre: 7, seats: 5, status: 170, depreciationPerYear: 0.15, maintenancePerYear: 0.05, blurb: 'Lekki royalty on wheels. The valet at Eko Hotel will remember you.' }),
-  car({ id: 'mercedes-g-wagon-2022', name: 'Mercedes-Benz G-Wagon 2022', nickname: 'G-Wagon', make: 'Mercedes-Benz', year: 2022, grade: 'tokunbo', segment: 'luxury', model: 'suv-luxury', defaultPaint: 'matte-black', paints: ['matte-black', 'black', 'pearl-white', 'army-green', 'champagne'], price: 250_000_000, performance: perf(220, 4.5, 0.7, 0.8), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 5, status: 230, depreciationPerYear: 0.12, maintenancePerYear: 0.04, blurb: 'The box that ends conversations. Odogwu certified.' }),
+  car({ id: 'mercedes-g-wagon-2022', name: 'Mercedes-Benz G-Wagon 2022', nickname: 'G-Wagon', make: 'Mercedes-Benz', year: 2022, grade: 'tokunbo', segment: 'luxury', model: 'box-suv', defaultPaint: 'matte-black', paints: ['matte-black', 'black', 'pearl-white', 'army-green', 'champagne'], price: 250_000_000, performance: perf(220, 4.5, 0.7, 0.8), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 5, status: 230, depreciationPerYear: 0.12, maintenancePerYear: 0.04, blurb: 'The box that ends conversations. Odogwu certified.' }),
+  // --- Luxury: the convoy class --------------------------------------------------------------------------------------
+  car({ id: 'porsche-cayenne-turbo-2021', name: 'Porsche Cayenne Turbo 2021', nickname: 'Cayenne', make: 'Porsche', year: 2021, grade: 'tokunbo', segment: 'luxury', model: 'coupe-suv', defaultPaint: 'silver', paints: ['silver', 'black', 'pearl-white', 'racing-red', 'satin-grey'], price: 180_000_000, performance: perf(285, 3.9, 0.82, 0.86), fuelType: 'petrol', fuelEconomyKmPerLitre: 7, seats: 5, status: 180, depreciationPerYear: 0.15, maintenancePerYear: 0.05, blurb: 'A sports car that carries five. The Lekki dad who still has fun.' }),
+  car({ id: 'maserati-levante-2022', name: 'Maserati Levante 2022', nickname: 'Trident', make: 'Maserati', year: 2022, grade: 'tokunbo', segment: 'luxury', model: 'coupe-suv', defaultPaint: 'navy', paints: ['navy', 'black', 'pearl-white', 'wine', 'satin-grey'], price: 230_000_000, performance: perf(264, 5.2, 0.78, 0.82), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 5, status: 190, depreciationPerYear: 0.17, maintenancePerYear: 0.06, blurb: 'Italian engine note, Lekki bounce. Few people have it; everybody notices it.' }),
+  car({ id: 'mercedes-s580-2022', name: 'Mercedes-Benz S580 2022', nickname: 'Oga at the Top', make: 'Mercedes-Benz', year: 2022, grade: 'tokunbo', segment: 'luxury', model: 'limousine', defaultPaint: 'black', paints: ['black', 'pearl-white', 'silver', 'navy', 'emerald'], price: 240_000_000, performance: perf(250, 4.8, 0.75, 0.82), fuelType: 'petrol', fuelEconomyKmPerLitre: 8, seats: 5, status: 200, depreciationPerYear: 0.13, maintenancePerYear: 0.04, blurb: 'Back-seat money. Your driver opens the door; you step out at Eko Hotel.' }),
+  car({ id: 'cadillac-escalade-2023', name: 'Cadillac Escalade 2023', nickname: 'Convoy', make: 'Cadillac', year: 2023, grade: 'tokunbo', segment: 'luxury', model: 'grand-suv', defaultPaint: 'black', paints: ['black', 'pearl-white', 'satin-grey', 'navy'], price: 260_000_000, performance: perf(210, 6.2, 0.6, 0.72), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 7, status: 205, depreciationPerYear: 0.12, maintenancePerYear: 0.04, blurb: 'Every senator\'s convoy has one. Big, black, and everybody moves out of the way.' }),
+  car({ id: 'toyota-land-cruiser-300-2023', name: 'Toyota Land Cruiser 300 2023', nickname: 'Big Daddy', make: 'Toyota', year: 2023, grade: 'tokunbo', segment: 'luxury', model: 'grand-suv', defaultPaint: 'pearl-white', paints: ['pearl-white', 'black', 'silver', 'army-green'], price: 270_000_000, performance: perf(210, 6.7, 0.6, 0.72), fuelType: 'diesel', fuelEconomyKmPerLitre: 8, seats: 7, status: 200, depreciationPerYear: 0.08, maintenancePerYear: 0.03, blurb: 'The Jeep that never dies. Governors, bishops and village chiefs agree.' }),
+  car({ id: 'lexus-lx600-2023', name: 'Lexus LX600 2023', nickname: 'LX', make: 'Lexus', year: 2023, grade: 'tokunbo', segment: 'luxury', model: 'grand-suv', defaultPaint: 'pearl-white', paints: ['pearl-white', 'black', 'silver', 'champagne'], price: 290_000_000, performance: perf(210, 6.9, 0.62, 0.72), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 7, status: 215, depreciationPerYear: 0.09, maintenancePerYear: 0.03, blurb: 'Land Cruiser bones in a tailored suit. Quiet power for quiet money.' }),
+  car({ id: 'mercedes-g63-2024', name: 'Mercedes-AMG G63 2024', nickname: 'G-Wagon AMG', make: 'Mercedes-Benz', year: 2024, grade: 'brand-new', segment: 'luxury', model: 'box-suv', defaultPaint: 'matte-black', paints: ['matte-black', 'black', 'satin-grey', 'pearl-white', 'army-green', 'rose-gold'], price: 480_000_000, performance: perf(240, 4.4, 0.7, 0.82), fuelType: 'petrol', fuelEconomyKmPerLitre: 5, seats: 5, status: 270, depreciationPerYear: 0.14, maintenancePerYear: 0.035, blurb: 'Brand-new and loud. Wakes the whole estate when you start it.' }),
+  car({ id: 'range-rover-autobiography-2023', name: 'Range Rover Autobiography 2023', nickname: 'Autobiography', make: 'Land Rover', year: 2023, grade: 'brand-new', segment: 'luxury', model: 'grand-suv', defaultPaint: 'pearl-white', paints: ['pearl-white', 'black', 'satin-grey', 'navy', 'emerald'], price: 620_000_000, performance: perf(250, 4.6, 0.72, 0.82), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 5, status: 290, depreciationPerYear: 0.16, maintenancePerYear: 0.05, blurb: 'The full-size Range. Banana Island gate men wave you in without asking.' }),
+
+  // --- Exotic: sports cars, supercars and the cars Lagos stops to film ----------------------------------------------
+  car({ id: 'porsche-911-turbo-s-2022', name: 'Porsche 911 Turbo S 2022', nickname: 'Nine-Eleven', make: 'Porsche', year: 2022, grade: 'tokunbo', segment: 'exotic', model: 'gt-coupe', defaultPaint: 'silver', paints: ['silver', 'racing-red', 'black', 'satin-grey', 'lime-green'], price: 420_000_000, performance: perf(330, 2.7, 0.92, 0.92), fuelType: 'petrol', fuelEconomyKmPerLitre: 8, seats: 4, status: 260, depreciationPerYear: 0.08, maintenancePerYear: 0.04, blurb: 'Fast enough to scare you, polite enough for Third Mainland traffic.' }),
+  car({ id: 'bentley-continental-gt-2021', name: 'Bentley Continental GT 2021', nickname: 'Conti', make: 'Bentley', year: 2021, grade: 'tokunbo', segment: 'exotic', model: 'gt-coupe', defaultPaint: 'emerald', paints: ['emerald', 'black', 'arctic-pearl', 'royal-blue', 'wine'], price: 480_000_000, performance: perf(318, 3.7, 0.82, 0.86), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 4, status: 280, depreciationPerYear: 0.14, maintenancePerYear: 0.05, blurb: 'A gentleman\'s express. Leather, wood and twelve cylinders.' }),
+  car({ id: 'bentley-bentayga-2022', name: 'Bentley Bentayga 2022', nickname: 'Bentayga', make: 'Bentley', year: 2022, grade: 'tokunbo', segment: 'exotic', model: 'grand-suv', defaultPaint: 'black', paints: ['black', 'arctic-pearl', 'emerald', 'wine', 'rose-gold'], price: 520_000_000, performance: perf(290, 4.5, 0.75, 0.85), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 5, status: 280, depreciationPerYear: 0.14, maintenancePerYear: 0.05, blurb: 'Bentley comfort with Lagos ground clearance. The pothole never wins.' }),
+  car({ id: 'maserati-mc20-2023', name: 'Maserati MC20 2023', nickname: 'MC20', make: 'Maserati', year: 2023, grade: 'brand-new', segment: 'exotic', model: 'supercar', defaultPaint: 'royal-blue', paints: ['royal-blue', 'pearl-white', 'black', 'racing-red'], price: 560_000_000, performance: perf(325, 2.9, 0.9, 0.9), fuelType: 'petrol', fuelEconomyKmPerLitre: 7, seats: 2, status: 300, depreciationPerYear: 0.12, maintenancePerYear: 0.05, blurb: 'Doors that open to the sky. Brand new, nobody else on your street has it.' }),
+  car({ id: 'lamborghini-huracan-evo-2022', name: 'Lamborghini Huracán EVO 2022', nickname: 'Lambo', make: 'Lamborghini', year: 2022, grade: 'tokunbo', segment: 'exotic', model: 'supercar', defaultPaint: 'lime-green', paints: ['lime-green', 'sunset-orange', 'matte-black', 'pearl-white', 'racing-red'], price: 620_000_000, performance: perf(325, 2.9, 0.9, 0.9), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 2, status: 320, depreciationPerYear: 0.1, maintenancePerYear: 0.05, blurb: 'The car on every hustler\'s vision board. It sounds like an argument.' }),
+  car({ id: 'mercedes-maybach-s680-2023', name: 'Mercedes-Maybach S680 2023', nickname: 'Maybach', make: 'Mercedes-Benz', year: 2023, grade: 'brand-new', segment: 'exotic', model: 'limousine', defaultPaint: 'black', paints: ['black', 'arctic-pearl', 'rose-gold', 'silver'], price: 650_000_000, performance: perf(250, 4.5, 0.72, 0.84), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 4, status: 300, depreciationPerYear: 0.14, maintenancePerYear: 0.04, blurb: 'Reclining seats, champagne fridge and a driver in a black suit.' }),
+  car({ id: 'ferrari-f8-tributo-2021', name: 'Ferrari F8 Tributo 2021', nickname: 'Ferrari', make: 'Ferrari', year: 2021, grade: 'tokunbo', segment: 'exotic', model: 'supercar', defaultPaint: 'racing-red', paints: ['racing-red', 'black', 'pearl-white', 'sunset-orange', 'chrome-gold'], price: 680_000_000, performance: perf(340, 2.9, 0.92, 0.92), fuelType: 'petrol', fuelEconomyKmPerLitre: 6, seats: 2, status: 330, depreciationPerYear: 0.09, maintenancePerYear: 0.05, blurb: 'Red, loud and rare. Traffic wardens forget to write the ticket.' }),
+  car({ id: 'lamborghini-urus-s-2024', name: 'Lamborghini Urus S 2024', nickname: 'Urus', make: 'Lamborghini', year: 2024, grade: 'brand-new', segment: 'exotic', model: 'coupe-suv', defaultPaint: 'sunset-orange', paints: ['sunset-orange', 'lime-green', 'black', 'matte-black', 'pearl-white', 'racing-red'], price: 780_000_000, performance: perf(305, 3.5, 0.85, 0.9), fuelType: 'petrol', fuelEconomyKmPerLitre: 5, seats: 5, status: 320, depreciationPerYear: 0.15, maintenancePerYear: 0.05, blurb: 'The family car that does 305. Every phone at Landmark Beach comes out.' }),
+  car({ id: 'lamborghini-aventador-svj-2021', name: 'Lamborghini Aventador SVJ 2021', nickname: 'Aventador', make: 'Lamborghini', year: 2021, grade: 'tokunbo', segment: 'exotic', model: 'supercar', defaultPaint: 'sunset-orange', paints: ['sunset-orange', 'lime-green', 'matte-black', 'midnight-purple', 'chrome-gold'], price: 1_150_000_000, performance: perf(350, 2.8, 0.93, 0.93), fuelType: 'petrol', fuelEconomyKmPerLitre: 4, seats: 2, status: 360, depreciationPerYear: 0.06, maintenancePerYear: 0.05, blurb: 'Twelve cylinders, scissor doors and a sound that shakes Admiralty Way.' }),
+  car({ id: 'rolls-royce-cullinan-2023', name: 'Rolls-Royce Cullinan 2023', nickname: 'Cullinan', make: 'Rolls-Royce', year: 2023, grade: 'brand-new', segment: 'exotic', model: 'grand-suv', defaultPaint: 'black', paints: ['black', 'arctic-pearl', 'midnight-purple', 'emerald', 'rose-gold', 'chrome-gold'], price: 1_250_000_000, performance: perf(250, 5.2, 0.62, 0.8), fuelType: 'petrol', fuelEconomyKmPerLitre: 5, seats: 5, status: 370, depreciationPerYear: 0.12, maintenancePerYear: 0.04, blurb: 'Old money in a tall coat. Gate men salute before they see who is inside.' }),
+  car({ id: 'rolls-royce-phantom-2023', name: 'Rolls-Royce Phantom 2023', nickname: 'Phantom', make: 'Rolls-Royce', year: 2023, grade: 'brand-new', segment: 'exotic', model: 'limousine', defaultPaint: 'black', paints: ['black', 'arctic-pearl', 'midnight-purple', 'navy', 'chrome-gold'], price: 1_600_000_000, performance: perf(250, 5.4, 0.6, 0.8), fuelType: 'petrol', fuelEconomyKmPerLitre: 5, seats: 5, status: 390, depreciationPerYear: 0.11, maintenancePerYear: 0.04, blurb: 'For people who don\'t drive themselves. The quietest room in Lagos.' }),
+  car({ id: 'bugatti-chiron-sport-2021', name: 'Bugatti Chiron Sport 2021', nickname: 'Chiron', make: 'Bugatti', year: 2021, grade: 'tokunbo', segment: 'exotic', model: 'hypercar', defaultPaint: 'royal-blue', paints: ['royal-blue', 'black', 'racing-red', 'chrome-gold'], price: 5_500_000_000, performance: perf(420, 2.4, 0.95, 0.95), fuelType: 'petrol', fuelEconomyKmPerLitre: 4, seats: 2, status: 450, depreciationPerYear: 0.03, maintenancePerYear: 0.03, blurb: 'Only a handful in Africa. When it pulls up, Lagos stops and films.' }),
 ];
 
 const VEHICLE_INDEX: ReadonlyMap<string, VehicleDefinition> = new Map(VEHICLES.map((vehicle) => [vehicle.id, vehicle]));
@@ -162,6 +225,15 @@ export function isVehiclePaintId(value: string): value is VehiclePaintId {
 export function vehiclePaint(vehicle: VehicleDefinition, paintId: string): VehiclePaint | undefined {
   if (!isVehiclePaintId(paintId) || !vehicle.paints.includes(paintId)) return undefined;
   return VEHICLE_PAINTS[paintId];
+}
+
+/**
+ * What a paint adds to the price (₦, before the world price index): nothing for the colour on the lot or a solid
+ * colour; otherwise the finish's share of the car's price, rounded to the nearest ₦1,000. Unknown paints add 0.
+ */
+export function paintSurcharge(vehicle: Pick<VehicleDefinition, 'price' | 'defaultPaint'>, paintId: string): number {
+  if (paintId === vehicle.defaultPaint || !isVehiclePaintId(paintId)) return 0;
+  return Math.round((vehicle.price * PAINT_FINISH_RATES[VEHICLE_PAINTS[paintId].finish]) / 1_000) * 1_000;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

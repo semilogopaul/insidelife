@@ -42,7 +42,7 @@ export function performanceBars(performance: VehiclePerformance): PerformanceBar
   ];
 }
 
-export type CarShape = 'sedan' | 'hatch' | 'suv' | 'van' | 'box' | 'pickup';
+export type CarShape = 'sedan' | 'hatch' | 'suv' | 'van' | 'box' | 'pickup' | 'supercar' | 'hypercar' | 'gt' | 'limo' | 'gbox' | 'grand' | 'coupe-suv';
 
 /** Which silhouette to draw for a Kenney model. */
 export function carShape(model: VehicleModel): CarShape {
@@ -58,6 +58,22 @@ export function carShape(model: VehicleModel): CarShape {
       return 'box';
     case 'truck':
       return 'pickup';
+    case 'danfo':
+      return 'van';
+    case 'supercar':
+      return 'supercar';
+    case 'hypercar':
+      return 'hypercar';
+    case 'gt-coupe':
+      return 'gt';
+    case 'limousine':
+      return 'limo';
+    case 'box-suv':
+      return 'gbox';
+    case 'grand-suv':
+      return 'grand';
+    case 'coupe-suv':
+      return 'coupe-suv';
     default:
       return 'sedan';
   }
@@ -83,15 +99,18 @@ export function purchaseLines(
   price: number,
   deliveryFee: number,
   inPerson: boolean,
+  paint?: { readonly label: string; readonly fee: number },
 ): { readonly lines: ReceiptLine[]; readonly total: number } {
   const lines: ReceiptLine[] = [{ label: 'Car', amount: price }];
+  const paintFee = paint?.fee ?? 0;
+  if (paint && paintFee > 0) lines.push({ label: `${paint.label} paint`, amount: paintFee, note: 'Premium finish' });
   if (!inPerson)
     lines.push({
       label: 'Delivery to your gate',
       amount: deliveryFee,
       note: 'The dealer’s driver brings it',
     });
-  return { lines, total: price + (inPerson ? 0 : deliveryFee) };
+  return { lines, total: price + paintFee + (inPerson ? 0 : deliveryFee) };
 }
 
 /** "Condition 64 — needs a mechanic soon". */

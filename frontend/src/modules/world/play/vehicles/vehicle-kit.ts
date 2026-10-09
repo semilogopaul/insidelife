@@ -6,21 +6,28 @@ import { Color, LinearFilter, Mesh, MeshStandardMaterial, Vector4, type BufferGe
 import { extractNode } from '../../city/assets/geometry';
 import { VEHICLE_SCALE } from '../../city/layout/placements';
 import { createCityMaterial } from '../../city/materials/city-materials';
+import { LUXURY_BODY_MODELS, type LuxuryBodyModel } from '@insidelife/shared';
+import { buildLuxuryGeometry, buildLuxuryScene, LUXURY_PAINT_RECT } from './luxury-bodies';
 import { buildBusGeometry, buildKekeGeometry, buildOkadaGeometry } from './proc-vehicles';
 import { useDisposeOnUnmount } from '../lib/use-dispose';
 
 /**
  * Vehicles for the play layer: the Kenney car kit (`/assets/vehicles/*.glb`, meshopt, wheel nodes preserved) plus
- * procedural keke, okada and BRT. Every model shares the kit colormap, so traffic renders as one BatchedMesh with the
- * city's vehicle material; the player's car is a live clone with spinning/steering wheels and its own paint.
+ * procedural keke, okada, BRT and the luxury bodies (supercars, limousines, big SUVs). Every model shares the kit
+ * colormap, so traffic renders as one BatchedMesh with the city's vehicle material; the player's car is a live clone
+ * with spinning/steering wheels and its own paint.
  */
 
 export const KIT_CAR_MODELS = ['sedan', 'sedan-sports', 'hatchback-sports', 'suv', 'suv-luxury', 'taxi', 'van', 'delivery', 'truck', 'police', 'ambulance', 'danfo'] as const;
 export type KitCarModel = (typeof KIT_CAR_MODELS)[number];
 export type ProcVehicleModel = 'keke' | 'okada' | 'brt';
-export type RenderVehicleModel = KitCarModel | ProcVehicleModel;
+/** Cars a player can own and drive (kit GLBs and procedural luxury bodies). */
+export type DrivableModel = KitCarModel | LuxuryBodyModel;
+export type RenderVehicleModel = DrivableModel | ProcVehicleModel;
 
 export const isKitCarModel = (model: string): model is KitCarModel => (KIT_CAR_MODELS as readonly string[]).includes(model);
+export const isLuxuryModel = (model: string): model is LuxuryBodyModel => (LUXURY_BODY_MODELS as readonly string[]).includes(model);
+export const isDrivableModel = (model: string): model is DrivableModel => isKitCarModel(model) || isLuxuryModel(model);
 export const vehicleUrl = (model: KitCarModel): string => `/assets/vehicles/${model}.glb`;
 const URLS = KIT_CAR_MODELS.map(vehicleUrl);
 
@@ -34,10 +41,10 @@ export interface VehicleKit {
   readonly geometries: ReadonlyMap<RenderVehicleModel, BufferGeometry>;
   /** The city's vehicle material (one per kit). */
   readonly material: MeshStandardMaterial;
-  /** Source scene of a kit model (clone it to animate wheels). */
-  scene(model: KitCarModel): Group;
+  /** Source scene of a drivable model (clone it to animate wheels). */
+  scene(model: DrivableModel): Group;
   /** Colormap rectangle (u0, v0, u1, v1) holding the model's body paint. */
-  paintRect(model: KitCarModel): Vector4;
+  paintRect(model: DrivableModel): Vector4;
 }
 
 function firstMap(root: Object3D): Texture | null {
@@ -106,6 +113,7 @@ export function useVehicleKit(): VehicleKit {
     geometries.set('keke', buildKekeGeometry());
     geometries.set('okada', buildOkadaGeometry());
     geometries.set('brt', buildBusGeometry());
+    for (const model of LUXURY_BODY_MODELS) geometries.set(model, buildLuxuryGeometry(model));
     const map = scenes.size > 0 ? firstMap(scenes.values().next().value as Group) : null;
     if (map) {
       map.generateMipmaps = false;
@@ -116,12 +124,22 @@ export function useVehicleKit(): VehicleKit {
     const material = createCityMaterial('vehicles', map);
     material.name = 'play-vehicles';
     const fallback = scenes.get('sedan') as Group;
+    // Luxury scenes are built on first use (only the player's own car needs one).
+    const luxuryScenes = new Map<LuxuryBodyModel, Group>();
+    const luxuryScene = (model: LuxuryBodyModel): Group => {
+      let scene = luxuryScenes.get(model);
+      if (!scene) {
+        scene = buildLuxuryScene(model, material);
+        luxuryScenes.set(model, scene);
+      }
+      return scene;
+    };
     return {
       map,
       geometries,
       material,
-      scene: (model) => scenes.get(model) ?? fallback,
-      paintRect: (model) => rects.get(model) ?? new Vector4(0, 0, 0, 0),
+      scene: (model) => (isLuxuryModel(model) ? luxuryScene(model) : (scenes.get(model) ?? fallback)),
+      paintRect: (model) => (isLuxuryModel(model) ? LUXURY_PAINT_RECT : (rects.get(model) ?? new Vector4(0, 0, 0, 0))),
     };
   }, [gltfs]);
 

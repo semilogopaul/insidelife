@@ -5,7 +5,7 @@ import { damp } from '../physics/math';
 import { drivable, groundHeightAt, surfaceAt, walkable } from '../physics/surface';
 import { createVehicle, stepVehicle, vehicleSpecFor, type DriveIntent, type DriveWorld, type VehicleSpec, type VehicleState } from '../physics/vehicle';
 import { WALKER_RADIUS, createWalker, stepWalker, type WalkIntent, type WalkWorld, type WalkerState } from '../physics/walker';
-import { isKitCarModel, type KitCarModel } from '../vehicles/vehicle-kit';
+import { isDrivableModel, type DrivableModel } from '../vehicles/vehicle-kit';
 
 /**
  * The player in the open world: on foot or at the wheel of their own car. Owns the physics state (plain objects,
@@ -17,7 +17,7 @@ export type Locomotion = 'walk' | 'drive';
 
 export interface OwnCar {
   readonly vehicle: DrivenVehicleDto;
-  readonly model: KitCarModel;
+  readonly model: DrivableModel;
   readonly spec: VehicleSpec;
   readonly state: VehicleState;
   /** Rendered ride height (smoothed ground height). */
@@ -125,7 +125,7 @@ export class PlayerController {
       if (this.locomotion === 'drive') this.locomotion = 'walk';
       return;
     }
-    const model: KitCarModel = isKitCarModel(vehicle.model) ? vehicle.model : 'sedan';
+    const model: DrivableModel = isDrivableModel(vehicle.model) ? vehicle.model : 'sedan';
     const spec = vehicleSpecFor(model, findVehicle(vehicle.vehicleId)?.performance);
     const spot = this.freeSpot(x, z, heading, spec);
     const state = createVehicle(spot.x, spot.z, heading);
