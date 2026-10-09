@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button, Section, Tabs } from '@/common/components';
 import { useSignOut } from '@/common/auth/use-sign-out';
 import { useSnapshot } from '@/common/game/snapshot';
+import { InstallAppPanel } from '@/common/pwa';
 import { GameSettings } from './GameSettings';
 import { HabitsPanel } from './HabitsPanel';
 import { LeaderboardsPanel } from './LeaderboardsPanel';
@@ -14,7 +15,7 @@ import { ProfileCard } from './ProfileCard';
 
 type MeTab = 'profile' | 'habits' | 'ranks' | 'settings';
 
-/** Me: your profile card and lifestyle, daily habits, Lagos leaderboards, and privacy + device settings. */
+/** Me: your profile card and lifestyle, daily habits, Lagos leaderboards, and privacy, device and install settings. */
 export function MeApp() {
   const { data: snapshot } = useSnapshot();
   const [tab, setTab] = useState<MeTab>('profile');
@@ -50,6 +51,9 @@ export function MeApp() {
           </Section>
           <Section title="Game settings">
             <GameSettings />
+          </Section>
+          <Section title="App">
+            <InstallAppPanel />
           </Section>
           <Button variant="paper" icon={<LogOut size={18} aria-hidden />} onClick={() => signOut.mutate()} loading={signOut.isPending}>
             Sign out
