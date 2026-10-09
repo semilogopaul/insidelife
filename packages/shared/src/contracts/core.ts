@@ -26,6 +26,8 @@ export interface ApiErrorBody {
 export interface RegisterRequest {
   readonly email: string;
   readonly password: string;
+  /** Date of birth, `YYYY-MM-DD`. Checked against the minimum age; never shown to other players. */
+  readonly birthDate: string;
 }
 
 export interface LoginRequest {
@@ -37,6 +39,11 @@ export interface AuthUserDto {
   readonly id: string;
   readonly email: string;
   readonly emailVerified: boolean;
+  /**
+   * The server requires a confirmed email before playing (`REQUIRE_EMAIL_VERIFICATION`) and this one isn't confirmed
+   * yet: send the player to the code screen. False whenever verification is optional.
+   */
+  readonly mustVerifyEmail: boolean;
   readonly hasCharacter: boolean;
 }
 
@@ -46,6 +53,32 @@ export interface AuthSessionDto {
   /** Unix ms. */
   readonly accessTokenExpiresAt: number;
   readonly user: AuthUserDto;
+}
+
+/** Where the account's email check stands. Times are Unix ms. */
+export interface EmailVerificationDto {
+  readonly email: string;
+  readonly verified: boolean;
+  /** The server can send codes (false on a deployment without email settings: verifying isn't possible yet). */
+  readonly available: boolean;
+  /** When the code in the inbox stops working; null when there is no live code (ask for one). */
+  readonly codeExpiresAt: number | null;
+  /** Earliest time another code can be sent. */
+  readonly resendAvailableAt: number;
+  /**
+   * Development only, when the server has no SMTP settings: the code that was just "sent", so the flow can be tested
+   * without an inbox. Never present in production.
+   */
+  readonly devCode?: string;
+}
+
+/** Sign-up answers with a session (email unconfirmed) and where the email check stands (a code is sent only when required). */
+export interface RegisterResponseDto extends AuthSessionDto {
+  readonly emailVerification: EmailVerificationDto;
+}
+
+export interface ConfirmEmailRequest {
+  readonly code: string;
 }
 
 // ----- World -------------------------------------------------------------------------------------------------------

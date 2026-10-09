@@ -27,3 +27,4 @@ export { ConfirmSheet, type ConfirmSheetProps } from './ConfirmSheet';
 export { SelectField, type SelectOption, type SelectFieldProps } from './SelectField';
 export { Stepper, type StepperProps } from './Stepper';
 export { NamedIcon, type NamedIconProps } from './NamedIcon';
+export { CodeField, codeDigits, type CodeFieldProps } from './CodeField';

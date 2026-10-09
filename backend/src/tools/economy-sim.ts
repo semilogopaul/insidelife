@@ -366,7 +366,7 @@ async function main(): Promise<void> {
   for (const strategy of STRATEGIES.filter((key) => !only || only.has(key))) {
     for (let i = 0; i < perStrategy; i++, n++) {
       const look = looks[n % looks.length]!;
-      const user = await users.create(`sim-${run}-${n}@example.com`, 'not-a-real-hash');
+      const user = await users.create(`sim-${run}-${n}@example.com`, 'not-a-real-hash', '2000-01-01');
       const created = await creation.create(user.id, {
         firstName: 'Sim',
         lastName: `Bot${n}`,

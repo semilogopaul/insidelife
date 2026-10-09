@@ -30,7 +30,10 @@ export function useSnapshot() {
     queryFn: () => api.get<CharacterSnapshotDto>('/characters/me'),
     enabled: authenticated,
     staleTime: 60_000,
-    retry: (failures, error) => !(error instanceof ApiError && (error.code === 'NO_CHARACTER' || error.isAuth)) && failures < 2,
+    // A definite answer (no character, signed out, email to confirm, any 4xx) is final. Network trouble and 5xx (the
+    // API restarting) keep retrying, backing off to 30 s, so "Retrying…" on the loading screen is true.
+    retry: (_failures, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500),
+    retryDelay: (attempt) => Math.min(30_000, 1_000 * 2 ** attempt),
   });
 
   const client = useQueryClient();

@@ -20,6 +20,8 @@ export interface AppConfig {
     readonly accessTtlSeconds: number;
     readonly refreshTtlDays: number;
     readonly cookieSecure: boolean;
+    /** Players must confirm their email (a code) before creating a character and playing. Off: verifying is optional. */
+    readonly requireEmailVerification: boolean;
   };
   readonly game: {
     readonly epochRealMs: number;
@@ -39,6 +41,18 @@ export interface AppConfig {
   readonly ads: {
     /** Sponsored phone app slots for sale (the catalog defines up to PHONE_APP_SLOT_LIMIT). */
     readonly phoneAppSlots: number;
+  };
+  readonly mail: {
+    /** `smtp://user:pass@host:587` or `smtps://…:465`; empty when the host/port fields are used instead. */
+    readonly smtpUrl: string;
+    readonly host: string;
+    readonly port: number;
+    /** TLS from the first byte (port 465). Otherwise STARTTLS is used when the server offers it. */
+    readonly secure: boolean;
+    readonly user: string;
+    readonly pass: string;
+    /** Sender shown to players, e.g. `Inside Life <hello@insidelife.online>`. */
+    readonly from: string;
   };
   readonly paystack: {
     readonly secretKey: string;
@@ -75,6 +89,7 @@ export const configuration = (): AppConfig => {
       accessTtlSeconds: Number(env.JWT_ACCESS_TTL_SECONDS ?? 900),
       refreshTtlDays: Number(env.REFRESH_TOKEN_TTL_DAYS ?? 30),
       cookieSecure: bool(env.COOKIE_SECURE, false),
+      requireEmailVerification: bool(env.REQUIRE_EMAIL_VERIFICATION, false),
     },
     game: {
       epochRealMs: Date.parse(env.GAME_EPOCH ?? '2026-10-01T00:00:00.000Z'),
@@ -97,6 +112,15 @@ export const configuration = (): AppConfig => {
       .split(',')
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
+    mail: {
+      smtpUrl: env.SMTP_URL ?? '',
+      host: env.SMTP_HOST ?? '',
+      port: Number(env.SMTP_PORT ?? 587),
+      secure: bool(env.SMTP_SECURE, Number(env.SMTP_PORT ?? 587) === 465),
+      user: env.SMTP_USER ?? '',
+      pass: env.SMTP_PASS ?? '',
+      from: env.MAIL_FROM || 'Inside Life <hello@insidelife.online>',
+    },
     paystack: {
       secretKey: env.PAYSTACK_SECRET_KEY ?? '',
       callbackUrl: env.PAYSTACK_CALLBACK_URL ?? '',

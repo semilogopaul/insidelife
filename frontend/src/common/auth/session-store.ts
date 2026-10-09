@@ -8,8 +8,14 @@ interface SessionState {
   readonly accessToken: string | null;
   readonly expiresAt: number;
   readonly user: AuthUserDto | null;
+  /**
+   * The last refresh couldn't reach the API (offline, or the server restarting). The session is kept as it was;
+   * screens waiting on it say they're retrying instead of sending the player to sign in.
+   */
+  readonly unreachable: boolean;
   setSession(session: AuthSessionDto): void;
   setUser(user: AuthUserDto): void;
+  markUnreachable(): void;
   clear(): void;
 }
 
@@ -22,8 +28,16 @@ export const useSession = create<SessionState>()((set) => ({
   accessToken: null,
   expiresAt: 0,
   user: null,
+  unreachable: false,
   setSession: (session) =>
-    set({ status: 'authenticated', accessToken: session.accessToken, expiresAt: session.accessTokenExpiresAt, user: session.user }),
+    set({
+      status: 'authenticated',
+      accessToken: session.accessToken,
+      expiresAt: session.accessTokenExpiresAt,
+      user: session.user,
+      unreachable: false,
+    }),
   setUser: (user) => set({ user }),
-  clear: () => set({ status: 'anonymous', accessToken: null, expiresAt: 0, user: null }),
+  markUnreachable: () => set({ unreachable: true }),
+  clear: () => set({ status: 'anonymous', accessToken: null, expiresAt: 0, user: null, unreachable: false }),
 }));

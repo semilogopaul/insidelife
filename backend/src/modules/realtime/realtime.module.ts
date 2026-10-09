@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ImageSafetyModule } from '../../common/moderation/image-safety.module.js';
 import { StorageModule } from '../../common/storage/storage.module.js';
+import { AuthModule } from '../auth/auth.module.js';
 import { CharactersModule } from '../characters/characters.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { SocialGuardModule } from '../social/social-guard.module.js';
@@ -22,6 +23,7 @@ import { ShardsService } from './shards.service.js';
 
 @Module({
   imports: [
+    AuthModule,
     CharactersModule,
     PresenceModule,
     SocialGuardModule,

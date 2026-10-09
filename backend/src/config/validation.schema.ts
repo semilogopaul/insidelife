@@ -29,6 +29,8 @@ export const validationSchema = Joi.object({
   JWT_ACCESS_TTL_SECONDS: Joi.number().integer().min(60).max(86_400).default(900),
   REFRESH_TOKEN_TTL_DAYS: Joi.number().integer().min(1).max(365).default(30),
   COOKIE_SECURE: Joi.boolean().default(false),
+  /** Require a confirmed email (6-digit code) before playing. Off by default: players may verify from Me → Settings. */
+  REQUIRE_EMAIL_VERIFICATION: Joi.boolean().default(false),
 
   GAME_EPOCH: Joi.date().iso().required(),
   GAME_TIME_SCALE: Joi.number().min(1).max(10_000).default(120),
@@ -56,6 +58,19 @@ export const validationSchema = Joi.object({
 
   /** Allow the fake checkout when no Paystack key is set. Never enable on a public deployment. */
   ALLOW_PAYMENT_SANDBOX: Joi.boolean().default(false),
+
+  /**
+   * Outgoing email (verification codes). Either one URL (`smtp://user:pass@host:587`, `smtps://…:465`) or the host
+   * fields. Required in production when REQUIRE_EMAIL_VERIFICATION is on; in development without it the code is
+   * logged instead of sent.
+   */
+  SMTP_URL: Joi.string().uri({ scheme: ['smtp', 'smtps'] }).allow('').default(''),
+  SMTP_HOST: Joi.string().hostname().allow('').default(''),
+  SMTP_PORT: Joi.number().port().default(587),
+  SMTP_SECURE: Joi.boolean().optional(),
+  SMTP_USER: Joi.string().allow('').default(''),
+  SMTP_PASS: Joi.string().allow('').default(''),
+  MAIL_FROM: Joi.string().max(254).allow('').default('Inside Life <hello@insidelife.online>'),
 }).custom((value: EnvForChecks, helpers) => {
   const problem = productionProblem(value);
   return problem ? helpers.message({ custom: problem }) : value;
@@ -73,15 +88,24 @@ interface EnvForChecks {
   readonly MARKET_SEED?: string;
   readonly DATABASE_SYNCHRONIZE?: boolean;
   readonly S3_SECRET_KEY: string;
+  readonly SMTP_URL?: string;
+  readonly SMTP_HOST?: string;
+  readonly REQUIRE_EMAIL_VERIFICATION?: boolean;
 }
 
 /** Secrets that ship in examples and the local docker stack: never acceptable on the live site. */
 const PLACEHOLDER = /change-?me|local-docker|insidelife-storage-secret|^(.)\1+$|example|secret123/i;
 
+/** Local mail catchers (Mailpit in the docker stack): fine on your machine, useless for real players. */
+const MAIL_CATCHER = /mailpit|mailhog|localhost|127\.0\.0\.1/i;
+
 /** Why this environment must not boot (null = fine). Exported for tests. */
 export function productionProblem(value: EnvForChecks): string | null {
+  const smtp = value.SMTP_URL || value.SMTP_HOST || '';
   if (value.NODE_ENV === 'production') {
     if (!value.PAYSTACK_SECRET_KEY && !value.ALLOW_PAYMENT_SANDBOX) return 'PAYSTACK_SECRET_KEY is required in production';
+    // With verification required and no mail, nobody could confirm their email, so nobody could play.
+    if (value.REQUIRE_EMAIL_VERIFICATION && !smtp) return 'SMTP_URL (or SMTP_HOST) is required in production when REQUIRE_EMAIL_VERIFICATION is on';
     // A placeholder signing key lets anyone mint tokens: refused in production whatever else is set.
     if (value.JWT_ACCESS_SECRET.startsWith('change-me')) return 'JWT_ACCESS_SECRET must be changed in production';
     if (value.DATABASE_SYNCHRONIZE) return 'DATABASE_SYNCHRONIZE is not allowed in production';
@@ -97,6 +121,7 @@ export function productionProblem(value: EnvForChecks): string | null {
     if (PLACEHOLDER.test(value.S3_SECRET_KEY)) return 'S3_SECRET_KEY must be changed on the live site';
     if (value.CORS_ORIGINS.split(',').some((origin) => !origin.trim().startsWith('https://'))) return 'CORS_ORIGINS must be https:// origins on the live site';
     if (!value.PAYSTACK_CALLBACK_URL.startsWith('https://')) return 'PAYSTACK_CALLBACK_URL must be https:// on the live site';
+    if (smtp && MAIL_CATCHER.test(smtp)) return 'SMTP_URL must be a real mail server on the live site (not a local mail catcher)';
   }
   return null;
 }

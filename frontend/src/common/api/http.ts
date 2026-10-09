@@ -13,26 +13,75 @@ interface RequestOptions {
   readonly anonymous?: boolean;
 }
 
-let refreshInFlight: Promise<boolean> | null = null;
+/**
+ * How a refresh ended. Only `signed-out` (the server rejected the refresh cookie) ends the session; `unreachable`
+ * (offline, the API restarting, a proxy error page, rate limited) keeps it exactly as it was, to be retried.
+ */
+export type RefreshOutcome = 'refreshed' | 'signed-out' | 'unreachable';
 
-/** Exchange the refresh cookie for a new access token. Concurrent callers share one request. */
-export function refreshSession(): Promise<boolean> {
-  refreshInFlight ??= (async () => {
-    try {
-      const response = await fetch(`${env.apiBase}/auth/refresh`, { method: 'POST', credentials: 'same-origin' });
-      if (!response.ok) {
-        useSession.getState().clear();
-        return false;
-      }
-      useSession.getState().setSession((await response.json()) as AuthSessionDto);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setTimeout(() => (refreshInFlight = null), 0);
+/** Error codes that mean the refresh cookie itself is no good (missing, expired, revoked). */
+const AUTH_REJECTION_CODES: ReadonlySet<string> = new Set(['UNAUTHENTICATED', 'INVALID_CREDENTIALS']);
+/** Shared by every tab of this site, so two tabs never rotate the same refresh cookie at once. */
+const REFRESH_LOCK = 'insidelife:auth-refresh';
+const REFRESH_TIMEOUT_MS = 15_000;
+
+/** True only for a definitive "sign in again" answer from the API, never for 5xx, 429 or network trouble. */
+export function isAuthRejection(status: number, body: unknown): boolean {
+  if (status === 401) return true;
+  const code = typeof body === 'object' && body !== null && 'errorCode' in body ? String(body.errorCode) : '';
+  return status >= 400 && status < 500 && AUTH_REJECTION_CODES.has(code);
+}
+
+async function attemptRefresh(): Promise<RefreshOutcome> {
+  const session = useSession.getState();
+  try {
+    const response = await fetch(`${env.apiBase}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'same-origin',
+      // Older Safari (iOS 15) has no AbortSignal.timeout: then the browser's own timeout applies.
+      signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(REFRESH_TIMEOUT_MS) : undefined,
+    });
+    if (response.ok) {
+      session.setSession((await response.json()) as AuthSessionDto);
+      return 'refreshed';
     }
-  })();
+    if (isAuthRejection(response.status, await response.json().catch(() => null))) {
+      session.clear();
+      return 'signed-out';
+    }
+  } catch {
+    // Offline, timed out, or an unreadable body: same as a 5xx below.
+  }
+  session.markUnreachable();
+  return 'unreachable';
+}
+
+/** Run `task` while holding the cross-tab refresh lock (Web Locks), or directly where the browser has none. */
+function withRefreshLock<T>(task: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator === 'undefined' ? undefined : navigator.locks;
+  return locks ? locks.request(REFRESH_LOCK, task) : task();
+}
+
+let refreshInFlight: Promise<RefreshOutcome> | null = null;
+
+/** Exchange the refresh cookie for a new access token. Concurrent callers in this tab share one request. */
+export function refreshSessionOutcome(): Promise<RefreshOutcome> {
+  refreshInFlight ??= withRefreshLock(attemptRefresh)
+    .catch((): RefreshOutcome => 'unreachable')
+    .finally(() => setTimeout(() => (refreshInFlight = null), 0));
   return refreshInFlight;
+}
+
+/** `refreshSessionOutcome`, as "do I have a fresh token now?". */
+export async function refreshSession(): Promise<boolean> {
+  return (await refreshSessionOutcome()) === 'refreshed';
+}
+
+/** The access token, refreshed first when it's about to expire (the realtime handshake can't refresh by itself). */
+export async function freshAccessToken(): Promise<string | null> {
+  const session = useSession.getState();
+  if (session.status === 'authenticated' && session.expiresAt - Date.now() < 30_000) await refreshSession();
+  return useSession.getState().accessToken;
 }
 
 function buildUrl(path: string, query: RequestOptions['query']): string {

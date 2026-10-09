@@ -5,10 +5,11 @@ import { useReducedMotion } from 'motion/react';
 import { useRouter } from 'next/navigation';
 import { useMemo, useRef, useState } from 'react';
 import { createRng, type Appearance, type BackgroundId } from '@insidelife/shared';
-import { errorMessage } from '@/common/api/api-error';
+import { ApiError, errorMessage } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
 import { useSession } from '@/common/auth/session-store';
-import { Button } from '@/common/components';
+import { useSignOut } from '@/common/auth/use-sign-out';
+import { Button, ConfirmSheet } from '@/common/components';
 import { randomAppearance } from '@/common/three/avatar';
 import { useHandleAvailability } from '../hooks/useHandleAvailability';
 import { presetOutfit, type OutfitPreset } from '../lib/presets';
@@ -43,6 +44,8 @@ export function CharacterCreator() {
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const [lottery, setLottery] = useState<{ readonly status: LotteryStatus; readonly background: BackgroundId | null } | null>(null);
+  const [leaving, setLeaving] = useState(false);
+  const signOut = useSignOut('/sign-in');
   const rolls = useRef(0);
   const handleStatus = useHandleAvailability(identity.handle);
   const outfit = useMemo(() => presetOutfit(preset, identity.gender), [preset, identity.gender]);
@@ -80,6 +83,10 @@ export function CharacterCreator() {
       window.setTimeout(() => setLottery({ status: 'revealed', background: snapshot.character.background }), wait);
     } catch (caught) {
       setLottery(null);
+      if (caught instanceof ApiError && caught.isEmailUnverified) {
+        router.replace('/verify-email');
+        return;
+      }
       setError(errorMessage(caught));
     } finally {
       setPending(false);
@@ -135,8 +142,12 @@ export function CharacterCreator() {
         </div>
 
         <footer className="flex shrink-0 gap-2 border-t border-line bg-paper px-5 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3 lg:px-8 lg:pb-8">
-          {step > 0 && (
+          {step > 0 ? (
             <Button variant="paper" size="lg" onClick={() => setStep((step - 1) as Step)}>
+              Back
+            </Button>
+          ) : (
+            <Button variant="paper" size="lg" aria-label="Back to sign in" onClick={() => setLeaving(true)}>
               Back
             </Button>
           )}
@@ -157,6 +168,18 @@ export function CharacterCreator() {
           )}
         </footer>
       </section>
+
+      <ConfirmSheet
+        open={leaving}
+        onClose={() => setLeaving(false)}
+        title="Back to sign in?"
+        description="You’ll be signed out. Your account is saved: sign in any time to make your character."
+        confirmLabel="Sign out"
+        cancelLabel="Keep creating"
+        tone="danfo"
+        loading={signOut.isPending}
+        onConfirm={() => signOut.mutate()}
+      />
 
       {lottery && <BirthLottery status={lottery.status} background={lottery.background} reducedMotion={reducedMotion} onEnter={enterLagos} />}
     </div>

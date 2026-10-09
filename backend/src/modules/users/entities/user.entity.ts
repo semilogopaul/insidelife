@@ -18,6 +18,10 @@ export class UserEntity {
   @Column({ type: 'timestamptz', nullable: true })
   emailVerifiedAt: Date | null;
 
+  /** Real date of birth (`YYYY-MM-DD`), checked against the minimum age at sign-up. Private: never sent to other players. */
+  @Column({ type: 'date', nullable: true })
+  birthDate: string | null;
+
   @Column({ type: 'varchar', length: 16, default: 'player' })
   role: UserRole;
 
