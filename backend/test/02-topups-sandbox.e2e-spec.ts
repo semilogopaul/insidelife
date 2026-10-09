@@ -28,7 +28,7 @@ const RATE_TABLE: ReadonlyArray<readonly [fromNgn: number, perNaira: number]> = 
   [5_000, 440],
   [10_000, 500],
 ];
-const promisedCredit = (ngn: number): number => ngn * [...RATE_TABLE].reverse().find(([from]) => ngn >= from)![1];
+const promisedCredit = (ngn: number): number => ngn * RATE_TABLE.toReversed().find(([from]) => ngn >= from)![1];
 
 async function startTopup(player: Player, body: object): Promise<TopupStartedDto> {
   return ok<TopupStartedDto>(await player.post('/payments/topups', body));
@@ -159,12 +159,13 @@ describe('top-ups are credited exactly once', () => {
   });
 });
 
+const webhook = (hash: string | null, body: object) => {
+  const test = call(e2e, 'post', '/payments/flutterwave/webhook');
+  if (hash !== null) test.set('verif-hash', hash);
+  return test.send(body);
+};
+
 describe('the Flutterwave webhook endpoint (sandbox mode)', () => {
-  const webhook = (hash: string | null, body: object) => {
-    const test = call(e2e, 'post', '/payments/flutterwave/webhook');
-    if (hash !== null) test.set('verif-hash', hash);
-    return test.send(body);
-  };
   const charge = { event: 'charge.completed', data: { id: 99_000_001, tx_ref: '00000000-0000-4000-8000-000000000000', status: 'successful' } };
 
   it('refuses a webhook without the secret hash or with the wrong one', async () => {

@@ -135,10 +135,16 @@ export async function balanceOf(e2e: E2eApp, characterId: string, kind: 'cash' |
   return Number(rows[0]?.balance ?? Number.NaN);
 }
 
+/** "POST /api/v1/…" of the request behind a response (supertest keeps it on `req`). */
+const requestLine = (response: Response): string => {
+  const req = (response as unknown as { req?: { method?: string; path?: string } }).req;
+  return `${req?.method ?? ''} ${req?.path ?? ''}`;
+};
+
 /** Assert a 2xx and return the body. Failing responses print their body, which is what you want to read. */
 export function ok<T>(response: Response): T {
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(`Expected 2xx from ${response.req?.method ?? ''} ${response.req?.path ?? ''}, got ${response.status}: ${JSON.stringify(response.body)}`);
+    throw new Error(`Expected 2xx from ${requestLine(response)}, got ${response.status}: ${JSON.stringify(response.body)}`);
   }
   return response.body as T;
 }
@@ -146,7 +152,7 @@ export function ok<T>(response: Response): T {
 /** Assert a refusal with this status (and error code, when given). */
 export function refused(response: Response, status: number, errorCode?: string): void {
   if (response.status !== status || (errorCode !== undefined && (response.body as { errorCode?: string }).errorCode !== errorCode)) {
-    throw new Error(`Expected ${status}${errorCode ? ` ${errorCode}` : ''} from ${response.req?.method ?? ''} ${response.req?.path ?? ''}, got ${response.status}: ${JSON.stringify(response.body)}`);
+    throw new Error(`Expected ${status}${errorCode ? ` ${errorCode}` : ''} from ${requestLine(response)}, got ${response.status}: ${JSON.stringify(response.body)}`);
   }
 }
 

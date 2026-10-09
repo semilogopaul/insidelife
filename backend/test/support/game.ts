@@ -34,7 +34,7 @@ export async function waitFor<T>(check: () => Promise<T | undefined | false | nu
     const value = await check();
     if (value !== undefined && value !== false && value !== null) return value;
     if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 15));
   }
 }
 

@@ -3,7 +3,6 @@ import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Redis } from 'ioredis';
-import pg from 'pg';
 import { DataSource, type MigrationInterface } from 'typeorm';
 import { SnakeNamingStrategy } from '../src/database/snake-naming.strategy.js';
 import { E2E_DATABASE_URL, E2E_REDIS_URL, assertThrowaway } from './support/env.js';
@@ -38,6 +37,17 @@ export function migrationDataSource(migrations: MigrationClass[]): DataSource {
   });
 }
 
+/** Run statements on the server's maintenance database (CREATE/DROP DATABASE can't run inside the target). */
+async function onMaintenanceDb(url: string, work: (admin: DataSource) => Promise<unknown>): Promise<void> {
+  const admin = new DataSource({ type: 'postgres', url, logging: ['error'] });
+  await admin.initialize();
+  try {
+    await work(admin);
+  } finally {
+    await admin.destroy();
+  }
+}
+
 /**
  * Once per run: a brand-new e2e database with every migration applied (so the migrations themselves are under test),
  * and an empty Redis DB index. Nothing else is touched.
@@ -47,14 +57,10 @@ export default async function setup(): Promise<() => Promise<void>> {
 
   const maintenance = new URL(E2E_DATABASE_URL);
   maintenance.pathname = '/postgres';
-  const admin = new pg.Client({ connectionString: maintenance.toString() });
-  await admin.connect();
-  try {
+  await onMaintenanceDb(maintenance.toString(), async (admin) => {
     await admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
     await admin.query(`CREATE DATABASE "${database}"`);
-  } finally {
-    await admin.end();
-  }
+  });
 
   const migrations = await loadMigrations();
   const dataSource = migrationDataSource(migrations);
@@ -74,9 +80,6 @@ export default async function setup(): Promise<() => Promise<void>> {
   return async () => {
     // The database is left in place for inspection after a run (it is recreated by the next one). E2E_DROP_DB=1 drops it.
     if (process.env.E2E_DROP_DB !== '1') return;
-    const client = new pg.Client({ connectionString: maintenance.toString() });
-    await client.connect();
-    await client.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
-    await client.end();
+    await onMaintenanceDb(maintenance.toString(), (admin) => admin.query(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`));
   };
 }

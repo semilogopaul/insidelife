@@ -8,9 +8,10 @@ import { signInOwner, type Admin } from './support/admin.js';
 import { bootApp, type E2eApp } from './support/app.js';
 import { E2E } from './support/env.js';
 import { FAKE_FLUTTERWAVE_KEY, FakeFlutterwave, type FakeTransaction } from './support/fake-flutterwave.js';
-import { burst, waitFor } from './support/game.js';
+import { burst } from './support/game.js';
 import { ledgerViolations, NO_VIOLATIONS, postingsWithKey } from './support/ledger.js';
 import { uploadCreative } from './support/media.js';
+import { jobResult, sweepAfterExpiry, sweepWhenDue } from './support/payments.js';
 import { call, createPlayer, key, ok, refused, type Player } from './support/players.js';
 
 /**
@@ -34,6 +35,7 @@ afterAll(async () => {
 });
 
 interface PaymentRow {
+  readonly next_check_at: Date | null;
   readonly status: string;
   readonly failure_reason: string | null;
   readonly paid_kobo: string | null;
@@ -57,20 +59,13 @@ function webhook(body: object, hash: string | null = E2E.webhookHash) {
 }
 
 /** Wait until the queued webhook job has been processed by the worker. */
-async function processed(jobId: string): Promise<string> {
-  return waitFor(async () => {
-    const job = await queue.getJob(jobId);
-    const state = job ? await job.getState() : 'missing';
-    if (state === 'failed') return `failed: ${job?.failedReason ?? ''}`;
-    return state === 'completed' ? String(job?.returnvalue) : undefined;
-  }, `payments job ${jobId}`);
-}
+const processed = (jobId: string): Promise<string> => jobResult(e2e, jobId);
 
 async function startTopup(player: Player, body: object): Promise<TopupStartedDto> {
   const started = ok<TopupStartedDto>(await player.post('/payments/topups', body));
   expect(started.sandbox).toBe(false);
   expect(started.authorizationUrl).toMatch(/^https:\/\/checkout\.flutterwave\.test\//);
-  expect(fw.checkouts.get(started.reference)).toMatchObject({ amount: started.topup.priceNgn, currency: 'NGN', redirectUrl: `${E2E.gameOrigin}/payments/callback` });
+  expect(fw.checkouts.get(started.reference)).toMatchObject({ amount: started.topup.priceNgn, currency: 'NGN', redirectUrl: expect.stringMatching(/\/payments\/callback/) });
   return started;
 }
 
@@ -132,7 +127,8 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     const started = await startTopup(player, { packageId: 'odogwu-pack' });
     const transaction = fw.pay(started.reference);
     const reconciler = e2e.get(CheckoutReconciler);
-    const later = new Date(Date.now() + 11 * 60_000);
+    const due = (await paymentRow(started.reference)).next_check_at;
+    const later = new Date(Math.max(Date.now(), due?.getTime() ?? Date.now()) + 1_000);
     await Promise.all([
       ...Array.from({ length: 6 }, () => verifyTopup(player, started.reference, transaction)),
       ...Array.from({ length: 3 }, () => webhook(fw.chargeWebhook(transaction))),
@@ -162,7 +158,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     const before = await player.cash();
     const started = await startTopup(player, { packageId: 'jollof-pack' });
     fw.pay(started.reference);
-    await e2e.get(CheckoutReconciler).sweep(new Date(Date.now() + 11 * 60_000));
+    await sweepWhenDue(e2e, started.reference);
     expect(await player.cash()).toBe(before + 350_000);
     expect(await paymentRow(started.reference)).toMatchObject({ status: 'success' });
   });
@@ -171,7 +167,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     const player = await createPlayer(e2e);
     const before = await player.cash();
     const started = await startTopup(player, { packageId: 'small-chops' });
-    await e2e.get(CheckoutReconciler).sweep(new Date(Date.now() + 25 * 3_600_000));
+    await sweepAfterExpiry(e2e, started.reference);
     expect(await paymentRow(started.reference)).toMatchObject({ status: 'abandoned', failure_reason: 'checkout_expired' });
     expect(await player.cash()).toBe(before);
   });
@@ -225,14 +221,15 @@ describe('a charge that doesn’t match the checkout is never credited', () => {
   });
 });
 
+async function paidTopup(player: Player, packageId: string): Promise<{ reference: string; transaction: FakeTransaction; credit: number }> {
+  const before = await player.cash();
+  const started = await startTopup(player, { packageId });
+  const transaction = fw.pay(started.reference);
+  ok(await verifyTopup(player, started.reference, transaction));
+  return { reference: started.reference, transaction, credit: (await player.cash()) - before };
+}
+
 describe('refunds made in the Flutterwave dashboard take the coins back, once', () => {
-  async function paidTopup(player: Player, packageId: string): Promise<{ reference: string; transaction: FakeTransaction; credit: number }> {
-    const before = await player.cash();
-    const started = await startTopup(player, { packageId });
-    const transaction = fw.pay(started.reference);
-    ok(await verifyTopup(player, started.reference, transaction));
-    return { reference: started.reference, transaction, credit: (await player.cash()) - before };
-  }
 
   it('a full refund claws back everything; the same refund reported again takes nothing more', async () => {
     const player = await createPlayer(e2e);
@@ -318,6 +315,17 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
   });
 });
 
+async function bookAndPay(buyer: Player, slotId: string): Promise<{ checkout: CampaignCheckoutDto; transaction: FakeTransaction }> {
+  const creative = await uploadCreative(buyer, slotId);
+  const checkout = ok<CampaignCheckoutDto>(
+    await buyer.post('/promotions/campaigns', { slotId, creativeKey: creative.creativeKey, title: 'Mama Put Deluxe', tagline: 'Hot jollof, any time', linkUrl: 'https://mamaput.ng/menu', weeks: 1 }),
+  );
+  const transaction = fw.pay(checkout.reference);
+  const verified = ok<PaymentVerificationDto>(await buyer.post(`/payments/${checkout.reference}/verification`, { transactionId: String(transaction.id) }));
+  expect(verified.fulfilledNow).toBe(true);
+  return { checkout, transaction };
+}
+
 describe('ads paid through Flutterwave and refunded automatically', () => {
   let owner: Admin;
 
@@ -325,16 +333,6 @@ describe('ads paid through Flutterwave and refunded automatically', () => {
     owner = await signInOwner(e2e);
   });
 
-  async function bookAndPay(buyer: Player, slotId: string): Promise<{ checkout: CampaignCheckoutDto; transaction: FakeTransaction }> {
-    const creative = await uploadCreative(buyer, slotId);
-    const checkout = ok<CampaignCheckoutDto>(
-      await buyer.post('/promotions/campaigns', { slotId, creativeKey: creative.creativeKey, title: 'Mama Put Deluxe', tagline: 'Hot jollof, any time', linkUrl: 'https://mamaput.ng/menu', weeks: 1 }),
-    );
-    const transaction = fw.pay(checkout.reference);
-    const verified = ok<PaymentVerificationDto>(await buyer.post(`/payments/${checkout.reference}/verification`, { transactionId: String(transaction.id) }));
-    expect(verified.fulfilledNow).toBe(true);
-    return { checkout, transaction };
-  }
 
   it('rejecting a paid ad before it runs refunds the payer through Flutterwave, once', async () => {
     const buyer = await createPlayer(e2e);

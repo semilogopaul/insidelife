@@ -173,28 +173,37 @@ describe('a billboard from booking to the live feed', () => {
   });
 });
 
+const trackFiles = (): number => [...e2e.storage.files.keys()].filter((key) => key.startsWith('tracks/')).length;
+
 describe('club songs', () => {
-  it('refuses a song of 5 minutes or more, including one whose MP3 header lies about its length', async () => {
+  it('refuses a song longer than 3 minutes, including one whose MP3 header lies about its length', async () => {
     const artist = await createPlayer(e2e);
+    const stored = trackFiles();
     const long = await uploadTrack(artist, synthMp3(6 * 60));
     refused(long, 422, 'INVALID_MEDIA');
-    expect(long.body.message).toMatch(/under 5 minutes/);
-    refused(await uploadTrack(artist, synthMp3(5 * 60)), 422, 'INVALID_MEDIA');
-    // 6 minutes of audio behind a Xing header claiming 3 minutes.
-    const forged = await uploadTrack(artist, forgedMp3(6 * 60, 3 * 60));
-    refused(forged, 422, 'INVALID_MEDIA');
-    // And the reverse: a 3-minute file claiming 6 minutes is refused as broken, not accepted.
-    refused(await uploadTrack(artist, forgedMp3(3 * 60, 6 * 60)), 422, 'INVALID_MEDIA');
+    expect(long.body.message).toMatch(/at most 3 minutes/);
+    refused(await uploadTrack(artist, synthMp3(3 * 60 + 2)), 422, 'INVALID_MEDIA');
+    refused(await uploadTrack(artist, synthMp3(10)), 422, 'INVALID_MEDIA');
+    // 6 minutes of audio behind a Xing header claiming 2:30.
+    refused(await uploadTrack(artist, forgedMp3(6 * 60, 150)), 422, 'INVALID_MEDIA');
+    // Uploads are limited to 5 a minute per player: the rest come from a second artist.
+    const other = await createPlayer(e2e);
+    // A file whose header claims less than its frames by more than 5% is refused as tampered, whatever the length.
+    refused(await uploadTrack(other, forgedMp3(170, 120)), 422, 'INVALID_MEDIA');
+    // And the reverse: 2 minutes of audio claiming 6 is refused as broken, not accepted.
+    refused(await uploadTrack(other, forgedMp3(2 * 60, 6 * 60)), 422, 'INVALID_MEDIA');
+    refused(await uploadTrack(other, Buffer.from('ID3 not really a song at all, just text pretending')), 422, 'INVALID_MEDIA');
     expect(ok<ClubTrackDto[]>(await artist.get('/promotions/tracks'))).toHaveLength(0);
-    expect(e2e.storage.files.size).toBeGreaterThanOrEqual(0);
+    expect(ok<ClubTrackDto[]>(await other.get('/promotions/tracks'))).toHaveLength(0);
+    expect(trackFiles()).toBe(stored);
   });
 
-  it('accepts a song under 5 minutes; booking → payment → approval puts it in every club’s rotation', async () => {
+  it('accepts a song of 3 minutes or less; booking → payment → approval puts it in every club’s rotation', async () => {
     const artist = await createPlayer(e2e);
-    const track = ok<ClubTrackDto>(await uploadTrack(artist, taggedMp3(4 * 60 + 59)));
-    expect(track.durationSeconds).toBe(299);
-    const plain = ok<ClubTrackDto>(await uploadTrack(artist, synthMp3(3 * 60), 'Detty December'));
-    expect(plain.durationSeconds).toBe(180);
+    const track = ok<ClubTrackDto>(await uploadTrack(artist, taggedMp3(3 * 60)));
+    expect(track.durationSeconds).toBe(180);
+    const plain = ok<ClubTrackDto>(await uploadTrack(artist, synthMp3(2 * 60 + 30), 'Detty December'));
+    expect(plain.durationSeconds).toBe(150);
 
     const offer = (await slots(artist)).clubSong;
     refused(await artist.post(`/promotions/tracks/${track.id}/orders`, { productId: 'all-clubs-7d', expectedPriceKobo: 4_000 * NAIRA }), 422, 'PRICE_CHANGED');

@@ -25,7 +25,7 @@ const characterBody = (handle: string) => ({
 });
 
 describe('starting money', () => {
-  it('gives every new character their family money plus the ₦4,000,000 starter fund, in the ledger and the snapshot', async () => {
+  it('gives every new character their family money plus the ₦3,000,000 starter fund, in the ledger and the snapshot', async () => {
     const players = await Promise.all(Array.from({ length: 10 }, () => createPlayer(e2e)));
     const seen = new Set<BackgroundId>();
     for (const player of players) {
@@ -33,7 +33,7 @@ describe('starting money', () => {
       const background = snapshot.character.background;
       seen.add(background);
       const expected = BACKGROUNDS[background].startingCash + STARTER_FUND;
-      expect(STARTER_FUND).toBe(4_000_000);
+      expect(STARTER_FUND).toBe(3_000_000);
       expect(snapshot.wallet.balance).toBe(expected);
       expect(await player.cash()).toBe(expected);
 

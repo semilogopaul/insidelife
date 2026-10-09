@@ -59,7 +59,11 @@ export class FakeFlutterwave {
   readonly calls: Array<{ readonly method: string; readonly path: string; readonly body: unknown }> = [];
   /** What the next refund request is answered with (`completed`, `processing`, or a refusal). */
   refundBehaviour: 'completed' | 'processing' | 'refuse' = 'completed';
-  private nextId = 7_000_000;
+  /**
+   * Ids are unique across spec files (Flutterwave's are global): BullMQ keeps processed webhook jobs, keyed by these
+   * ids, for a day, so two fakes reusing ids would see each other's jobs as duplicates.
+   */
+  private nextId = Date.now() * 10;
   private original: typeof fetch | null = null;
 
   install(): void {

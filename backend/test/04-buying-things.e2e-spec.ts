@@ -295,23 +295,25 @@ describe('venue actions', () => {
   });
 });
 
-describe('health care', () => {
-  async function sickPlayer(): Promise<{ player: Player; conditionId: string }> {
-    const player = await createPlayer(e2e, { age: 24 });
-    const [row] = await e2e.dataSource.query<Array<{ id: string }>>(
-      `INSERT INTO health_conditions (character_id, condition_id, severity, status, onset_at, diagnosed, source)
-       VALUES ($1, 'malaria', 'mild', 'active', $2, true, 'e2e') RETURNING id`,
-      [player.characterId, e2e.clock.now - 60],
-    );
-    await moveTo(player, 'surulere-clinic');
-    return { player, conditionId: row!.id };
-  }
+async function sickPlayer(): Promise<{ player: Player; conditionId: string }> {
+  const player = await createPlayer(e2e, { age: 24 });
+  const [row] = await e2e.dataSource.query<Array<{ id: string }>>(
+    `INSERT INTO health_conditions (character_id, condition_id, severity, status, onset_at, diagnosed, source)
+     VALUES ($1, 'malaria', 'mild', 'active', $2, true, 'e2e') RETURNING id`,
+    [player.characterId, e2e.clock.now - 60],
+  );
+  await moveTo(player, 'surulere-clinic');
+  return { player, conditionId: row!.id };
+}
 
-  async function quoteFor(player: Player, conditionId: string): Promise<TreatmentQuoteDto> {
-    const view = ok<HealthViewDto>(await player.get('/health'));
-    const condition = view.conditions.find((candidate) => candidate.id === conditionId)!;
-    return condition.quotes.find((quote) => quote.facility === 'hospital-private')!;
-  }
+async function quoteFor(player: Player, conditionId: string): Promise<TreatmentQuoteDto> {
+  const view = ok<HealthViewDto>(await player.get('/health'));
+  const condition = view.conditions.find((candidate) => candidate.id === conditionId)!;
+  return condition.quotes.find((quote) => quote.facility === 'hospital-private')!;
+}
+
+describe('health care', () => {
+
 
   it('treatment charges the quoted price once; an injection costs 60% more; double-submits are refused', async () => {
     e2e.clock.at(10);

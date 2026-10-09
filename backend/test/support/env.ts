@@ -85,7 +85,7 @@ export function applyE2eEnv(overrides: Readonly<Record<string, string>> = {}): v
 /** Refuse to touch anything that isn't clearly a throwaway e2e resource. */
 export function assertThrowaway(databaseUrl: string, redisUrl: string): { readonly database: string; readonly redisDb: number } {
   const database = new URL(databaseUrl).pathname.replace(/^\//, '');
-  if (!/_e2e$/.test(database)) throw new RangeError(`Refusing to use database "${database}": e2e databases must end in _e2e`);
+  if (!database.endsWith('_e2e')) throw new RangeError(`Refusing to use database "${database}": e2e databases must end in _e2e`);
   const redisDb = Number(new URL(redisUrl).pathname.replace(/^\//, '') || '0');
   if (!Number.isInteger(redisDb) || redisDb === 0) throw new RangeError(`Refusing to flush Redis DB ${redisDb}: use a dedicated index (e.g. /11)`);
   return { database, redisDb };
