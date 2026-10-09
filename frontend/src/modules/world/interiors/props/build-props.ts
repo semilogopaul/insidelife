@@ -582,6 +582,33 @@ export function buildProp(kit: PropKit, spec: PropSpec): void {
       for (let i = 0; i < steps; i++) kit.box([w, ((i + 1) * h) / steps, d / steps], [0, ((i + 1) * h) / steps / 2, -d / 2 + (d / steps) * (i + 0.5)], i % 2 === 0 ? spec.color : shadeHex(spec.color, -0.06), 'wood', [0, 0, 0], 0.08);
       return;
     }
+    case 'stairwell': {
+      // The floor can't be cut, so the opening is painted: steps fading into the dark below, a rim and a railing.
+      const [w, d] = spec.size;
+      const rail = spec.rail ?? '#3e2723';
+      kit.box([w + 0.1, 0.012, d + 0.1], [0, 0.006, 0], shadeHex(rail, 0.1), 'wood', [0, 0, 0], 0.1);
+      kit.box([w - 0.02, 0.014, d - 0.02], [0, 0.008, 0], '#14100c', 'paint', [0, 0, 0], 0.1);
+      const step = 0.3;
+      const count = Math.min(6, Math.floor(d / step));
+      for (let i = 0; i < count; i++) {
+        const shade = -0.18 - (i / count) * 0.72;
+        kit.box([w - 0.14, 0.016, step * 0.78], [0, 0.01, d / 2 - step * (i + 0.5)], shadeHex(spec.color, shade), 'wood', [0, 0, 0], 0.1);
+      }
+      const railY = 0.92;
+      const posts = Math.max(2, Math.round(d / 0.55));
+      for (const sx of [-1, 1]) {
+        const x = sx * (w / 2 + 0.03);
+        for (let i = 0; i <= posts; i++) kit.box([0.04, railY, 0.04], [x, railY / 2, d / 2 - (d * i) / posts], rail, 'wood', [0, 0, 0], 0.1);
+        kit.box([0.07, 0.05, d + 0.08], [x, railY, 0], rail, 'wood', [0, 0, 0], 0.2);
+        // Newel post at the top step.
+        kit.box([0.09, railY + 0.12, 0.09], [x, (railY + 0.12) / 2, d / 2], shadeHex(rail, -0.1), 'wood', [0, 0, 0], 0.15);
+        kit.sphere(0.06, [x, railY + 0.16, d / 2], shadeHex(rail, 0.15), 'wood');
+      }
+      const across = Math.max(1, Math.round(w / 0.5));
+      for (let i = 1; i < across; i++) kit.box([0.04, railY, 0.04], [-w / 2 + (w * i) / across, railY / 2, -d / 2 - 0.03], rail, 'wood', [0, 0, 0], 0.1);
+      kit.box([w + 0.14, 0.05, 0.07], [0, railY, -d / 2 - 0.03], rail, 'wood', [0, 0, 0], 0.2);
+      return;
+    }
     case 'clothesline': {
       const h = spec.height ?? 1.75;
       const pts: V3[] = [];

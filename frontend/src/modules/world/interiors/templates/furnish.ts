@@ -1,7 +1,9 @@
 import { findItem, ITEMS } from '@insidelife/shared';
+import type { Aabb } from '../../play/physics/collision';
 import type { PropSpec } from '../props/prop-types';
+import { furnitureFootprint, propFootprint } from '../walk/colliders';
 import { BED_TOP, forward } from './helpers';
-import type { At, Deg, FurniturePlacement, HomeSlot, InteriorTemplate, Spot } from './types';
+import type { At, Deg, FurniturePlacement, HomeSlot, InteriorTemplate, PlayerSpots, Spot } from './types';
 
 /**
  * Your belongings in your home. Template pieces tagged with a `slot` are anchors: in a home you rent or own they show
@@ -240,5 +242,19 @@ export function furnish(template: InteriorTemplate, owned: readonly string[], { 
     sleep && bedTop !== null && sleep.at.length === 3
       ? { ...template.player, sleep: { ...sleep, at: [sleep.at[0], bedTop, sleep.at[2]] as const } satisfies Spot }
       : template.player;
-  return { ...template, furniture, props, player };
+  // Seats you don't own aren't there: whoever would sit on one stands in its place instead of sitting on air.
+  const seats = [...furniture.map(furnitureFootprint), ...props.map(propFootprint)].filter((box) => box !== null);
+  const grounded = <T extends Spot>(spot: T): T => (spot.stance === 'sit' && !hasSeat(spot, seats) ? { ...spot, at: [spot.at[0], spot.at[spot.at.length - 1] as number], stance: 'stand' } : spot);
+  const players = Object.fromEntries(Object.entries(player).map(([key, spot]) => [key, spot && key !== 'sleep' ? grounded(spot) : spot])) as PlayerSpots;
+  return { ...template, furniture, props, player: players, npcs: template.npcs.map(grounded), guests: template.guests.map(grounded) };
+}
+
+/** A seated avatar's hips are up to this far behind its feet (spots on a bed's edge sit just past the bed). */
+const SEAT_REACH = 0.3;
+
+/** Is there something under a seated spot (a chair, sofa, bench, stool, mattress…)? */
+function hasSeat(spot: Spot, seats: readonly Aabb[]): boolean {
+  const x = spot.at[0];
+  const z = spot.at[spot.at.length - 1] as number;
+  return seats.some((box) => x >= box.minX - SEAT_REACH && x <= box.maxX + SEAT_REACH && z >= box.minZ - SEAT_REACH && z <= box.maxZ + SEAT_REACH);
 }

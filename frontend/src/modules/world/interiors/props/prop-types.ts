@@ -80,6 +80,8 @@ export type PropSpec =
   | (Base & { readonly kind: 'bottles'; readonly count?: number })
   | (Base & { readonly kind: 'food-plate'; readonly food?: 'jollof' | 'amala' | 'suya' })
   | (Base & { readonly kind: 'stairs'; readonly size: Vec3; readonly color: string })
+  /** Upstairs: the opening of a staircase going down (local -z), railed on three sides, open at local +z. */
+  | (Base & { readonly kind: 'stairwell'; readonly size: readonly [number, number]; readonly color: string; readonly rail?: string })
   | (Base & { readonly kind: 'table-cloth'; readonly size: Vec3; readonly color: string; readonly trim?: string })
   | (Base & { readonly kind: 'clothesline'; readonly length: number; readonly height?: number; readonly colors: readonly string[] })
   | (Base & { readonly kind: 'aircon' })

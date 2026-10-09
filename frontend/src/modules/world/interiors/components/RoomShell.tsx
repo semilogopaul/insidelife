@@ -79,10 +79,10 @@ function disposeShell(shell: ShellResources): void {
  */
 export function RoomShell({ template, onGlass }: { readonly template: InteriorTemplate; readonly onGlass: (material: MeshStandardMaterial | null) => void }) {
   const shell = useMemo(() => buildShell(template), [template]);
-  useEffect(() => {
-    onGlass(shell.glassMaterial);
-    return () => disposeShell(shell);
-  }, [shell, onGlass]);
+  useEffect(() => onGlass(shell.glassMaterial), [shell, onGlass]);
+  // Dispose a moment after a swap (another room of the home): the new shell's materials share shader programs with
+  // the old one's, and disposing before they have drawn once would make three.js compile them again (a hitch).
+  useEffect(() => () => void window.setTimeout(() => disposeShell(shell), 1500), [shell]);
   return (
     <group name="room-shell">
       <mesh geometry={shell.floor} material={shell.floorMaterial} />
