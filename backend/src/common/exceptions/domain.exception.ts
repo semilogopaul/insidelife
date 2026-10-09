@@ -40,6 +40,13 @@ export class InvalidCredentialsException extends DomainException {
   }
 }
 
+/** Signed in, but the email address isn't confirmed yet: no character and no play until it is. */
+export class EmailUnverifiedException extends DomainException {
+  constructor() {
+    super('EMAIL_UNVERIFIED', 'Confirm your email to start playing. Enter the code we sent you', HttpStatus.FORBIDDEN);
+  }
+}
+
 export class ForbiddenActionException extends DomainException {
   constructor(message = 'You can’t do that') {
     super('FORBIDDEN', message, HttpStatus.FORBIDDEN);

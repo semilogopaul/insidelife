@@ -19,7 +19,9 @@ export default function PrivacyPage() {
       <h2>What we collect</h2>
       <ul>
         <li>
-          <strong>Account:</strong> your email address and password (stored only as a one-way argon2 hash).
+          <strong>Account:</strong> your email address, your password (stored only as a one-way argon2 hash) and
+          your date of birth (to check you’re 13 or older; never shown to other players). If you confirm your email,
+          we send a one-time code to it.
         </li>
         <li>
           <strong>Your game:</strong> your character, what you do in the game, your in-game money and

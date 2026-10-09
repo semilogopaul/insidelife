@@ -6,6 +6,7 @@ import { Button, Section, Tabs } from '@/common/components';
 import { useSignOut } from '@/common/auth/use-sign-out';
 import { useSnapshot } from '@/common/game/snapshot';
 import { InstallAppPanel } from '@/common/pwa';
+import { EmailSettings } from './EmailSettings';
 import { GameSettings } from './GameSettings';
 import { HabitsPanel } from './HabitsPanel';
 import { LeaderboardsPanel } from './LeaderboardsPanel';
@@ -15,7 +16,7 @@ import { ProfileCard } from './ProfileCard';
 
 type MeTab = 'profile' | 'habits' | 'ranks' | 'settings';
 
-/** Me: your profile card and lifestyle, daily habits, Lagos leaderboards, and privacy, device and install settings. */
+/** Me: your profile card and lifestyle, daily habits, Lagos leaderboards, and account, privacy, device and install settings. */
 export function MeApp() {
   const { data: snapshot } = useSnapshot();
   const [tab, setTab] = useState<MeTab>('profile');
@@ -46,6 +47,9 @@ export function MeApp() {
       {tab === 'ranks' && <LeaderboardsPanel characterId={character.id} />}
       {tab === 'settings' && (
         <div className="flex flex-col gap-6">
+          <Section title="Account">
+            <EmailSettings />
+          </Section>
           <Section title="Privacy">
             <PrivacySettings />
           </Section>

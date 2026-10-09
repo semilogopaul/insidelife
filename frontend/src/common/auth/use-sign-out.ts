@@ -1,23 +1,20 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useRouter } from 'next/navigation';
+import { useMutation } from '@tanstack/react-query';
 import { api } from '@/common/api/http';
 import { disconnectSocket } from '@/common/realtime/socket';
-import { useSession } from './session-store';
 
-/** Sign out everywhere this device knows about: revoke the refresh token, drop caches, close the socket. */
-export function useSignOut() {
-  const router = useRouter();
-  const client = useQueryClient();
-  const clear = useSession((state) => state.clear);
+/**
+ * Sign out on this device: revoke the refresh token, close the socket, then load `to` (the landing page by default;
+ * the sign-in or sign-up page when the player is backing out of a flow). A full page load drops every in-memory trace
+ * of the session (token, caches, the 3D world) and can't race a screen's own "not signed in → sign-in page" guard.
+ */
+export function useSignOut(to = '/') {
   return useMutation({
     mutationFn: () => api.post<void>('/auth/logout', undefined, { anonymous: true }),
     onSettled: () => {
       disconnectSocket();
-      clear();
-      client.clear();
-      router.replace('/');
+      window.location.replace(to);
     },
   });
 }

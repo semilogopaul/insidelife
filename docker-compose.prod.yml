@@ -20,6 +20,10 @@ x-backend-env: &backend-env
   REDIS_URL: redis://:${REDIS_PASSWORD:?set REDIS_PASSWORD}@redis:6379
   JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?set JWT_ACCESS_SECRET}
   COOKIE_SECURE: "true"
+  # Optional until switched on; then SMTP_URL is required (the backend refuses to boot without it).
+  REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-false}
+  SMTP_URL: ${SMTP_URL:-}
+  MAIL_FROM: ${MAIL_FROM:-Inside Life <hello@insidelife.online>}
   GAME_EPOCH: ${GAME_EPOCH:?set GAME_EPOCH}
   GAME_TIME_SCALE: ${GAME_TIME_SCALE:-120}
   WORLD_SEED: ${WORLD_SEED:-eko-o-ni-baje}

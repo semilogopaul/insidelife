@@ -68,6 +68,10 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-local-docker-secret-please-change-0123456789abcdef}
       COOKIE_SECURE: "false"
+      # Email codes: optional by default. Turning the requirement on needs an SMTP_URL (see docs/DEPLOY.md -> Email).
+      REQUIRE_EMAIL_VERIFICATION: ${REQUIRE_EMAIL_VERIFICATION:-false}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-Inside Life <hello@insidelife.online>}
       GAME_EPOCH: ${GAME_EPOCH:-2026-10-01T00:00:00.000Z}
       GAME_TIME_SCALE: ${GAME_TIME_SCALE:-120}
       WORLD_SEED: ${WORLD_SEED:-eko-o-ni-baje}

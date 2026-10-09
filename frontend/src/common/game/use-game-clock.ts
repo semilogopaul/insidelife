@@ -19,6 +19,9 @@ export function useClockSync(): boolean {
     },
     staleTime: 60 * 60_000,
     refetchInterval: 60 * 60_000,
+    // The game can't start without the clock: while the API is down (a restart), keep trying, backing off to 30 s.
+    retry: true,
+    retryDelay: (attempt) => Math.min(30_000, 1_000 * 2 ** attempt),
   });
   return data !== undefined;
 }

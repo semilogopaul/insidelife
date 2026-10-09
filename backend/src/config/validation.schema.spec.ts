@@ -12,6 +12,7 @@ const live = {
   COOKIE_SECURE: true,
   MARKET_SEED: 'k3Jd9Lq2Xv7Rt5Pm1Wz8',
   S3_SECRET_KEY: 'Xp4Lk9Qz2Vb7Nm1Rt6Ws',
+  SMTP_URL: 'smtp://hello%40insidelife.online:app-password@smtp-relay.brevo.com:587',
 };
 
 describe('environment checks', () => {
@@ -40,8 +41,25 @@ describe('environment checks', () => {
         COOKIE_SECURE: false,
         JWT_ACCESS_SECRET: 'local-docker-secret-please-change-0123456789abcdef',
         CORS_ORIGINS: 'http://localhost:8080',
+        SMTP_URL: '',
       }),
     ).toBeNull();
+  });
+
+  it('boots without a mail server while email verification is optional', () => {
+    expect(productionProblem({ ...live, SMTP_URL: '' })).toBeNull();
+    expect(productionProblem({ ...live, SMTP_URL: '', REQUIRE_EMAIL_VERIFICATION: false })).toBeNull();
+  });
+
+  it('needs a real mail server in production once email verification is required', () => {
+    const strict = { ...live, REQUIRE_EMAIL_VERIFICATION: true };
+    expect(productionProblem(strict)).toBeNull();
+    expect(productionProblem({ ...strict, SMTP_URL: '' })).toMatch(/SMTP_URL/);
+    expect(productionProblem({ ...strict, SMTP_URL: '', SMTP_HOST: 'smtp.zoho.com' })).toBeNull();
+    expect(productionProblem({ ...strict, DEPLOYMENT: 'local', ALLOW_PAYMENT_SANDBOX: true, SMTP_URL: '' })).toMatch(/SMTP_URL/);
+    expect(productionProblem({ ...live, SMTP_URL: 'smtp://mailpit:1025' })).toMatch(/mail catcher/);
+    // Development may run without SMTP either way (codes are logged).
+    expect(productionProblem({ ...strict, NODE_ENV: 'development', DEPLOYMENT: 'local', SMTP_URL: '' })).toBeNull();
   });
 
   it('refuses the live site with sandbox payments, insecure cookies, placeholder secrets or http origins', () => {

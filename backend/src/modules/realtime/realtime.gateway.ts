@@ -6,7 +6,6 @@ import {
   type OnGatewayDisconnect,
   type OnGatewayInit,
 } from '@nestjs/websockets';
-import { JwtService } from '@nestjs/jwt';
 import type { Server, Socket } from 'socket.io';
 import {
   REALTIME_NAMESPACE,
@@ -22,10 +21,10 @@ import {
   type WorldPlayerPositionDto,
   type WorldVehicleLook,
 } from '@insidelife/shared';
-import type { AccessTokenPayload } from '../../common/interfaces/auth-user.interface.js';
 import { DomainException } from '../../common/exceptions/domain.exception.js';
 import { deferred } from '../../common/utils/deferred.js';
 import { MetricsService } from '../../metrics/metrics.service.js';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
 import { PresenceService } from '../presence/presence.service.js';
@@ -88,7 +87,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   private countTimer: NodeJS.Timeout | null = null;
 
   constructor(
-    private readonly jwt: JwtService,
+    private readonly auth: JwtAuthGuard,
     private readonly directory: CharacterDirectory,
     private readonly presence: PresenceService,
     private readonly chat: ChatService,
@@ -133,8 +132,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     try {
       const token = typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
       if (!token) throw new DomainException('UNAUTHENTICATED', 'Missing token');
-      const payload = await this.jwt.verifyAsync<AccessTokenPayload>(token);
-      const character = await this.directory.findLivingByUser(payload.sub);
+      // Same rules as the HTTP guard, plus a confirmed email: unverified accounts can't enter the world.
+      const user = await this.auth.verifyPlayer(token);
+      const character = await this.directory.findLivingByUser(user.userId);
       if (!character) throw new DomainException('NO_CHARACTER', 'No character');
 
       socket.data.characterId = character.id;

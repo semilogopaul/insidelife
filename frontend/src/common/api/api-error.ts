@@ -19,6 +19,11 @@ export class ApiError extends Error {
   get isAuth(): boolean {
     return this.status === 401;
   }
+
+  /** Signed in, but the email isn't confirmed yet: send the player to the code screen. */
+  get isEmailUnverified(): boolean {
+    return this.code === 'EMAIL_UNVERIFIED';
+  }
 }
 
 /** Message to show for any thrown value. */

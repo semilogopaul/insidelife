@@ -44,15 +44,20 @@ export function GameRoot() {
   const router = useRouter();
   const client = useQueryClient();
   const status = useSession((state) => state.status);
+  const unreachable = useSession((state) => state.unreachable);
+  const mustVerifyEmail = useSession((state) => state.user?.mustVerifyEmail ?? false);
   const clockReady = useClockSync();
   const snapshot = useSnapshot();
   // After a death the player continues as their heir: a new character id means new private realtime rooms.
   const characterId = snapshot.data?.character.id ?? null;
   const noCharacter = snapshot.error instanceof ApiError && snapshot.error.code === 'NO_CHARACTER';
+  const unverified = mustVerifyEmail || (snapshot.error instanceof ApiError && snapshot.error.isEmailUnverified);
 
+  // Only a definitive sign-out (the server rejected the refresh cookie) leaves the game; an unreachable API retries.
   useEffect(() => {
     if (status === 'anonymous') router.replace('/sign-in?next=/play');
-  }, [status, router]);
+    if (status === 'authenticated' && unverified) router.replace('/verify-email?next=/play');
+  }, [status, unverified, router]);
 
   useEffect(() => {
     if (!characterId) return;
@@ -79,7 +84,8 @@ export function GameRoot() {
   if (status === 'authenticated' && noCharacter) return <EpitaphGate />;
 
   if (status !== 'authenticated' || !clockReady || !snapshot.data) {
-    return <LoadingScreen message={snapshot.isError ? 'Can’t reach Lagos right now. Retrying…' : undefined} />;
+    const retrying = ((snapshot.isError || snapshot.failureCount > 0) && !unverified) || (status === 'unknown' && unreachable);
+    return <LoadingScreen message={retrying ? 'Can’t reach Lagos right now. Retrying…' : undefined} />;
   }
 
   return (
