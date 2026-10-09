@@ -1,4 +1,4 @@
-import { homeEntrance, homeKey, type OwnedPropertyMarkerDto } from '@insidelife/shared';
+import { NO_EXTERIOR, findGateColour, findHousePaint, homeEntrance, homeKey, type OwnedPropertyMarkerDto } from '@insidelife/shared';
 import { describe, expect, it } from 'vitest';
 import { ownedLots, withOwnedLots } from '../city/layout/owned-lots';
 import { cityPlan } from '../city/layout/placements';
@@ -15,6 +15,7 @@ const marker = (
   stage,
   blueprintId: stage === 'land' ? null : 'duplex',
   livedIn: false,
+  exterior: NO_EXTERIOR,
   ...extra,
 });
 
@@ -80,6 +81,17 @@ describe('owned lots', () => {
     expect(new Set(owned.map(({ lot }) => lot.id)).size).toBe(12);
     const home = owned.find(({ property }) => property.livedIn);
     expect(home?.lot.entrance).toEqual(homeEntrance(homeKey('me', 'p5'), 'lekki'));
+  });
+
+  it('paints the fence and gate in the owner’s colours', () => {
+    const owned = ownedLots([marker('painted', 'built', { exterior: { paint: 'sky', roof: 'charcoal', gate: 'gold', name: 'Ada Villa' } })]);
+    const [{ lot }] = owned as [(typeof owned)[number]];
+    const plan = withOwnedLots(base, owned);
+    const walls = plan.walls.filter((wall) => insideLot(lot, (wall.x0 + wall.x1) / 2, (wall.z0 + wall.z1) / 2));
+    expect(new Set(walls.map((wall) => wall.color))).toEqual(new Set([Number.parseInt(findHousePaint('sky')!.hex.slice(1), 16)]));
+    expect(plan.gates.find((gate) => insideLot(lot, gate.x, gate.z))?.color).toBe(Number.parseInt(findGateColour('gold')!.hex.slice(1), 16));
+    const { signs } = buildOwnedGeometry(owned, { firstName: 'Ada', lastName: 'Obi' });
+    expect(signs.find((sign) => sign.kind === 'plate')?.lines[0]).toBe('ADA VILLA');
   });
 
   it('builds every blueprint and stage with its signs', () => {

@@ -37,6 +37,7 @@ export * from './contracts/careers.js';
 export * from './catalog/businesses.js';
 export * from './contracts/businesses.js';
 export * from './catalog/housing.js';
+export * from './catalog/home-style.js';
 export * from './contracts/housing.js';
 export * from './catalog/shop.js';
 export * from './contracts/shop.js';

@@ -1,4 +1,4 @@
-import { BLUEPRINTS, type BlueprintId } from '@insidelife/shared';
+import { BLUEPRINTS, findHousePaint, findRoofColour, type BlueprintId } from '@insidelife/shared';
 import {
   BoxGeometry,
   BufferAttribute,
@@ -15,6 +15,7 @@ import {
   HOUSE_SHAPES,
   STOREY,
   WALL_INSET,
+  hexToInt,
   type OwnedLot,
 } from '../layout/owned-lots';
 import { frameOf } from '../layout/placements';
@@ -76,14 +77,15 @@ function windows(add: Part, xs: readonly number[], y: number, z: number, w = 1.1
   }
 }
 
-function house(add: Part, blueprintId: BlueprintId, back: number): void {
+/** The house; `wall` and `roof` are the owner's paint and roofing sheets (sRGB). */
+function house(add: Part, blueprintId: BlueprintId, back: number, wall: number, roof: number): void {
   const shape = HOUSE_SHAPES[blueprintId];
   const { width: w, depth: d, storeys } = shape;
   const cz = back + d / 2;
   const front = back + d;
   const top = storeys * STOREY + 0.3;
   add(box(w + 0.3, 0.3, d + 0.3, 0, 0, cz), CONCRETE);
-  add(box(w, top - 0.3, d, 0, 0.3, cz), shape.wall);
+  add(box(w, top - 0.3, d, 0, 0.3, cz), wall);
   // Floor bands between storeys.
   for (let s = 1; s < storeys; s++) add(box(w + 0.08, 0.18, d + 0.08, 0, s * STOREY + 0.2, cz), FRAME);
 
@@ -94,7 +96,7 @@ function house(add: Part, blueprintId: BlueprintId, back: number): void {
       // Porch slab on two pillars.
       add(box(2.6, 0.16, 1.4, 0, 2.9, front + 0.7), FRAME);
       for (const x of [-1.15, 1.15]) add(cylinder(0.12, 2.6, x, 0.3, front + 1.25), FRAME);
-      add(hipRoof(w + 0.9, d + 0.9, 1.9).translate(0, top, cz), ROOF.bungalow);
+      add(hipRoof(w + 0.9, d + 0.9, 1.9).translate(0, top, cz), roof);
       break;
     }
     case 'duplex': {
@@ -106,7 +108,7 @@ function house(add: Part, blueprintId: BlueprintId, back: number): void {
       add(box(3.2, 0.2, 1.4, 0, STOREY + 0.2, front + 0.7), FRAME);
       add(box(3.2, 0.9, 0.08, 0, STOREY + 0.4, front + 1.36), STEEL);
       for (const x of [-1.45, 1.45]) add(cylinder(0.14, STOREY - 0.1, x, 0.3, front + 1.25), FRAME);
-      add(hipRoof(w + 0.8, d + 0.8, 2.0).translate(0, top, cz), ROOF.duplex);
+      add(hipRoof(w + 0.8, d + 0.8, 2.0).translate(0, top, cz), roof);
       break;
     }
     case 'block-of-flats': {
@@ -124,10 +126,10 @@ function house(add: Part, blueprintId: BlueprintId, back: number): void {
       }
       add(box(1.1, 2.2, 0.08, 0, 0.3, front + 0.1), STEEL);
       // Parapet and the black water tank on its stand.
-      add(box(w, 0.6, 0.15, 0, top, back + 0.08), ROOF['block-of-flats']);
-      add(box(w, 0.6, 0.15, 0, top, front - 0.08), ROOF['block-of-flats']);
-      add(box(0.15, 0.6, d, -w / 2 + 0.08, top, cz), ROOF['block-of-flats']);
-      add(box(0.15, 0.6, d, w / 2 - 0.08, top, cz), ROOF['block-of-flats']);
+      add(box(w, 0.6, 0.15, 0, top, back + 0.08), roof);
+      add(box(w, 0.6, 0.15, 0, top, front - 0.08), roof);
+      add(box(0.15, 0.6, d, -w / 2 + 0.08, top, cz), roof);
+      add(box(0.15, 0.6, d, w / 2 - 0.08, top, cz), roof);
       for (const x of [2.2, 3.2])
         for (const z of [back + 1, back + 2]) add(box(0.1, 1.2, 0.1, x, top, z), STEEL);
       add(cylinder(0.75, 1.6, 2.7, top + 1.2, back + 1.5, 14), 0x1e1e20);
@@ -143,8 +145,8 @@ function house(add: Part, blueprintId: BlueprintId, back: number): void {
       add(box(4.2, 0.3, 1.5, 0, 0, front + 0.75), FRAME);
       for (const x of [-1.8, -0.6, 0.6, 1.8]) add(cylinder(0.17, top - 0.6, x, 0.3, portico, 12), FRAME);
       add(box(4.4, 0.45, 1.5, 0, top - 0.3, front + 0.75), FRAME);
-      add(hipRoof(4.6, 1.6, 1.0).translate(0, top + 0.15, front + 0.75), ROOF.mansion);
-      add(hipRoof(w + 0.8, d + 0.8, 2.2).translate(0, top, cz), ROOF.mansion);
+      add(hipRoof(4.6, 1.6, 1.0).translate(0, top + 0.15, front + 0.75), roof);
+      add(hipRoof(w + 0.8, d + 0.8, 2.2).translate(0, top, cz), roof);
       // Gold trim and lamps either side of the door.
       add(box(w + 0.1, 0.12, d + 0.1, 0, top - 0.12, cz), 0xc9a227);
       for (const x of [-1.1, 1.1]) add(box(0.18, 0.3, 0.18, x, 2.2, front + 0.1), 0xf6d77a);
@@ -279,13 +281,17 @@ export function buildOwnedGeometry(
         1.05,
       );
     } else {
-      house(add, property.blueprintId, back);
+      const { exterior } = property;
+      const paint = findHousePaint(exterior.paint)?.hex;
+      const sheets = findRoofColour(exterior.roof)?.hex;
+      const wall = paint ? hexToInt(paint) : HOUSE_SHAPES[property.blueprintId].wall;
+      house(add, property.blueprintId, back, wall, sheets ? hexToInt(sheets) : ROOF[property.blueprintId]);
       // Nameplate on the wall beside the gate; the classic warning painted on the other side (both clear of the
       // gate pillars, which stand 0.5 m either side of the opening).
       const clear = GATE_HALF + 0.65;
       sign(
         'plate',
-        [`${owner.lastName.toUpperCase()} ${NAMEPLATE[property.blueprintId]}`],
+        [(property.exterior.name ?? `${owner.lastName} ${NAMEPLATE[property.blueprintId]}`).toUpperCase()],
         -(clear + half) / 2,
         1.55,
         frontLine + 0.14,

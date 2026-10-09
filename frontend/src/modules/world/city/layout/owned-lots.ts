@@ -1,4 +1,4 @@
-import { CITY_MAP, homeLotOf, homeLots, type CityLot, type OwnedPropertyMarkerDto } from '@insidelife/shared';
+import { CITY_MAP, findGateColour, findHousePaint, homeLotOf, homeLots, type CityLot, type OwnedPropertyMarkerDto } from '@insidelife/shared';
 import {
   APRON,
   at,
@@ -96,8 +96,10 @@ function compound(owned: OwnedLot): { walls: WallSegment[]; gates: GateSpot[] } 
   const front = FRONT_LINE(frame);
   // A building site has a block fence going up (no gate yet); a house has the full wall and a steel gate.
   const height = stage === 'built' ? WALL_HEIGHT : 1.2;
+  // The fence is painted with the house.
+  const paint = findHousePaint(owned.property.exterior.paint)?.hex;
   const color =
-    stage === 'built' ? (owned.property.blueprintId === 'mansion' ? 0xf6f1e7 : 0xe9dcc4) : 0x9a9a94;
+    stage !== 'built' ? 0x9a9a94 : paint ? hexToInt(paint) : owned.property.blueprintId === 'mansion' ? 0xf6f1e7 : 0xe9dcc4;
   const wall = (u0: number, v0: number, u1: number, v1: number): WallSegment => {
     const [x0, z0] = at(frame, u0, v0);
     const [x1, z1] = at(frame, u1, v1);
@@ -112,7 +114,8 @@ function compound(owned: OwnedLot): { walls: WallSegment[]; gates: GateSpot[] } 
   ];
   if (stage !== 'built') return { walls, gates: [] };
   const [x, z] = at(frame, 0, front);
-  return { walls, gates: [{ x, z, dx: frame.ax, dz: frame.az, width: GATE_HALF * 2 }] };
+  const gate = findGateColour(owned.property.exterior.gate)?.hex;
+  return { walls, gates: [{ x, z, dx: frame.ax, dz: frame.az, width: GATE_HALF * 2, color: gate ? hexToInt(gate) : undefined }] };
 }
 
 /** World AABB of a lot-local rectangle. */
@@ -166,12 +169,15 @@ function yardPalms(owned: OwnedLot): Placement[] {
 
 let cache: { readonly key: string; readonly base: CityPlan; readonly plan: CityPlan } | null = null;
 
-/** Cache key: which lots, and what stands on each. */
+/** '#rrggbb' → 0xrrggbb. */
+export const hexToInt = (hex: string): number => Number.parseInt(hex.slice(1), 16);
+
+/** Cache key: which lots, and what stands on each (and how it's painted). */
 function ownedLotsKey(owned: readonly OwnedLot[]): string {
   return owned
     .map(
       ({ lot, property }) =>
-        `${lot.id}:${property.id}:${property.stage}:${property.blueprintId ?? '-'}:${property.livedIn ? 1 : 0}`,
+        `${lot.id}:${property.id}:${property.stage}:${property.blueprintId ?? '-'}:${property.livedIn ? 1 : 0}:${Object.values(property.exterior).join(',')}`,
     )
     .join('|');
 }

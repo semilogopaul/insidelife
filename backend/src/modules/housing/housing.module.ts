@@ -13,6 +13,7 @@ import { PropertyEntity } from './entities/property.entity.js';
 import { ResidenceEntity } from './entities/residence.entity.js';
 import { HomeService } from './home.service.js';
 import { HousePurchasesService } from './house-purchases.service.js';
+import { MakeoverService } from './makeover.service.js';
 import { HousingEventsRegistrar } from './housing-events.registrar.js';
 import { HousingController } from './housing.controller.js';
 import { HousingService } from './housing.service.js';
@@ -51,6 +52,7 @@ import { UpkeepService } from './upkeep.service.js';
     UpkeepService,
     PropertySalesService,
     HousePurchasesService,
+    MakeoverService,
     HousingService,
     HousingSystem,
     HousingEventsRegistrar,

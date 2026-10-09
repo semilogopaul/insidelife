@@ -16,6 +16,7 @@ import { InteriorPeople, type InteriorPlayer } from './components/InteriorPeople
 import { RoomShell } from './components/RoomShell';
 import { ShowroomCars } from './components/ShowroomCars';
 import { TvScreens } from './components/TvScreens';
+import { applyDecor } from './templates/decor';
 import { furnish } from './templates/furnish';
 import { getTemplate } from './templates/registry';
 import { isNepaOff, resolveTemplateId, type HomeInfo, type InteriorTemplateId } from './templates/resolve';
@@ -67,13 +68,14 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   // Your own home shows what you own; other places show their template.
   const homeItems = snapshot?.summary.homeItems;
   const ownership = snapshot?.summary.home.ownership;
+  const decor = snapshot?.summary.home.decor;
   const pantryMeals = snapshot?.summary.pantryMeals ?? 0;
   const surname = ownHome ? snapshot?.character.lastName : visit?.host.lastName;
   const template = useMemo(() => {
     if (previewItems) return furnish(base, previewItems, { providedFurniture: base.id === 'home-family' || base.id === 'home-hostel' });
-    if (visit) return furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname });
-    return ownHome && homeItems ? furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname }) : base;
-  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname]);
+    if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname }), visit.home.decor);
+    return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname }), decor) : base;
+  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname, decor]);
   const players = useMemo(() => (people ? [...present, ...people.map((person) => asPresence(person, locationId))] : present), [present, people, locationId]);
   const [glass, setGlass] = useState<MeshStandardMaterial | null>(null);
   const onGlass = useCallback((material: MeshStandardMaterial | null) => setGlass(material), []);

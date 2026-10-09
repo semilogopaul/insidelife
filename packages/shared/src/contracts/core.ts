@@ -1,4 +1,5 @@
 import type { BlueprintId } from '../catalog/housing.js';
+import type { HomeDecor, HouseExterior } from '../catalog/home-style.js';
 import type { GameClockConfig } from '../time/clock.js';
 import type { GameMinute } from '../time/calendar.js';
 import type { NeedProfile, Needs } from '../needs/needs.js';
@@ -130,12 +131,21 @@ export interface OwnedPropertyMarkerDto {
   /** What's built or being built there. */
   readonly blueprintId: BlueprintId | null;
   readonly livedIn: boolean;
+  /** Paint, roof, gate and gate plate of a finished house. */
+  readonly exterior: HouseExterior;
 }
 
 export interface CharacterSummaryDto {
   readonly job: { readonly title: string; readonly employer: string; readonly monthlyPay: number; readonly currency: 'NGN' | 'USD' } | null;
   readonly education: { readonly label: string; readonly institution: string | null; readonly status: string } | null;
-  readonly home: { readonly label: string; readonly districtId: DistrictId; readonly comfort: number; readonly ownership: 'family' | 'rented' | 'owned' | 'hostel' };
+  readonly home: {
+    readonly label: string;
+    readonly districtId: DistrictId;
+    readonly comfort: number;
+    readonly ownership: 'family' | 'rented' | 'owned' | 'hostel';
+    /** Wall paint and floor you chose (rented or owned homes). */
+    readonly decor?: HomeDecor;
+  };
   readonly relationship: { readonly status: 'single' | 'dating' | 'engaged' | 'married' | 'widowed' | 'divorced'; readonly partnerName: string | null };
   readonly children: number;
   /** Catalog ids of belongings that live at home (furniture, appliances, TVs, laptops…) — the 3D home shows them. */

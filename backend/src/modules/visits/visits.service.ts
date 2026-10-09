@@ -3,6 +3,7 @@ import {
   homeEntrance,
   homeKey,
   homeLocationId,
+  NO_DECOR,
   VISIT_RULES,
   type DistrictId,
   type Entrance,
@@ -332,6 +333,7 @@ export class VisitsService {
           home: {
             locationId,
             ...visit.home,
+            decor: visit.home.decor ?? NO_DECOR,
             entrance: homeEntrance(homeKey(host.id, host.homePropertyId), host.homeDistrictId as DistrictId),
           },
           createdAt: visit.invitedAt,

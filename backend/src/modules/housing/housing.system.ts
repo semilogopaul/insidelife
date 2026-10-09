@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { DISTRICTS, FAMILY_HINT_AGE, isFloodDay, type OwnedPropertyMarkerDto, type ProfileContext } from '@insidelife/shared';
+import { DISTRICTS, FAMILY_HINT_AGE, NO_EXTERIOR, isFloodDay, type OwnedPropertyMarkerDto, type ProfileContext } from '@insidelife/shared';
 import type { SimulationSystem, SummaryContribution } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
@@ -79,7 +79,7 @@ export class HousingSystem implements SimulationSystem, OnModuleInit {
     const home = await this.homes.current(ctx);
     const comfort = await this.comfort.breakdown(ctx);
     return {
-      home: { label: home.label, districtId: home.districtId, comfort: Math.round(comfort.total), ownership: home.ownership },
+      home: { label: home.label, districtId: home.districtId, comfort: Math.round(comfort.total), ownership: home.ownership, decor: home.decor },
       properties: await this.markers(ctx),
     };
   }
@@ -97,6 +97,7 @@ export class HousingSystem implements SimulationSystem, OnModuleInit {
         stage: !standing ? 'land' : standing.status === 'complete' ? 'built' : 'construction',
         blueprintId: standing?.blueprintId ?? null,
         livedIn: ctx.character.homePropertyId === property.id,
+        exterior: standing?.exterior ?? NO_EXTERIOR,
       };
     });
   }

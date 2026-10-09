@@ -1,5 +1,6 @@
 import {
   BLUEPRINTS,
+  NO_EXTERIOR,
   DISTRICTS,
   LAND_TITLES,
   PLOT_SQM,
@@ -35,6 +36,8 @@ export function toHomeDto(home: HomeState, comfort: HomeComfortDto, prestige: nu
     movedInAt: home.movedInAt,
     leaseId: home.leaseId,
     propertyId: home.propertyId,
+    decor: home.decor,
+    canDecorate: home.ownership === 'rented' || home.ownership === 'owned',
   };
 }
 
@@ -97,6 +100,7 @@ export function toBuildingDto(building: BuildingEntity, now: number): BuildingDt
     annualRentRoll: tenants.reduce((sum, unit) => sum + unit.annualRent, 0),
     nextRentDueAt: dueDates.length > 0 ? Math.min(...dueDates) : null,
     construction: building.status === 'under-construction' ? toConstructionDto(building, now) : null,
+    exterior: building.exterior ?? NO_EXTERIOR,
   };
 }
 

@@ -11,6 +11,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
 import { BuyHouseDto, HouseListingsQueryDto } from './dto/houses.dto.js';
+import { DecorMakeoverDto, ExteriorMakeoverDto } from './dto/makeover.dto.js';
 import { BuyLandDto, LandQueryDto, StartConstructionDto, TenancyDto } from './dto/property.dto.js';
 import { ListingsQueryDto, MoveHomeDto, SignLeaseDto } from './dto/rentals.dto.js';
 import { HousingService } from './housing.service.js';
@@ -96,5 +97,19 @@ export class HousingController {
   @Post('houses')
   buyHouse(@CurrentUser() user: AuthUser, @Body() body: BuyHouseDto): Promise<BuyHouseResultDto> {
     return this.session.run({ userId: user.userId }, (ctx) => this.housing.buyHouse(ctx, body.listingId), { touch: true });
+  }
+
+  // ----- Makeovers (paint, roof, gate, floors) -----------------------------------------------------------------------
+
+  /** Paint, re-roof, recolour the gate or rename a finished house you own. */
+  @Post('properties/:id/makeovers')
+  restyle(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: ExteriorMakeoverDto): Promise<HousingActionResultDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.housing.restyleHouse(ctx, id, body), { touch: true });
+  }
+
+  /** Repaint inside or lay a new floor where you live (rented or owned). */
+  @Post('makeovers')
+  redecorate(@CurrentUser() user: AuthUser, @Body() body: DecorMakeoverDto): Promise<HousingActionResultDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.housing.redecorate(ctx, body), { touch: true });
   }
 }

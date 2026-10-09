@@ -3,6 +3,8 @@ import type {
   BuyHouseResultDto,
   BuyLandRequest,
   ConstructionPaymentPlan,
+  DecorMakeoverRequest,
+  ExteriorMakeoverRequest,
   HouseListingDto,
   HousingActionResultDto,
   HousingOverviewDto,
@@ -37,4 +39,7 @@ export const homesApi = {
     api.post<HousingActionResultDto>(`/housing/properties/${id(propertyId)}/sale`),
   cancelSale: (propertyId: string) =>
     api.delete<HousingActionResultDto>(`/housing/properties/${id(propertyId)}/sale`),
+  restyle: (propertyId: string, body: ExteriorMakeoverRequest) =>
+    api.post<HousingActionResultDto>(`/housing/properties/${id(propertyId)}/makeovers`, body),
+  redecorate: (body: DecorMakeoverRequest) => api.post<HousingActionResultDto>('/housing/makeovers', body),
 };

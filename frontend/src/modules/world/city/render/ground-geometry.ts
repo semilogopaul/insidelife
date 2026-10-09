@@ -268,7 +268,7 @@ export function buildStructureGeometry(plan: CityPlan): BufferGeometry {
   for (const gate of plan.gates) {
     // Black steel gate leaves between two pillars.
     const half = gate.width / 2;
-    w.segment(gate.x - gate.dx * half, gate.z - gate.dz * half, gate.x + gate.dx * half, gate.z + gate.dz * half, 0, 2.0, 0.12, 0x2b2b2e);
+    w.segment(gate.x - gate.dx * half, gate.z - gate.dz * half, gate.x + gate.dx * half, gate.z + gate.dz * half, 0, 2.0, 0.12, gate.color ?? 0x2b2b2e);
     for (const end of [-1, 1]) {
       const px = gate.x + gate.dx * end * (half + 0.2);
       const pz = gate.z + gate.dz * end * (half + 0.2);

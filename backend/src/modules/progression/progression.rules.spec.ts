@@ -152,7 +152,7 @@ describe('evaluateCondition', () => {
   });
 
   it('checks homes by ownership and district, and children by age', () => {
-    const home = { ownership: 'rented' as const, label: 'Mini flat', districtId: 'lekki' as const, comfort: 10, annualRent: 3_000_000, bedrooms: 1 };
+    const home = { ownership: 'rented' as const, label: 'Mini flat', districtId: 'lekki' as const, comfort: 10, annualRent: 3_000_000, bedrooms: 1, decor: { paint: null, floor: null } };
     expect(evaluateCondition({ kind: 'home', ownership: ['rented', 'owned'] }, facts({ home })).met).toBe(true);
     expect(evaluateCondition({ kind: 'home', ownership: ['owned'] }, facts({ home })).met).toBe(false);
     expect(evaluateCondition({ kind: 'home', ownership: ['rented'], districts: ['banana-island'] }, facts({ home })).met).toBe(false);

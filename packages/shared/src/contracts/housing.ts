@@ -1,5 +1,6 @@
 /** Housing API contracts — owned by the housing domain. */
 import type { GameMinute } from '../time/calendar.js';
+import type { FloorFinishId, GateColourId, HomeDecor, HouseExterior, HousePaintId, RoofColourId, WallPaintId } from '../catalog/home-style.js';
 import type { DistrictId } from '../catalog/geography.js';
 import type {
   BlueprintId,
@@ -106,6 +107,10 @@ export interface HomeDto {
   readonly movedInAt: GameMinute;
   readonly leaseId: string | null;
   readonly propertyId: string | null;
+  /** Wall paint and floor inside (rented or owned homes only). */
+  readonly decor: HomeDecor;
+  /** You may repaint and re-floor here (not the family house or a hostel). */
+  readonly canDecorate: boolean;
 }
 
 export const LEASE_STATUSES = ['active', 'grace', 'notice', 'ended', 'evicted', 'scammed'] as const;
@@ -194,6 +199,8 @@ export interface BuildingDto {
   readonly annualRentRoll: number;
   readonly nextRentDueAt: GameMinute | null;
   readonly construction: ConstructionDto | null;
+  /** Paint, roof, gate and the name on the gate. */
+  readonly exterior: HouseExterior;
 }
 
 export interface PropertySaleDto {
@@ -331,4 +338,21 @@ export interface HouseListingDto {
 /** Buying a house: the usual result card plus the new property, so the client can offer "Move in now". */
 export interface BuyHouseResultDto extends HousingActionResultDto {
   readonly propertyId: string;
+}
+
+// ----- Makeovers (paint, roof, gate, floors) ---------------------------------------------------------------------
+
+/** Change how a house you own looks outside; only changed fields are charged (see `exteriorQuote`). */
+export interface ExteriorMakeoverRequest {
+  readonly paint?: HousePaintId;
+  readonly roof?: RoofColourId;
+  readonly gate?: GateColourId;
+  /** The name on the gate plate; null puts back the default (surname + house type). */
+  readonly name?: string | null;
+}
+
+/** Repaint inside or lay a new floor in the home you live in (see `decorQuote`). */
+export interface DecorMakeoverRequest {
+  readonly paint?: WallPaintId;
+  readonly floor?: FloorFinishId;
 }

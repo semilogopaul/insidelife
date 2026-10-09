@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import type { DistrictId, HousingTypeId, LeaseStatus } from '@insidelife/shared';
+import type { DistrictId, HomeDecor, HousingTypeId, LeaseStatus } from '@insidelife/shared';
 import { bigintNumber } from '../../../database/transformers.js';
 
 export type LeaseEndReason = 'moved' | 'tenant-notice' | 'landlord-notice' | 'evicted' | 'deceased';
@@ -87,6 +87,10 @@ export class LeaseEntity {
 
   @Column({ type: 'varchar', length: 24, nullable: true })
   endReason: LeaseEndReason | null;
+
+  /** Wall paint and floor the tenant paid for (stays with the flat; null: as let). */
+  @Column({ type: 'jsonb', nullable: true })
+  decor: HomeDecor | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

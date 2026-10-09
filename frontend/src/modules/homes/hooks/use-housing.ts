@@ -5,6 +5,8 @@ import type {
   BlueprintId,
   BuyLandRequest,
   ConstructionPaymentPlan,
+  DecorMakeoverRequest,
+  ExteriorMakeoverRequest,
   HousingActionResultDto,
   TenancyAction,
 } from '@insidelife/shared';
@@ -118,5 +120,10 @@ export function useHousingCommands() {
       (propertyId: string) => homesApi.cancelSale(propertyId),
       'Couldn’t cancel the sale',
     ),
+    restyle: useHousingCommand(
+      ({ propertyId, body }: { propertyId: string; body: ExteriorMakeoverRequest }) => homesApi.restyle(propertyId, body),
+      'The workmen couldn’t start',
+    ),
+    redecorate: useHousingCommand((body: DecorMakeoverRequest) => homesApi.redecorate(body), 'The painters couldn’t start'),
   };
 }

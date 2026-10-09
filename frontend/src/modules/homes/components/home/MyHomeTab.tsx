@@ -1,6 +1,6 @@
 'use client';
 
-import { House, KeyRound } from 'lucide-react';
+import { House, KeyRound, PaintRoller } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import {
   HOUSING_TYPES,
@@ -19,6 +19,7 @@ import { ConfirmSheet } from '@/common/components';
 import { NextStep } from '@/common/components';
 import { ComfortBreakdown } from './ComfortBreakdown';
 import { PowerCard } from './PowerCard';
+import { DecorSheet } from '../style/DecorSheet';
 
 const OWNERSHIP = { family: 'Family house', rented: 'Renting', owned: 'Your own house' } as const;
 const LEASE_BADGE: Record<
@@ -53,6 +54,7 @@ export function MyHomeTab({
   const openPhone = useUi((state) => state.openPhone);
   const { move } = useHousingCommands();
   const [moving, setMoving] = useState<MoveOption | null>(null);
+  const [decorating, setDecorating] = useState(false);
   const step = homeNextStep(overview, now);
   const typeLabel = home.typeId
     ? HOUSING_TYPES[home.typeId].label
@@ -162,6 +164,22 @@ export function MyHomeTab({
       <Section title="Comfort">
         <ComfortBreakdown comfort={home.comfort} />
       </Section>
+
+      <Section title="Make it yours">
+        {home.canDecorate ? (
+          <div className="flex items-center justify-between gap-3 rounded-card bg-paper-2 p-3">
+            <p className="text-sm text-text-soft">Repaint the walls or lay a new floor — tiles, parquet, marble.</p>
+            <Button size="sm" variant="ink" icon={<PaintRoller size={16} aria-hidden />} onClick={() => setDecorating(true)}>
+              Paint & floors
+            </Button>
+          </div>
+        ) : (
+          <p className="rounded-card bg-paper-2 p-3 text-sm text-text-soft">
+            It’s not your house to repaint. Rent or buy your own place to choose the paint and floors.
+          </p>
+        )}
+      </Section>
+      {home.canDecorate && <DecorSheet home={home} open={decorating} onClose={() => setDecorating(false)} />}
 
       <Section title="Power">
         <PowerCard power={power} />

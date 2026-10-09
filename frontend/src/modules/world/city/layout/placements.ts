@@ -75,6 +75,8 @@ export interface GateSpot {
   readonly dx: number;
   readonly dz: number;
   readonly width: number;
+  /** Leaf colour (sRGB); black steel when absent. */
+  readonly color?: number;
 }
 
 /** Axis-aligned obstacle footprint (buildings, landmarks) for the play layer's collisions. */

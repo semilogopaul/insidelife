@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import type { BlueprintId, BuildingStatus, ConstructionPaymentPlan } from '@insidelife/shared';
+import type { BlueprintId, BuildingStatus, ConstructionPaymentPlan, HomeDecor, HouseExterior } from '@insidelife/shared';
 import { bigintNumber } from '../../../database/transformers.js';
 
 /** One rentable unit: an NPC tenant paying annual rent upfront, or empty until `vacantUntil`. */
@@ -92,6 +92,14 @@ export class BuildingEntity {
 
   @Column({ type: 'jsonb', default: [] })
   units: RentalUnit[];
+
+  /** Paint, roof, gate and gate plate (null: as built). */
+  @Column({ type: 'jsonb', nullable: true })
+  exterior: HouseExterior | null;
+
+  /** Wall paint and floor inside (null: as built). */
+  @Column({ type: 'jsonb', nullable: true })
+  interior: HomeDecor | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

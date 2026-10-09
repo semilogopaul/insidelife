@@ -13,7 +13,9 @@ import {
   type BuyHouseResultDto,
   type BuyLandRequest,
   type ConstructionPaymentPlan,
+  type DecorMakeoverRequest,
   type DistrictId,
+  type ExteriorMakeoverRequest,
   type HouseListingDto,
   type HousingActionResultDto,
   type HousingOverviewDto,
@@ -29,6 +31,7 @@ import { ConstructionService } from './construction.service.js';
 import { ResidenceEntity } from './entities/residence.entity.js';
 import { HomeService } from './home.service.js';
 import { HousePurchasesService } from './house-purchases.service.js';
+import { MakeoverService } from './makeover.service.js';
 import { toConstructionDto, toHomeDto, toLeaseDto, toPropertyDto } from './housing.mapper.js';
 import { propertyValue } from './housing.rules.js';
 import { HousingStore } from './housing.store.js';
@@ -59,6 +62,7 @@ export class HousingService implements HouseholdPort {
     private readonly lettings: LettingsService,
     private readonly sales: PropertySalesService,
     private readonly houses: HousePurchasesService,
+    private readonly makeovers: MakeoverService,
   ) {}
 
   // ----- HouseholdPort ----------------------------------------------------------------------------------------------
@@ -73,6 +77,7 @@ export class HousingService implements HouseholdPort {
       comfort: comfort.bonus,
       annualRent: home.annualRent,
       bedrooms: home.bedrooms,
+      decor: home.decor,
     };
   }
 
@@ -314,6 +319,18 @@ export class HousingService implements HouseholdPort {
       tone: 'good',
     });
     return { ...result, propertyId: property.id };
+  }
+
+  // ----- Makeovers ---------------------------------------------------------------------------------------------------
+
+  async restyleHouse(ctx: SimulationContext, propertyId: string, request: ExteriorMakeoverRequest): Promise<HousingActionResultDto> {
+    const { label, quote } = await this.makeovers.exterior(ctx, propertyId, request);
+    return this.result(ctx, { outcome: 'house-restyled', title: 'Fresh look!', message: `${label}: ${quote.lines.map((line) => line.label).join(', ')} — ${formatNaira(quote.total)}.`, tone: 'good' });
+  }
+
+  async redecorate(ctx: SimulationContext, request: DecorMakeoverRequest): Promise<HousingActionResultDto> {
+    const { quote } = await this.makeovers.decor(ctx, request);
+    return this.result(ctx, { outcome: 'home-redecorated', title: 'Painters don finish', message: `${quote.lines.map((line) => line.label).join(', ')} — ${formatNaira(quote.total)}.`, tone: 'good' });
   }
 
   private async result(ctx: SimulationContext, copy: ActionCopy): Promise<HousingActionResultDto> {

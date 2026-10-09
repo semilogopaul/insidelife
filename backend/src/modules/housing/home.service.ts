@@ -5,10 +5,12 @@ import {
   FAMILY_HOMES,
   HOUSING_TYPES,
   MINUTES_PER_DAY,
+  NO_DECOR,
   familyLivingCostMultiplier,
   type BlueprintId,
   type DistrictId,
   type GeneratorFuel,
+  type HomeDecor,
   type HomeOwnership,
   type HousingTypeId,
 } from '@insidelife/shared';
@@ -36,6 +38,8 @@ export interface HomeState {
   readonly leaseId: string | null;
   readonly propertyId: string | null;
   readonly buildingId: string | null;
+  /** Wall paint and floor (rented or owned). */
+  readonly decor: HomeDecor;
 }
 
 export type Relocation =
@@ -127,6 +131,7 @@ export class HomeService {
       leaseId: null,
       propertyId: null,
       buildingId: null,
+      decor: NO_DECOR,
     };
   }
 
@@ -147,6 +152,7 @@ export class HomeService {
       leaseId: lease.id,
       propertyId: null,
       buildingId: null,
+      decor: lease.decor ?? NO_DECOR,
     };
   }
 
@@ -169,6 +175,7 @@ export class HomeService {
       leaseId: null,
       propertyId: property.id,
       buildingId: building.id,
+      decor: building.interior ?? NO_DECOR,
     };
   }
 }

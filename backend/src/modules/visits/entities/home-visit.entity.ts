@@ -1,4 +1,4 @@
-import type { DistrictId, VisitStatus } from '@insidelife/shared';
+import type { DistrictId, HomeDecor, VisitStatus } from '@insidelife/shared';
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 import { bigintNumber } from '../../../database/transformers.js';
 
@@ -9,6 +9,8 @@ export interface VisitHomeSnapshot {
   readonly ownership: 'family' | 'rented' | 'owned' | 'hostel';
   readonly comfort: number;
   readonly items: readonly string[];
+  /** Absent on invites sent before decor existed. */
+  readonly decor?: HomeDecor;
 }
 
 /** One invite to someone's home, and the visit once accepted. */

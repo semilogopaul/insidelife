@@ -1,4 +1,4 @@
-import type { DistrictId } from '@insidelife/shared';
+import type { DistrictId, HomeDecor } from '@insidelife/shared';
 import type { SimulationContext } from '../../modules/simulation/simulation-context.js';
 
 export interface HomeSnapshot {
@@ -9,6 +9,8 @@ export interface HomeSnapshot {
   readonly comfort: number;
   readonly annualRent: number;
   readonly bedrooms: number;
+  /** Wall paint and floor inside. */
+  readonly decor: HomeDecor;
 }
 
 /** Implemented by the housing module. */

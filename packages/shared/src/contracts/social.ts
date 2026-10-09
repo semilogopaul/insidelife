@@ -15,6 +15,7 @@ import type {
   SocialBadgeId,
 } from '../catalog/social.js';
 import type { DistrictId } from '../catalog/geography.js';
+import type { HomeDecor } from '../catalog/home-style.js';
 import type { GameMinute } from '../time/calendar.js';
 import type { Entrance } from '../world-map/types.js';
 import type { PublicCharacterDto } from './core.js';
@@ -343,6 +344,8 @@ export interface VisitHomeDto {
   readonly comfort: number;
   /** Shop items in the home (furnishing), so the guest sees the real room. */
   readonly items: readonly string[];
+  /** The host's wall paint and floor. */
+  readonly decor: HomeDecor;
   /** The host's front door right now. */
   readonly entrance: Entrance;
 }

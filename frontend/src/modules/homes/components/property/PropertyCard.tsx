@@ -14,6 +14,7 @@ import { Badge, Button, Money } from '@/common/components';
 import { useHousingCommands } from '../../hooks/use-housing';
 import { relativeGameTime } from '@/common/utils/game-time';
 import { ConfirmSheet } from '@/common/components';
+import { ExteriorSheet } from '../style/ExteriorSheet';
 import { ConstructionProgress } from './ConstructionProgress';
 
 type Pending = 'perfect' | 'sell' | 'let' | 'vacate' | 'move-in' | null;
@@ -36,6 +37,7 @@ export function PropertyCard({
 }) {
   const { perfectTitle, listForSale, cancelSale, tenancy, move } = useHousingCommands();
   const [pending, setPending] = useState<Pending>(null);
+  const [styling, setStyling] = useState(false);
   const building = property.building;
   const gain = property.value - property.costBasis;
   const title = LAND_TITLES[property.title];
@@ -184,6 +186,11 @@ export function PropertyCard({
               </Button>
             </>
           )}
+          {complete && (
+            <Button size="sm" variant="paper" onClick={() => setStyling(true)}>
+              Paint & name
+            </Button>
+          )}
           {complete && building.occupancy === 'let' && (
             <Button size="sm" variant="paper" onClick={() => setPending('vacate')}>
               End tenancies
@@ -209,6 +216,7 @@ export function PropertyCard({
         </div>
       )}
 
+      {complete && <ExteriorSheet property={property} open={styling} onClose={() => setStyling(false)} />}
       <ConfirmSheet
         open={pending !== null}
         onClose={() => setPending(null)}
