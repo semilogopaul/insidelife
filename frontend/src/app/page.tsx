@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { Wordmark } from '@/common/components';
+import { AppMark, Wordmark } from '@/common/components';
+import { InstallAppButton } from '@/common/pwa';
+import { site } from '@/config/site';
 import { LagosNow, LifePath, LiveSkyline } from '@/modules/landing';
 
 export default function LandingPage() {
@@ -12,7 +14,7 @@ export default function LandingPage() {
         </div>
 
         <header className="safe-pad flex items-center justify-between px-5 sm:px-10">
-          <Wordmark size="sm" />
+          <Wordmark size="sm" withMark />
           <Link href="/sign-in" className="rounded-card px-4 py-2 font-bold hover:bg-white/10">
             Sign in
           </Link>
@@ -35,6 +37,7 @@ export default function LandingPage() {
             <Link href="/sign-in" className="inline-flex h-14 items-center rounded-card px-6 text-lg font-bold ring-1 ring-white/30 hover:bg-white/10">
               Continue playing
             </Link>
+            <InstallAppButton />
           </div>
           <div className="mt-10 border-t border-white/15 pt-5">
             <LagosNow />
@@ -50,9 +53,20 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="flex flex-col gap-2 border-t border-white/10 px-5 py-8 text-sm text-on-ink-soft sm:flex-row sm:justify-between sm:px-10">
-        <span>Inside Life — made for Lagos.</span>
-        <span>Game money can’t be cashed out. Top-ups are processed securely by Paystack.</span>
+      <footer className="border-t border-white/10 px-5 py-8 text-sm text-on-ink-soft sm:px-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <span className="flex items-center gap-2.5">
+            <AppMark size={28} decorative />
+            Inside Life — made for Lagos.
+          </span>
+          <span>
+            Questions or feedback?{' '}
+            <a href={`mailto:${site.supportEmail}`} className="font-bold text-on-ink underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
+              {site.supportEmail}
+            </a>
+          </span>
+        </div>
+        <p className="mt-3">Game money can’t be cashed out. Top-ups are processed securely by Paystack.</p>
       </footer>
     </main>
   );

@@ -8,6 +8,7 @@ export { TextField } from './TextField';
 export { Toaster } from './Toaster';
 export { toast, useToasts } from './toast-store';
 export { Wordmark } from './Wordmark';
+export { AppMark, type AppMarkProps } from './AppMark';
 export { ComingSoon } from './ComingSoon';
 export { Badge } from './Badge';
 export { EmptyState } from './EmptyState';
