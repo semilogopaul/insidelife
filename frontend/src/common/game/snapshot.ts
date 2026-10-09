@@ -45,8 +45,13 @@ export function useSnapshot() {
   return query;
 }
 
-/** The timeline segment covering game time `t`. */
+/**
+ * The timeline segment covering game time `t`. A `t` a little before the timeline (a UI clock that ticks every few
+ * seconds, just after a fresh snapshot) gets the first segment; past the end, the last.
+ */
 export function segmentAt(snapshot: CharacterSnapshotDto, t: GameMinute): TimelineSegmentDto | undefined {
+  const first = snapshot.timeline[0];
+  if (first && t < first.startsAt) return first;
   return snapshot.timeline.find((segment) => segment.startsAt <= t && t < segment.endsAt) ?? snapshot.timeline.at(-1);
 }
 

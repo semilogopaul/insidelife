@@ -615,7 +615,10 @@ const kiss: ClipDefinition = {
   },
 };
 
-/** A glass in the right hand: held at the chest, lifted for a sip every few seconds, the other hand easy. */
+/**
+ * A glass in the right hand: held upright at the chest (arm pitches sum to −π/2, so the glass's axis is vertical),
+ * lifted to the mouth and tipped about 60° for a sip every few seconds, the other hand easy.
+ */
 const drink: ClipDefinition = {
   kind: 'upper',
   stance: 'sit',
@@ -623,9 +626,9 @@ const drink: ClipDefinition = {
     const period = 4.2;
     const p = ((t + variety * 3) % period) / period;
     const sip = ease(clamp01((p - 0.25) / 0.2)) * (1 - ease(clamp01((p - 0.62) / 0.2)));
-    pose.set('upperArmR', -0.38 - 0.5 * sip, 0, -0.3 + 0.12 * sip);
+    pose.set('upperArmR', -0.38 - 0.5 * sip, 0, -0.3 + 0.4 * sip);
     pose.set('foreArmR', -1.15 - 1.0 * sip, 0, -0.1);
-    pose.set('handR', 0.15 - 0.6 * sip, 0, 0);
+    pose.set('handR', -0.04 + 0.4 * sip, 0, 0);
     pose.set('upperArmL', -0.2, 0, 0.18);
     pose.set('foreArmL', -0.7);
     pose.set('chest', 0.04);

@@ -25,6 +25,9 @@ export type PhoneApp = (typeof PHONE_APPS)[number];
 
 export type GraphicsQuality = 'auto' | 'low' | 'high';
 
+/** Which thumb walks on touch screens: the move stick's half of the screen (the other half looks around). */
+export type StickSide = 'right' | 'left';
+
 export interface PlayerSettings {
   readonly masterVolume: number;
   readonly musicVolume: number;
@@ -34,6 +37,8 @@ export interface PlayerSettings {
   readonly graphics: GraphicsQuality;
   readonly showFps: boolean;
   readonly invertSteering: boolean;
+  /** Touch: the walking stick (and the steering arrows) on this side; the other thumb looks around (and drives the pedals). */
+  readonly walkStick: StickSide;
 }
 
 const DEFAULT_SETTINGS: PlayerSettings = {
@@ -45,6 +50,7 @@ const DEFAULT_SETTINGS: PlayerSettings = {
   graphics: 'auto',
   showFps: false,
   invertSteering: false,
+  walkStick: 'right',
 };
 
 interface UiState {
@@ -80,6 +86,11 @@ export const useUi = create<UiState>()(
         }
       }),
       partialize: (state) => ({ settings: state.settings }),
+      // Settings saved by an older version miss newer fields: fill them with the defaults.
+      merge: (persisted, current) => {
+        const saved = (persisted as { settings?: Partial<PlayerSettings> } | undefined)?.settings;
+        return { ...current, settings: { ...DEFAULT_SETTINGS, ...saved } };
+      },
     },
   ),
 );

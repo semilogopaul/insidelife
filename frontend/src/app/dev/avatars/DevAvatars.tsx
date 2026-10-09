@@ -51,6 +51,8 @@ function useParam(name: string): string | null {
 
 export function DevAvatars() {
   const anim = useParam('anim') as AvatarClip | null;
+  // With `anim`, `stance=stand|sit|kneel` overrides the clip's own stance (e.g. drinking standing at a counter).
+  const stanceParam = useParam('stance') as AvatarStance | null;
   const lod = (useParam('lod') ?? 'high') as AvatarLod;
   const focusParam = useParam('focus');
   const focus = focusParam === null ? null : Number(focusParam);
@@ -102,14 +104,14 @@ export function DevAvatars() {
                   <meshStandardMaterial color="#a0673a" roughness={0.7} />
                 </mesh>
               )}
-              <Avatar appearance={entry.appearance} outfit={entry.outfit} gender={entry.gender} animation={animation} stance={anim ? undefined : entry.stance} mood={entry.mood ?? 75} lod={lod} />
+              <Avatar appearance={entry.appearance} outfit={entry.outfit} gender={entry.gender} animation={animation} stance={anim ? (stanceParam ?? undefined) : entry.stance} mood={entry.mood ?? 75} lod={lod} />
             </group>
           );
         })}
         <OrbitControls target={target} makeDefault />
       </Canvas>
       <div className="pointer-events-none absolute left-3 top-3 rounded-card bg-ink/80 px-3 py-2 font-mono text-xs text-on-ink">
-        <div>Avatar lineup ({lod}) — ?anim=walk · ?lod=low · ?focus=0</div>
+        <div>Avatar lineup ({lod}) — ?anim=walk · ?stance=sit · ?lod=low · ?focus=0</div>
         <div>{info}</div>
       </div>
     </main>

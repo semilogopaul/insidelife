@@ -6,13 +6,29 @@ import type { WorldPoint } from '@insidelife/shared';
 /** How the player is present in the 3D world right now. */
 export type PlayerMode = 'loading' | 'inside' | 'walking' | 'driving' | 'riding';
 
+/** One more thing to do at the same spot (a smaller button above the context button). */
+export interface InteractableOption {
+  readonly id: string;
+  readonly label: string;
+  readonly emoji?: string;
+  /** Why it can't be done right now (shown greyed out; pressing it explains). */
+  readonly disabled?: string;
+}
+
 /** Something the player can act on nearby (shown as the HUD context button). */
 export interface Interactable {
   readonly id: string;
-  readonly kind: 'door' | 'car' | 'player' | 'npc' | 'billboard';
+  /** `activity`: a hotspot indoors ("Drinks at the lounge · ₦18,000"). */
+  readonly kind: 'door' | 'car' | 'player' | 'npc' | 'billboard' | 'activity';
   readonly label: string;
   /** Location id for doors. */
   readonly locationId?: string;
+  /** Shown before the label (decorative). */
+  readonly emoji?: string;
+  /** Why it can't be done right now (shown greyed out; pressing it explains). */
+  readonly disabled?: string;
+  /** Other things to do right here; each emits `interact` with its own id. */
+  readonly more?: readonly InteractableOption[];
 }
 
 export interface DriveTelemetry {

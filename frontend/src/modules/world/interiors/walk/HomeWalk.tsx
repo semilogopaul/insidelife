@@ -3,12 +3,15 @@
 import { useFrame } from '@react-three/fiber';
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { PerspectiveCamera, type Object3D } from 'three';
+import { findAction, type ActionDefinition } from '@insidelife/shared';
 import { toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { Avatar, type AvatarHandle } from '@/common/three/avatar';
 import { applyKey, isGameKey, isTypingTarget, resetControls } from '../../play/input/controls';
 import type { InteriorPlayer } from '../components/InteriorPeople';
+import { actionSpot, type ActionLike } from '../hotspots/action-spots';
+import { hotspotHeadline, hotspotInteractable, type ActionStatus, type Hotspot } from '../hotspots/hotspots';
 import {
   isFreeAnimation,
   nextPortalTowards,
@@ -17,7 +20,6 @@ import {
   roomForActivity,
 } from '../layouts/geometry';
 import type { HomeLayout, LayoutRoom } from '../layouts/types';
-import { pickPlayerSpot } from '../templates/spots';
 import type { At, InteriorTemplate } from '../templates/types';
 import { useHomeView } from './home-view-store';
 import { HomeWalkRuntime, buildRoomPhysics } from './home-walk-runtime';
@@ -33,16 +35,32 @@ export interface HomeWalkProps {
   readonly player: InteriorPlayer;
   /** Where NPCs and other people present are (obstacles). */
   readonly people: readonly At[];
+  /** This room's hotspots, and whether they're hidden (something you chose is running). */
+  readonly hotspots: readonly Hotspot[];
+  readonly busy: boolean;
+  /** An action's price note ("₦18,000", "" when free) and why it can't be done now, if it can't. */
+  readonly status: (action: ActionDefinition) => ActionStatus;
 }
 
 const NUDGE_EVERY_MS = 20_000;
+/** How often what's on offer is published to the HUD (the frame loop works it out every frame). */
+const OFFER_EVERY_MS = 200;
+
+/** The running action (its own spot) when it matches what the avatar plays, else just the animation. */
+function runningAction(
+  actionId: string | null | undefined,
+  animation: InteriorPlayer['animation'],
+): ActionLike {
+  const action = actionId ? findAction(actionId) : undefined;
+  return action && action.animation === animation ? action : { animation };
+}
 
 /**
- * The player on foot inside a home: owns the walk runtime (physics, activities, doors, camera), the player's avatar
- * and the door markers, and the keyboard while inside. The DOM half (stick, camera toggle, rooms) is
- * `InteriorOverlay`.
+ * The player on foot inside a home or venue: owns the walk runtime (physics, activities, doors, hotspots, camera),
+ * the player's avatar and the door markers, and the keyboard while inside. The DOM half (stick, camera toggle, rooms,
+ * hotspot markers) is `InteriorOverlay`.
  */
-export function HomeWalk({ layout, room, template, player, people }: HomeWalkProps) {
+export function HomeWalk({ layout, room, template, player, people, hotspots, busy, status }: HomeWalkProps) {
   const [runtime] = useState(() => new HomeWalkRuntime());
   const camera = useHomeView((state) => state.camera);
   const arrivalSeq = useHomeView((state) => state.arrivalSeq);
@@ -61,7 +79,11 @@ export function HomeWalk({ layout, room, template, player, people }: HomeWalkPro
   const animation = player.animation;
   const free = isFreeAnimation(animation);
   const target = free ? null : roomForActivity(layout, animation, room.id);
-  const spot = target === room.id ? pickPlayerSpot(template.player, animation) : null;
+  const action = useMemo(() => runningAction(player.actionId, animation), [player.actionId, animation]);
+  const spot = useMemo(
+    () => (target === room.id ? actionSpot(template, action) : null),
+    [target, room.id, template, action],
+  );
   const via = useMemo(() => {
     if (!target || target === room.id) return null;
     const spec = nextPortalTowards(layout, room.id, target);
@@ -80,6 +102,44 @@ export function HomeWalk({ layout, room, template, player, people }: HomeWalkPro
   useEffect(() => {
     useHomeView.getState().setBusy(!free);
   }, [free]);
+
+  // Hotspots: markers for the overlay, what's on offer for the HUD (published at a low rate), taps on markers.
+  const hidden = busy || !free;
+  useLayoutEffect(() => {
+    runtime.setHotspots(hotspots, hidden);
+  }, [runtime, hotspots, hidden]);
+  useEffect(() => {
+    useHomeView
+      .getState()
+      .setHotspots(hotspots.map((hotspot) => ({ id: hotspot.id, ...hotspotHeadline(hotspot) })));
+  }, [hotspots]);
+  const offerSource = useRef({ hotspots, status });
+  useEffect(() => {
+    offerSource.current = { hotspots, status };
+  });
+  useEffect(() => {
+    const publish = (): void => {
+      const id = runtime.offered;
+      const hotspot = id ? offerSource.current.hotspots.find((candidate) => candidate.id === id) : undefined;
+      useHomeView
+        .getState()
+        .setOffer(
+          hotspot ? hotspot.id : null,
+          hotspot ? hotspotInteractable(hotspot, offerSource.current.status) : null,
+        );
+    };
+    publish();
+    const timer = window.setInterval(publish, OFFER_EVERY_MS);
+    const offPick = useHomeView.subscribe((state, previous) => {
+      if (state.picked && state.picked !== previous.picked && runtime.goToHotspot(state.picked.id)) publish();
+    });
+    return () => {
+      window.clearInterval(timer);
+      offPick();
+      useHomeView.getState().setOffer(null, null);
+      useHomeView.getState().setHotspots([]);
+    };
+  }, [runtime]);
 
   // `portals` is `room.portals` resolved, index for index.
   const tags = useMemo(
@@ -215,19 +275,25 @@ const footOf = (spot: { readonly at: readonly number[] }): At => [
 ];
 
 /**
- * Walking in a home, as mounted by the interior scene: the walk itself (people present are obstacles: the room's
- * NPCs and the guest spots in use) and the other rooms' furniture baked ahead.
+ * Walking in a home or venue, as mounted by the interior scene: the walk itself (people present are obstacles: the
+ * room's NPCs and the guest spots in use) and the other rooms' furniture baked ahead.
  */
 export function HomeWalkLayer({
   home,
   template,
   player,
   guests,
+  hotspots,
+  busy,
+  status,
 }: {
   readonly home: HomeRoom;
   readonly template: InteriorTemplate;
   readonly player: InteriorPlayer;
   readonly guests: number;
+  readonly hotspots: readonly Hotspot[];
+  readonly busy: boolean;
+  readonly status: (action: ActionDefinition) => ActionStatus;
 }) {
   const people = useMemo<readonly At[]>(
     () => [...template.npcs.map(footOf), ...template.guests.slice(0, guests).map(footOf)],
@@ -236,7 +302,16 @@ export function HomeWalkLayer({
   const rooms = useMemo(() => home.layout.rooms.map((room) => room.template), [home.layout]);
   return (
     <>
-      <HomeWalk layout={home.layout} room={home.room} template={template} player={player} people={people} />
+      <HomeWalk
+        layout={home.layout}
+        room={home.room}
+        template={template}
+        player={player}
+        people={people}
+        hotspots={hotspots}
+        busy={busy}
+        status={status}
+      />
       {rooms.length > 1 && (
         <Suspense fallback={null}>
           <PrebakeRooms templates={rooms} />

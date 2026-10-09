@@ -4,6 +4,10 @@ import { Canvas } from '@react-three/fiber';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { WebGLRenderer } from 'three';
+import { findAction, isInterruptibleAction, type ActionDefinition } from '@insidelife/shared';
+import { gameEvents } from '@/common/game/game-events';
+import { toast } from '@/common/components';
+import { actionsAt, servicesAt, type PlaceKind } from '@/common/places';
 import type { AvatarClip } from '@/common/three/avatar';
 // eslint-disable-next-line no-restricted-imports -- dev-only QA route renders the interiors sub-feature directly (the world feature mounts it in-game).
 import {
@@ -12,6 +16,7 @@ import {
   InteriorScene,
   MoneyRain,
   useHomeView,
+  venueTypeFor,
   type InteriorPlayer,
   type InteriorTemplateId,
   type MoneyRainHandle,
@@ -41,11 +46,18 @@ const PLAYER: InteriorPlayer = {
 /** Activities to try in a home (what the server would start); `idle` = free to walk. */
 const ACTIVITIES: readonly AvatarClip[] = ['idle', 'sleep', 'cook', 'sit', 'eat', 'type', 'shower', 'phone'];
 
+/** What can be done in a template (homes: your own home's actions; venues: their venue type's). */
+function placeKindOf(type: string): PlaceKind {
+  if (type.startsWith('home-')) return { kind: 'home' };
+  return { kind: 'venue', venueType: venueTypeFor(type) };
+}
+
 interface RendererInfo {
   readonly calls: number;
   readonly triangles: number;
   readonly geometries: number;
   readonly textures: number;
+  readonly programs: number;
 }
 
 export function DevInteriors() {
@@ -78,7 +90,30 @@ export function DevInteriors() {
     }, enterAfter);
     return () => window.clearTimeout(id);
   }, [enterAfter]);
-  const player = useMemo<InteriorPlayer>(() => ({ ...PLAYER, animation: anim ?? 'idle' }), [anim]);
+  // Hotspot actions run locally here (no session): the avatar walks to the spot and plays it until you stop it.
+  // `actions=treatment,lounge` previews any catalog actions here instead of the place's own (even engine-managed ones).
+  const actionsParam = params.get('actions');
+  const actions = useMemo(
+    () => (actionsParam ? actionsParam.split(',').flatMap((id) => findAction(id) ?? []) : actionsAt(placeKindOf(type))),
+    [type, actionsParam],
+  );
+  const services = useMemo(() => (actionsParam ? [] : servicesAt(placeKindOf(type))), [type, actionsParam]);
+  const [running, setRunning] = useState<ActionDefinition | null>(null);
+  const offer = useHomeView((state) => state.offer);
+  const player = useMemo<InteriorPlayer>(() => ({ ...PLAYER, animation: running?.animation ?? anim ?? 'idle', actionId: running?.id ?? null }), [anim, running]);
+  useEffect(() => {
+    // E / 1–4: what the context button offers (the game's HUD does this through the play bridge).
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.repeat) return;
+      const option = ['Digit1', 'Digit2', 'Digit3', 'Digit4'].indexOf(event.code);
+      if (event.code !== 'KeyE' && option < 0) return;
+      const current = useHomeView.getState().offer;
+      const target = option >= 0 ? current?.more?.[option] : current;
+      if (target) gameEvents.emit('interact', { interactableId: target.id });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   useEffect(() => {
     if (view === 'overview' || view === 'walk') useHomeView.getState().setCamera(view);
   }, [view]);
@@ -104,6 +139,7 @@ export function DevInteriors() {
         triangles: gl.info.render.triangles,
         geometries: gl.info.memory.geometries,
         textures: gl.info.memory.textures,
+        programs: gl.info.programs?.length ?? 0,
       });
     }, 1000);
     return () => window.clearInterval(id);
@@ -127,28 +163,53 @@ export function DevInteriors() {
             hour={hour}
             nepa={nepa}
             homeItems={homeItems}
+            actions={actions}
+            services={services}
+            busy={running !== null && !isInterruptibleAction(running.id)}
             camera={top ? 'none' : 'dollhouse'}
           >
             {spray && <MoneyRain ref={rain} origin={[0.2, 2.1, 0.8]} active rate={14} spread={1.2} />}
           </InteriorScene>
         )}
       </Canvas>
-      <InteriorOverlay />
+      <InteriorOverlay
+        onStartAction={setRunning}
+        onOpenService={(service) => toast({ title: service.label, body: `${service.blurb} (opens the ${service.app} app in the game)`, tone: 'neutral' })}
+      />
+      <div className="pointer-events-none absolute bottom-4 right-4 flex flex-col items-end gap-1.5" data-testid="dev-context">
+        {running && (
+          <button type="button" onClick={() => setRunning(null)} className="pointer-events-auto h-10 rounded-card bg-okada px-3 text-sm font-bold text-white">
+            {running.emoji} {running.verb} · Stop
+          </button>
+        )}
+        {offer?.more?.map((option, index) => (
+          <button key={option.id} type="button" onClick={() => gameEvents.emit('interact', { interactableId: option.id })} className="pointer-events-auto h-10 rounded-card bg-ink/80 px-3 text-sm font-bold text-on-ink">
+            {option.emoji} {option.label}
+            {option.disabled ? ` — ${option.disabled}` : ''} <kbd className="ml-1 rounded bg-white/15 px-1.5 py-0.5 text-xs">{index + 1}</kbd>
+          </button>
+        ))}
+        {offer && (
+          <button type="button" data-testid="dev-context-button" onClick={() => gameEvents.emit('interact', { interactableId: offer.id })} className="pointer-events-auto h-12 rounded-card bg-paper px-4 font-bold text-ink shadow-[var(--shadow-lift)]">
+            {offer.emoji} {offer.label} <kbd className="ml-1 rounded bg-paper-3 px-1.5 py-0.5 text-xs">E</kbd>
+          </button>
+        )}
+      </div>
       <div className="pointer-events-none absolute left-3 top-3 rounded-card bg-ink/80 px-3 py-2 font-mono text-xs text-on-ink">
         <div>
           {type} · {hour}:00 {nepa ? '· NEPA off' : ''}
         </div>
         {info && (
           <div>
-            calls {info.calls} · tris {info.triangles} · geo {info.geometries} · tex {info.textures}
+            calls {info.calls} · tris {info.triangles} · geo {info.geometries} · tex {info.textures} · prg {info.programs}
           </div>
         )}
         <div className="opacity-60">
-          {INTERIOR_TEMPLATE_IDS.length} templates · ?type= &amp;hour= &amp;anim= &amp;nepa=1 &amp;spray=1 &amp;room= &amp;view=overview
+          {INTERIOR_TEMPLATE_IDS.length} templates · ?type= &amp;hour= &amp;anim= &amp;nepa=1 &amp;spray=1 &amp;room= &amp;view=overview &amp;actions=</div>
+        <div className="opacity-60">tap a marker to walk there · its action shows bottom-right (E) and plays here
         </div>
         {house && (
           <div>
-            room {roomId} · {homeCamera} camera
+            room {roomId} · {homeCamera} camera · {actions.length} actions{running ? ` · ${running.id}` : ''}
           </div>
         )}
         {house && (
@@ -158,7 +219,10 @@ export function DevInteriors() {
                 key={clip}
                 type="button"
                 data-anim={clip}
-                onClick={() => setAnim(clip)}
+                onClick={() => {
+                  setRunning(null);
+                  setAnim(clip);
+                }}
                 className={(anim ?? 'idle') === clip ? 'rounded-chip bg-danfo px-1.5 py-0.5 text-ink' : 'rounded-chip bg-white/10 px-1.5 py-0.5'}
               >
                 {clip}

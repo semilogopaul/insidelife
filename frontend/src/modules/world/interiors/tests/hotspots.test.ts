@@ -1,0 +1,448 @@
+import { VENUES, VENUE_TYPES, findAction, type ActionDefinition } from '@insidelife/shared';
+import { PerspectiveCamera } from 'three';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  MORE_HERE_ID,
+  actionsAt,
+  isPlaceAction,
+  serviceInteractableId,
+  serviceOfInteractable,
+  servicesAt,
+} from '@/common/places';
+import { AVATAR_CLIPS } from '@/common/three/avatar';
+import { controls, resetControls } from '../../play/input/controls';
+import {
+  actionAnchor,
+  actionSpot,
+  barStoolSpot,
+  counterSpot,
+  occupiedFeet,
+  pieceTop,
+} from '../hotspots/action-spots';
+import {
+  MAX_MORE,
+  actionOfInteractable,
+  buildHotspots,
+  hotspotAt,
+  hotspotInteractable,
+  hotspotRoom,
+  type Hotspot,
+} from '../hotspots/hotspots';
+import { HOME_LAYOUTS, placeLayoutFor } from '../layouts/catalog';
+import { findRoom, portalGeometry } from '../layouts/geometry';
+import { getTemplate } from '../templates/registry';
+import {
+  INTERIOR_TEMPLATE_IDS,
+  genericTemplateFor,
+  resolveTemplateId,
+  venueTypeFor,
+  type InteriorTemplateId,
+} from '../templates/resolve';
+import type { At, InteriorTemplate, Spot } from '../templates/types';
+import { HomeWalkRuntime, buildRoomPhysics } from '../walk/home-walk-runtime';
+import { approachPoint } from '../walk/nav-grid';
+
+const action = (id: string): ActionDefinition => {
+  const found = findAction(id);
+  if (!found) throw new Error(id);
+  return found;
+};
+const foot = (spot: Spot): At => [spot.at[0], spot.at[spot.at.length - 1] as number];
+const near = (a: At, b: At, distance = 0.05): boolean => Math.hypot(a[0] - b[0], a[1] - b[1]) < distance;
+const VENUE_TEMPLATES = INTERIOR_TEMPLATE_IDS.filter((id) => !id.startsWith('home-'));
+
+/** A treatment the hospital might offer, described only by animation and category (no template knows its id). */
+const treatment = (
+  animation: 'sit' | 'sleep' | 'talk',
+): Pick<ActionDefinition, 'animation' | 'category'> => ({
+  animation,
+  category: 'health' as ActionDefinition['category'],
+});
+
+describe('where actions happen', () => {
+  it('drinks at the lounge on a free bar stool, at stool height, nowhere anyone else is', () => {
+    const bar = getTemplate('bar');
+    const spot = actionSpot(bar, action('lounge'));
+    expect(spot.stance).toBe('sit');
+    expect(spot.at.length).toBe(3);
+    expect(spot.at[1]).toBeGreaterThan(0.2);
+    const stool = bar.furniture.find(
+      (piece) => piece.model === 'stoolBar' && near(piece.at, foot(spot), 0.12),
+    );
+    expect(stool).toBeDefined();
+    expect(spot.at[1]).toBeCloseTo(pieceTop(stool!) - 0.36, 1);
+    for (const person of occupiedFeet(bar)) expect(near(person, foot(spot), 0.35)).toBe(false);
+  });
+
+  it('derives a stool for a drink from any room with bar stools, and stands at the counter without them', () => {
+    const club = getTemplate('club');
+    const stool = barStoolSpot(club);
+    expect(
+      stool &&
+        club.furniture.some((piece) => piece.model === 'stoolBar' && near(piece.at, foot(stool), 0.12)),
+    ).toBe(true);
+    const pharmacy = getTemplate('pharmacy');
+    const counter = counterSpot(pharmacy, ['bar-counter']);
+    // The pharmacy counter runs along x at z = −0.4 and faces +z: customers stand in front, facing it (rot 180).
+    expect(counter?.at[1]).toBeGreaterThan(-0.1);
+    expect(counter?.rot).toBe(180);
+    const noStools = {
+      ...getTemplate('bar'),
+      furniture: getTemplate('bar').furniture.filter((piece) => piece.model !== 'stoolBar'),
+      player: { default: getTemplate('bar').player.default },
+    };
+    const standing = actionSpot(noStools, action('lounge'));
+    expect(standing.stance).toBeUndefined();
+    expect(standing.at[1]).toBeGreaterThan(-2.35);
+  });
+
+  it('dances and cheers on the club’s dance floor', () => {
+    const club = getTemplate('club');
+    const floor = club.extras?.clubLights;
+    for (const animation of ['dance', 'cheer'] as const) {
+      const [x, z] = foot(actionSpot(club, { animation, category: 'social' }));
+      expect(Math.abs(x - (floor?.at[0] ?? 99)), animation).toBeLessThan((floor?.size[0] ?? 0) / 2);
+      expect(Math.abs(z - (floor?.at[1] ?? 99)), animation).toBeLessThan((floor?.size[1] ?? 0) / 2);
+    }
+  });
+
+  it('eats at a table, studies at a desk, works out on the gym floor, prays on the mat', () => {
+    expect(actionSpot(getTemplate('restaurant'), action('fine-dining'))).toBe(
+      getTemplate('restaurant').player.eat,
+    );
+    expect(actionSpot(getTemplate('campus'), action('study'))).toBe(getTemplate('campus').player.read);
+    expect(actionSpot(getTemplate('gym'), action('gym'))).toBe(getTemplate('gym').player.exercise);
+    expect(actionSpot(getTemplate('mosque'), action('worship')).stance).toBe('kneel');
+  });
+
+  it('treats patients by animation: a seat by the doctor, a bed, the nurses', () => {
+    const clinic = getTemplate('clinic');
+    expect(actionSpot(clinic, treatment('sit'))).toBe(clinic.player.sit);
+    expect(actionSpot(clinic, treatment('sleep'))).toBe(clinic.player.sleep);
+    expect(foot(actionSpot(clinic, treatment('talk')))).toEqual(foot(clinic.player.talk!));
+    const ward = getTemplate('hospital-ward');
+    expect(actionSpot(ward, treatment('sleep'))).toBe(ward.player.sleep);
+  });
+
+  it('window-shops at the shelves, standing and facing them', () => {
+    const mall = getTemplate('mall');
+    const spot = actionSpot(mall, action('window-shop'));
+    expect(spot.stance).toBeUndefined();
+    const shelf = mall.props.find((prop) => prop.kind === 'shelf');
+    expect(
+      Math.hypot(spot.at[0] - (shelf?.at[0] ?? 99), (spot.at[1] as number) - (shelf?.at[1] ?? 99)),
+    ).toBeLessThan(1.6);
+  });
+
+  it('never dances on a sofa, and falls back to the default spot for anything unknown', () => {
+    const lounge = {
+      ...getTemplate('bar'),
+      player: { default: getTemplate('bar').player.default, sit: getTemplate('bar').player.sit },
+    };
+    const dance = actionSpot(lounge, { animation: 'dance', category: 'fun' });
+    expect(dance.stance).not.toBe('sit');
+    const odd = actionSpot(getTemplate('bar'), { animation: 'wave', category: 'mystery' });
+    expect(odd.animation).toBe('wave');
+    for (const id of VENUE_TEMPLATES) {
+      const template = getTemplate(id);
+      for (const clip of Object.keys(AVATAR_CLIPS) as Array<keyof typeof AVATAR_CLIPS>) {
+        const spot = actionSpot(template, { animation: clip });
+        if (AVATAR_CLIPS[clip].kind === 'full') expect(spot.stance, `${id} ${clip}`).not.toBe('sit');
+      }
+    }
+  });
+});
+
+describe('hotspots', () => {
+  it('puts Watch and Play at the TV and Sleep with Nap on the bed, in the right rooms of a flat', () => {
+    const flat = HOME_LAYOUTS['home-flat'];
+    const homeActions = actionsAt({ kind: 'home' }).filter(isPlaceAction);
+    const roomOf = (id: string): string => hotspotRoom(flat, action(id));
+    expect(roomOf('sleep')).toBe('bedroom');
+    expect(roomOf('cook')).toBe('kitchen');
+    expect(roomOf('watch-tv')).toBe('living');
+    const living = findRoom(flat, 'living')!.template;
+    const hotspots = buildHotspots(
+      living,
+      homeActions.filter((candidate) => roomOf(candidate.id) === 'living'),
+    );
+    const tv = living.furniture.find((piece) => piece.slot === 'tv')!;
+    const watch = hotspots.find((hotspot) =>
+      hotspot.actions.some((candidate) => candidate.id === 'watch-tv'),
+    );
+    expect(watch && near(watch.at, tv.at)).toBe(true);
+    expect(watch?.actions.map((candidate) => candidate.id)).toEqual(
+      expect.arrayContaining(['watch-tv', 'play-games']),
+    );
+    // ...but you still watch from the sofa.
+    expect(actionSpot(living, action('watch-tv'))).toBe(living.player.sit);
+    const bedroom = findRoom(flat, 'bedroom')!.template;
+    const bed = buildHotspots(
+      bedroom,
+      homeActions.filter((candidate) => roomOf(candidate.id) === 'bedroom'),
+    ).find((hotspot) => hotspot.actions[0]?.id === 'sleep');
+    expect(bed?.actions.map((candidate) => candidate.id)).toEqual(['sleep', 'nap']);
+  });
+
+  it('anchors at the spot when the furniture an action needs isn’t there (you don’t own a TV)', () => {
+    const living = findRoom(HOME_LAYOUTS['home-flat'], 'living')!.template;
+    const bare = { ...living, furniture: living.furniture.filter((piece) => piece.slot !== 'tv') };
+    expect(near(actionAnchor(bare, action('watch-tv'), living).at, foot(living.player.sit!))).toBe(true);
+  });
+
+  const lounge = buildHotspots(
+    getTemplate('bar'),
+    actionsAt({ kind: 'venue', venueType: 'bar' }).filter(isPlaceAction),
+  );
+
+  it('offers the hotspot you’re standing at, keeps it a little past its edge, nothing in between', () => {
+    const drinks = lounge.find((hotspot) => hotspot.id === 'hotspot:lounge') as Hotspot;
+    expect(drinks).toBeDefined();
+    expect(hotspotAt(lounge, drinks.at[0], drinks.at[1] + 0.6)?.id).toBe(drinks.id);
+    const edge = drinks.reach + 0.15;
+    expect(hotspotAt(lounge, drinks.at[0] + edge, drinks.at[1])).toBeNull();
+    expect(hotspotAt(lounge, drinks.at[0] + edge, drinks.at[1], drinks.id)?.id).toBe(drinks.id);
+    expect(hotspotAt(lounge, 4.5, 3.2)).toBeNull();
+    // Between two hotspots, the one you're deeper inside wins.
+    const two: Hotspot[] = [
+      { id: 'a', at: [0, 0], y: 1, reach: 1, actions: [], services: [] },
+      { id: 'b', at: [1.2, 0], y: 1, reach: 1, actions: [], services: [] },
+    ];
+    expect(hotspotAt(two, 0.5, 0)?.id).toBe('a');
+    expect(hotspotAt(two, 0.7, 0)?.id).toBe('b');
+  });
+
+  it('offers “Drinks at the lounge · ₦18,000” on the context button, the rest as smaller buttons', () => {
+    const drinks = lounge.find((hotspot) => hotspot.id === 'hotspot:lounge') as Hotspot;
+    const offer = hotspotInteractable(drinks, (candidate) => ({
+      priceNote: candidate.cost > 0 ? '₦18,000' : '',
+      reason: null,
+    }));
+    expect(offer).toMatchObject({ kind: 'activity', label: 'Drinks at the lounge · ₦18,000', emoji: '🍹' });
+    expect(offer?.disabled).toBeUndefined();
+    expect(actionOfInteractable(offer!.id)).toBe('lounge');
+    expect(actionOfInteractable('world:step-outside')).toBeNull();
+    const crowded: Hotspot = {
+      id: 'x',
+      at: [0, 0],
+      y: 1,
+      reach: 1,
+      actions: actionsAt({ kind: 'home' }).slice(0, 7),
+      services: [],
+    };
+    const many = hotspotInteractable(crowded, () => ({ priceNote: '', reason: null }));
+    // Three more, then "More here" for the rest (the full list).
+    expect(many?.more).toHaveLength(MAX_MORE + 1);
+    expect(many?.more?.at(-1)).toMatchObject({ id: MORE_HERE_ID, label: 'More here (3)' });
+  });
+
+  it('puts phone-app services where they happen: a car on the showroom floor, the doctor’s desk', () => {
+    const showroom = getTemplate('car-dealer');
+    const [cars] = buildHotspots(
+      showroom,
+      [],
+      showroom,
+      servicesAt({ kind: 'venue', venueType: 'car-dealer' }),
+    );
+    expect(cars?.at).toEqual(showroom.extras?.cars?.[0]?.at);
+    const offer = cars ? hotspotInteractable(cars, () => ({ priceNote: '', reason: null })) : null;
+    expect(offer).toMatchObject({
+      id: serviceInteractableId('browse-cars'),
+      label: 'Browse cars',
+      emoji: '🚗',
+    });
+    expect(serviceOfInteractable(offer?.id ?? '')).toMatchObject({ app: 'motors', param: 'dealer' });
+    const clinic = getTemplate('clinic');
+    const [desk] = buildHotspots(
+      clinic,
+      [],
+      clinic,
+      servicesAt({ kind: 'venue', venueType: 'hospital-private' }),
+    );
+    expect(desk?.at).toEqual(foot(clinic.player.talk!));
+    expect(servicesAt({ kind: 'home' })).toEqual([]);
+  });
+
+  it('greys out what can’t be done now, with the reason', () => {
+    const drinks = lounge.find((hotspot) => hotspot.id === 'hotspot:lounge') as Hotspot;
+    const offer = hotspotInteractable(drinks, () => ({
+      priceNote: '₦18,000',
+      reason: 'Not enough money (₦18,000)',
+    }));
+    expect(offer?.disabled).toBe('Not enough money (₦18,000)');
+  });
+});
+
+/** Where you appear coming in (the front door; open-air venues: their default spot), on the walkable grid. */
+function entrance(template: InteriorTemplate, physics: ReturnType<typeof buildRoomPhysics>): At {
+  const door = template.room.doors?.length
+    ? portalGeometry(template, { id: 'front', via: { door: 0 }, to: null }).arrival
+    : null;
+  const start = door ?? {
+    x: template.player.default?.at[0] ?? 0,
+    z: (template.player.default?.at.at(-1) as number) ?? 0,
+  };
+  return physics.nav.nearestFree(start.x, start.z, 2.5) ?? [0, 0];
+}
+
+describe('every venue', () => {
+  it('is a walkable one-room layout', () => {
+    for (const id of VENUE_TEMPLATES) {
+      const layout = placeLayoutFor(id);
+      expect(layout.rooms, id).toHaveLength(1);
+      expect(layout.rooms[0]?.template.id, id).toBe(id);
+      expect(placeLayoutFor(id), `${id} stable`).toBe(layout);
+    }
+    expect(placeLayoutFor('home-mansion')).toBe(HOME_LAYOUTS['home-mansion']);
+  });
+
+  it('covers every venue type you can enter, and gives a new type a sensible room', () => {
+    for (const type of VENUE_TYPES.filter((candidate) => candidate !== 'home')) {
+      const venue = VENUES.find((candidate) => candidate.type === type);
+      if (!venue) continue;
+      const layout = placeLayoutFor(resolveTemplateId(venue.id));
+      expect(layout.rooms.length, type).toBeGreaterThan(0);
+    }
+    expect(genericTemplateFor('bank')).toBe('office');
+    expect(genericTemplateFor('beach-club')).toBe('club');
+    expect(genericTemplateFor('rooftop-lounge')).toBe('bar');
+    expect(genericTemplateFor('diagnostic-lab')).toBe('clinic');
+  });
+
+  it('offers every place action from a hotspot button or its “More here” list', () => {
+    for (const id of VENUE_TEMPLATES) {
+      const template = getTemplate(id);
+      const actions = actionsAt({ kind: 'venue', venueType: venueTypeFor(id) }).filter(isPlaceAction);
+      const reachable = new Set<string>();
+      const services = servicesAt({ kind: 'venue', venueType: venueTypeFor(id) });
+      for (const hotspot of buildHotspots(template, actions, template, services)) {
+        const offer = hotspotInteractable(hotspot, () => ({ priceNote: '', reason: null }));
+        const buttons = [offer, ...(offer?.more ?? [])];
+        if (buttons.some((button) => button?.id === MORE_HERE_ID))
+          for (const action of hotspot.actions) reachable.add(action.id);
+        for (const button of buttons) {
+          const actionId = button ? actionOfInteractable(button.id) : null;
+          if (actionId) reachable.add(actionId);
+        }
+      }
+      for (const action of actions) expect(reachable.has(action.id), `${id}: ${action.id}`).toBe(true);
+    }
+  });
+
+  it('never puts you where an NPC or another player already is', () => {
+    for (const id of VENUE_TEMPLATES) {
+      const template = getTemplate(id as InteriorTemplateId);
+      const occupied = occupiedFeet(template);
+      for (const candidate of actionsAt({ kind: 'venue', venueType: venueTypeFor(id) }).filter(
+        isPlaceAction,
+      )) {
+        const spot = foot(actionSpot(template, candidate));
+        expect
+          .soft(
+            occupied.some((person) => near(person, spot, 0.3)),
+            `${id}: ${candidate.id} at ${spot.join(', ')}`,
+          )
+          .toBe(false);
+      }
+    }
+  });
+
+  it('can reach every hotspot and every action’s spot from the entrance, around NPCs and other players', () => {
+    for (const id of VENUE_TEMPLATES) {
+      const template = getTemplate(id as InteriorTemplateId);
+      const venueType = venueTypeFor(id);
+      expect(venueType, id).not.toBeNull();
+      const actions = actionsAt({ kind: 'venue', venueType }).filter(isPlaceAction);
+      const physics = buildRoomPhysics(template, occupiedFeet(template));
+      const from = entrance(template, physics);
+      const services = servicesAt({ kind: 'venue', venueType: venueTypeFor(id) });
+      for (const hotspot of buildHotspots(template, actions, template, services)) {
+        const target = physics.nav.nearestFree(hotspot.at[0], hotspot.at[1], hotspot.reach);
+        expect.soft(target, `${id}: stand by ${hotspot.id}`).not.toBeNull();
+        if (target)
+          expect.soft(physics.nav.findPath(from, target), `${id}: walk to ${hotspot.id}`).not.toBeNull();
+      }
+      for (const candidate of actions) {
+        if (
+          AVATAR_CLIPS[candidate.animation].kind === 'full' &&
+          ['walk', 'idle'].includes(candidate.animation)
+        )
+          continue;
+        const spot = actionSpot(template, candidate);
+        const approach = approachPoint(physics.nav, spot);
+        expect.soft(approach, `${id}: approach ${candidate.id}`).not.toBeNull();
+        if (approach)
+          expect.soft(physics.nav.findPath(from, approach), `${id}: walk to ${candidate.id}`).not.toBeNull();
+      }
+    }
+  });
+});
+
+describe('walking to a hotspot', () => {
+  afterEach(() => resetControls());
+  const run = (runtime: HomeWalkRuntime, seconds: number): void => {
+    const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+    for (let t = 0; t < seconds; t += 1 / 30) runtime.frame(camera, 1 / 30, t * 1000, 800, 600);
+  };
+  const enterBar = () => {
+    const template = getTemplate('bar');
+    const room = placeLayoutFor('bar').rooms[0]!;
+    const portals = room.portals.map((spec) => portalGeometry(template, spec));
+    const runtime = new HomeWalkRuntime();
+    runtime.loadRoom(
+      { roomId: room.id, template, physics: buildRoomPhysics(template, occupiedFeet(template)), portals },
+      { kind: 'enter' },
+      1,
+    );
+    const hotspots = buildHotspots(
+      template,
+      actionsAt({ kind: 'venue', venueType: 'bar' }).filter(isPlaceAction),
+    );
+    runtime.setHotspots(hotspots, false);
+    return { runtime, template, hotspots };
+  };
+
+  it('walks up to a tapped marker, offering it on the way and when there', () => {
+    const { runtime } = enterBar();
+    run(runtime, 0.2);
+    expect(runtime.offered).not.toBe('hotspot:lounge');
+    expect(runtime.goToHotspot('hotspot:lounge')).toBe(true);
+    run(runtime, 0.1);
+    expect(runtime.phase).toBe('walking');
+    expect(runtime.offered).toBe('hotspot:lounge');
+    run(runtime, 9);
+    expect(runtime.phase).toBe('free');
+    expect(runtime.offered).toBe('hotspot:lounge');
+  });
+
+  it('offers nothing while something you chose is running, and drops a tapped marker when you steer away', () => {
+    const { runtime, hotspots } = enterBar();
+    runtime.goToHotspot('hotspot:lounge');
+    run(runtime, 0.3);
+    controls.stickX = 1;
+    run(runtime, 0.2);
+    controls.stickX = 0;
+    expect(runtime.phase).toBe('free');
+    runtime.setHotspots(hotspots, true);
+    run(runtime, 0.1);
+    expect(runtime.offered).toBeNull();
+    expect(runtime.goToHotspot('hotspot:lounge')).toBe(false);
+  });
+
+  it('walks to the stool when the drink starts and sits at the bar', () => {
+    const { runtime, template } = enterBar();
+    const spot = actionSpot(template, action('lounge'));
+    runtime.setActivity({ animation: 'drink', spot, via: null });
+    run(runtime, 10);
+    expect(runtime.phase).toBe('engaged');
+    expect(runtime.pose.x).toBeCloseTo(spot.at[0]);
+    expect(runtime.pose.y).toBeCloseTo(spot.at[1] as number);
+    expect(runtime.offered).toBeNull();
+    // The camera comes round to see their face (and the glass), not the back of their head.
+    run(runtime, 3);
+    const forward = { x: 0, z: 0 };
+    runtime.camera.forward(forward);
+    const facing = ((spot.rot ?? 0) * Math.PI) / 180;
+    expect(forward.x * Math.sin(facing) + forward.z * Math.cos(facing)).toBeLessThan(-0.3);
+  });
+});

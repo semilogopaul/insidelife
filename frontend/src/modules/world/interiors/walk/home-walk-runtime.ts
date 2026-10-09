@@ -5,18 +5,27 @@ import { ColliderGrid } from '../../play/physics/collision';
 import { angleDelta, clamp, wrapAngle, yawFromHeading } from '../../play/physics/math';
 import { createWalker, stepWalker, type WalkWorld, type WalkerState } from '../../play/physics/walker';
 import { gaitFor } from '../../play/runtime/play-runtime';
+import { hotspotAt, type Hotspot } from '../hotspots/hotspots';
 import type { Arrival, PortalGeometry, Rect } from '../layouts/types';
 import type { At, InteriorTemplate, Spot } from '../templates/types';
-import { INTERIOR_WALKER_RADIUS, roomBounds, roomColliders } from './colliders';
-import { portalLabelElements } from './home-view-store';
+import {
+  INTERIOR_WALKER_RADIUS,
+  groundAt,
+  roomBounds,
+  roomColliders,
+  roomPlatforms,
+  type Platform,
+} from './colliders';
+import { hotspotLabelElements, portalLabelElements } from './home-view-store';
 import { InteriorCamera, blocksView } from './interior-camera';
 import { NavGrid, approachPoint } from './nav-grid';
 
 /**
- * Walking around inside a home: the player's avatar on foot (the street's walker physics against the room's walls and
- * furniture), walking itself to an activity's spot when the server starts one (sleep → the bed) and back up when it
- * ends, through doors and stairs to other rooms, and the close third-person camera. Mutable, allocation-free per
- * frame; React only feeds it rooms and activities and reads it at a low rate.
+ * Walking around inside a home or a venue: the player's avatar on foot (the street's walker physics against the
+ * room's walls and furniture), walking itself to an activity's spot when the server starts one (sleep → the bed,
+ * drinks → a bar stool) and back up when it ends, through doors and stairs to other rooms, the close third-person
+ * camera, and the hotspots (what's on offer where you stand, their floating markers). Mutable, allocation-free per
+ * frame; React only feeds it rooms, activities and hotspots and reads it at a low rate.
  */
 
 export interface RoomPhysics {
@@ -27,6 +36,8 @@ export interface RoomPhysics {
    * someone in a shower cabin or a bunk would otherwise put the camera's focus inside a box. */
   readonly cameraGrid: ColliderGrid;
   readonly nav: NavGrid;
+  /** Low platforms you step up onto (cinema tiers, a bandstand). */
+  readonly platforms: readonly Platform[];
 }
 
 /** Height from which a structure blocks the walk camera. */
@@ -42,7 +53,7 @@ export function buildRoomPhysics(template: InteriorTemplate, people: readonly At
     1,
   );
   const nav = new NavGrid(bounds, (x, z) => !grid.overlaps(x, z, INTERIOR_WALKER_RADIUS + 0.04), 0.2);
-  return { bounds, grid, cameraGrid, nav };
+  return { bounds, grid, cameraGrid, nav, platforms: roomPlatforms(template) };
 }
 
 export interface LoadedRoom {
@@ -80,6 +91,9 @@ const RISE_SECONDS = 0.35;
 const WALK_TIMEOUT = 9;
 const PORTAL_PUSH = 0.35;
 const LABEL_RANGE = 5.5;
+/** Hotspot markers fade out to this opacity across the room (walk camera); the one on offer is fully opaque. */
+const MARKER_FAR_OPACITY = 0.5;
+const MARKER_RANGE = 9;
 
 const axes = { x: 0, y: 0 };
 const fwd = { x: 0, z: 0 };
@@ -161,9 +175,16 @@ export class HomeWalkRuntime {
   private nudged = 0;
   private nudge = false;
   private events: HomeWalkEvents = { onPortal: () => false, onStep: () => undefined };
+  private hotspots: readonly Hotspot[] = [];
+  /** Markers hidden and nothing offered (something you chose is running). */
+  private hotspotsHidden = false;
+  /** A marker you tapped: offered while you walk to it. */
+  private picked: string | null = null;
+  /** The hotspot on offer where you stand (id), read by React at a low rate. */
+  offered: string | null = null;
   private readonly world: WalkWorld = {
     surfaceAt: () => 'ground',
-    groundHeightAt: () => 0,
+    groundHeightAt: (x, z) => this.groundAt(x, z),
     resolve: (p) => {
       this.physics?.grid.resolveCircle(p, INTERIOR_WALKER_RADIUS);
     },
@@ -193,6 +214,56 @@ export class HomeWalkRuntime {
 
   get busy(): boolean {
     return this.activity !== null;
+  }
+
+  // ----- Hotspots ---------------------------------------------------------------------------------------------------
+
+  /** The room's hotspots; `hidden` while something you chose is running (nothing is offered then). */
+  setHotspots(hotspots: readonly Hotspot[], hidden: boolean): void {
+    this.hotspots = hotspots;
+    this.hotspotsHidden = hidden;
+    if (hidden || (this.picked && !hotspots.some((hotspot) => hotspot.id === this.picked)))
+      this.picked = null;
+  }
+
+  /** A marker was tapped: walk up to it, offering it on the way. False when you can't walk right now. */
+  goToHotspot(id: string): boolean {
+    const hotspot = this.hotspots.find((candidate) => candidate.id === id);
+    const physics = this.physics;
+    if (
+      !hotspot ||
+      !physics ||
+      this.hotspotsHidden ||
+      this.activity ||
+      this.locked > 0 ||
+      (this.phase !== 'free' && this.phase !== 'walking')
+    )
+      return false;
+    this.picked = id;
+    this.offered = id;
+    const near = hotspotAt([hotspot], this.walker.x, this.walker.z);
+    if (near) return true;
+    const target = physics.nav.nearestFree(hotspot.at[0], hotspot.at[1], hotspot.reach) ?? [
+      hotspot.at[0],
+      hotspot.at[1],
+    ];
+    this.walkTo(target, 'point');
+    return true;
+  }
+
+  private updateOffer(): void {
+    const engaged = this.phase === 'settling' || this.phase === 'engaged' || this.phase === 'rising';
+    if (this.hotspotsHidden || this.activity || engaged) {
+      this.offered = null;
+      this.picked = null;
+      return;
+    }
+    if (this.picked && this.phase === 'walking' && this.goal === 'point') {
+      this.offered = this.picked;
+      return;
+    }
+    this.picked = null;
+    this.offered = hotspotAt(this.hotspots, this.walker.x, this.walker.z, this.offered)?.id ?? null;
   }
 
   // ----- Rooms ------------------------------------------------------------------------------------------------------
@@ -237,16 +308,20 @@ export class HomeWalkRuntime {
     return [free[0], free[1], point.heading];
   }
 
+  private groundAt(x: number, z: number): number {
+    return this.physics ? groundAt(this.physics.platforms, x, z) : 0;
+  }
+
   /** Put the walker somewhere (dev hook, arrivals). */
   placeWalker(x: number, z: number, heading: number): void {
     const w = this.walker;
     w.x = x;
     w.z = z;
-    w.y = 0;
+    w.y = this.groundAt(x, z);
     w.heading = heading;
     w.vx = w.vz = w.speed = 0;
     this.pose.x = x;
-    this.pose.y = 0;
+    this.pose.y = w.y;
     this.pose.z = z;
     this.pose.yaw = yawFromHeading(heading);
   }
@@ -298,6 +373,7 @@ export class HomeWalkRuntime {
     this.to.yaw = target.yaw;
     Object.assign(this.pose, target);
     this.phase = 'engaged';
+    this.camera.frameFront(target.yaw);
   }
 
   private settleInto(target: Pose): void {
@@ -316,11 +392,11 @@ export class HomeWalkRuntime {
     const w = this.walker;
     w.x = back[0];
     w.z = back[1];
-    w.y = 0;
+    w.y = this.groundAt(back[0], back[1]);
     w.heading = Math.PI / 2 - this.pose.yaw;
     w.vx = w.vz = w.speed = 0;
     this.to.x = back[0];
-    this.to.y = 0;
+    this.to.y = w.y;
     this.to.z = back[1];
     this.to.yaw = this.pose.yaw;
     this.blend = 0;
@@ -432,7 +508,7 @@ export class HomeWalkRuntime {
     if (this.phase === 'free' || this.phase === 'walking') {
       const w = this.walker;
       this.pose.x = w.x;
-      this.pose.y = 0;
+      this.pose.y = w.y;
       this.pose.z = w.z;
       this.pose.yaw = yawFromHeading(w.heading);
       this.stepTimer += dt * w.speed;
@@ -460,8 +536,10 @@ export class HomeWalkRuntime {
         width / Math.max(1, height),
       );
     }
+    this.updateOffer();
     this.hideOccluders(camera, people);
     this.placeLabels(camera, width, height);
+    this.placeMarkers(camera, width, height, now);
   }
 
   /** Hide anyone standing between the walk camera and the player (or right in front of the lens). */
@@ -563,7 +641,10 @@ export class HomeWalkRuntime {
     this.pose.y = this.from.y + (this.to.y - this.from.y) * t;
     this.pose.z = this.from.z + (this.to.z - this.from.z) * t;
     this.pose.yaw = wrapAngle(this.from.yaw + angleDelta(this.from.yaw, this.to.yaw) * Math.min(1, t * 1.6));
-    if (this.blend >= 1) this.phase = this.phase === 'settling' ? 'engaged' : 'free';
+    if (this.blend >= 1) {
+      if (this.phase === 'settling') this.camera.frameFront(this.to.yaw);
+      this.phase = this.phase === 'settling' ? 'engaged' : 'free';
+    }
   }
 
   private placeAvatar(): void {
@@ -615,6 +696,41 @@ export class HomeWalkRuntime {
     }
     const bounds = this.physics?.bounds;
     if (bounds && inside(x, z, bounds)) this.walkTo([x, z], 'point');
+  }
+
+  /** Hotspot markers float over their spots, bobbing gently; hidden while you're busy or off screen. */
+  private placeMarkers(camera: PerspectiveCamera, width: number, height: number, now: number): void {
+    const t = now / 1000;
+    for (let i = 0; i < this.hotspots.length; i++) {
+      const hotspot = this.hotspots[i] as Hotspot;
+      const element = hotspotLabelElements.get(hotspot.id);
+      if (!element) continue;
+      projected
+        .set(hotspot.at[0], hotspot.y + Math.sin(t * 2.1 + i * 1.7) * 0.045, hotspot.at[1])
+        .project(camera);
+      const visible =
+        !this.hotspotsHidden &&
+        projected.z < 1 &&
+        Math.abs(projected.x) < 1.05 &&
+        Math.abs(projected.y) < 1.05;
+      const visibility = visible ? 'visible' : 'hidden';
+      if (element.style.visibility !== visibility) element.style.visibility = visibility;
+      if (!visible) continue;
+      const distance = Math.hypot(hotspot.at[0] - this.pose.x, hotspot.at[1] - this.pose.z);
+      const opacity =
+        hotspot.id === this.offered
+          ? 1
+          : this.cameraMode === 'walk'
+            ? clamp(1.25 - distance / MARKER_RANGE, MARKER_FAR_OPACITY, 0.92)
+            : 0.9;
+      const sx = (projected.x * 0.5 + 0.5) * width;
+      const sy = (-projected.y * 0.5 + 0.5) * height;
+      element.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+      element.style.opacity = opacity.toFixed(2);
+      // Its name tag goes on the side with room (the right edge has the camera and rooms buttons).
+      const side = sx > width * 0.55 ? 'left' : 'right';
+      if (element.dataset.side !== side) element.dataset.side = side;
+    }
   }
 
   private placeLabels(camera: PerspectiveCamera, width: number, height: number): void {

@@ -32,6 +32,10 @@ const TUNING = {
 } as const;
 
 const LOOK_SPEED = 0.0062;
+/** How far to the right of someone's front the camera frames them (1 = 45°). */
+const FRONT_RIGHT = 0.8;
+/** Camera pitch when framing someone at an activity. */
+const FRAME_PITCH = 0.5;
 const WALL_MARGIN = 0.22;
 const MIN_CLEAR = 0.9;
 const LIFT = 0.45;
@@ -103,6 +107,9 @@ export class InteriorCamera {
   private initialised = false;
   /** The walk field of view has been applied once (later changes, e.g. rotating the phone, ease in). */
   private fovReady = false;
+  /** A yaw and pitch to ease towards (framing someone who just sat down), or null. */
+  private goalYaw: number | null = null;
+  private goalPitch: number = TUNING.pitch;
 
   /** Back to the default front-right view, snapped to the subject on the next update. */
   reset(): void {
@@ -110,11 +117,29 @@ export class InteriorCamera {
     this.pitch = TUNING.pitch;
     this.lift = 0;
     this.initialised = false;
+    this.goalYaw = null;
   }
 
   /** Re-target without easing (room changed). */
   snap(): void {
     this.initialised = false;
+    this.goalYaw = null;
+  }
+
+  /**
+   * Frame someone who has just settled into an activity from their front-right (their face and the hand holding a
+   * glass, a phone, a spoon), as far as the open side of the room allows. `facing` is their rotation about +Y (0 faces
+   * +Z). Eases in; any look input cancels it.
+   */
+  frameFront(facing: number): void {
+    const fx = Math.sin(facing);
+    const fz = Math.cos(facing);
+    // Their right hand: (-fz, fx). The camera sits out along front + right, looking back at them.
+    const dx = fx - fz * FRONT_RIGHT;
+    const dz = fz + fx * FRONT_RIGHT;
+    this.goalYaw = clampYaw(Math.atan2(-dz, -dx));
+    // A lower angle than walking about, so the face shows under the hair.
+    this.goalPitch = Math.min(this.pitch, FRAME_PITCH);
   }
 
   applyInput(lookX: number, lookY: number, zoom: number): void {
@@ -151,6 +176,16 @@ export class InteriorCamera {
     colliders: ColliderGrid,
     aspect: number,
   ): void {
+    if (this.goalYaw !== null) {
+      if (sinceLook < 0.3 || subject.speed > 0.5) this.goalYaw = null;
+      else {
+        const delta = angleDelta(this.yaw, this.goalYaw);
+        const k = damp(2.2, dt);
+        this.yaw = clampYaw(this.yaw + delta * k);
+        this.pitch += (this.goalPitch - this.pitch) * k;
+        if (Math.abs(delta) < 0.01 && Math.abs(this.goalPitch - this.pitch) < 0.01) this.goalYaw = null;
+      }
+    }
     // Drift behind the walker (within the open arc) unless the player has just looked around.
     if (sinceLook > TUNING.hold && subject.speed > 0.5) {
       const goal = clampYaw(subject.heading);

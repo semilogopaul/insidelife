@@ -5,7 +5,8 @@ import { Matrix4, type InstancedMesh, type Material } from 'three';
 import { findAction, type Appearance, type Gender, type Outfit, type PresencePlayerDto } from '@insidelife/shared';
 import { Avatar, npcLook, type AvatarClip } from '@/common/three/avatar';
 import { blobShadowGeometry, blobShadowMaterial } from '@/common/three/avatar/blob-shadow';
-import { placeAt, pickPlayerSpot } from '../templates/spots';
+import { actionSpot } from '../hotspots/action-spots';
+import { placeAt } from '../templates/spots';
 import type { InteriorTemplate, Spot } from '../templates/types';
 
 export interface InteriorPlayer {
@@ -14,6 +15,8 @@ export interface InteriorPlayer {
   readonly gender: Gender;
   readonly animation: AvatarClip;
   readonly mood?: number;
+  /** The running action (picks its spot: drinks at the bar, not just "somewhere seated"). */
+  readonly actionId?: string | null;
 }
 
 export interface InteriorPeopleProps {
@@ -45,7 +48,14 @@ export function InteriorPeople({ template, locationId, player, players }: Interi
       })),
     [template, locationId],
   );
-  const playerSpot = player ? pickPlayerSpot(template.player, player.animation) : null;
+  const shown = player !== null;
+  const actionId = player?.actionId ?? null;
+  const animation = player?.animation ?? 'idle';
+  const playerSpot = useMemo(() => {
+    if (!shown) return null;
+    const action = actionId ? findAction(actionId) : undefined;
+    return actionSpot(template, action && action.animation === animation ? action : { animation });
+  }, [shown, actionId, animation, template]);
   const guests = players.slice(0, template.guests.length).map((guest, index) => ({ guest, spot: template.guests[index]! }));
 
   const feet = useMemo(() => {

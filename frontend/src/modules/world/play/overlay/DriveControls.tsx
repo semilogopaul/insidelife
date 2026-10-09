@@ -3,6 +3,7 @@
 import { ArrowBigLeft, ArrowBigRight, DoorOpen, Megaphone } from 'lucide-react';
 import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 import { gameEvents } from '@/common/game/game-events';
+import { useUi } from '@/common/game/ui-store';
 import { cn } from '@/common/utils/cn';
 import { controls } from '../input/controls';
 
@@ -46,16 +47,25 @@ function Pedal({ axis, held, label, className, children }: { readonly axis: Axis
 }
 
 /**
- * Thumb controls while driving on touch screens: steer left/right (left thumb), gas and brake/reverse (right thumb,
- * left of the HUD's phone button), plus horn and get out.
+ * Thumb controls while driving on touch screens: steer left/right with the walking thumb (the `walkStick` side, right
+ * by default), gas and brake/reverse with the other one (above the HUD's phone button, which sits on that side),
+ * plus horn and get out next to the steering.
  */
 export function DriveControls() {
   const [held] = useState(() => new Set<Axis>());
-  // The HUD keeps the bottom corners (activity banner and goals on the left; speedometer, context button and phone on
-  // the right), so the thumb clusters sit just above them.
+  const side = useUi((state) => state.settings.walkStick);
+  const steerLeft = side === 'left';
+  // The HUD keeps the bottom corners (activity banner and goals on the stick side; speedometer, context button and
+  // phone on the other), so the thumb clusters sit just above them.
   return (
     <>
-      <div className="pointer-events-none absolute bottom-[calc(max(env(safe-area-inset-bottom),0.75rem)+7.5rem)] left-[max(env(safe-area-inset-left),0.75rem)] flex flex-col items-start gap-2">
+      <div
+        data-testid="steering"
+        className={cn(
+          'pointer-events-none absolute bottom-[calc(max(env(safe-area-inset-bottom),0.75rem)+7.5rem)] flex flex-col gap-2',
+          steerLeft ? 'left-[max(env(safe-area-inset-left),0.75rem)] items-start' : 'right-[max(env(safe-area-inset-right),0.75rem)] items-end',
+        )}
+      >
         <div className="flex gap-2">
           <button
             type="button"
@@ -83,7 +93,13 @@ export function DriveControls() {
           </Pedal>
         </div>
       </div>
-      <div className="pointer-events-none absolute bottom-[calc(max(env(safe-area-inset-bottom),0.75rem)+13.25rem)] right-[max(env(safe-area-inset-right),0.75rem)] flex flex-col items-center gap-2.5">
+      <div
+        data-testid="pedals"
+        className={cn(
+          'pointer-events-none absolute bottom-[calc(max(env(safe-area-inset-bottom),0.75rem)+13.25rem)] flex flex-col items-center gap-2.5',
+          steerLeft ? 'right-[max(env(safe-area-inset-right),0.75rem)]' : 'left-[max(env(safe-area-inset-left),0.75rem)]',
+        )}
+      >
         <Pedal axis="brake" held={held} label="Brake / reverse" className="h-[60px] w-[78px] rounded-[18px] bg-okada text-sm uppercase tracking-wide text-white">
           Brake
         </Pedal>

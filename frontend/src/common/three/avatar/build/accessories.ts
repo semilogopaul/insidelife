@@ -558,25 +558,38 @@ export function buildProps(ctx: BuildContext): void {
     ctx.add(tube([new Vector3(l.x, l.y + 0.03, l.z), new Vector3(l.x, l.y - 0.2, l.z + 0.03)], { radius: 0.007, radial: 5 }), ctx.solid('#8a5a35', SURFACE.cloth, bone('ladle')));
     ctx.add(superellipsoid({ w: 0.06, h: 0.03, d: 0.06, round: 0.9, segU: 8, segV: 6 }), ctx.solid('#8a5a35', SURFACE.cloth, bone('ladle')), xf([l.x, l.y - 0.215, l.z + 0.035]));
   }
-  // A glass of something cold (chapman, malt, a cocktail): upright in the fist, drink and ice showing at the top.
+  // A glass of chapman gripped through the fist. Like the bowl its axis runs along the hand's +Z (thumb side), so it
+  // stands upright once the forearm is level and tips towards the mouth on a sip. Chibi-sized so it reads from the
+  // room camera: red drink body, glass rim and base, a straw.
   {
     const p = at('cup');
-    const glass = loft(
-      [
-        { y: -0.055, w: 0.055, d: 0.055 },
-        { y: 0.05, w: 0.066, d: 0.066 },
-      ],
-      { segments: 14, exponent: 2, capStart: true },
-    );
-    ctx.add(glass, ctx.solid('#dfe9ee', SURFACE.gloss, bone('cup')), xf([p.x, p.y + 0.04, p.z]));
+    const up: readonly [number, number, number] = [Math.PI / 2, 0, 0];
+    const centre: readonly [number, number, number] = [p.x, p.y + 0.015, p.z];
     const drink = loft(
       [
-        { y: -0.05, w: 0.05, d: 0.05 },
-        { y: 0.035, w: 0.059, d: 0.059 },
+        { y: -0.062, w: 0.068, d: 0.068 },
+        { y: 0.05, w: 0.076, d: 0.076 },
       ],
       { segments: 14, exponent: 2, capStart: true, capEnd: true },
     );
-    ctx.add(drink, ctx.solid('#c8452e', SURFACE.gloss, bone('cup')), xf([p.x, p.y + 0.04, p.z]));
+    ctx.add(drink, ctx.solid('#d4472c', SURFACE.gloss, bone('cup')), xf(centre, up));
+    const rim = loft(
+      [
+        { y: 0.046, w: 0.079, d: 0.079 },
+        { y: 0.078, w: 0.083, d: 0.083 },
+      ],
+      { segments: 14, exponent: 2 },
+    );
+    ctx.add(rim, ctx.solid('#e8f3f6', SURFACE.gloss, bone('cup')), xf(centre, up));
+    const base = loft(
+      [
+        { y: -0.078, w: 0.07, d: 0.07 },
+        { y: -0.06, w: 0.071, d: 0.071 },
+      ],
+      { segments: 14, exponent: 2, capStart: true },
+    );
+    ctx.add(base, ctx.solid('#e8f3f6', SURFACE.gloss, bone('cup')), xf(centre, up));
+    ctx.add(tube([new Vector3(p.x + 0.012, p.y + 0.015, p.z + 0.03), new Vector3(p.x + 0.026, p.y + 0.004, p.z + 0.15)], { radius: 0.006, radial: 5 }), ctx.solid('#f6b90b', SURFACE.plastic, bone('cup')));
   }
   // Laptop on the lap (relative to hips).
   {

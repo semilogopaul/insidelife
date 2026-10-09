@@ -5,6 +5,8 @@ import type { At, Deg, FurniturePlacement, HomeSlot, NpcSpot, Spot } from './typ
 
 /** Mattress top of the kit beds (×1.5): where a sleeping avatar lies. */
 export const BED_TOP = 0.4;
+/** Kit bar stools (×1.5) are 0.65 m tall: someone on one sits this much higher than on a chair. */
+export const BAR_STOOL_LIFT = 0.29;
 /** Kit sofas sit a touch lower than chairs. */
 export const SOFA_SEAT_DROP = -0.02;
 

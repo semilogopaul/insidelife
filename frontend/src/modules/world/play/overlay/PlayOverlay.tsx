@@ -1,40 +1,16 @@
 'use client';
 
 import { ExternalLink } from 'lucide-react';
-import { useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Button, Sheet } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useWorld } from '@/common/game/world-store';
+import { useTouchUi } from '@/common/hooks/use-touch-ui';
 import { cn } from '@/common/utils/cn';
 import type { WorldPresence } from '../flow/use-play-bridge';
 import { tagElements, usePlayUi, type RemoteTag } from '../state/play-ui-store';
 import { DriveControls } from './DriveControls';
 import { PointerLayer } from './PointerLayer';
-
-const COARSE_QUERY = '(pointer: coarse)';
-
-function subscribeCoarse(listener: () => void): () => void {
-  try {
-    const query = window.matchMedia(COARSE_QUERY);
-    query.addEventListener('change', listener);
-    return () => query.removeEventListener('change', listener);
-  } catch {
-    return () => undefined;
-  }
-}
-
-function coarseSnapshot(): boolean {
-  try {
-    return window.matchMedia(COARSE_QUERY).matches || navigator.maxTouchPoints > 0;
-  } catch {
-    return false;
-  }
-}
-
-/** Touch-first device (phones, tablets): show on-screen controls. */
-export function useTouchUi(): boolean {
-  return useSyncExternalStore(subscribeCoarse, coarseSnapshot, () => false);
-}
 
 function NameTag({ tag }: { readonly tag: RemoteTag }) {
   const ref = useCallback(

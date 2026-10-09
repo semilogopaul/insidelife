@@ -16,6 +16,7 @@ import {
   HOME_MANSION,
   HOME_SELF_CONTAIN,
 } from '../templates/catalog/homes';
+import { getTemplate } from '../templates/registry';
 import type { InteriorTemplateId } from '../templates/resolve';
 import type { InteriorTemplate } from '../templates/types';
 import type { HomeLayout } from './types';
@@ -198,7 +199,24 @@ export const HOME_LAYOUTS: Readonly<Record<Extract<InteriorTemplateId, `home-${s
   'home-mansion': MANSION_LAYOUT,
 };
 
-/** The walkable layout of a home template (null for venues, which keep the dollhouse). */
+/** The walkable layout of a home template (null for venues). */
 export function homeLayoutFor(templateId: string): HomeLayout | null {
   return (HOME_LAYOUTS as Readonly<Record<string, HomeLayout>>)[templateId] ?? null;
+}
+
+const VENUE_LAYOUTS = new Map<string, HomeLayout>();
+
+/**
+ * The walkable layout of any place: a home's rooms, or a venue's one room (its first door is the way out; open-air
+ * venues have none and you arrive at their default spot). Stable per template, so it can key effects.
+ */
+export function placeLayoutFor(templateId: InteriorTemplateId): HomeLayout {
+  const home = homeLayoutFor(templateId);
+  if (home) return home;
+  let layout = VENUE_LAYOUTS.get(templateId);
+  if (!layout) {
+    layout = singleRoom(getTemplate(templateId));
+    VENUE_LAYOUTS.set(templateId, layout);
+  }
+  return layout;
 }
