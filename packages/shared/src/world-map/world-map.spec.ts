@@ -12,6 +12,8 @@ import {
   districtBounds,
   findRoute,
   homeEntrance,
+  homeKey,
+  homeLotOf,
   homeLots,
   nearestRoadPoint,
   roadDistance,
@@ -150,6 +152,15 @@ describe('routing', () => {
     const b = findRoute(entranceOf('mmia-airport'), entranceOf('elegushi-beach'));
     expect(b).toEqual(a);
     expect(homeEntrance('abc', 'yaba')).toEqual(homeEntrance('abc', 'yaba'));
+  });
+
+  it('puts an owner who lives in their own house at that property’s lot', () => {
+    expect(homeKey('character-1', null)).toBe('character-1');
+    expect(homeKey('character-1', 'p-1')).toBe('property:p-1');
+    // The lot the city draws your house on is the lot your front door is on.
+    const lot = homeLotOf('property:p-1', 'lekki');
+    expect(lot?.kind).toBe('home');
+    expect(homeEntrance(homeKey('character-1', 'p-1'), 'lekki')).toEqual(lot?.entrance);
   });
 
   it('measures road distance along roads, never shorter than a straight line', () => {

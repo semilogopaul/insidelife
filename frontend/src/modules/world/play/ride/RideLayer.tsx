@@ -5,6 +5,7 @@ import {
   createRng,
   findRoute,
   homeEntrance,
+  homeKey,
   homeLocationId,
   venueEntrance,
   type CharacterSnapshotDto,
@@ -63,7 +64,7 @@ const DRIVERS: Partial<Record<RenderVehicleModel, { x: number; y: number; z: num
 
 function entranceOf(locationId: string, snapshot: CharacterSnapshotDto): WorldPoint | null {
   const { character } = snapshot;
-  if (locationId === homeLocationId(character.id)) return homeEntrance(character.id, character.homeDistrictId as DistrictId).position;
+  if (locationId === homeLocationId(character.id)) return homeEntrance(homeKey(character.id, character.homePropertyId), character.homeDistrictId as DistrictId).position;
   return venueEntrance(locationId)?.position ?? null;
 }
 

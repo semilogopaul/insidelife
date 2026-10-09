@@ -1,3 +1,4 @@
+import type { BlueprintId } from '../catalog/housing.js';
 import type { GameClockConfig } from '../time/clock.js';
 import type { GameMinute } from '../time/calendar.js';
 import type { NeedProfile, Needs } from '../needs/needs.js';
@@ -119,6 +120,18 @@ export interface ConditionSummaryDto {
   readonly diagnosed: boolean;
 }
 
+/** A plot or house you own, as the world draws it. */
+export interface OwnedPropertyMarkerDto {
+  readonly id: string;
+  readonly districtId: DistrictId;
+  readonly label: string;
+  /** Bare land, building site, or finished house. */
+  readonly stage: 'land' | 'construction' | 'built';
+  /** What's built or being built there. */
+  readonly blueprintId: BlueprintId | null;
+  readonly livedIn: boolean;
+}
+
 export interface CharacterSummaryDto {
   readonly job: { readonly title: string; readonly employer: string; readonly monthlyPay: number; readonly currency: 'NGN' | 'USD' } | null;
   readonly education: { readonly label: string; readonly institution: string | null; readonly status: string } | null;
@@ -129,6 +142,8 @@ export interface CharacterSummaryDto {
   readonly homeItems: readonly string[];
   /** Home-cooked meals in the kitchen (groceries stock it; Cook uses one). */
   readonly pantryMeals: number;
+  /** Land and houses you own, for the map and the city (each stands on `homeLotOf(\`property:<id>\`)`). */
+  readonly properties: readonly OwnedPropertyMarkerDto[];
   readonly conditions: readonly ConditionSummaryDto[];
   readonly netWorth: number;
 }
@@ -158,6 +173,8 @@ export interface CharacterDto {
   readonly connections: number;
   readonly locationId: string;
   readonly homeDistrictId: DistrictId;
+  /** Set while living in a house you built (see `homeKey`). */
+  readonly homePropertyId: string | null;
   readonly regionId: RegionId;
   /** Daily habits the autopilot keeps while the player is away. */
   readonly habits: readonly Habit[];

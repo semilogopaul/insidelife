@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Bike, Bus, Car, CarTaxiFront, Footprints, MapPin, Navigation } from 'lucide-react';
+import { Bike, Bus, Car, CarTaxiFront, Construction, Footprints, House, LandPlot, MapPin, Navigation } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   DISTRICTS,
@@ -9,6 +9,7 @@ import {
   findVenue,
   formatGameDuration,
   homeLocationId,
+  type OwnedPropertyMarkerDto,
   type TransportMode,
   type VenueDefinition,
   type VenueType,
@@ -32,6 +33,12 @@ const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readon
   { label: 'Fun', types: ['bar', 'club', 'beach', 'park', 'cinema', 'event-centre', 'gym'] },
   { label: 'Services', types: ['estate-agency', 'airport', 'motor-park', 'church', 'mosque'] },
 ];
+
+const STAGE: Readonly<Record<OwnedPropertyMarkerDto['stage'], { readonly icon: typeof Bus; readonly label: string }>> = {
+  land: { icon: LandPlot, label: 'Your land' },
+  construction: { icon: Construction, label: 'Building site' },
+  built: { icon: House, label: 'Your house' },
+};
 
 const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: Bike, keke: CarTaxiFront, danfo: Bus, brt: Bus, bolt: CarTaxiFront, car: Car };
 
@@ -57,6 +64,10 @@ export function MapApp() {
   }
   const { data: snapshot } = useSnapshot();
   const venues = useMemo(() => VENUES.filter((venue) => !venue.regionId && CATEGORIES[category]!.types.includes(venue.type)), [category]);
+  const setDestination = useNavigation((state) => state.setDestination);
+  const closePhone = useUi((state) => state.closePhone);
+  // Land and houses you own but don't live in (where you live is Home): GPS only, rides go to venues and home.
+  const properties = (snapshot?.summary.properties ?? []).filter((property) => !property.livedIn);
 
   if (selected) return <Destination target={selected} onBack={() => setSelected(null)} homeId={snapshot ? homeLocationId(snapshot.character.id) : null} />;
 
@@ -71,6 +82,39 @@ export function MapApp() {
           <span className="text-sm text-text-soft">{snapshot ? DISTRICTS[snapshot.character.homeDistrictId].name : ''}</span>
         </span>
       </button>
+      {properties.length > 0 && (
+        <ul className="flex flex-col gap-2" aria-label="Your properties">
+          {properties.map((property) => {
+            const stage = STAGE[property.stage];
+            return (
+              <li key={property.id}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDestination(`property:${property.id}`, property.label);
+                    gameEvents.emit('sfx', { id: 'ui-success' });
+                    closePhone();
+                  }}
+                  className="flex w-full items-center gap-3 rounded-card bg-paper-2 p-3 text-left hover:bg-paper-3"
+                >
+                  <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ink text-on-ink">
+                    <stage.icon size={20} aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-bold">{property.label}</span>
+                    <span className="block truncate text-sm text-text-soft">
+                      {stage.label} · {DISTRICTS[property.districtId].name}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-1 text-sm font-bold text-text-soft">
+                    <Navigation size={16} aria-hidden /> GPS
+                  </span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
       <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Place categories">
         {CATEGORIES.map((item, index) => (
           <button

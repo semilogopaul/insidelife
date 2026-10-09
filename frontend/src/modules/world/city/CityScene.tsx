@@ -2,24 +2,30 @@
 
 import { useFrame } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo } from 'react';
+import { useSnapshot } from '@/common/game/snapshot';
 import { useCityKits } from './assets/use-city-kits';
-import { cityPlan, type CityPlan } from './layout/placements';
+import type { CityPlan } from './layout/placements';
+import { useCityPlan, useOwnedLots } from './layout/use-city-plan';
 import type { QualityProfile } from './lib/quality';
 import { createCityMaterial } from './materials/city-materials';
 import { Atmosphere } from './render/Atmosphere';
 import { ChunkGrid } from './render/chunks';
 import { Ground } from './render/Ground';
 import { KitBatch } from './render/KitBatch';
+import { OwnedProperties } from './render/OwnedProperties';
 import { Sky } from './render/Sky';
 import { Water } from './render/Water';
 import { CityDetails } from './render/CityDetails';
 
 /**
  * The open-world city: atmosphere, sky, water and ground render immediately; the Kenney kits stream in behind
- * (Suspense) and appear as five BatchedMeshes culled/LOD-switched per 64 m chunk.
+ * (Suspense) and appear as five BatchedMeshes culled/LOD-switched per 64 m chunk. Your own land and houses replace
+ * whatever stood on their lots.
  */
 export function CityScene({ quality }: { readonly quality: QualityProfile }) {
-  const plan = useMemo(() => cityPlan(), []);
+  const plan = useCityPlan();
+  const owned = useOwnedLots();
+  const character = useSnapshot().data?.character;
   return (
     <>
       <Atmosphere quality={quality} />
@@ -30,6 +36,7 @@ export function CityScene({ quality }: { readonly quality: QualityProfile }) {
         <CityKits plan={plan} quality={quality} />
       </Suspense>
       <CityDetails plan={plan} quality={quality} />
+      {character && owned.length > 0 && <OwnedProperties owned={owned} owner={character} shadows={quality.shadows} />}
     </>
   );
 }

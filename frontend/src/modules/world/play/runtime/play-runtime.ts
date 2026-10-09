@@ -79,7 +79,7 @@ export class PlayRuntime {
   readonly controller: PlayerController;
   readonly rig = new CameraRig();
   readonly traffic: TrafficSim;
-  readonly colliders: ColliderGrid;
+  private grid: ColliderGrid;
   readonly ride: RidePose = { x: 0, y: 0.1, z: 0, heading: 0, speed: 0, active: false, onFoot: false, seat: null };
   readonly frustum = new Frustum();
   mode: PlayMode = 'walk';
@@ -107,11 +107,23 @@ export class PlayRuntime {
   private events: PlayRuntimeEvents = { onStep: () => undefined, onExitedCar: () => undefined };
 
   constructor(options: PlayRuntimeOptions) {
-    this.colliders = options.colliders;
+    this.grid = options.colliders;
     this.reducedMotion = options.reducedMotion;
     this.controller = new PlayerController(options.colliders, options.x, options.z, options.heading);
     this.traffic = new TrafficSim(cityLaneGraph(), options.trafficCapacity, options.seed);
     this.rig.snapClear({ x: options.x, y: 0, z: options.z, heading: options.heading, speed: 0 }, options.colliders);
+  }
+
+  /** Swap the static colliders (the city plan changed: land bought, a house finished). */
+  setColliders(colliders: ColliderGrid): void {
+    if (colliders === this.grid) return;
+    this.grid = colliders;
+    this.controller.setColliders(colliders);
+  }
+
+  /** The static city colliders in use. */
+  get colliders(): ColliderGrid {
+    return this.grid;
   }
 
   // ----- Registration (from React) ----------------------------------------------------------------------------------

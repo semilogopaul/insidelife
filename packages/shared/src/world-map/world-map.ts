@@ -1,7 +1,7 @@
 import type { DistrictId } from '../catalog/geography.js';
 import { findVenue } from '../catalog/venues.js';
 import { hashString } from '../random/rng.js';
-import { cityDistrictAt, districtBounds, homeLots, venueLot } from './city-map.js';
+import { cityDistrictAt, districtBounds, homeLots, venueLot, type CityLot } from './city-map.js';
 import { nearestRoadPoint, routeDistance } from './routing.js';
 import type { Entrance, WorldPoint } from './types.js';
 
@@ -104,10 +104,23 @@ export function venueEntrance(venueId: string): Entrance | null {
 }
 
 /** Front door of a character's home in a district (deterministic lot per character; neighbours may share a lot). */
-export function homeEntrance(characterId: string, districtId: DistrictId): Entrance {
+/**
+ * Which house a home is: the character id for family and rented homes, `property:<id>` when they live in a house
+ * they built. Server and clients hash the same key, so routes, rides, the door ring and the 3D house all agree.
+ */
+export function homeKey(characterId: string, homePropertyId: string | null | undefined): string {
+  return homePropertyId ? `property:${homePropertyId}` : characterId;
+}
+
+/** The home lot a key lands on in a district (null when the district has no home lots). */
+export function homeLotOf(key: string, districtId: DistrictId): CityLot | null {
   const lots = homeLots(districtId);
-  const pick = lots[hashString(`home:${characterId}`) % Math.max(1, lots.length)];
-  return pick?.entrance ?? districtFallbackEntrance(districtId, `home:${characterId}`);
+  return lots[hashString(`home:${key}`) % Math.max(1, lots.length)] ?? null;
+}
+
+/** Front door of a home (`key` from `homeKey`). */
+export function homeEntrance(key: string, districtId: DistrictId): Entrance {
+  return homeLotOf(key, districtId)?.entrance ?? districtFallbackEntrance(districtId, `home:${key}`);
 }
 
 /** District containing a world point (points outside the city snap to the nearest edge cell). */

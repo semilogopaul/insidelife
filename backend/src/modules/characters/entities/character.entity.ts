@@ -171,6 +171,10 @@ export class CharacterEntity {
   @Column({ type: 'varchar', length: 24 })
   homeDistrictId: DistrictId;
 
+  /** The owned property (land or building) the player lives in, so the city shows their own house. */
+  @Column({ type: 'uuid', nullable: true })
+  homePropertyId: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   activity: ActivityState | null;
 

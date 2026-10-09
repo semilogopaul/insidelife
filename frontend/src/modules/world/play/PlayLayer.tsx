@@ -1,6 +1,6 @@
 'use client';
 
-import { homeEntrance, type DistrictId, type DrivenVehicleDto } from '@insidelife/shared';
+import { homeEntrance, homeKey, type DistrictId, type DrivenVehicleDto } from '@insidelife/shared';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { Color, MeshBasicMaterial, PerspectiveCamera, RingGeometry } from 'three';
@@ -9,6 +9,7 @@ import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
 import { PAVEMENT_Y } from '../city/layout/placements';
+import { useCityPlan } from '../city/layout/use-city-plan';
 import { setProps } from '../city/lib/mutate';
 import type { QualityProfile } from '../city/lib/quality';
 import { BillboardTracker } from './billboards/BillboardTracker';
@@ -121,10 +122,11 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
   const fuelPrice = useWorldState().data?.economy.fuelPrice ?? 1350;
   const invertSteering = useUi((state) => state.settings.invertSteering);
   const travel = snapshot?.travel ?? null;
+  const plan = useCityPlan();
 
   const homeDoor = useMemo<Door | null>(() => {
     if (!character) return null;
-    const entrance = homeEntrance(character.id, character.homeDistrictId as DistrictId);
+    const entrance = homeEntrance(homeKey(character.id, character.homePropertyId), character.homeDistrictId as DistrictId);
     return { locationId: `home:${character.id}`, name: 'Home', x: entrance.position.x, z: entrance.position.z };
   }, [character]);
 
@@ -134,7 +136,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
   const [runtime] = useState(
     () =>
       new PlayRuntime({
-        colliders: cityColliders(),
+        colliders: cityColliders(plan),
         trafficCapacity: TRAFFIC[quality.tier],
         seed: characterId ?? 'sandbox',
         reducedMotion: prefersReducedMotion(),
@@ -143,6 +145,9 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
         heading: start.heading,
       }),
   );
+  useEffect(() => {
+    runtime.setColliders(cityColliders(plan));
+  }, [runtime, plan]);
   const [remotes] = useState(() => new RemotePlayers());
   const [blobs] = useState(() => new BlobShadows(PEDESTRIANS.high + REMOTE_BLOBS));
   const [car, setCar] = useState<DrivenVehicleDto | null>(start.car?.vehicle ?? null);

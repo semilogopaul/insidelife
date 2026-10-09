@@ -198,6 +198,7 @@ export class SuccessionService {
       locationId: homeLocationId(id),
       regionId: 'lagos',
       homeDistrictId: deceased.homeDistrictId,
+      homePropertyId: deceased.homePropertyId,
       activity: null,
       travel: null,
       settledAt: ctx.time,

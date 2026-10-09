@@ -89,10 +89,14 @@ export function buildObstacles(plan: CityPlan): Aabb[] {
   return boxes;
 }
 
-let grid: ColliderGrid | null = null;
+const grids = new WeakMap<CityPlan, ColliderGrid>();
 
-/** The city's static collider grid (built lazily once per page, ≈ a few ms). */
-export function cityColliders(): ColliderGrid {
-  grid ??= new ColliderGrid(buildObstacles(cityPlan()));
+/** The static collider grid of a city plan (built lazily once per plan, ≈ a few ms). */
+export function cityColliders(plan: CityPlan = cityPlan()): ColliderGrid {
+  let grid = grids.get(plan);
+  if (!grid) {
+    grid = new ColliderGrid(buildObstacles(plan));
+    grids.set(plan, grid);
+  }
   return grid;
 }

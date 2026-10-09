@@ -5,6 +5,7 @@ import {
   findRoute,
   findVenue,
   homeEntrance,
+  homeKey,
   homeLocationId,
   straightDistance,
   turnByTurn,
@@ -21,6 +22,7 @@ import { gameEvents } from '@/common/game/game-events';
 import { useNavigation, type NavigationInstruction } from '@/common/game/navigation-store';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useWorld } from '@/common/game/world-store';
+import { ownedLots } from '../city/layout/owned-lots';
 import { DestinationBeacon } from './DestinationBeacon';
 import { etaSeconds, instructionText, projectOnRoute, upcomingManeuver, VoicePrompter, type TravelMode } from './guidance';
 import { livePose, livePoseFresh } from './live-pose';
@@ -46,11 +48,13 @@ interface Destination {
   readonly entrance: Entrance;
 }
 
-/** Resolves a navigation destination id to a door (venues, or the player's own home). */
+/** Resolves a navigation destination id to a door (venues, the player's own home, or `property:<id>` they own). */
 export function resolveDestination(id: string, name: string | null, snapshot: CharacterSnapshotDto | undefined): Destination | null {
   if (snapshot && id === homeLocationId(snapshot.character.id)) {
-    return { id, name: name ?? 'home', entrance: homeEntrance(snapshot.character.id, snapshot.character.homeDistrictId as DistrictId) };
+    return { id, name: name ?? 'home', entrance: homeEntrance(homeKey(snapshot.character.id, snapshot.character.homePropertyId), snapshot.character.homeDistrictId as DistrictId) };
   }
+  const owned = snapshot ? ownedLots(snapshot.summary.properties).find(({ property }) => `property:${property.id}` === id) : undefined;
+  if (owned?.lot.entrance) return { id, name: name ?? owned.property.label, entrance: owned.lot.entrance };
   const entrance = venueEntrance(id);
   if (!entrance) return null;
   return { id, name: name ?? findVenue(id)?.name ?? 'your destination', entrance };
@@ -65,7 +69,7 @@ function playerPoint(fallback: WorldPoint | null): WorldPoint | null {
 function startFallback(snapshot: CharacterSnapshotDto | undefined): WorldPoint | null {
   if (!snapshot) return null;
   const { character } = snapshot;
-  if (character.locationId === homeLocationId(character.id)) return homeEntrance(character.id, character.homeDistrictId as DistrictId).position;
+  if (character.locationId === homeLocationId(character.id)) return homeEntrance(homeKey(character.id, character.homePropertyId), character.homeDistrictId as DistrictId).position;
   return venueEntrance(character.locationId)?.position ?? null;
 }
 

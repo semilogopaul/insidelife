@@ -36,7 +36,7 @@ export class PlayerController {
   locomotion: Locomotion = 'walk';
   /** Metres driven since the counter was last reset (fuel estimate). */
   driven = 0;
-  private readonly colliders: ColliderGrid;
+  private colliders: ColliderGrid;
   /** Dynamic obstacle circles (x, z, r) refreshed every frame. */
   private readonly dynamic = new Float32Array(MAX_DYNAMIC * 3);
   private dynamicCount = 0;
@@ -51,14 +51,14 @@ export class PlayerController {
       surfaceAt,
       groundHeightAt,
       resolve: (p, radius) => {
-        colliders.resolveCircle(p, radius);
+        this.colliders.resolveCircle(p, radius);
         this.resolveDynamic(p, radius, true);
       },
     };
     this.driveWorld = {
       surfaceAt,
       resolve: (p, radius, out) => {
-        const moved = colliders.resolveCircle(p, radius, out);
+        const moved = this.colliders.resolveCircle(p, radius, out);
         const beforeX = p.x;
         const beforeZ = p.z;
         if (this.resolveDynamic(p, radius, false)) {
@@ -69,6 +69,11 @@ export class PlayerController {
         return moved;
       },
     };
+  }
+
+  /** The city changed under us (your own house went up): collide with the new plan from now on. */
+  setColliders(colliders: ColliderGrid): void {
+    this.colliders = colliders;
   }
 
   // ----- Dynamic obstacles ------------------------------------------------------------------------------------------

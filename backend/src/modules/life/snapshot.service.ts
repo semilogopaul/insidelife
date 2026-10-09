@@ -93,6 +93,7 @@ export class SnapshotService {
       connections: Math.round(c.connections),
       locationId: c.locationId,
       homeDistrictId: c.homeDistrictId,
+      homePropertyId: c.homePropertyId,
       regionId: c.regionId,
       habits: c.habits ?? [],
     };
@@ -126,6 +127,7 @@ export class SnapshotService {
       children: 0,
       homeItems: [],
       pantryMeals: character.pantryMeals,
+      properties: [],
       conditions: [],
       netWorth: character.netWorth,
     };

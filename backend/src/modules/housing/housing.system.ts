@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { DISTRICTS, FAMILY_HINT_AGE, isFloodDay, type ProfileContext } from '@insidelife/shared';
+import { DISTRICTS, FAMILY_HINT_AGE, isFloodDay, type OwnedPropertyMarkerDto, type ProfileContext } from '@insidelife/shared';
 import type { SimulationSystem, SummaryContribution } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
@@ -78,7 +78,27 @@ export class HousingSystem implements SimulationSystem, OnModuleInit {
   async summarize(ctx: SimulationContext): Promise<SummaryContribution> {
     const home = await this.homes.current(ctx);
     const comfort = await this.comfort.breakdown(ctx);
-    return { home: { label: home.label, districtId: home.districtId, comfort: Math.round(comfort.total), ownership: home.ownership } };
+    return {
+      home: { label: home.label, districtId: home.districtId, comfort: Math.round(comfort.total), ownership: home.ownership },
+      properties: await this.markers(ctx),
+    };
+  }
+
+  /** Your land and houses, for the city map: bare land, a building site, or the finished house. */
+  private async markers(ctx: SimulationContext): Promise<OwnedPropertyMarkerDto[]> {
+    const portfolio = await this.store.portfolio(ctx);
+    return portfolio.properties.map((property) => {
+      const building = this.store.buildingOf(portfolio, property.id);
+      const standing = building && building.status !== 'demolished' ? building : null;
+      return {
+        id: property.id,
+        districtId: property.districtId,
+        label: property.label,
+        stage: !standing ? 'land' : standing.status === 'complete' ? 'built' : 'construction',
+        blueprintId: standing?.blueprintId ?? null,
+        livedIn: ctx.character.homePropertyId === property.id,
+      };
+    });
   }
 
   /** Land and buildings at valuation, plus the caution deposit the landlord is holding. */

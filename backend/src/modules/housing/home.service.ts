@@ -93,6 +93,7 @@ export class HomeService {
 
     ctx.character.homeDistrictId =
       to.kind === 'family' ? residence.familyDistrictId : to.kind === 'rented' ? to.lease.districtId : to.property.districtId;
+    ctx.character.homePropertyId = to.kind === 'owned' ? to.property.id : null;
     ctx.invalidate('residence');
     ctx.invalidate('profile-context');
   }

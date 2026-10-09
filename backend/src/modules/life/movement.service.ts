@@ -9,6 +9,7 @@ import {
   findVenue,
   formatGameDuration,
   homeEntrance,
+  homeKey,
   homeLocationId,
   isHomeLocation,
   isStreetLocation,
@@ -212,7 +213,9 @@ export class MovementService {
   private entranceOf(ctx: SimulationContext, locationId: string): Entrance | null {
     if (isHomeLocation(locationId)) {
       const ownerId = locationId.slice('home:'.length);
-      return ownerId === ctx.character.id ? homeEntrance(ownerId, ctx.character.homeDistrictId as DistrictId) : null;
+      return ownerId === ctx.character.id
+        ? homeEntrance(homeKey(ownerId, ctx.character.homePropertyId), ctx.character.homeDistrictId as DistrictId)
+        : null;
     }
     return venueEntrance(locationId);
   }

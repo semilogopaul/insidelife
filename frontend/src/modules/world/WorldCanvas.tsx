@@ -3,6 +3,7 @@
 import {
   findVenue,
   homeEntrance,
+  homeKey,
   homeLocationId,
   isHomeLocation,
   isStreetLocation,
@@ -35,7 +36,7 @@ function spawnPoint(snapshot: CharacterSnapshotDto | undefined): WorldPoint {
   if (!snapshot) return DEFAULT_FOCUS;
   const { character } = snapshot;
   const locationId = snapshot.travel?.toLocationId ?? character.locationId;
-  if (locationId === homeLocationId(character.id)) return homeEntrance(character.id, character.homeDistrictId as DistrictId).position;
+  if (locationId === homeLocationId(character.id)) return homeEntrance(homeKey(character.id, character.homePropertyId), character.homeDistrictId as DistrictId).position;
   if (findVenue(locationId)) return venueEntrance(locationId)?.position ?? DEFAULT_FOCUS;
   return DEFAULT_FOCUS;
 }

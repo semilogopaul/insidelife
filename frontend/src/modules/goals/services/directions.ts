@@ -2,6 +2,7 @@ import {
   VENUES,
   districtBounds,
   homeEntrance,
+  homeKey,
   isHomeLocation,
   isVenueOpen,
   streetDistrict,
@@ -49,11 +50,13 @@ export function playerPoint(input: {
   readonly live: WorldPoint | null;
   readonly locationId: string;
   readonly characterId: string;
+  readonly homePropertyId: string | null;
   readonly homeDistrictId: DistrictId;
 }): WorldPoint {
   if (input.live) return input.live;
-  if (isHomeLocation(input.locationId)) return homeEntrance(input.characterId, input.homeDistrictId).position;
+  const home = (): WorldPoint => homeEntrance(homeKey(input.characterId, input.homePropertyId), input.homeDistrictId).position;
+  if (isHomeLocation(input.locationId)) return home();
   const street = streetDistrict(input.locationId);
   if (street) return districtBounds(street).centre;
-  return venueEntrance(input.locationId)?.position ?? homeEntrance(input.characterId, input.homeDistrictId).position;
+  return venueEntrance(input.locationId)?.position ?? home();
 }

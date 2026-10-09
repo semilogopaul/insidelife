@@ -7,8 +7,9 @@ import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
 import { cn } from '@/common/utils/cn';
 import { livePose, livePoseFresh } from '../navigation/live-pose';
+import { useOwnedLots } from '../city/layout/use-city-plan';
 import { activeRoute } from '../navigation/route-state';
-import { cityRaster, RASTER_PX_PER_METRE, venueIcons, type MapIcon } from './map-raster';
+import { cityRaster, propertyIcons, RASTER_PX_PER_METRE, venueIcons, type MapIcon } from './map-raster';
 
 /**
  * Heading-up minimap: the pre-rendered city raster rotated around the player, the remaining GPS route, the
@@ -170,7 +171,16 @@ export function Minimap({ className }: { readonly className?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const north = useRef<HTMLSpanElement>(null);
   const openPhone = useUi((state) => state.openPhone);
-  const icons = useMemo(() => venueIcons(), []);
+  const owned = useOwnedLots();
+  const icons = useMemo(
+    () => [
+      ...venueIcons(),
+      ...propertyIcons(
+        owned.map(({ lot, property }) => ({ x: (lot.footprint.minX + lot.footprint.maxX) / 2, z: (lot.footprint.minZ + lot.footprint.maxZ) / 2, name: property.label, livedIn: property.livedIn })),
+      ),
+    ],
+    [owned],
+  );
   const { street, district } = usePlaceLabel();
 
   useEffect(() => {

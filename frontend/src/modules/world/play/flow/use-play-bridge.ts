@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import {
   districtAt,
   homeEntrance,
+  homeKey,
   homeLocationId,
   isStreetLocation,
   streetLocationId,
@@ -33,7 +34,7 @@ export type WorldPresence = 'outside' | 'inside' | 'riding';
 
 function entranceOf(locationId: string, snapshot: CharacterSnapshotDto): Entrance | null {
   const { character } = snapshot;
-  if (locationId === homeLocationId(character.id)) return homeEntrance(character.id, character.homeDistrictId as DistrictId);
+  if (locationId === homeLocationId(character.id)) return homeEntrance(homeKey(character.id, character.homePropertyId), character.homeDistrictId as DistrictId);
   return venueEntrance(locationId);
 }
 

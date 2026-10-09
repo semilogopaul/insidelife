@@ -46,6 +46,7 @@ export function useGoalDirections() {
       live: useWorld.getState().position,
       locationId: snapshot.character.locationId,
       characterId: snapshot.character.id,
+      homePropertyId: snapshot.character.homePropertyId,
       homeDistrictId: snapshot.character.homeDistrictId,
     });
     const nearest = nearestVenueOfTypes(types, from, toDateParts(gameClock.now()).hour);

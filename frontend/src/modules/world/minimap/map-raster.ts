@@ -121,6 +121,11 @@ const ICON: Readonly<Record<LotArchetype, readonly [string, string]>> = {
   school: ['#2457d6', 'S'],
 };
 
+/** Your land and houses: a gold house where you live, green for the rest. */
+export function propertyIcons(owned: readonly { readonly x: number; readonly z: number; readonly name: string; readonly livedIn: boolean }[]): MapIcon[] {
+  return owned.map((place) => ({ x: place.x, z: place.z, color: place.livedIn ? '#d99c00' : '#1a8a4a', glyph: '⌂', name: place.name }));
+}
+
 export function venueIcons(): readonly MapIcon[] {
   const icons: MapIcon[] = [];
   for (const lot of CITY_MAP.lots) {
