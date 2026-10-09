@@ -208,7 +208,7 @@ export class CharacterEntity {
   @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
   unearnedTotal: number;
 
-  /** Paystack top-ups (subset of unearned). */
+  /** Real-money top-ups (subset of unearned). */
   @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
   purchasedTotal: number;
 

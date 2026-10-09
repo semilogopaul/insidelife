@@ -7,15 +7,14 @@ import { errorMessage } from '@/common/api/api-error';
 import { Button, Money, TextField } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { useCreateCampaign } from '../../hooks/use-promote';
-import { addDays, firstOpenStart, formatDay, formatRange, quoteBillboard, rangeAvailability, validateDisplayText, validateLink, validateTitle } from '../../services/rules';
+import { addDays, formatRunDays, quoteWeeks, validateDisplayText, validateLink, validateTitle } from '../../services/rules';
 import type { SlotCatalog } from '../../services/slot-views';
+import { ContentRules } from '../shared';
 
 /** Phone apps: the one-line pitch on the app page (the server allows the same). */
 const TAGLINE_MAX = 60;
-import { ContentRules } from '../shared';
-import { AvailabilityCalendar } from './AvailabilityCalendar';
 
-const LENGTHS = [1, 3, 7, 14, 30] as const;
+const weeksLabel = (weeks: number): string => (weeks === 1 ? '1 week' : `${weeks} weeks`);
 
 export interface DetailsStepProps {
   readonly slot: BillboardSlotDto;
@@ -23,38 +22,35 @@ export interface DetailsStepProps {
   readonly creative: CreativeDto;
 }
 
-/** Title, https link, start date and length (with the weekly discount), the rules, then pay. */
+/** Title, https link, how many weeks (the run starts on the slot's next free day), the rules, then pay. */
 export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
   const isApp = slot.kind === 'phone-app';
   const [title, setTitle] = useState('');
   const [tagline, setTagline] = useState('');
   const [link, setLink] = useState('https://');
   const [touched, setTouched] = useState({ title: false, tagline: false, link: false });
-  const [days, setDays] = useState(7);
-  const [start, setStart] = useState(() => firstOpenStart(slot.availability, catalog.today, 7) ?? catalog.today);
+  const [weeks, setWeeks] = useState(1);
   const [accepted, setAccepted] = useState(false);
   const create = useCreateCampaign();
 
   const titleCheck = validateTitle(title);
   const taglineCheck = isApp ? validateDisplayText(tagline, 'Tagline', 3, TAGLINE_MAX) : null;
   const linkCheck = validateLink(link);
-  const quote = quoteBillboard(slot.pricePerDayKobo, days);
-  const range = rangeAvailability(slot.availability, start, days);
-  const lastStart = addDays(catalog.today, catalog.maxLeadDays);
-  const dateProblem = start < catalog.today ? 'Pick today or a later date.' : start > lastStart ? `Bookings can start up to ${formatDay(lastStart)}.` : range.fullDays.length > 0 ? `The board is full on ${range.fullDays.map(formatDay).join(', ')}. Pick other dates.` : null;
-  const ready = titleCheck.ok && (taglineCheck?.ok ?? true) && linkCheck.ok && quote !== null && dateProblem === null && accepted;
+  const quote = quoteWeeks(slot.weekPriceKobo, weeks);
+  const start = slot.nextStarts[weeks - 1] ?? null;
+  const ready = titleCheck.ok && (taglineCheck?.ok ?? true) && linkCheck.ok && quote !== null && start !== null && accepted;
   const leaving = create.isPending || create.isSuccess;
 
   const pay = (): void => {
-    if (!ready || !titleCheck.ok || !linkCheck.ok) return;
+    if (!ready || !titleCheck.ok || !linkCheck.ok || !start) return;
     create.mutate({
       slotId: slot.id,
       creativeKey: creative.creativeKey,
       title: titleCheck.value,
       ...(taglineCheck?.ok ? { tagline: taglineCheck.value } : {}),
       linkUrl: linkCheck.value,
-      startDate: start,
-      days,
+      weeks,
+      expectedStartDate: start,
     });
   };
 
@@ -101,70 +97,48 @@ export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
 
       <fieldset className="flex flex-col gap-2.5">
         <legend className="mb-1 flex items-center gap-1.5 text-sm font-bold">
-          <CalendarDays size={16} aria-hidden /> When should it run?
+          <CalendarDays size={16} aria-hidden /> How many weeks?
         </legend>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Number of days">
-          {LENGTHS.map((length) => (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Number of weeks">
+          {Array.from({ length: catalog.maxWeeks }, (_, index) => index + 1).map((length) => (
             <button
               key={length}
               type="button"
-              aria-pressed={days === length}
-              onClick={() => setDays(length)}
-              className={cn('h-9 rounded-full px-3 text-sm font-bold ring-1', days === length ? 'bg-ink text-on-ink ring-ink' : 'bg-paper ring-line hover:bg-paper-2')}
+              aria-pressed={weeks === length}
+              onClick={() => setWeeks(length)}
+              className={cn('h-9 rounded-full px-3 text-sm font-bold ring-1', weeks === length ? 'bg-ink text-on-ink ring-ink' : 'bg-paper ring-line hover:bg-paper-2')}
             >
-              {length === 1 ? '1 day' : length === 7 ? '1 week' : length === 14 ? '2 weeks' : `${length} days`}
+              {weeksLabel(length)}
             </button>
           ))}
-          <label className="flex h-9 items-center gap-1.5 rounded-full bg-paper px-3 text-sm ring-1 ring-line">
-            <span className="sr-only">Custom number of days</span>
-            <input
-              type="number"
-              min={catalog.minDays}
-              max={catalog.maxDays}
-              value={days}
-              onChange={(event) => setDays(Math.min(catalog.maxDays, Math.max(catalog.minDays, Math.round(Number(event.target.value) || catalog.minDays))))}
-              className="w-10 bg-transparent text-center font-bold tabular-nums focus:outline-none"
-            />
-            days
-          </label>
         </div>
-        <label className="flex items-center justify-between gap-3 text-sm">
-          <span className="font-bold">Start date</span>
-          <input
-            type="date"
-            min={catalog.today}
-            max={lastStart}
-            value={start}
-            onChange={(event) => event.target.value && setStart(event.target.value)}
-            className="h-10 rounded-card bg-paper-2 px-3 font-bold ring-1 ring-line"
-          />
-        </label>
-        <AvailabilityCalendar days={slot.availability} selection={{ start, days }} onPick={setStart} />
-        <p className={cn('flex gap-1.5 text-sm', dateProblem ? 'font-bold text-okada' : 'text-text-soft')}>
-          {dateProblem && <TriangleAlert size={16} aria-hidden className="mt-0.5 shrink-0" />}
-          {dateProblem ??
-            `Runs ${formatRange(start, addDays(start, days))}.${range.unknownDays > 0 ? ` ${range.unknownDays} of those days are past the calendar above — we confirm them when you pay.` : ''}`}
+        <p className={cn('flex gap-1.5 text-sm', start ? 'font-bold' : 'font-bold text-okada')} aria-live="polite">
+          {!start && <TriangleAlert size={16} aria-hidden className="mt-0.5 shrink-0" />}
+          {start
+            ? `Runs ${formatRunDays(start, addDays(start, weeks * 7))}`
+            : `No room for ${weeksLabel(weeks)} in the next two months. Try fewer weeks or another board.`}
         </p>
+        {start && (
+          <p className="text-xs text-text-soft">
+            Your ad starts on this board’s next free day ({start === catalog.today ? 'today' : 'the day the earlier booking ends'}) and runs for the
+            weeks you pick, back to back.
+          </p>
+        )}
       </fieldset>
 
       {quote && (
         <dl className="grid grid-cols-[1fr_auto] gap-y-1 rounded-card bg-paper p-3.5 text-sm ring-1 ring-line">
           <dt className="text-text-soft">
-            <Money amount={quote.unitNaira} /> × {days} {days === 1 ? 'day' : 'days'}
+            <Money amount={quote.weekNaira} /> × {weeksLabel(quote.weeks)}
           </dt>
           <dd className="tabular text-right">
-            <Money amount={quote.subtotalNaira} />
+            <Money amount={quote.totalNaira} />
           </dd>
-          <dt className="text-text-soft">Weekly discount ({catalog.weeklyDiscountPercent}% off full weeks)</dt>
-          <dd className="tabular text-right text-naira">{quote.discountNaira > 0 ? <>−<Money amount={quote.discountNaira} /></> : '—'}</dd>
           <div aria-hidden className="col-span-2 my-0.5 border-t border-line" />
           <dt className="self-center font-bold">Total (real money)</dt>
           <dd className="type-figure text-right text-2xl">
             <Money amount={quote.totalNaira} />
           </dd>
-          {quote.discountNaira === 0 && days < 7 && (
-            <dd className="col-span-2 text-xs text-text-soft">Book 7 days or more and every full week is {catalog.weeklyDiscountPercent}% cheaper.</dd>
-          )}
         </dl>
       )}
 

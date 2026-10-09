@@ -13,9 +13,10 @@ const ABANDON_AFTER_MS = 24 * 60 * MINUTE_MS;
 const RETRY_FULFILMENT_FOR_MS = 7 * 24 * 60 * MINUTE_MS;
 
 /**
- * Safety net for lost webhooks and failed fulfilments: every two minutes it retries paid-but-undelivered payments,
- * re-verifies stale in-flight checkouts with the gateway, and marks day-old unpaid checkouts abandoned. Everything it
- * calls is idempotent and row-locked, so several instances sweeping at once is harmless.
+ * Safety net for lost webhooks, closed tabs and failed fulfilments: every two minutes it retries paid-but-undelivered
+ * payments, sends refunds that were owed but never sent, re-verifies in-flight checkouts older than 10 minutes with
+ * the gateway (Flutterwave `verify_by_reference`), and marks day-old unpaid checkouts abandoned. Everything it calls
+ * is idempotent and row-locked, so several instances sweeping at once is harmless.
  */
 @Injectable()
 export class CheckoutReconciler implements OnApplicationBootstrap, OnModuleDestroy {
@@ -47,6 +48,8 @@ export class CheckoutReconciler implements OnApplicationBootstrap, OnModuleDestr
         take: BATCH,
       });
       for (const payment of undelivered) await this.checkout.fulfill(payment.reference);
+
+      await this.checkout.sendDueRefunds(BATCH);
 
       const stale = await this.payments.find({
         where: {

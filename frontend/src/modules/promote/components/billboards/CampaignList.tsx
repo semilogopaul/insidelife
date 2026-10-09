@@ -38,7 +38,10 @@ export function CampaignList({ slots, onBrowse }: { readonly slots: readonly Bil
   );
 }
 
-const aspectFor = (slots: readonly BillboardSlotDto[], slotId: string): string => {
+/** "2 weeks" (bookings are whole weeks; older bookings may be any number of days). */
+const runLength = (days: number): string => (days % 7 === 0 ? (days === 7 ? '1 week' : `${days / 7} weeks`) : days === 1 ? '1 day' : `${days} days`);
+
+const aspectFor =(slots: readonly BillboardSlotDto[], slotId: string): string => {
   const slot = slots.find((item) => item.id === slotId);
   return slot ? `${slot.width} / ${slot.height}` : '3 / 1';
 };
@@ -65,7 +68,7 @@ function CampaignCard({ campaign, aspect }: { readonly campaign: AdCampaignDto; 
             {campaign.slotName} · {formatRange(campaign.startDate, campaign.endDate)}
           </p>
           <p className="text-xs text-text-soft">
-            <Money amount={koboToNaira(campaign.amountKobo)} /> · {campaign.days} {campaign.days === 1 ? 'day' : 'days'}
+            <Money amount={koboToNaira(campaign.amountKobo)} /> · {runLength(campaign.days)}
           </p>
         </div>
       </div>

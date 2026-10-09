@@ -3,56 +3,70 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, LessThanOrEqual, MoreThan, type DataSource, type EntityManager, type Repository } from 'typeorm';
 import {
+  AD_MAX_WEEKS,
+  AD_PLACEMENT_KINDS,
   AD_SLOTS,
-  BILLBOARD_MAX_DAYS,
+  AD_WEEK_DAYS,
   BILLBOARD_MAX_LEAD_DAYS,
-  BILLBOARD_MIN_DAYS,
   BILLBOARD_ROTATION_SECONDS,
-  BILLBOARD_WEEKLY_DISCOUNT_PERCENT,
   PROMOTION_CONTENT_RULES,
   PROMOTION_TITLE_MAX,
-  billboardQuote,
+  adQuote,
+  adWeekPriceLabel,
+  adWeeksProblem,
   findAdSlot,
-  formatNaira,
-  koboToNaira,
   phoneAppSlotNumber,
   type AdCampaignDto,
+  type AdPlacementKind,
   type AdSlot,
   type BillboardHouseAdDto,
-  type BillboardSlot,
   type BillboardSlotsDto,
   type CampaignCheckoutDto,
+  type ClubSongOfferDto,
+  type IsoDate,
   type LiveBillboardSlotDto,
   type LiveBillboardsDto,
   type LivePhoneAppDto,
+  type PromotionQuote,
   type PromotionStatus,
 } from '@insidelife/shared';
 import type { AppConfig } from '../../config/configuration.js';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
-import { CHECKOUT_PORT, type CheckoutPort, type CheckoutSession, type PaidCheckout } from '../../common/ports/checkout.port.js';
+import {
+  CHECKOUT_PORT,
+  type CheckoutPort,
+  type CheckoutRefund,
+  type CheckoutSession,
+  type FulfilmentResult,
+  type PaidCheckout,
+} from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
+import { AdRatesService, type AdPricing } from './ad-rates.service.js';
 import { CreativeService } from './creative.service.js';
 import type { CreateCampaignDto } from './dto/campaign.dto.js';
 import { AdCampaignEntity } from './entities/ad-campaign.entity.js';
 import { appendModerationLog } from './moderation-log.js';
-import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN, WINDOW_MESSAGES } from './promotions.constants.js';
+import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN } from './promotions.constants.js';
 import { clockAt, toCampaignDto, type Clock } from './promotions.mappers.js';
-import { autoRefundNotice, paidNotice, type NoticeSubject } from './promotions.notices.js';
+import { autoRefundNotice, paidNotice, refundedNotice, type NoticeSubject } from './promotions.notices.js';
+import { applyRefundToItem } from './promotion-refunds.js';
 import { PromotionStateException, PromotionRuleException } from './promotions.errors.js';
 import { PromotionsNotifier } from './promotions-notifier.service.js';
 import { validateDisplayText, validatePromotionLink } from './rules/content.rules.js';
-import { bookingWindowProblem, dailyOccupancy, firstFullDay, rangeOf, type DateRange } from './rules/schedule.rules.js';
+import { firstFullDay, nextFreeStart, rangeOf, type DateRange } from './rules/schedule.rules.js';
 import { admitAfterPayment, COMMITTED_STATUSES, matchPayment } from './rules/status.rules.js';
+import type { Buyer } from './promotions.types.js';
 import { CachedValue } from './util/cached-value.js';
+import { assertExpectedStart } from './util/dates.js';
 
 /** Unpaid bookings (live holds) per account, so nobody can squat on every board. */
 const MAX_UNPAID_HOLDS = 3;
-/** Days of availability shown per slot in the Billboards app. */
-const AVAILABILITY_DAYS = 28;
 /** Phone app taglines (the line under the app name). */
 const TAGLINE_MAX = 60;
+/** Bookings that can affect a new run: from today to the latest possible end of one. */
+const SCHEDULE_HORIZON_DAYS = BILLBOARD_MAX_LEAD_DAYS + AD_MAX_WEEKS * AD_WEEK_DAYS;
 
 interface LiveBillboards {
   readonly dto: LiveBillboardsDto;
@@ -60,12 +74,21 @@ interface LiveBillboards {
   readonly links: ReadonlyMap<string, string>;
 }
 
-const houseAd = (slot: BillboardSlot): BillboardHouseAdDto => ({
+const houseAd = (slot: AdSlot, weekPriceKobo: number): BillboardHouseAdDto => ({
   headline: 'Your ad here',
   body: 'Open the Billboards app on your phone to put your brand on this board.',
-  priceLabel: `From ${formatNaira(koboToNaira(slot.pricePerDayKobo))}/day`,
+  priceLabel: adWeekPriceLabel(weekPriceKobo),
   action: { type: 'open-phone-app', app: 'billboards', slotId: slot.id },
 });
+
+/** The server's price for `weeks` consecutive weeks on a slot at its current rate. */
+function quoteFor(pricing: AdPricing, slot: AdSlot, weeks: number): PromotionQuote {
+  try {
+    return adQuote(pricing.weekPriceKobo(slot), weeks);
+  } catch (error) {
+    throw new PromotionRuleException('INVALID_LENGTH', error instanceof RangeError ? error.message : 'That booking length isn’t available');
+  }
+}
 
 const subjectOf = (campaign: AdCampaignEntity): NoticeSubject => ({
   noun: 'Billboard',
@@ -75,9 +98,13 @@ const subjectOf = (campaign: AdCampaignEntity): NoticeSubject => ({
 
 /**
  * Ad bookings on every slot in `AD_SLOTS` (premium and street billboards, shelters, lightboxes, Lagos TV, phone apps):
- * availability, booking + checkout, payment fulfilment, the public live feed for the 3D world and the phone, and the
- * lazy approved → live → completed transition (no cron: effective status is derived from dates, and the stored status
- * is reconciled whenever the live feed refreshes).
+ * prices and next free dates, booking + checkout, payment fulfilment, the public live feed for the 3D world and the
+ * phone, and the lazy approved → live → completed transition (no cron: effective status is derived from dates, and the
+ * stored status is reconciled whenever the live feed refreshes).
+ *
+ * Booking rule: 1–4 consecutive weeks, starting on the slot's next free day — today when the whole run fits, else the
+ * day the earliest blocking booking ends — so a slot's runs follow each other with no gaps. The buyer never picks
+ * dates; the price is the slot's current weekly rate (`AdRatesService`), stored on the booking when it is made.
  */
 @Injectable()
 export class CampaignsService implements OnModuleInit {
@@ -94,6 +121,7 @@ export class CampaignsService implements OnModuleInit {
     private readonly creatives: CreativeService,
     private readonly directory: CharacterDirectory,
     private readonly notifier: PromotionsNotifier,
+    private readonly rates: AdRatesService,
     config: ConfigService<AppConfig, true>,
   ) {
     const phoneApps = config.get('ads', { infer: true }).phoneAppSlots;
@@ -107,30 +135,36 @@ export class CampaignsService implements OnModuleInit {
   }
 
   onModuleInit(): void {
-    this.checkout.registerFulfiller({ purpose: 'billboard', fulfill: (payment) => this.applyPayment(payment) });
+    this.checkout.registerFulfiller({
+      purpose: 'billboard',
+      fulfill: (payment) => this.applyPayment(payment),
+      onRefunded: (payment, refund) => this.applyRefund(payment, refund),
+    });
+    // The live feed shows prices on empty boards: refresh it as soon as a rate changes on any node.
+    this.rates.onChange(() => this.live.invalidate());
   }
 
-  async slots(): Promise<BillboardSlotsDto> {
+  /** Every slot for sale with its current weekly price and the start date of a 1…4-week booking made now. */
+  async slots(clubSong: ClubSongOfferDto): Promise<BillboardSlotsDto> {
     const clock = clockAt();
-    const window = rangeOf(clock.today, AVAILABILITY_DAYS);
-    const bookings = await this.activeBookings(this.campaigns.manager, window, clock.now);
+    const [bookings, pricing] = await Promise.all([
+      this.activeBookings(this.campaigns.manager, rangeOf(clock.today, SCHEDULE_HORIZON_DAYS), clock.now),
+      this.rates.pricing(),
+    ]);
     const bySlot = new Map<string, AdCampaignEntity[]>();
     for (const booking of bookings) bySlot.set(booking.slotId, [...(bySlot.get(booking.slotId) ?? []), booking]);
-    const free = Array.from({ length: AVAILABILITY_DAYS }, () => 0);
+    const freeNow = Array.from({ length: AD_MAX_WEEKS }, () => clock.today);
     return {
       today: clock.today,
-      availabilityDays: AVAILABILITY_DAYS,
-      minDays: BILLBOARD_MIN_DAYS,
-      maxDays: BILLBOARD_MAX_DAYS,
-      maxLeadDays: BILLBOARD_MAX_LEAD_DAYS,
-      weeklyDiscountPercent: BILLBOARD_WEEKLY_DISCOUNT_PERCENT,
+      maxWeeks: AD_MAX_WEEKS,
       rules: PROMOTION_CONTENT_RULES.filter((rule) => rule.appliesTo !== 'music'),
-      // Static details (name, price, format…) come from the shared catalog on the client; only state travels.
+      clubSong,
+      // Static details (name, format, description…) come from the shared catalog on the client; state and price travel.
       slots: this.forSale.map((slot) => {
         const mine = bySlot.get(slot.id);
-        if (!mine) return { id: slot.id, occupancy: free, liveCount: 0 };
+        if (!mine) return { id: slot.id, weekPriceKobo: pricing.weekPriceKobo(slot), nextStarts: freeNow, liveCount: 0 };
         const liveCount = mine.filter((booking) => (booking.status === 'approved' || booking.status === 'live') && booking.startDate <= clock.today).length;
-        return { id: slot.id, occupancy: dailyOccupancy(mine, window.startDate, AVAILABILITY_DAYS), liveCount };
+        return { id: slot.id, weekPriceKobo: pricing.weekPriceKobo(slot), nextStarts: this.nextStarts(mine, slot, clock.today), liveCount };
       }),
     };
   }
@@ -138,13 +172,10 @@ export class CampaignsService implements OnModuleInit {
   async create(user: AuthUser, request: CreateCampaignDto): Promise<CampaignCheckoutDto> {
     const slot = this.slotForSale(request.slotId);
     if (!slot) throw new ResourceNotFoundException('Billboard');
+    const weeksProblem = adWeeksProblem(request.weeks);
+    if (weeksProblem) throw new PromotionRuleException('INVALID_LENGTH', weeksProblem);
     const clock = clockAt();
-    const problem = bookingWindowProblem(request.startDate, request.days, clock.today, {
-      minDays: BILLBOARD_MIN_DAYS,
-      maxDays: BILLBOARD_MAX_DAYS,
-      maxLeadDays: BILLBOARD_MAX_LEAD_DAYS,
-    });
-    if (problem) throw new PromotionRuleException('INVALID_DATES', WINDOW_MESSAGES[problem]);
+    const quote = quoteFor(await this.rates.pricing(), slot, request.weeks);
     const title = validateDisplayText(request.title, 'Title', 3, PROMOTION_TITLE_MAX);
     if (!title.ok) throw new PromotionRuleException('INVALID_TITLE', title.reason);
     const link = validatePromotionLink(request.linkUrl);
@@ -157,8 +188,6 @@ export class CampaignsService implements OnModuleInit {
     }
 
     const creative = await this.creatives.requireOwnedFor(user.userId, request.creativeKey, slot);
-    const quote = billboardQuote(slot, request.days);
-    const range = rangeOf(request.startDate, request.days);
     const character = await this.directory.findLivingByUser(user.userId);
 
     const campaign = await withTransaction(this.dataSource, async (manager) => {
@@ -167,8 +196,11 @@ export class CampaignsService implements OnModuleInit {
         where: { ownerUserId: user.userId, status: 'pending-payment', holdExpiresAt: MoreThan(clock.now) },
       });
       if (unpaid >= MAX_UNPAID_HOLDS) throw new PromotionRuleException('TOO_MANY_UNPAID', 'Pay for or cancel your unpaid bookings first');
-      const full = firstFullDay(await this.activeBookings(manager, range, clock.now, slot.id), range, slot.maxConcurrentAds);
-      if (full) throw new PromotionRuleException('SLOT_FULL', `${slot.name} is fully booked on ${full}. Pick other dates or another board`);
+      const booked = await this.activeBookings(manager, rangeOf(clock.today, SCHEDULE_HORIZON_DAYS), clock.now, slot.id);
+      const startDate = nextFreeStart(booked, clock.today, quote.days, slot.maxConcurrentAds, BILLBOARD_MAX_LEAD_DAYS);
+      if (!startDate) throw new PromotionRuleException('SLOT_FULL', `${slot.name} is fully booked for the next two months. Try another board`);
+      assertExpectedStart(request.expectedStartDate, startDate, slot.name);
+      const range = rangeOf(startDate, quote.days);
       return manager.save(
         manager.create(AdCampaignEntity, {
           ownerUserId: user.userId,
@@ -181,7 +213,7 @@ export class CampaignsService implements OnModuleInit {
           linkUrl: link.value,
           startDate: range.startDate,
           endDate: range.endDate,
-          days: request.days,
+          days: quote.days,
           amountKobo: quote.totalKobo,
           status: 'pending-payment',
           holdExpiresAt: new Date(clock.now.getTime() + CHECKOUT_HOLD_MINUTES * 60_000),
@@ -189,7 +221,7 @@ export class CampaignsService implements OnModuleInit {
       );
     });
 
-    const session = await this.startCheckout(user, character?.id ?? null, campaign, slot);
+    const session = await this.startCheckout(user, character, campaign, slot);
     return {
       campaignId: campaign.id,
       reference: session.reference,
@@ -244,17 +276,24 @@ export class CampaignsService implements OnModuleInit {
 
   // ----- Internals --------------------------------------------------------------------------------------------------
 
-  private async startCheckout(user: AuthUser, characterId: string | null, campaign: AdCampaignEntity, slot: BillboardSlot): Promise<CheckoutSession> {
-    const plural = campaign.days === 1 ? 'day' : 'days';
+  /** `nextStarts[w - 1]` for a w-week booking on a slot with these bookings (see `nextFreeStart`). */
+  private nextStarts(bookings: readonly DateRange[], slot: AdSlot, today: IsoDate): (IsoDate | null)[] {
+    return Array.from({ length: AD_MAX_WEEKS }, (_, index) => nextFreeStart(bookings, today, (index + 1) * AD_WEEK_DAYS, slot.maxConcurrentAds, BILLBOARD_MAX_LEAD_DAYS));
+  }
+
+  private async startCheckout(user: AuthUser, character: Buyer | null, campaign: AdCampaignEntity, slot: AdSlot): Promise<CheckoutSession> {
+    const weeks = Math.round(campaign.days / AD_WEEK_DAYS);
+    const plural = weeks === 1 ? 'week' : 'weeks';
     let session: CheckoutSession;
     try {
       session = await this.checkout.start({
         userId: user.userId,
         email: user.email,
-        characterId,
+        customerName: character ? `@${character.handle}` : undefined,
+        characterId: character?.id ?? null,
         purpose: 'billboard',
         amountKobo: campaign.amountKobo,
-        description: `Inside Life billboard: ${slot.name}, ${campaign.days} ${plural} from ${campaign.startDate}`.slice(0, 120),
+        description: `Inside Life ad: ${slot.name}, ${weeks} ${plural} from ${campaign.startDate}`.slice(0, 120),
         subjectId: campaign.id,
       });
     } catch (error) {
@@ -282,24 +321,25 @@ export class CampaignsService implements OnModuleInit {
 
   /**
    * Checkout fulfiller for 'billboard'. Idempotent by reference; never throws for permanent problems (unknown
-   * campaign, duplicate payment) so the payments module doesn't retry forever — those are logged for ops instead.
+   * campaign, duplicate payment, sold-out dates) so the payments module doesn't retry forever — it refunds those
+   * payments automatically instead (see `applyRefund`).
    */
-  private async applyPayment(payment: PaidCheckout): Promise<void> {
+  private async applyPayment(payment: PaidCheckout): Promise<FulfilmentResult> {
     if (!UUID_PATTERN.test(payment.subjectId)) {
-      this.logger.error({ reference: payment.reference, subjectId: payment.subjectId }, 'Billboard payment for a malformed campaign id; refund manually');
-      return;
+      this.logger.error({ reference: payment.reference, subjectId: payment.subjectId }, 'Billboard payment for a malformed campaign id; refunding');
+      return { kind: 'refund', reason: 'Payment for an unknown booking' };
     }
     const clock = clockAt();
     const result = await withTransaction(this.dataSource, async (manager) => {
       const campaign = await manager.findOne(AdCampaignEntity, { where: { id: payment.subjectId }, lock: { mode: 'pessimistic_write' } });
       if (!campaign) {
-        this.logger.error({ reference: payment.reference, campaignId: payment.subjectId }, 'Billboard payment for an unknown campaign; refund manually');
-        return null;
+        this.logger.error({ reference: payment.reference, campaignId: payment.subjectId }, 'Billboard payment for an unknown campaign; refunding');
+        return { kind: 'refund', reason: 'Payment for an unknown booking' } as const;
       }
       const match = matchPayment(campaign, payment.reference);
-      if (match === 'already-fulfilled') return null;
+      if (match === 'already-fulfilled') return { kind: 'delivered' } as const;
       if (match === 'duplicate') {
-        this.logger.error({ reference: payment.reference, campaignId: campaign.id }, 'Second payment for an already-paid campaign; refund manually');
+        this.logger.error({ reference: payment.reference, campaignId: campaign.id }, 'Second payment for an already-paid campaign; refunding it');
         await appendModerationLog(manager, {
           subjectType: 'campaign',
           subjectId: campaign.id,
@@ -307,9 +347,9 @@ export class CampaignsService implements OnModuleInit {
           fromStatus: campaign.status,
           toStatus: campaign.status,
           paymentReference: payment.reference,
-          reason: 'Duplicate payment — refund this reference in Paystack',
+          reason: 'Duplicate payment — refunded automatically',
         });
-        return null;
+        return { kind: 'refund', reason: 'Duplicate payment for a booking that was already paid' } as const;
       }
 
       await advisoryLock(manager, `promotions:billboard:${campaign.slotId}`);
@@ -344,16 +384,27 @@ export class CampaignsService implements OnModuleInit {
         paymentReference: payment.reference,
         reason: admission.kind === 'refund' ? admission.reason : null,
       });
-      return { campaign, admission };
+      return { kind: 'applied', campaign, admission } as const;
     });
 
-    if (!result) return;
+    if (result.kind !== 'applied') return result;
     const { campaign, admission } = result;
     this.logger.log({ campaignId: campaign.id, reference: payment.reference, status: campaign.status }, 'Billboard payment applied');
     await this.notifier.notifyOwner(
       campaign.ownerUserId,
       admission.kind === 'review' ? paidNotice(subjectOf(campaign)) : autoRefundNotice(subjectOf(campaign), admission.reason),
     );
+    return admission.kind === 'review' ? { kind: 'delivered' } : { kind: 'refund', reason: admission.reason };
+  }
+
+  /** `onRefunded` for 'billboard' payments: settle the booking (see `applyRefundToItem`) and tell the buyer. */
+  private async applyRefund(payment: PaidCheckout, refund: CheckoutRefund): Promise<void> {
+    if (!UUID_PATTERN.test(payment.subjectId)) return;
+    const applied = await applyRefundToItem(this.dataSource, AdCampaignEntity, 'campaign', payment, refund);
+    if (applied?.settlement.kind !== 'refunded') return;
+    if (applied.settlement.takenDown) this.invalidateLive();
+    this.logger.log({ campaignId: applied.item.id, reference: payment.reference, refundId: refund.refundId }, 'Billboard booking refunded');
+    await this.notifier.notifyOwner(applied.item.ownerUserId, refundedNotice(subjectOf(applied.item), refund.amountKobo));
   }
 
   /** Bookings that take a place on their dates: paid & not refused, or unpaid with a live hold. */
@@ -386,10 +437,13 @@ export class CampaignsService implements OnModuleInit {
     } catch (error) {
       this.logger.warn({ err: error }, 'Billboard status reconcile failed; serving by date anyway');
     }
-    const running = await this.campaigns.find({
-      where: { status: In(['approved', 'live']), startDate: LessThanOrEqual(clock.today), endDate: MoreThan(clock.today) },
-      order: { paidAt: 'ASC', id: 'ASC' },
-    });
+    const [running, pricing] = await Promise.all([
+      this.campaigns.find({
+        where: { status: In(['approved', 'live']), startDate: LessThanOrEqual(clock.today), endDate: MoreThan(clock.today) },
+        order: { paidAt: 'ASC', id: 'ASC' },
+      }),
+      this.rates.pricing(),
+    ]);
     const links = new Map<string, string>();
     const bySlot = new Map<string, AdCampaignEntity[]>();
     for (const campaign of running) bySlot.set(campaign.slotId, [...(bySlot.get(campaign.slotId) ?? []), campaign]);
@@ -414,9 +468,19 @@ export class CampaignsService implements OnModuleInit {
         rotationSeconds: BILLBOARD_ROTATION_SECONDS,
         creatives,
         hasSpace: creatives.length < slot.maxConcurrentAds,
-        houseAd: houseAd(slot),
+        houseAd: houseAd(slot, pricing.weekPriceKobo(slot)),
       });
     }
-    return { dto: { generatedAt: clock.now.toISOString(), slots, phoneApps }, links };
+    return { dto: { generatedAt: clock.now.toISOString(), slots, phoneApps, priceLabels: this.kindPriceLabels(pricing) }, links };
+  }
+
+  /** "From ₦3,500/week" per street placement kind (its cheapest spot), for the empty faces drawn by the client. */
+  private kindPriceLabels(pricing: AdPricing): Partial<Record<AdPlacementKind, string>> {
+    const labels: Partial<Record<AdPlacementKind, string>> = {};
+    for (const kind of AD_PLACEMENT_KINDS) {
+      const prices = this.forSale.filter((slot) => slot.kind === kind).map((slot) => pricing.weekPriceKobo(slot));
+      if (prices.length > 0) labels[kind] = `From ${adWeekPriceLabel(Math.min(...prices))}`;
+    }
+    return labels;
   }
 }

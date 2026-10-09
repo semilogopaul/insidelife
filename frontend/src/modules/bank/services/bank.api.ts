@@ -1,4 +1,5 @@
 import type {
+  CreateTopupRequest,
   LedgerEntryDto,
   Paginated,
   PaymentDto,
@@ -7,7 +8,6 @@ import type {
   PlayerSearchResultDto,
   SavingsTransferRequest,
   TopupCatalogDto,
-  TopupPackageId,
   TopupStartedDto,
   TransferRequest,
   TransferResultDto,
@@ -30,7 +30,10 @@ export const bankApi = {
 
   packages: () => api.get<TopupCatalogDto>('/payments/packages'),
   payments: () => api.get<PaymentDto[]>('/payments'),
-  startTopup: (packageId: TopupPackageId) => api.post<TopupStartedDto>('/payments/topups', { packageId }),
-  verify: (reference: string) => api.post<PaymentVerificationDto>(`/payments/${encodeURIComponent(reference)}/verification`),
+  /** A pack (`{ packageId }`) or any whole-naira amount (`{ amountNgn }`); the server quotes the rate. */
+  startTopup: (body: CreateTopupRequest) => api.post<TopupStartedDto>('/payments/topups', body),
+  /** `transactionId`: Flutterwave's `transaction_id` from the redirect (a hint; the server reads the charge back itself). */
+  verify: (reference: string, transactionId?: string) =>
+    api.post<PaymentVerificationDto>(`/payments/${encodeURIComponent(reference)}/verification`, transactionId ? { transactionId } : {}),
   sandbox: (reference: string, outcome: 'succeed' | 'fail') => api.post<PaymentVerificationDto>(`/payments/sandbox/${encodeURIComponent(reference)}/${outcome}`),
 };

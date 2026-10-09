@@ -23,8 +23,9 @@ export class CreateClubOrderDto implements CreateClubOrderRequest {
   @MaxLength(64, { each: true })
   readonly clubs?: string[];
 
+  /** The start date the artist was shown; the server refuses if the rotation's next free day moved later. */
   @IsOptional()
   @IsString()
-  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'startDate must be YYYY-MM-DD' })
-  readonly startDate?: string;
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'expectedStartDate must be YYYY-MM-DD' })
+  readonly expectedStartDate?: string;
 }

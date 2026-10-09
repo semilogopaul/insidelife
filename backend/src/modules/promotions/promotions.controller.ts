@@ -34,8 +34,8 @@ export class PromotionsController {
   ) {}
 
   @Get('slots')
-  slots(): Promise<BillboardSlotsDto> {
-    return this.campaigns.slots();
+  async slots(): Promise<BillboardSlotsDto> {
+    return this.campaigns.slots(await this.tracks.offer());
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

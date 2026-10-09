@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MINUTES_PER_DAY, type LedgerEntryDto } from '@insidelife/shared';
+import { MINUTES_PER_DAY, type LedgerEntryDto, type PaymentDto } from '@insidelife/shared';
 import { dayLabel, filterEntries, groupByDay } from '../services/statement';
 import { isPaymentReference, outcomeCopy, paymentOutcome } from '../services/payment-status';
 
@@ -47,22 +47,31 @@ describe('payment outcome', () => {
     expect(paymentOutcome({ status: 'abandoned', fulfilled: false })).toBe('abandoned');
   });
 
+  const topup: PaymentDto = {
+    reference: 'x',
+    purpose: 'topup',
+    subjectId: 'owambe-pack',
+    description: 'Owambe',
+    amountNgn: 2_500,
+    amountKobo: 250_000,
+    status: 'success',
+    fulfilled: true,
+    channel: 'sandbox',
+    createdAt: '',
+    verifiedAt: null,
+    refundedNgn: 0,
+    topup: { packageId: 'owambe-pack', label: 'Owambe pack', ratePerNaira: 400, virtualAmount: 1_000_000 },
+  };
+
   it('says how much landed for a top-up', () => {
-    const copy = outcomeCopy({
-      reference: 'x',
-      purpose: 'topup',
-      subjectId: 'owambe-pack',
-      description: 'Owambe',
-      amountNgn: 2_500,
-      amountKobo: 250_000,
-      status: 'success',
-      fulfilled: true,
-      channel: 'sandbox',
-      createdAt: '',
-      verifiedAt: null,
-      topup: { packageId: 'owambe-pack', label: 'Owambe pack', virtualAmount: 1_000_000 },
+    expect(outcomeCopy(topup).title).toBe('₦1,000,000 added to your wallet');
+  });
+
+  it('says when a payment was refunded', () => {
+    expect(outcomeCopy({ ...topup, purpose: 'billboard', topup: null, amountNgn: 300_000, refundedNgn: 300_000 })).toEqual({
+      title: 'Payment refunded',
+      body: '₦300,000 went back to your card or bank. It can take a few working days to show.',
     });
-    expect(copy.title).toBe('₦1,000,000 added to your wallet');
   });
 
   it('accepts only UUID references from the URL', () => {

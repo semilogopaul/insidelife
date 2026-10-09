@@ -4,6 +4,7 @@ import { Brackets, In, IsNull, LessThanOrEqual, MoreThan, type DataSource, type 
 import {
   ARTIST_NAME_MAX,
   CLUB_PLAY_MAX_LEAD_DAYS,
+  CLUB_PLAY_PRODUCT,
   CLUB_ROTATION_CAPACITY,
   PROMOTION_TITLE_MAX,
   TRACK_MAX_BYTES,
@@ -13,38 +14,52 @@ import {
   isClubPlayVenue,
   type ClubOrderCheckoutDto,
   type ClubPlayProduct,
+  type ClubSongOfferDto,
   type ClubRotationDto,
   type ClubRotationTrackDto,
   type ClubTrackDto,
+  type IsoDate,
   type PromotionStatus,
 } from '@insidelife/shared';
 import { RateLimitedException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
-import { CHECKOUT_PORT, type CheckoutPort, type CheckoutSession, type PaidCheckout } from '../../common/ports/checkout.port.js';
+import {
+  CHECKOUT_PORT,
+  type CheckoutPort,
+  type CheckoutRefund,
+  type CheckoutSession,
+  type FulfilmentResult,
+  type PaidCheckout,
+} from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
+import { AdRatesService } from './ad-rates.service.js';
 import type { CreateClubOrderDto, UploadTrackDto } from './dto/track.dto.js';
 import { ClubPlayOrderEntity } from './entities/club-play-order.entity.js';
 import { ClubTrackEntity } from './entities/club-track.entity.js';
 import { inspectTrack } from './media/audio-inspector.js';
 import { appendModerationLog } from './moderation-log.js';
-import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN, WINDOW_MESSAGES } from './promotions.constants.js';
+import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN } from './promotions.constants.js';
 import { clockAt, toClubOrderDto, toTrackDto, type Clock } from './promotions.mappers.js';
-import { autoRefundNotice, paidNotice, type NoticeSubject } from './promotions.notices.js';
+import { autoRefundNotice, paidNotice, refundedNotice, type NoticeSubject } from './promotions.notices.js';
+import { applyRefundToItem } from './promotion-refunds.js';
 import { InvalidMediaException, PromotionRuleException, PromotionStateException } from './promotions.errors.js';
 import { PromotionsNotifier } from './promotions-notifier.service.js';
-import type { UploadedMedia } from './promotions.types.js';
+import type { Buyer, UploadedMedia } from './promotions.types.js';
 import { validateDisplayText } from './rules/content.rules.js';
 import { isTrackType, sniffMedia } from '../../common/media/media-sniff.js';
-import { bookingWindowProblem, firstFullClub, rangeOf, type DateRange } from './rules/schedule.rules.js';
+import { firstFullClub, nextFreeClubStart, rangeOf, type DateRange } from './rules/schedule.rules.js';
 import { admitAfterPayment, COMMITTED_STATUSES, matchPayment } from './rules/status.rules.js';
 import { StorageService } from '../../common/storage/storage.service.js';
 import { CachedValue } from './util/cached-value.js';
+import { assertExpectedStart } from './util/dates.js';
 
 const MAX_UNPAID_ORDERS = 3;
 const DAILY_TRACK_UPLOADS = 10;
 const ORDERS_PER_TRACK_SHOWN = 10;
 const ROTATION_LOCK = 'promotions:club-rotation';
+
+const allClubIds = (): string[] => clubPlayVenues().map((venue) => venue.id);
 
 interface Rotation {
   readonly generatedAt: string;
@@ -70,8 +85,9 @@ export const trackSubject = (track: Pick<ClubTrackEntity, 'artistName' | 'title'
 });
 
 /**
- * Club DJ: song uploads (validated MP3/OGG stored as-is), rotation orders + checkout, payment fulfilment and the
- * public per-club rotation feed. A track has at most one open order; ordering again replaces an unpaid one.
+ * Club DJ: song uploads (validated MP3/OGG under 5 minutes, stored as-is), rotation orders (one product: ₦5,000 for
+ * 7 days in every club and lounge) + checkout, payment fulfilment, refunds and the public per-club rotation feed.
+ * A track has at most one open order; ordering again replaces an unpaid one.
  */
 @Injectable()
 export class TracksService implements OnModuleInit {
@@ -86,10 +102,15 @@ export class TracksService implements OnModuleInit {
     private readonly storage: StorageService,
     private readonly directory: CharacterDirectory,
     private readonly notifier: PromotionsNotifier,
+    private readonly rates: AdRatesService,
   ) {}
 
   onModuleInit(): void {
-    this.checkout.registerFulfiller({ purpose: 'club-play', fulfill: (payment) => this.applyPayment(payment) });
+    this.checkout.registerFulfiller({
+      purpose: 'club-play',
+      fulfill: (payment) => this.applyPayment(payment),
+      onRefunded: (payment, refund) => this.applyRefund(payment, refund),
+    });
   }
 
   async upload(user: AuthUser, fields: UploadTrackDto, file: UploadedMedia | undefined): Promise<ClubTrackDto> {
@@ -147,12 +168,10 @@ export class TracksService implements OnModuleInit {
   async order(user: AuthUser, trackId: string, request: CreateClubOrderDto): Promise<ClubOrderCheckoutDto> {
     const product = findClubPlayProduct(request.productId);
     if (!product) throw new ResourceNotFoundException('Package');
-    const selection = this.resolveClubs(product, request.clubs);
+    const selection = this.resolveClubs(request.clubs);
     const clock = clockAt();
-    const startDate = request.startDate ?? clock.today;
-    const problem = bookingWindowProblem(startDate, product.days, clock.today, { minDays: product.days, maxDays: product.days, maxLeadDays: CLUB_PLAY_MAX_LEAD_DAYS });
-    if (problem) throw new PromotionRuleException('INVALID_DATES', WINDOW_MESSAGES[problem]);
-    const range = rangeOf(startDate, product.days);
+    // The price is quoted now and stored on the order: a later rate change never touches it.
+    const priceKobo = await this.rates.rateKobo('club-song');
     const character = await this.directory.findLivingByUser(user.userId);
 
     const { track, order } = await withTransaction(this.dataSource, async (manager) => {
@@ -173,12 +192,10 @@ export class TracksService implements OnModuleInit {
       if (unpaid >= MAX_UNPAID_ORDERS) throw new PromotionRuleException('TOO_MANY_UNPAID', 'Pay for or cancel your unpaid orders first');
       await this.cancelUnpaidOrders(manager, trackId, user.userId);
 
-      const targets = selection.allClubs ? clubPlayVenues().map((venue) => venue.id) : selection.clubs;
-      const full = firstFullClub(await this.activeOrders(manager, range, clock.now), targets, range, CLUB_ROTATION_CAPACITY);
-      if (full) {
-        const name = findVenue(full.club)?.name ?? full.club;
-        throw new PromotionRuleException('CLUB_FULL', `${name}’s rotation is full on ${full.date}. Pick other dates or another club`);
-      }
+      const startDate = await this.nextStart(manager, allClubIds(), clock, product.days);
+      if (!startDate) throw new PromotionRuleException('CLUB_FULL', 'Every club’s rotation is full for the next month. Try again in a few days');
+      assertExpectedStart(request.expectedStartDate, startDate, 'The club rotation');
+      const range = rangeOf(startDate, product.days);
 
       const created = await manager.save(
         manager.create(ClubPlayOrderEntity, {
@@ -191,7 +208,7 @@ export class TracksService implements OnModuleInit {
           startDate: range.startDate,
           endDate: range.endDate,
           days: product.days,
-          amountKobo: product.priceKobo,
+          amountKobo: priceKobo,
           status: 'pending-payment',
           holdExpiresAt: new Date(clock.now.getTime() + CHECKOUT_HOLD_MINUTES * 60_000),
         }),
@@ -199,14 +216,21 @@ export class TracksService implements OnModuleInit {
       return { track: owned, order: created };
     });
 
-    const session = await this.startCheckout(user, character?.id ?? null, track, order, product);
+    const session = await this.startCheckout(user, character, track, order, product);
     return {
       orderId: order.id,
       reference: session.reference,
       authorizationUrl: session.authorizationUrl,
-      quote: { days: product.days, unitPriceKobo: product.priceKobo, subtotalKobo: product.priceKobo, discountKobo: 0, totalKobo: product.priceKobo },
+      quote: { weeks: 1, days: product.days, weekPriceKobo: order.amountKobo, totalKobo: order.amountKobo },
       order: toClubOrderDto(order, clock),
     };
+  }
+
+  /** The Club DJ product as it can be bought now: current price and when an order placed now would start. */
+  async offer(): Promise<ClubSongOfferDto> {
+    const clock = clockAt();
+    const [priceKobo, startDate] = await Promise.all([this.rates.rateKobo('club-song'), this.nextStart(this.orders.manager, allClubIds(), clock, CLUB_PLAY_PRODUCT.days)]);
+    return { priceKobo, days: CLUB_PLAY_PRODUCT.days, startDate };
   }
 
   async rotation(venueId: string): Promise<ClubRotationDto> {
@@ -226,17 +250,10 @@ export class TracksService implements OnModuleInit {
 
   // ----- Internals --------------------------------------------------------------------------------------------------
 
-  private resolveClubs(product: ClubPlayProduct, clubs: readonly string[] | undefined): ClubSelection {
-    const requested = clubs ?? [];
-    if (product.scope === 'all-clubs') {
-      if (requested.some((club) => club !== 'all')) throw new PromotionRuleException('INVALID_CLUBS', 'This package plays in every club — no need to pick one');
-      return { allClubs: true, clubs: [] };
-    }
-    const [venueId] = requested;
-    if (requested.length !== 1 || venueId === undefined || !isClubPlayVenue(venueId)) {
-      throw new PromotionRuleException('INVALID_CLUBS', 'Pick one club or lounge for this package');
-    }
-    return { allClubs: false, clubs: [venueId] };
+  /** Every order plays in every club and lounge (older single-club orders still play where they were booked). */
+  private resolveClubs(clubs: readonly string[] | undefined): ClubSelection {
+    if ((clubs ?? []).some((club) => club !== 'all')) throw new PromotionRuleException('INVALID_CLUBS', 'Your song plays in every club and lounge — no need to pick one');
+    return { allClubs: true, clubs: [] };
   }
 
   /** A new order replaces the track's unpaid ones (their late payments are still honoured or refunded). */
@@ -248,13 +265,14 @@ export class TracksService implements OnModuleInit {
     }
   }
 
-  private async startCheckout(user: AuthUser, characterId: string | null, track: ClubTrackEntity, order: ClubPlayOrderEntity, product: ClubPlayProduct): Promise<CheckoutSession> {
+  private async startCheckout(user: AuthUser, character: Buyer | null, track: ClubTrackEntity, order: ClubPlayOrderEntity, product: ClubPlayProduct): Promise<CheckoutSession> {
     let session: CheckoutSession;
     try {
       session = await this.checkout.start({
         userId: user.userId,
         email: user.email,
-        characterId,
+        customerName: character ? `@${character.handle}` : undefined,
+        characterId: character?.id ?? null,
         purpose: 'club-play',
         amountKobo: order.amountKobo,
         description: `Inside Life club play: ${track.artistName} – ${track.title} (${product.name})`.slice(0, 120),
@@ -283,23 +301,23 @@ export class TracksService implements OnModuleInit {
     }
   }
 
-  /** Checkout fulfiller for 'club-play'. Same contract as the billboard fulfiller (idempotent, no permanent throws). */
-  private async applyPayment(payment: PaidCheckout): Promise<void> {
+  /** Checkout fulfiller for 'club-play'. Same contract as the billboard fulfiller (idempotent, refunds instead of throwing). */
+  private async applyPayment(payment: PaidCheckout): Promise<FulfilmentResult> {
     if (!UUID_PATTERN.test(payment.subjectId)) {
-      this.logger.error({ reference: payment.reference, subjectId: payment.subjectId }, 'Club-play payment for a malformed order id; refund manually');
-      return;
+      this.logger.error({ reference: payment.reference, subjectId: payment.subjectId }, 'Club-play payment for a malformed order id; refunding');
+      return { kind: 'refund', reason: 'Payment for an unknown order' };
     }
     const clock = clockAt();
     const result = await withTransaction(this.dataSource, async (manager) => {
       const order = await manager.findOne(ClubPlayOrderEntity, { where: { id: payment.subjectId }, lock: { mode: 'pessimistic_write' } });
       if (!order) {
-        this.logger.error({ reference: payment.reference, orderId: payment.subjectId }, 'Club-play payment for an unknown order; refund manually');
-        return null;
+        this.logger.error({ reference: payment.reference, orderId: payment.subjectId }, 'Club-play payment for an unknown order; refunding');
+        return { kind: 'refund', reason: 'Payment for an unknown order' } as const;
       }
       const match = matchPayment(order, payment.reference);
-      if (match === 'already-fulfilled') return null;
+      if (match === 'already-fulfilled') return { kind: 'delivered' } as const;
       if (match === 'duplicate') {
-        this.logger.error({ reference: payment.reference, orderId: order.id }, 'Second payment for an already-paid club order; refund manually');
+        this.logger.error({ reference: payment.reference, orderId: order.id }, 'Second payment for an already-paid club order; refunding it');
         await appendModerationLog(manager, {
           subjectType: 'club-order',
           subjectId: order.id,
@@ -307,9 +325,9 @@ export class TracksService implements OnModuleInit {
           fromStatus: order.status,
           toStatus: order.status,
           paymentReference: payment.reference,
-          reason: 'Duplicate payment — refund this reference in Paystack',
+          reason: 'Duplicate payment — refunded automatically',
         });
-        return null;
+        return { kind: 'refund', reason: 'Duplicate payment for an order that was already paid' } as const;
       }
 
       await advisoryLock(manager, ROTATION_LOCK);
@@ -348,14 +366,32 @@ export class TracksService implements OnModuleInit {
         paymentReference: payment.reference,
         reason: admission.kind === 'refund' ? admission.reason : null,
       });
-      return { order, track, admission };
+      return { kind: 'applied', order, track, admission } as const;
     });
 
-    if (!result) return;
+    if (result.kind !== 'applied') return result;
     const { order, track, admission } = result;
     this.logger.log({ orderId: order.id, reference: payment.reference, status: order.status }, 'Club-play payment applied');
     const subject = trackSubject(track, order);
     await this.notifier.notifyOwner(order.ownerUserId, admission.kind === 'review' ? paidNotice(subject) : autoRefundNotice(subject, admission.reason));
+    return admission.kind === 'review' ? { kind: 'delivered' } : { kind: 'refund', reason: admission.reason };
+  }
+
+  /** `onRefunded` for 'club-play' payments: settle the order (see `applyRefundToItem`) and tell the artist. */
+  private async applyRefund(payment: PaidCheckout, refund: CheckoutRefund): Promise<void> {
+    if (!UUID_PATTERN.test(payment.subjectId)) return;
+    const applied = await applyRefundToItem(this.dataSource, ClubPlayOrderEntity, 'club-order', payment, refund);
+    if (applied?.settlement.kind !== 'refunded') return;
+    if (applied.settlement.takenDown) this.invalidateRotation();
+    const track = await this.tracks.findOne({ where: { id: applied.item.trackId } });
+    this.logger.log({ orderId: applied.item.id, reference: payment.reference, refundId: refund.refundId }, 'Club order refunded');
+    await this.notifier.notifyOwner(applied.item.ownerUserId, refundedNotice(trackSubject(track, applied.item), refund.amountKobo));
+  }
+
+  /** First day a run of `days` fits in every one of `clubs` (today when they all have room), or null within 30 days. */
+  private async nextStart(manager: EntityManager, clubs: readonly string[], clock: Clock, days: number): Promise<IsoDate | null> {
+    const orders = await this.activeOrders(manager, rangeOf(clock.today, CLUB_PLAY_MAX_LEAD_DAYS + days), clock.now);
+    return nextFreeClubStart(orders, clubs, clock.today, days, CLUB_ROTATION_CAPACITY, CLUB_PLAY_MAX_LEAD_DAYS);
   }
 
   /** Orders that take a rotation place on their dates: paid & not refused, or unpaid with a live hold. */

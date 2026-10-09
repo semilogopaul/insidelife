@@ -1,8 +1,9 @@
-import { KOBO_PER_NAIRA, findTopupPackage, type PaymentDto } from '@insidelife/shared';
+import { KOBO_PER_NAIRA, type PaymentDto } from '@insidelife/shared';
 import type { PaymentEntity } from './entities/payment.entity.js';
+import { topupCredit } from './topup-quote.js';
 
 export function toPaymentDto(payment: PaymentEntity): PaymentDto {
-  const pack = payment.purpose === 'topup' ? findTopupPackage(payment.subjectId) : undefined;
+  const credit = payment.purpose === 'topup' ? topupCredit(payment) : null;
   return {
     reference: payment.reference,
     purpose: payment.purpose,
@@ -15,6 +16,7 @@ export function toPaymentDto(payment: PaymentEntity): PaymentDto {
     channel: payment.channel,
     createdAt: payment.createdAt.toISOString(),
     verifiedAt: payment.verifiedAt?.toISOString() ?? null,
-    topup: pack ? { packageId: pack.id, label: pack.label, virtualAmount: pack.virtualAmount } : null,
+    refundedNgn: payment.refundStatus === 'refunded' ? payment.refundedKobo / KOBO_PER_NAIRA : 0,
+    topup: credit?.ok ? credit.credit : null,
   };
 }

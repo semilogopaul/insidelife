@@ -80,6 +80,24 @@ export function admitAfterPayment(input: {
   return { kind: 'review' };
 }
 
+export type RefundSettlement =
+  /** Owed refund done (`refund-due` → `refunded`), or a running item refunded from the dashboard: taken down. */
+  | { readonly kind: 'refunded'; readonly takenDown: boolean }
+  /** The refund was for another payment of this item (a duplicate payment): nothing changes on the item. */
+  | { readonly kind: 'duplicate-payment' }
+  | { readonly kind: 'none' };
+
+/**
+ * What a recorded refund (ours or one made in the gateway dashboard) does to the item it paid for. Finished items
+ * (completed, rejected, already refunded) don't change.
+ */
+export function refundSettlement(item: { readonly status: PromotionStatus; readonly paymentReference: string | null }, paymentReference: string): RefundSettlement {
+  if (item.paymentReference !== paymentReference) return { kind: 'duplicate-payment' };
+  if (item.status === 'refund-due') return { kind: 'refunded', takenDown: false };
+  if (COMMITTED_STATUSES.includes(item.status)) return { kind: 'refunded', takenDown: true };
+  return { kind: 'none' };
+}
+
 export type ModerationDecision =
   | { readonly action: 'approve' }
   | { readonly action: 'reject'; readonly refund: boolean }

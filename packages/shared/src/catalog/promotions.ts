@@ -1,3 +1,4 @@
+import { formatNaira } from '../money/money.js';
 import type { DistrictId } from './geography.js';
 import { VENUES, type VenueDefinition, type VenueType } from './venues.js';
 
@@ -5,7 +6,7 @@ import { VENUES, type VenueDefinition, type VenueType } from './venues.js';
  * Promotions catalog — owned by the promotions domain.
  *
  * Real-money advertising inside the game (docs/PLAYER_PSYCHOLOGY.md §5): billboards placed over the city and club
- * plays for artists. Prices are real naira charged in kobo through Paystack. Everything is capped, reviewed by a
+ * plays for artists. Prices are real naira charged in kobo through Flutterwave. Everything is capped, reviewed by a
  * moderator before it goes live, and booked in real calendar days (Africa/Lagos, WAT = UTC+1, no DST).
  */
 
@@ -75,13 +76,36 @@ export interface BillboardSlot {
   readonly width: number;
   readonly height: number;
   readonly tier: BillboardVisibilityTier;
-  /** Real money per real calendar day, in kobo. */
-  readonly pricePerDayKobo: number;
+  /**
+   * Default real-money price of one 7-day block, in kobo. Ops can override it (the server's `ad_rates`), so clients
+   * show the price the slots endpoint sends; this is the catalog default.
+   */
+  readonly weekPriceKobo: number;
   /** Ads sharing the board on any given day (they rotate every BILLBOARD_ROTATION_SECONDS). */
   readonly maxConcurrentAds: number;
 }
 
 const NAIRA = 100;
+
+// ----- Ad prices (real naira) ----------------------------------------------------------------------------------------
+
+/** Every ad is sold in blocks of 7 consecutive real days: 1 to 4 weeks, starting on the slot's next free day. */
+export const AD_WEEK_DAYS = 7;
+export const AD_MAX_WEEKS = 4;
+/** No ad costs less than ₦2,000 a week; no rate can be set above ₦100m. */
+export const AD_MIN_PRICE_KOBO = 2_000 * NAIRA;
+export const AD_MAX_PRICE_KOBO = 100_000_000 * NAIRA;
+/** A Sponsored app on every player's phone: ₦100,000 per 7 days. */
+export const PHONE_APP_WEEK_PRICE_KOBO = 100_000 * NAIRA;
+
+/** The weekly price of a slot that used to be sold by the day: 7 × the old day rate (₦/day). */
+const weekOf = (dailyNaira: number): number => 7 * dailyNaira * NAIRA;
+
+/** Round a weekly price to a friendly amount (nearest ₦500), never under the ₦2,000 floor. */
+export function friendlyWeekPriceKobo(kobo: number): number {
+  const step = 500 * NAIRA;
+  return Math.max(AD_MIN_PRICE_KOBO, Math.round(kobo / step) * step);
+}
 
 const slot = (def: Omit<BillboardSlot, 'width' | 'height'>): BillboardSlot => ({
   ...def,
@@ -98,7 +122,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'terminal',
     format: 'landscape',
     tier: 'premium',
-    pricePerDayKobo: 25_000 * NAIRA,
+    weekPriceKobo: weekOf(25_000),
     maxConcurrentAds: 3,
   }),
   slot({
@@ -109,7 +133,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'landscape',
     tier: 'premium',
-    pricePerDayKobo: 20_000 * NAIRA,
+    weekPriceKobo: weekOf(20_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -120,7 +144,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'landscape',
     tier: 'premium',
-    pricePerDayKobo: 20_000 * NAIRA,
+    weekPriceKobo: weekOf(20_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -131,7 +155,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'landscape',
     tier: 'high',
-    pricePerDayKobo: 15_000 * NAIRA,
+    weekPriceKobo: weekOf(15_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -142,7 +166,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'landscape',
     tier: 'high',
-    pricePerDayKobo: 12_000 * NAIRA,
+    weekPriceKobo: weekOf(12_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -153,7 +177,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'building',
     format: 'portrait',
     tier: 'high',
-    pricePerDayKobo: 12_000 * NAIRA,
+    weekPriceKobo: weekOf(12_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -164,7 +188,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'square',
     tier: 'standard',
-    pricePerDayKobo: 8_000 * NAIRA,
+    weekPriceKobo: weekOf(8_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -175,7 +199,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'building',
     format: 'square',
     tier: 'standard',
-    pricePerDayKobo: 7_500 * NAIRA,
+    weekPriceKobo: weekOf(7_500),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -186,7 +210,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'building',
     format: 'portrait',
     tier: 'standard',
-    pricePerDayKobo: 6_000 * NAIRA,
+    weekPriceKobo: weekOf(6_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -197,7 +221,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'landscape',
     tier: 'standard',
-    pricePerDayKobo: 5_000 * NAIRA,
+    weekPriceKobo: weekOf(5_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -208,7 +232,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'square',
     tier: 'local',
-    pricePerDayKobo: 4_000 * NAIRA,
+    weekPriceKobo: weekOf(4_000),
     maxConcurrentAds: 4,
   }),
   slot({
@@ -219,7 +243,7 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     placement: 'roadside',
     format: 'landscape',
     tier: 'local',
-    pricePerDayKobo: 2_500 * NAIRA,
+    weekPriceKobo: weekOf(2_500),
     maxConcurrentAds: 4,
   }),
 ];
@@ -234,44 +258,51 @@ export function isPremiumBillboardId(id: string): id is PremiumBillboardId {
   return SLOT_INDEX.has(id);
 }
 
-/** Bookings run 1–30 real days and can start up to 60 days ahead (today included). */
-export const BILLBOARD_MIN_DAYS = 1;
-export const BILLBOARD_MAX_DAYS = 30;
+/**
+ * A booking starts on the slot's next free day (today if there's room for the whole run) and can't be pushed further
+ * out than this: a slot with no room for 60 days is "fully booked".
+ */
 export const BILLBOARD_MAX_LEAD_DAYS = 60;
-/** Weekly bundle: every complete block of 7 days is discounted. */
-export const BILLBOARD_WEEK_DAYS = 7;
-export const BILLBOARD_WEEKLY_DISCOUNT_PERCENT = 15;
 /** Each creative on a board shows for this long before the next one (client-side rotation). */
 export const BILLBOARD_ROTATION_SECONDS = 10;
 
 export interface PromotionQuote {
+  /** Consecutive 7-day blocks (1–4). */
+  readonly weeks: number;
   readonly days: number;
-  readonly unitPriceKobo: number;
-  readonly subtotalKobo: number;
-  readonly discountKobo: number;
-  /** What Paystack charges (whole naira). */
+  /** Price of one 7-day block when quoted (the order keeps it: later rate changes never touch it). */
+  readonly weekPriceKobo: number;
+  /** What the payer is charged (whole naira). */
   readonly totalKobo: number;
 }
 
-const roundToNaira = (kobo: number): number => Math.round(kobo / NAIRA) * NAIRA;
-
-/** Price of booking `days` real days on a slot, with the weekly bundle discount. `days` must be a valid length. */
-export function billboardQuote(target: Pick<BillboardSlot, 'pricePerDayKobo'>, days: number): PromotionQuote {
-  if (!Number.isInteger(days) || days < BILLBOARD_MIN_DAYS || days > BILLBOARD_MAX_DAYS) {
-    throw new RangeError(`Billboard bookings are ${BILLBOARD_MIN_DAYS}-${BILLBOARD_MAX_DAYS} days`);
-  }
-  const subtotalKobo = target.pricePerDayKobo * days;
-  const bundledDays = Math.floor(days / BILLBOARD_WEEK_DAYS) * BILLBOARD_WEEK_DAYS;
-  const discountKobo = roundToNaira((target.pricePerDayKobo * bundledDays * BILLBOARD_WEEKLY_DISCOUNT_PERCENT) / 100);
-  return { days, unitPriceKobo: target.pricePerDayKobo, subtotalKobo, discountKobo, totalKobo: subtotalKobo - discountKobo };
+/** Why a booking of `weeks` can't be made (player-facing), or null. */
+export function adWeeksProblem(weeks: number): string | null {
+  return Number.isInteger(weeks) && weeks >= 1 && weeks <= AD_MAX_WEEKS ? null : `Book 1 to ${AD_MAX_WEEKS} weeks`;
 }
+
+/** Whole naira between ₦2,000 and ₦100m: the only prices an ad rate can have. */
+export function isValidAdPriceKobo(kobo: number): boolean {
+  return Number.isSafeInteger(kobo) && kobo % NAIRA === 0 && kobo >= AD_MIN_PRICE_KOBO && kobo <= AD_MAX_PRICE_KOBO;
+}
+
+/** Price of `weeks` consecutive 7-day blocks at a weekly price. Throws a RangeError for anything that can't be sold. */
+export function adQuote(weekPriceKobo: number, weeks: number): PromotionQuote {
+  const problem = adWeeksProblem(weeks);
+  if (problem) throw new RangeError(problem);
+  if (!isValidAdPriceKobo(weekPriceKobo)) throw new RangeError(`Ad prices are whole naira from ${formatNaira(AD_MIN_PRICE_KOBO / NAIRA)} a week`);
+  return { weeks, days: weeks * AD_WEEK_DAYS, weekPriceKobo, totalKobo: weekPriceKobo * weeks };
+}
+
+/** "₦175,000/week". */
+export const adWeekPriceLabel = (weekPriceKobo: number): string => `${formatNaira(weekPriceKobo / NAIRA)}/week`;
 
 // ----- Club DJ ------------------------------------------------------------------------------------------------------
 
-/** Venue types whose sound system plays paid tracks. */
+/** Venue types whose sound system plays paid tracks: clubs, and bars (the lounges and rooftop bars). */
 export const CLUB_PLAY_VENUE_TYPES: readonly VenueType[] = ['club', 'bar'];
 
-/** Clubs and bars that run a paid rotation (derived from the venue catalog, so new clubs join automatically). */
+/** Clubs and lounges that run a paid rotation (derived from the venue catalog, so new clubs join automatically). */
 export function clubPlayVenues(): VenueDefinition[] {
   return VENUES.filter((venue) => CLUB_PLAY_VENUE_TYPES.includes(venue.type));
 }
@@ -280,30 +311,35 @@ export function isClubPlayVenue(venueId: string): boolean {
   return clubPlayVenues().some((venue) => venue.id === venueId);
 }
 
-export const CLUB_PLAY_SCOPES = ['single-club', 'all-clubs'] as const;
-export type ClubPlayScope = (typeof CLUB_PLAY_SCOPES)[number];
-
-export const CLUB_PLAY_PRODUCT_IDS = ['one-club-1d', 'one-club-3d', 'one-club-7d', 'all-clubs-1d', 'all-clubs-3d', 'all-clubs-7d'] as const;
+/**
+ * One product (owner's rule): ₦5,000 per song = 7 real days in every club and lounge's rotation, starting on the next
+ * day every club has room (today if they do).
+ */
+export const CLUB_PLAY_PRODUCT_IDS = ['all-clubs-7d'] as const;
 export type ClubPlayProductId = (typeof CLUB_PLAY_PRODUCT_IDS)[number];
+
+/** Default price per song (ops can override it: rate key `club-song`). */
+export const CLUB_TRACK_PRICE_KOBO = 5_000 * NAIRA;
 
 export interface ClubPlayProduct {
   readonly id: ClubPlayProductId;
   readonly name: string;
   readonly description: string;
-  readonly scope: ClubPlayScope;
   /** Real calendar days in rotation. */
   readonly days: number;
+  /** Default price; the server's current rate wins. */
   readonly priceKobo: number;
 }
 
-export const CLUB_PLAY_PRODUCTS: readonly ClubPlayProduct[] = [
-  { id: 'one-club-1d', name: 'One club · 1 day', description: 'Your song in one club’s rotation for a day.', scope: 'single-club', days: 1, priceKobo: 1_000 * NAIRA },
-  { id: 'one-club-3d', name: 'One club · 3 days', description: 'A long weekend in one club’s rotation.', scope: 'single-club', days: 3, priceKobo: 2_500 * NAIRA },
-  { id: 'one-club-7d', name: 'One club · 7 days', description: 'A full week in one club’s rotation.', scope: 'single-club', days: 7, priceKobo: 5_000 * NAIRA },
-  { id: 'all-clubs-1d', name: 'All clubs · 1 day', description: 'Every club and lounge in Lagos plays you for a day.', scope: 'all-clubs', days: 1, priceKobo: 3_000 * NAIRA },
-  { id: 'all-clubs-3d', name: 'All clubs · 3 days', description: 'Every club and lounge, three days straight.', scope: 'all-clubs', days: 3, priceKobo: 8_000 * NAIRA },
-  { id: 'all-clubs-7d', name: 'All clubs · 7 days', description: 'Takeover week: every club and lounge in Lagos.', scope: 'all-clubs', days: 7, priceKobo: 18_000 * NAIRA },
-];
+export const CLUB_PLAY_PRODUCT: ClubPlayProduct = {
+  id: 'all-clubs-7d',
+  name: 'Every club · 7 days',
+  description: 'Your song in the rotation of every club and lounge in Lagos for 7 days.',
+  days: 7,
+  priceKobo: CLUB_TRACK_PRICE_KOBO,
+};
+
+export const CLUB_PLAY_PRODUCTS: readonly ClubPlayProduct[] = [CLUB_PLAY_PRODUCT];
 
 export function findClubPlayProduct(id: string): ClubPlayProduct | undefined {
   return CLUB_PLAY_PRODUCTS.find((product) => product.id === id);
@@ -311,7 +347,7 @@ export function findClubPlayProduct(id: string): ClubPlayProduct | undefined {
 
 /** Paid tracks sharing one club's rotation on any given day ('all clubs' orders count in every club). */
 export const CLUB_ROTATION_CAPACITY = 12;
-/** Club orders can start up to this many days ahead (today included). */
+/** A club order starts on the rotation's next free day; with no room for this many days, the rotation is full. */
 export const CLUB_PLAY_MAX_LEAD_DAYS = 30;
 
 // ----- Uploads ------------------------------------------------------------------------------------------------------
@@ -327,7 +363,8 @@ export const TRACK_ACCEPTED_TYPES = ['audio/mpeg', 'audio/ogg'] as const;
 export type TrackContentType = (typeof TRACK_ACCEPTED_TYPES)[number];
 export const TRACK_MAX_BYTES = 10 * 1024 * 1024;
 export const TRACK_MIN_SECONDS = 30;
-export const TRACK_MAX_SECONDS = 6 * 60;
+/** Songs must be strictly shorter than this (owner's rule: under 5 minutes), measured from the file on the server. */
+export const TRACK_MAX_SECONDS = 5 * 60;
 
 export const PROMOTION_TITLE_MAX = 60;
 export const ARTIST_NAME_MAX = 40;

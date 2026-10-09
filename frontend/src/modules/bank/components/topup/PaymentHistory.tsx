@@ -5,7 +5,7 @@ import type { PaymentDto, PaymentPurpose } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Badge, Button, Money, Spinner, toast } from '@/common/components';
 import { usePaymentHistory, useVerifyPayment } from '../../hooks/use-topups';
-import { OUTCOME_LABELS, paymentOutcome, type PaymentOutcome } from '../../services/payment-status';
+import { isRefunded, OUTCOME_LABELS, paymentOutcome, type PaymentOutcome } from '../../services/payment-status';
 
 const PURPOSE_ICONS: Readonly<Record<PaymentPurpose, typeof CreditCard>> = { topup: CreditCard, billboard: Megaphone, 'club-play': Music };
 const OUTCOME_TONES: Readonly<Record<PaymentOutcome, 'good' | 'warn' | 'bad' | 'neutral'>> = {
@@ -83,8 +83,8 @@ export function PaymentHistory({ onRetry }: { readonly onRetry: (payment: Paymen
               <p className="type-figure text-sm">
                 <Money amount={payment.amountNgn} />
               </p>
-              <Badge tone={OUTCOME_TONES[outcome]} className="mt-1">
-                {OUTCOME_LABELS[outcome]}
+              <Badge tone={isRefunded(payment) ? 'neutral' : OUTCOME_TONES[outcome]} className="mt-1">
+                {isRefunded(payment) ? 'Refunded' : OUTCOME_LABELS[outcome]}
               </Badge>
             </div>
           </li>

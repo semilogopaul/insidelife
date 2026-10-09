@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { In, Not, type DataSource, type Repository } from 'typeorm';
 import { findAdSlot, type ModerationCampaignDto, type ModerationClubOrderDto, type ModerationQueueDto, type PromotionStatus } from '@insidelife/shared';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import { CHECKOUT_PORT, type CheckoutPort, type RefundOutcome } from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
 import { CampaignsService } from './campaigns.service.js';
@@ -10,7 +11,7 @@ import { AdCampaignEntity } from './entities/ad-campaign.entity.js';
 import { ClubPlayOrderEntity } from './entities/club-play-order.entity.js';
 import { ClubTrackEntity } from './entities/club-track.entity.js';
 import { CreativeEntity } from './entities/creative.entity.js';
-import type { ModerationAction } from './entities/moderation-log.entity.js';
+import type { ModerationAction, ModerationSubjectType } from './entities/moderation-log.entity.js';
 import { appendModerationLog } from './moderation-log.js';
 import { clockAt, toCampaignDto, toClubOrderDto, type Clock } from './promotions.mappers.js';
 import { approvedNotice, refundedNotice, rejectedNotice, type NoticeSubject } from './promotions.notices.js';
@@ -42,7 +43,9 @@ function noticeFor(decision: ModerationDecision, to: PromotionStatus, subject: N
 
 /**
  * Admin review of paid billboard campaigns and club orders: the queue, approve / reject (with refund flag), and
- * marking refunds done after ops refund them in the Paystack dashboard. Rejected media is deleted from storage.
+ * marking refunds done by hand. A rejection with refund refunds the payer automatically through Flutterwave (the
+ * item then lands in `refunded`); when the gateway refuses, the item stays in "refunds due" for ops to refund in the
+ * Flutterwave dashboard and mark refunded. Rejected media is deleted from storage.
  */
 @Injectable()
 export class ModerationService {
@@ -59,6 +62,7 @@ export class ModerationService {
     private readonly notifier: PromotionsNotifier,
     private readonly campaignFeed: CampaignsService,
     private readonly rotationFeed: TracksService,
+    @Inject(CHECKOUT_PORT) private readonly checkout: CheckoutPort,
   ) {}
 
   async queue(): Promise<ModerationQueueDto> {
@@ -123,6 +127,11 @@ export class ModerationService {
     this.logger.log({ campaignId, action: decision.action, status: campaign.status, adminId }, 'Billboard campaign moderated');
     const subject: NoticeSubject = { noun: 'Billboard', name: campaign.title, where: findAdSlot(campaign.slotId)?.name ?? 'your board' };
     await this.notifier.notifyOwner(campaign.ownerUserId, noticeFor(decision, campaign.status, subject, campaign, reason));
+    if (decision.action === 'reject' && campaign.status === 'refund-due') {
+      await this.refundAutomatically('campaign', campaign, adminId, reason);
+      const refreshed = await this.campaigns.findOneByOrFail({ id: campaign.id });
+      return this.campaignView(refreshed, clock, await this.handlesOf([refreshed]));
+    }
     return this.campaignView(campaign, clock, await this.handlesOf([campaign]));
   }
 
@@ -162,10 +171,54 @@ export class ModerationService {
     if (decision.action === 'reject') await this.removeTrackIfUnused(track, order.id);
     this.logger.log({ orderId, action: decision.action, status: order.status, adminId }, 'Club order moderated');
     await this.notifier.notifyOwner(order.ownerUserId, noticeFor(decision, order.status, trackSubject(track, order), order, reason));
+    if (decision.action === 'reject' && order.status === 'refund-due') {
+      await this.refundAutomatically('club-order', order, adminId, reason);
+      const refreshed = await this.orders.findOneByOrFail({ id: order.id });
+      return this.orderView(refreshed, track, clock, await this.handlesOf([refreshed]));
+    }
     return this.orderView(order, track, clock, await this.handlesOf([order]));
   }
 
   // ----- Internals --------------------------------------------------------------------------------------------------
+
+  /**
+   * Refund a rejected item's payment through the gateway. Success moves the item to `refunded` (the fulfiller's
+   * `onRefunded` hook does it and tells the buyer); a failure is logged on the item, which stays in "refunds due" for
+   * the manual path (refund in the Flutterwave dashboard, then mark refunded). Never throws: the rejection stands.
+   */
+  private async refundAutomatically(
+    subjectType: ModerationSubjectType,
+    item: { readonly id: string; readonly status: PromotionStatus; readonly paymentReference: string | null },
+    adminId: string,
+    reason: string | null,
+  ): Promise<RefundOutcome> {
+    let outcome: RefundOutcome;
+    if (!item.paymentReference) {
+      outcome = { kind: 'not-refundable', reason: 'No payment reference on this item' };
+    } else {
+      try {
+        outcome = await this.checkout.refund(item.paymentReference, `Not approved in review: ${reason ?? 'content rules'}`);
+      } catch (error) {
+        outcome = { kind: 'failed', reason: error instanceof Error ? error.message : 'Unknown error' };
+      }
+    }
+    if (outcome.kind === 'failed' || outcome.kind === 'not-refundable') {
+      this.logger.warn({ subjectType, id: item.id, reason: outcome.reason }, 'Automatic refund failed; left in refunds due');
+      await withTransaction(this.dataSource, (manager) =>
+        appendModerationLog(manager, {
+          subjectType,
+          subjectId: item.id,
+          action: 'refund-failed',
+          fromStatus: item.status,
+          toStatus: item.status,
+          actorUserId: adminId,
+          paymentReference: item.paymentReference,
+          reason: `Automatic refund failed: ${outcome.reason}. Refund it in the Flutterwave dashboard, then mark it refunded`,
+        }),
+      );
+    }
+    return outcome;
+  }
 
   /** Delete a rejected creative unless another live/held booking still shows it. */
   private async removeCreativeIfUnused(campaign: AdCampaignEntity): Promise<void> {

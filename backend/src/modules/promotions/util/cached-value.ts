@@ -6,6 +6,8 @@ export class CachedValue<T> {
   private value: T | null = null;
   private expiresAt = 0;
   private inflight: Promise<T> | null = null;
+  /** Bumped by `invalidate`, so a load that started before an invalidation isn't cached as fresh. */
+  private generation = 0;
 
   constructor(
     private readonly ttlMs: number,
@@ -20,13 +22,15 @@ export class CachedValue<T> {
 
   invalidate(): void {
     this.expiresAt = 0;
+    this.generation += 1;
   }
 
   private async refresh(): Promise<T> {
+    const generation = this.generation;
     try {
       const value = await this.load();
       this.value = value;
-      this.expiresAt = Date.now() + this.ttlMs;
+      this.expiresAt = generation === this.generation ? Date.now() + this.ttlMs : 0;
       return value;
     } catch (error) {
       if (this.value === null) throw error;

@@ -1,15 +1,28 @@
 import {
+  AD_MAX_WEEKS,
+  AD_MIN_PRICE_KOBO,
+  AD_SLOTS,
   BILLBOARD_FORMAT_SPECS,
-  BILLBOARD_MAX_DAYS,
   BILLBOARD_SLOT_IDS,
   BILLBOARD_SLOTS,
   CLUB_PLAY_PRODUCTS,
-  billboardQuote,
+  adQuote,
   clubPlayVenues,
   findBillboardSlot,
   isClubPlayVenue,
 } from '@insidelife/shared';
-import { addDays, bookingWindowProblem, dailyOccupancy, firstFullClub, firstFullDay, isIsoDate, lagosToday, rangeOf } from './schedule.rules.js';
+import {
+  addDays,
+  dailyOccupancy,
+  daysBetween,
+  firstFullClub,
+  firstFullDay,
+  isIsoDate,
+  lagosToday,
+  nextFreeClubStart,
+  nextFreeStart,
+  rangeOf,
+} from './schedule.rules.js';
 
 const NAIRA = 100;
 
@@ -20,17 +33,16 @@ describe('billboard catalog', () => {
     expect(ids.toSorted()).toEqual(BILLBOARD_SLOT_IDS.toSorted());
   });
 
-  it('prices every board between ₦2,500 and ₦25,000 a day, airport and Third Mainland on top', () => {
+  it('prices premium boards per week, airport and Third Mainland on top', () => {
     for (const slot of BILLBOARD_SLOTS) {
-      expect(slot.pricePerDayKobo).toBeGreaterThanOrEqual(2_500 * NAIRA);
-      expect(slot.pricePerDayKobo).toBeLessThanOrEqual(25_000 * NAIRA);
+      expect(slot.weekPriceKobo).toBeGreaterThanOrEqual(17_500 * NAIRA);
       expect(slot.maxConcurrentAds).toBeGreaterThan(0);
       expect([slot.width, slot.height]).toEqual([BILLBOARD_FORMAT_SPECS[slot.format].width, BILLBOARD_FORMAT_SPECS[slot.format].height]);
     }
-    const premium = ['mmia-arrivals', 'third-mainland-north', 'third-mainland-south'].map((id) => findBillboardSlot(id)?.pricePerDayKobo ?? 0);
-    const others = BILLBOARD_SLOTS.filter((slot) => slot.tier !== 'premium').map((slot) => slot.pricePerDayKobo);
+    const premium = ['mmia-arrivals', 'third-mainland-north', 'third-mainland-south'].map((id) => findBillboardSlot(id)?.weekPriceKobo ?? 0);
+    const others = BILLBOARD_SLOTS.filter((slot) => slot.tier !== 'premium').map((slot) => slot.weekPriceKobo);
     expect(Math.min(...premium)).toBeGreaterThan(Math.max(...others));
-    expect(findBillboardSlot('mmia-arrivals')?.pricePerDayKobo).toBe(25_000 * NAIRA);
+    expect(findBillboardSlot('mmia-arrivals')?.weekPriceKobo).toBe(175_000 * NAIRA);
   });
 
   it('uses exact aspect ratios for the upload sizes', () => {
@@ -39,48 +51,30 @@ describe('billboard catalog', () => {
     expect(BILLBOARD_FORMAT_SPECS.square.width).toBe(BILLBOARD_FORMAT_SPECS.square.height);
   });
 
-  it('prices club plays between ₦1,000 and ₦20,000', () => {
-    for (const product of CLUB_PLAY_PRODUCTS) {
-      expect(product.priceKobo).toBeGreaterThanOrEqual(1_000 * NAIRA);
-      expect(product.priceKobo).toBeLessThanOrEqual(20_000 * NAIRA);
-    }
-    expect(clubPlayVenues().map((venue) => venue.id)).toContain('the-vault');
+  it('sells club plays as one ₦5,000 product: 7 days in every club and lounge', () => {
+    expect(CLUB_PLAY_PRODUCTS).toEqual([expect.objectContaining({ id: 'all-clubs-7d', days: 7, priceKobo: 5_000 * NAIRA })]);
+    expect(clubPlayVenues().map((venue) => venue.id)).toEqual(expect.arrayContaining(['the-vault', 'vi-lounge', 'bourdillon-lounge']));
     expect(isClubPlayVenue('the-vault')).toBe(true);
     expect(isClubPlayVenue('unilag')).toBe(false);
   });
 });
 
-describe('billboardQuote', () => {
-  const ikorodu = { pricePerDayKobo: 2_500 * NAIRA };
-  const airport = { pricePerDayKobo: 25_000 * NAIRA };
-
-  it('charges the day rate below a week', () => {
-    expect(billboardQuote(ikorodu, 1)).toEqual({ days: 1, unitPriceKobo: 250_000, subtotalKobo: 250_000, discountKobo: 0, totalKobo: 250_000 });
-    expect(billboardQuote(airport, 6).totalKobo).toBe(6 * 2_500_000);
-  });
-
-  it('discounts every complete week by 15%', () => {
-    expect(billboardQuote(airport, 7)).toMatchObject({ subtotalKobo: 17_500_000, discountKobo: 2_625_000, totalKobo: 14_875_000 });
-    // 10 days = one bundled week + 3 days at the day rate.
-    expect(billboardQuote(airport, 10).totalKobo).toBe(14_875_000 + 3 * 2_500_000);
-    expect(billboardQuote(airport, 14).discountKobo).toBe(2 * 2_625_000);
-  });
-
-  it('always charges whole naira and stays under the ₦1m single-checkout ceiling', () => {
-    for (const slot of BILLBOARD_SLOTS) {
-      for (let days = 1; days <= BILLBOARD_MAX_DAYS; days++) {
-        const quote = billboardQuote(slot, days);
+describe('adQuote', () => {
+  it('charges whole weeks at the weekly price, at least ₦2,000 (default rates stay under ₦2.5m a booking)', () => {
+    for (const slot of AD_SLOTS) {
+      for (let weeks = 1; weeks <= AD_MAX_WEEKS; weeks++) {
+        const quote = adQuote(slot.weekPriceKobo, weeks);
+        expect(quote).toMatchObject({ weeks, days: 7 * weeks, weekPriceKobo: slot.weekPriceKobo });
+        expect(quote.totalKobo).toBe(slot.weekPriceKobo * weeks);
         expect(quote.totalKobo % NAIRA).toBe(0);
-        expect(quote.totalKobo).toBeLessThan(100_000_000);
-        expect(quote.totalKobo).toBeLessThanOrEqual(quote.subtotalKobo);
+        expect(quote.totalKobo).toBeGreaterThanOrEqual(AD_MIN_PRICE_KOBO);
+        expect(quote.totalKobo).toBeLessThanOrEqual(250_000_000);
       }
     }
   });
 
-  it('refuses invalid lengths', () => {
-    expect(() => billboardQuote(airport, 0)).toThrow(RangeError);
-    expect(() => billboardQuote(airport, 31)).toThrow(RangeError);
-    expect(() => billboardQuote(airport, 1.5)).toThrow(RangeError);
+  it('refuses lengths other than 1–4 weeks', () => {
+    for (const weeks of [0, 5, 2.5, -1]) expect(() => adQuote(17_500 * NAIRA, weeks)).toThrow(RangeError);
   });
 });
 
@@ -97,18 +91,58 @@ describe('calendar days (Africa/Lagos)', () => {
     expect(addDays('2026-12-30', 3)).toBe('2027-01-02');
     expect(rangeOf('2026-10-08', 7)).toEqual({ startDate: '2026-10-08', endDate: '2026-10-15' });
   });
-
-  it('checks the booking window', () => {
-    const limits = { minDays: 1, maxDays: 30, maxLeadDays: 60 };
-    expect(bookingWindowProblem('2026-10-08', 3, '2026-10-08', limits)).toBeNull();
-    expect(bookingWindowProblem('2026-10-07', 3, '2026-10-08', limits)).toBe('in-past');
-    expect(bookingWindowProblem('2026-12-08', 3, '2026-10-08', limits)).toBe('too-far');
-    expect(bookingWindowProblem('2026-10-09', 0, '2026-10-08', limits)).toBe('invalid-length');
-    expect(bookingWindowProblem('2026-10-32', 1, '2026-10-08', limits)).toBe('invalid-date');
-  });
 });
 
 const booking = (startDate: string, days: number) => rangeOf(startDate, days);
+const allClubs = (startDate: string, days: number) => ({ ...rangeOf(startDate, days), allClubs: true, clubs: [] });
+const oneClub = (startDate: string, days: number) => ({ ...rangeOf(startDate, days), allClubs: false, clubs: ['the-vault'] });
+const TODAY = '2026-10-09';
+const LEAD = 60;
+
+describe('next free start (7-day runs, no gaps)', () => {
+  it('starts today when the slot has room for the whole run', () => {
+    expect(nextFreeStart([], TODAY, 7, 1, LEAD)).toBe(TODAY);
+    // One of two places taken today: there is still room.
+    expect(nextFreeStart([booking('2026-10-05', 14)], TODAY, 7, 2, LEAD)).toBe(TODAY);
+  });
+
+  it('starts the day the earliest blocking booking ends, so runs are contiguous', () => {
+    const running = booking('2026-10-05', 14); // ends (exclusive) on the 19th
+    expect(nextFreeStart([running], TODAY, 7, 1, LEAD)).toBe('2026-10-19');
+    // A second run queued after it starts where it ends: no gap between them.
+    const queued = booking('2026-10-19', 7);
+    expect(nextFreeStart([running, queued], TODAY, 14, 1, LEAD)).toBe('2026-10-26');
+    // Several bookings sharing a 3-ad board: the earliest one to end frees the place.
+    const board = [booking('2026-10-01', 14), booking('2026-10-03', 21), booking('2026-10-08', 7)];
+    expect(nextFreeStart(board, TODAY, 7, 3, LEAD)).toBe('2026-10-15');
+  });
+
+  it('never squeezes a run into a gap that is too short, and respects maxConcurrentAds on every day', () => {
+    // Free 9th–11th, then a booking from the 12th: a 7-day run can't fit before it.
+    const later = booking('2026-10-12', 7);
+    const start = nextFreeStart([later], TODAY, 7, 1, LEAD);
+    expect(start).toBe('2026-10-19');
+    for (const capacity of [1, 2, 3]) {
+      const bookings = Array.from({ length: capacity }, (_, index) => booking(addDays(TODAY, index * 3), 10));
+      const run = rangeOf(nextFreeStart(bookings, TODAY, 7, capacity, LEAD) ?? TODAY, 7);
+      expect(firstFullDay(bookings, run, capacity), `capacity ${capacity}`).toBeNull();
+      expect(daysBetween(run.startDate, run.endDate)).toBe(7);
+    }
+  });
+
+  it('gives up beyond the lead time', () => {
+    expect(nextFreeStart([booking(TODAY, 90)], TODAY, 7, 1, LEAD)).toBeNull();
+    expect(nextFreeStart([booking(TODAY, 60)], TODAY, 7, 1, LEAD)).toBe(addDays(TODAY, 60));
+  });
+
+  it('finds the next day every club has room for a song', () => {
+    expect(nextFreeClubStart([], ['the-vault', 'vi-lounge'], TODAY, 7, 2, 30)).toBe(TODAY);
+    // The Vault is full until the 12th (an every-club order plus its own): every club's run waits for it.
+    const orders = [allClubs('2026-10-06', 10), oneClub('2026-10-08', 4)];
+    expect(nextFreeClubStart(orders, ['vi-lounge'], TODAY, 7, 2, 30)).toBe(TODAY);
+    expect(nextFreeClubStart(orders, ['vi-lounge', 'the-vault'], TODAY, 7, 2, 30)).toBe('2026-10-12');
+  });
+});
 
 describe('capacity', () => {
   it('counts bookings per day with exclusive end dates', () => {

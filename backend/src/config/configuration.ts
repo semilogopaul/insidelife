@@ -54,10 +54,19 @@ export interface AppConfig {
     /** Sender shown to players, e.g. `Inside Life <hello@insidelife.online>`. */
     readonly from: string;
   };
-  readonly paystack: {
-    readonly secretKey: string;
+  readonly payments: {
+    readonly flutterwave: {
+      /** `FLWSECK_TEST-…` locally, `FLWSECK-…` live. Server-side only; never logged. */
+      readonly secretKey: string;
+      /** Shared secret Flutterwave sends verbatim in the `verif-hash` header of every webhook. */
+      readonly webhookSecretHash: string;
+    };
+    /** Where Flutterwave sends the browser back after checkout (`…/payments/callback`). */
     readonly callbackUrl: string;
+    /** Real-naira top-up cap per account per UTC day; 0 = no cap. */
     readonly dailyLimitNgn: number;
+    /** Largest single top-up (real naira). */
+    readonly maxTopupNgn: number;
     /** Sandbox checkout is used when there is no secret key and this is allowed (always in development). */
     readonly sandbox: boolean;
   };
@@ -121,11 +130,15 @@ export const configuration = (): AppConfig => {
       pass: env.SMTP_PASS ?? '',
       from: env.MAIL_FROM || 'Inside Life <hello@insidelife.online>',
     },
-    paystack: {
-      secretKey: env.PAYSTACK_SECRET_KEY ?? '',
-      callbackUrl: env.PAYSTACK_CALLBACK_URL ?? '',
-      dailyLimitNgn: Number(env.TOPUP_DAILY_LIMIT_NGN ?? 20_000),
-      sandbox: !env.PAYSTACK_SECRET_KEY && (env.NODE_ENV !== 'production' || bool(env.ALLOW_PAYMENT_SANDBOX, false)),
+    payments: {
+      flutterwave: {
+        secretKey: env.FLUTTERWAVE_SECRET_KEY ?? '',
+        webhookSecretHash: env.FLUTTERWAVE_WEBHOOK_SECRET_HASH ?? '',
+      },
+      callbackUrl: env.PAYMENT_CALLBACK_URL || 'http://localhost:3100/payments/callback',
+      dailyLimitNgn: Number(env.TOPUP_DAILY_LIMIT_NGN ?? 0),
+      maxTopupNgn: Number(env.TOPUP_MAX_PER_PAYMENT_NGN ?? 10_000_000),
+      sandbox: !env.FLUTTERWAVE_SECRET_KEY && (env.NODE_ENV !== 'production' || bool(env.ALLOW_PAYMENT_SANDBOX, false)),
     },
   };
 };

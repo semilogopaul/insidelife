@@ -23,17 +23,23 @@ export interface OutcomeCopy {
   readonly body: string;
 }
 
+/** Money went back to the payer (an ad or song that wasn't approved, a sold-out slot, or a refund by support). */
+export const isRefunded = (payment: Pick<PaymentDto, 'refundedNgn'>): boolean => payment.refundedNgn > 0;
+
 /** Headline + one line for the callback screen, in the voice of the game. */
 export function outcomeCopy(payment: PaymentDto): OutcomeCopy {
   const outcome = paymentOutcome(payment);
   const credited = payment.topup ? formatNaira(payment.topup.virtualAmount) : null;
+  if (isRefunded(payment)) {
+    return { title: 'Payment refunded', body: `${formatNaira(payment.refundedNgn)} went back to your card or bank. It can take a few working days to show.` };
+  }
   switch (outcome) {
     case 'delivered':
       if (payment.purpose === 'topup') return { title: `${credited} added to your wallet`, body: 'Payment confirmed. Go and enjoy Lagos.' };
       if (payment.purpose === 'billboard') return { title: 'Payment confirmed', body: 'Your billboard is now in review. A moderator checks every ad before it goes up.' };
       return { title: 'Payment confirmed', body: 'Your track is now in review. Once approved, the DJs add it to rotation.' };
     case 'delivering':
-      return { title: 'Paid. Delivering now…', body: 'Paystack confirmed your payment. We’re finishing the delivery; this usually takes a few seconds.' };
+      return { title: 'Paid. Delivering now…', body: 'Flutterwave confirmed your payment. We’re finishing the delivery; this usually takes a few seconds.' };
     case 'pending':
       return { title: 'Waiting for confirmation', body: 'Your bank hasn’t confirmed the payment yet. Bank transfers and USSD can take a minute.' };
     case 'failed':
@@ -52,7 +58,7 @@ export const OUTCOME_LABELS: Readonly<Record<PaymentOutcome, string>> = {
   abandoned: 'Not completed',
 };
 
-/** Paystack and the sandbox give UUID references; anything else in the URL is ignored. */
+/** Our payment references (Flutterwave's `tx_ref`, or the sandbox's) are UUIDs; anything else in the URL is ignored. */
 export function isPaymentReference(value: string | null): value is string {
   return value !== null && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 }

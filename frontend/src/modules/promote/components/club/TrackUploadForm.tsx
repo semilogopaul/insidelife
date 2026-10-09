@@ -2,16 +2,34 @@
 
 import { FileAudio, Music } from 'lucide-react';
 import { useId, useState } from 'react';
-import { ARTIST_NAME_MAX, PROMOTION_TITLE_MAX, TRACK_ACCEPTED_TYPES, TRACK_MAX_SECONDS, TRACK_MIN_SECONDS, type ClubTrackDto } from '@insidelife/shared';
+import {
+  ARTIST_NAME_MAX,
+  CLUB_PLAY_PRODUCT,
+  PROMOTION_TITLE_MAX,
+  TRACK_ACCEPTED_TYPES,
+  TRACK_MAX_BYTES,
+  TRACK_MAX_SECONDS,
+  TRACK_MIN_SECONDS,
+  formatNaira,
+  koboToNaira,
+  type ClubTrackDto,
+} from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, TextField } from '@/common/components';
 import { usePickedFile } from '../../hooks/use-picked-file';
 import { useTrackUpload } from '../../hooks/use-promote';
-import { checkTrackFile, formatDuration, validateDisplayText } from '../../services/rules';
+import { checkTrackFile, formatDuration, trackDurationProblem, validateDisplayText } from '../../services/rules';
 import { UploadProgress } from '../shared';
 
-/** Artist, title and an MP3/OGG (30 s – 6 min). Listen before you upload; the server measures the real length. */
-export function TrackUploadForm({ onUploaded, onCancel }: { readonly onUploaded: (track: ClubTrackDto) => void; readonly onCancel?: () => void }) {
+/** Artist, title and an MP3/OGG (30 s to under 5 min). Listen before you upload; the server measures the real length. */
+export interface TrackUploadFormProps {
+  readonly onUploaded: (track: ClubTrackDto) => void;
+  readonly onCancel?: () => void;
+  /** Today's price per song (the catalog default until the server's is known). */
+  readonly priceKobo?: number;
+}
+
+export function TrackUploadForm({ onUploaded, onCancel, priceKobo = CLUB_PLAY_PRODUCT.priceKobo }: TrackUploadFormProps) {
   const inputId = useId();
   const [artist, setArtist] = useState('');
   const [title, setTitle] = useState('');
@@ -23,8 +41,7 @@ export function TrackUploadForm({ onUploaded, onCancel }: { readonly onUploaded:
   const artistCheck = validateDisplayText(artist, 'Artist name', 2, ARTIST_NAME_MAX);
   const titleCheck = validateDisplayText(title, 'Song title', 1, PROMOTION_TITLE_MAX);
   const fileError = file ? checkTrackFile(file) : null;
-  const durationError =
-    duration === null ? null : duration < TRACK_MIN_SECONDS ? `Songs need at least ${TRACK_MIN_SECONDS} seconds.` : duration > TRACK_MAX_SECONDS ? `Songs can be at most ${TRACK_MAX_SECONDS / 60} minutes.` : null;
+  const durationError = trackDurationProblem(duration);
   const ready = artistCheck.ok && titleCheck.ok && file !== null && fileError === null && durationError === null;
 
   const submit = (): void => {
@@ -72,7 +89,9 @@ export function TrackUploadForm({ onUploaded, onCancel }: { readonly onUploaded:
           <FileAudio size={18} aria-hidden />
           {file ? 'Choose a different song' : 'Choose an MP3 or OGG'}
         </label>
-        <p className="mt-1 text-xs text-text-soft">Up to 10 MB, between 30 seconds and 6 minutes.</p>
+        <p className="mt-1 text-xs text-text-soft">
+          MP3 or OGG, up to {TRACK_MAX_BYTES / 1024 / 1024} MB, from {TRACK_MIN_SECONDS} seconds to <strong>under {TRACK_MAX_SECONDS / 60} minutes</strong>. {formatNaira(koboToNaira(priceKobo))} plays it in every club and lounge for {CLUB_PLAY_PRODUCT.days} days.
+        </p>
       </div>
       {picked && (
         <div className="flex flex-col gap-1.5">

@@ -1,6 +1,6 @@
 'use client';
 
-import { AD_PLACEMENTS, type AdPlacementKind, type AdPlacementSpot, type BillboardFormat } from '@insidelife/shared';
+import { AD_PLACEMENT_KINDS, AD_PLACEMENTS, AD_SLOTS, adWeekPriceLabel, type AdPlacementKind, type AdPlacementSpot, type BillboardFormat } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { BoxGeometry, Color, InstancedMesh, Matrix4, MeshStandardMaterial, Object3D, PlaneGeometry, type BufferGeometry, type CanvasTexture, type Texture } from 'three';
@@ -16,8 +16,9 @@ import { useLiveBillboards } from './use-billboards';
 /**
  * The ~540 generated ad spots (`AD_PLACEMENTS`): street billboards, bus shelters, lightbox totems, stadium LEDs, market
  * banners and motor-park boards. Draw calls stay flat however many there are: every structure is one merged mesh,
- * every empty face shows a shared "Your ad here" texture through one InstancedMesh per format, and only spots with a
- * paid creative running get their own face (hidden beyond LIVE_RANGE). Faces are tagged for the play layer's taps:
+ * every empty face shows a shared "Your ad here" texture through one InstancedMesh per format and kind (with the kind's
+ * current "from" weekly price), and only spots with a paid creative running get their own face (hidden
+ * beyond LIVE_RANGE). Faces are tagged for the play layer's taps:
  * live faces carry `userData.billboardSlotId`, instanced faces `userData.billboardSlotIds[instanceId]`.
  */
 
@@ -123,11 +124,20 @@ function faceMatrix(face: FaceRef, target: Matrix4): Matrix4 {
   return target.copy(helper.matrix);
 }
 
-const FORMATS: readonly BillboardFormat[] = ['landscape', 'portrait', 'square'];
+/** Catalog default for each kind's empty faces ("From ₦3,500/week"); the live feed sends the current rates. */
+const DEFAULT_KIND_LABEL: Readonly<Record<AdPlacementKind, string>> = Object.fromEntries(
+  AD_PLACEMENT_KINDS.map((kind) => {
+    const prices = AD_SLOTS.filter((slot) => slot.kind === kind).map((slot) => slot.weekPriceKobo);
+    return [kind, prices.length > 0 ? `From ${adWeekPriceLabel(Math.min(...prices))}` : ''];
+  }),
+) as Record<AdPlacementKind, string>;
 
-function houseMaterial(format: BillboardFormat): { readonly material: MeshStandardMaterial; readonly texture: CanvasTexture } {
+/** Empty faces share one texture per format and kind, so each kind shows its own "from" price. */
+const houseGroupOf = (spot: AdPlacementSpot): string => `${spot.format}|${spot.kind}`;
+
+function houseMaterial(format: BillboardFormat, priceLabel: string): { readonly material: MeshStandardMaterial; readonly texture: CanvasTexture } {
   const size = format === 'landscape' ? { width: 3, height: 1 } : format === 'portrait' ? { width: 2, height: 3 } : { width: 1, height: 1 };
-  const texture = drawHouseAd(size, { headline: 'Your ad here', body: 'Open Promote on your phone', priceLabel: 'From ₦500/day' });
+  const texture = drawHouseAd(size, { headline: 'Your ad here', body: 'Open Promote on your phone', priceLabel });
   const material = new MeshStandardMaterial({ map: texture, emissiveMap: texture, emissive: new Color('#ffffff'), emissiveIntensity: 0.15, roughness: 0.6 });
   addNearFade(material, 'street-ad-faces', 1, 3);
   return { material, texture };
@@ -152,23 +162,29 @@ export function StreetAds({ shadows }: { readonly shadows: boolean }) {
 
   const structure = useMemo(() => ({ geometry: structureGeometry(AD_PLACEMENTS), material: createCityMaterial('props', null) }), []);
 
+  // Current "from" prices per kind (ops can change rates); the textures are only redrawn when a label changes.
+  const labels = AD_PLACEMENT_KINDS.map((kind) => live?.priceLabels?.[kind] ?? DEFAULT_KIND_LABEL[kind]).join('\n');
   const house = useMemo(() => {
+    const labelOf = new Map(AD_PLACEMENT_KINDS.map((kind, index) => [kind, labels.split('\n')[index] ?? DEFAULT_KIND_LABEL[kind]]));
     const plane = new PlaneGeometry(1, 1);
-    const meshes = FORMATS.map((format) => {
-      const faces = AD_PLACEMENTS.filter((spot) => spot.format === format).flatMap((spot) => FACE_DEPTH[spot.kind].map((depth): FaceRef => ({ spot, depth })));
-      const { material, texture } = houseMaterial(format);
+    const groups = [...new Set(AD_PLACEMENTS.map(houseGroupOf))];
+    const meshes = groups.map((group) => {
+      const spots = AD_PLACEMENTS.filter((spot) => houseGroupOf(spot) === group);
+      const format = spots[0]?.format ?? 'landscape';
+      const faces = spots.flatMap((spot) => FACE_DEPTH[spot.kind].map((depth): FaceRef => ({ spot, depth })));
+      const { material, texture } = houseMaterial(format, spots[0] ? (labelOf.get(spots[0].kind) ?? '') : '');
       const mesh = new InstancedMesh(plane, material, Math.max(1, faces.length));
       mesh.count = faces.length;
       const matrix = new Matrix4();
       faces.forEach((face, index) => mesh.setMatrixAt(index, faceMatrix(face, matrix)));
       mesh.instanceMatrix.needsUpdate = true;
       mesh.computeBoundingSphere();
-      mesh.name = `street-ads:${format}`;
+      mesh.name = `street-ads:${group}`;
       mesh.userData.billboardSlotIds = faces.map((face) => face.spot.id);
-      return { mesh, material, texture, format };
+      return { mesh, material, texture, group };
     });
-    return { plane, meshes, byFormat: new Map<BillboardFormat, Texture>(meshes.map((entry) => [entry.format, entry.texture])) };
-  }, []);
+    return { plane, meshes, byGroup: new Map<string, Texture>(meshes.map((entry) => [entry.group, entry.texture])) };
+  }, [labels]);
 
   // Spots with a paid creative running get their own face (front and back), swapping texture with the rotation.
   const liveFaces = useMemo<readonly LiveFace[]>(() => {
@@ -221,7 +237,7 @@ export function StreetAds({ shadows }: { readonly shadows: boolean }) {
       if (object) object.visible = near;
       if (!near) return;
       const content = currentBillboard(face.spot.id, liveRef.current, now);
-      const fallback = house.byFormat.get(face.spot.format) ?? (house.byFormat.get('landscape') as Texture);
+      const fallback = house.byGroup.get(houseGroupOf(face.spot)) ?? (house.meshes[0]?.texture as Texture);
       const map = boardTexture(content, fallback, creatives.current);
       if (face.material.map !== map) setProps(face.material, { map, emissiveMap: map, needsUpdate: true });
       setProps(face.material, { emissiveIntensity: glow });
@@ -232,7 +248,7 @@ export function StreetAds({ shadows }: { readonly shadows: boolean }) {
     <>
       <mesh geometry={structure.geometry} material={structure.material} castShadow={shadows} receiveShadow />
       {house.meshes.map((entry) => (
-        <primitive key={entry.format} object={entry.mesh} />
+        <primitive key={entry.group} object={entry.mesh} />
       ))}
       {liveFaces.map((face, index) => (
         <mesh

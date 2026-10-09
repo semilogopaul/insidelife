@@ -23,8 +23,8 @@ docker compose up --build
 ```
 
 Open **http://localhost:8080**. Postgres, Redis, object storage (SeaweedFS), the API, the web app and an nginx gateway
-start together; migrations run automatically. Payments use the built-in **sandbox checkout** until you add a Paystack
-key (see below).
+start together; migrations run automatically. Payments use the built-in **sandbox checkout** until you add a
+Flutterwave key (see below).
 
 ### Local development (hot reload)
 
@@ -61,19 +61,25 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 |---|---|
 | `GAME_TIME_SCALE` | Game minutes per real minute (default `120`: a game day is 12 real minutes, a year 3 real days). |
 | `GAME_EPOCH`, `WORLD_SEED` | Anchor of the shared world clock and the seed for weather, economy and world events. |
-| `PAYSTACK_SECRET_KEY` | `sk_test_…` / `sk_live_…`. Empty in development → sandbox checkout. Required in production. |
-| `PAYSTACK_CALLBACK_URL` | Where Paystack returns players after checkout (`/payments/callback`). |
-| `TOPUP_DAILY_LIMIT_NGN` | Real-money spending cap per account per day (responsible play). |
+| `FLUTTERWAVE_SECRET_KEY` | `FLWSECK_TEST-…` / `FLWSECK-…` (live). Empty in development → sandbox checkout. Required in production; the live site refuses test keys. |
+| `FLUTTERWAVE_PUBLIC_KEY` | Optional (hosted checkout doesn't need it); checked so the live site never ships a test key. |
+| `FLUTTERWAVE_WEBHOOK_SECRET_HASH` | The secret hash set in Flutterwave → Settings → Webhooks (sent back in the `verif-hash` header). Required on the live site. |
+| `PAYMENT_CALLBACK_URL` | Where Flutterwave returns players after checkout (`/payments/callback`). |
+| `TOPUP_DAILY_LIMIT_NGN` | Real-money top-up cap per account per UTC day. `0` (default) = no cap; set one if chargebacks appear. |
+| `TOPUP_MAX_PER_PAYMENT_NGN` | Largest single top-up in real naira (default ₦10,000,000). Players pay a pack or any whole amount from ₦500. |
 | `ADMIN_EMAILS` | Accounts that can moderate billboard ads and club tracks. |
 | `S3_*` | Object storage for ad creatives and music (SeaweedFS locally; any S3-compatible store in production). |
 
-### Paystack
+### Flutterwave
 
-1. Create a Paystack account and copy your **test** secret key from *Settings → API Keys & Webhooks*.
-2. Set `PAYSTACK_SECRET_KEY` in `backend/.env` (or as an environment variable for `docker compose`).
-3. Set the webhook URL to `https://<your-domain>/api/v1/payments/paystack/webhook`. Signatures are verified with
-   HMAC-SHA512; crediting is idempotent per transaction reference, so the redirect verify and the webhook can race
-   safely.
+1. Create a Flutterwave account and copy your **test** keys from *Settings → API keys* (test mode).
+2. Set `FLUTTERWAVE_SECRET_KEY` (and `FLUTTERWAVE_PUBLIC_KEY`) in `backend/.env` (or as environment variables for
+   `docker compose`). Players pay on Flutterwave's hosted page; card details never reach our servers.
+3. Generate a webhook secret hash (`openssl rand -hex 32`), put it in `FLUTTERWAVE_WEBHOOK_SECRET_HASH` and in
+   *Settings → Webhooks → Secret hash*, with the webhook URL `https://<your-domain>/api/v1/payments/flutterwave/webhook`.
+   Every charge is re-verified with the Flutterwave API before anything is delivered, and delivery is idempotent per
+   payment reference, so the redirect, the webhook and the reconciler can race safely. See
+   [`docs/DEPLOY.md`](docs/DEPLOY.md#5-flutterwave) for the dashboard settings and local webhook testing.
 
 ## How it's built
 

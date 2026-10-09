@@ -8,7 +8,7 @@ import { toPaymentDto } from './payment.mapper.js';
 
 /**
  * The fake checkout's buttons (development only). Every route 404s unless the server runs the sandbox gateway; only
- * the payment's owner can decide its outcome. "Succeed" behaves like Paystack's charge + webhook: it delivers.
+ * the payment's owner can decide its outcome. "Succeed" behaves like a Flutterwave charge + webhook: it delivers.
  */
 @Throttle({ default: { limit: 20, ttl: 60_000 } })
 @Controller({ path: 'payments/sandbox', version: '1' })

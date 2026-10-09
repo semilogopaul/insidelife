@@ -22,7 +22,7 @@ export function socialClout(friendCount: number): number {
 
 /**
  * Self-made net worth: everything you own minus every naira you didn't earn (birth-lottery cash, Uncle Tunde's
- * starter fund, allowance, gifts, sprays, inheritance, Paystack top-ups). Never negative.
+ * starter fund, allowance, gifts, sprays, inheritance, real-money top-ups). Never negative.
  */
 export function selfMadeNetWorthOf(netWorth: number, unearnedTotal: number): number {
   return Math.max(0, Math.round(netWorth - unearnedTotal));

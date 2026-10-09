@@ -11,6 +11,7 @@ import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CheckoutService } from './checkout.service.js';
 import { CreateTopupDto } from './dto/create-topup.dto.js';
+import { VerifyPaymentDto } from './dto/verify-payment.dto.js';
 import { toPaymentDto } from './payment.mapper.js';
 import { TopupsService } from './topups.service.js';
 
@@ -37,22 +38,30 @@ export class PaymentsController {
   @Throttle({ default: { limit: 6, ttl: 60_000 } })
   @Post('topups')
   startTopup(@CurrentUser() user: AuthUser, @Body() body: CreateTopupDto): Promise<TopupStartedDto> {
-    return this.topups.start(user.userId, body.packageId);
+    return this.topups.start(user.userId, body);
   }
 
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @Post('topups/:reference/verification')
-  verifyTopup(@CurrentUser() user: AuthUser, @Param('reference', ParseUUIDPipe) reference: string): Promise<TopupVerificationDto> {
-    return this.topups.verify(user.userId, reference);
+  verifyTopup(
+    @CurrentUser() user: AuthUser,
+    @Param('reference', ParseUUIDPipe) reference: string,
+    @Body() body: VerifyPaymentDto,
+  ): Promise<TopupVerificationDto> {
+    return this.topups.verify(user.userId, reference, body.transactionId);
   }
 
-  /** Any purpose (top-up, billboard, club play): confirm with the gateway and deliver if paid. */
+  /** Any purpose (top-up, billboard, club play): confirm with Flutterwave and deliver if paid. */
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
   @Post(':reference/verification')
-  async verify(@CurrentUser() user: AuthUser, @Param('reference', ParseUUIDPipe) reference: string): Promise<PaymentVerificationDto> {
-    const { payment, fulfilledNow } = await this.checkout.verify(user.userId, reference);
+  async verify(
+    @CurrentUser() user: AuthUser,
+    @Param('reference', ParseUUIDPipe) reference: string,
+    @Body() body: VerifyPaymentDto,
+  ): Promise<PaymentVerificationDto> {
+    const { payment, fulfilledNow } = await this.checkout.verify(user.userId, reference, body.transactionId);
     return { payment: toPaymentDto(payment), fulfilledNow };
   }
 }

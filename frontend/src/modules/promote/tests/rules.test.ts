@@ -1,18 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { BillboardDayAvailability } from '@insidelife/shared';
 import {
   addDays,
   checkImageFile,
   checkTrackFile,
   cropReport,
-  dayState,
   daysBetween,
-  firstOpenStart,
   formatDuration,
   formatRange,
+  formatRunDays,
   minimumImageSize,
-  quoteBillboard,
-  rangeAvailability,
+  nextFreeLabel,
+  quoteWeeks,
+  trackDurationProblem,
   validateDisplayText,
   validateLink,
   validateTitle,
@@ -75,20 +74,29 @@ describe('display text', () => {
   });
 });
 
-describe('quoteBillboard (shared billboardQuote in naira)', () => {
-  it('discounts every complete week by 15%', () => {
-    const week = quoteBillboard(2_000_000, 7)!;
-    expect(week).toMatchObject({ unitNaira: 20_000, subtotalNaira: 140_000, discountNaira: 21_000, totalNaira: 119_000 });
-    const tenDays = quoteBillboard(250_000, 10)!;
-    expect(tenDays.subtotalNaira).toBe(25_000);
-    expect(tenDays.discountNaira).toBe(2_625);
-    expect(quoteBillboard(250_000, 3)!.discountNaira).toBe(0);
+describe('quoteWeeks (shared adQuote in naira)', () => {
+  it('charges whole consecutive weeks at the weekly price, no discount', () => {
+    expect(quoteWeeks(17_500_000, 1)).toMatchObject({ weeks: 1, days: 7, weekNaira: 175_000, totalNaira: 175_000 });
+    expect(quoteWeeks(17_500_000, 4)).toMatchObject({ days: 28, totalNaira: 700_000 });
+    expect(quoteWeeks(10_000_000, 2)?.totalNaira).toBe(200_000);
   });
 
-  it('returns null for lengths the server refuses', () => {
-    expect(quoteBillboard(250_000, 0)).toBeNull();
-    expect(quoteBillboard(250_000, 31)).toBeNull();
-    expect(quoteBillboard(250_000, 2.5)).toBeNull();
+  it('returns null for lengths the server refuses and prices under ₦2,000', () => {
+    expect(quoteWeeks(350_000, 0)).toBeNull();
+    expect(quoteWeeks(350_000, 5)).toBeNull();
+    expect(quoteWeeks(350_000, 1.5)).toBeNull();
+    expect(quoteWeeks(150_000, 1)).toBeNull();
+  });
+});
+
+describe('song length (under 5 minutes)', () => {
+  it('accepts 30 seconds to just under 5 minutes, as the server does', () => {
+    expect(trackDurationProblem(null)).toBeNull();
+    expect(trackDurationProblem(30)).toBeNull();
+    expect(trackDurationProblem(299.4)).toBeNull();
+    expect(trackDurationProblem(29)).toMatch(/at least 30 seconds/);
+    expect(trackDurationProblem(300)).toMatch(/under 5 minutes\. This one is 5:00/);
+    expect(trackDurationProblem(372)).toMatch(/This one is 6:12/);
   });
 });
 
@@ -118,9 +126,6 @@ describe('images', () => {
 });
 
 describe('calendar', () => {
-  const day = (date: string, booked: number): BillboardDayAvailability => ({ date, booked, capacity: 4 });
-  const days = [day('2026-10-08', 4), day('2026-10-09', 2), day('2026-10-10', 0), day('2026-10-11', 0)];
-
   it('does date maths on Lagos calendar days', () => {
     expect(addDays('2026-10-31', 1)).toBe('2026-11-01');
     expect(daysBetween('2026-10-08', '2026-10-15')).toBe(7);
@@ -128,12 +133,11 @@ describe('calendar', () => {
     expect(formatRange('2026-10-08', '2026-10-09')).toBe('8 Oct');
   });
 
-  it('rates each day and checks a run against the calendar', () => {
-    expect(days.map(dayState)).toEqual(['full', 'filling', 'open', 'open']);
-    expect(rangeAvailability(days, '2026-10-08', 2)).toEqual({ fullDays: ['2026-10-08'], unknownDays: 0 });
-    expect(rangeAvailability(days, '2026-10-10', 4)).toEqual({ fullDays: [], unknownDays: 2 });
-    expect(firstOpenStart(days, '2026-10-08', 2)).toBe('2026-10-09');
-    expect(firstOpenStart([day('2026-10-08', 4)], '2026-10-08', 1)).toBeNull();
+  it('shows the exact days of a run and when a slot is next free, in weeks', () => {
+    expect(formatRunDays('2026-10-09', '2026-10-16')).toBe('Fri 9 Oct – Thu 15 Oct');
+    expect(nextFreeLabel('2026-10-09', '2026-10-09')).toBe('Free from today');
+    expect(nextFreeLabel('2026-10-15', '2026-10-09')).toBe('Next free: Thu 15 Oct');
+    expect(nextFreeLabel(null, '2026-10-09')).toBe('Fully booked for 2 months');
   });
 
   it('formats track length', () => {

@@ -1,6 +1,6 @@
 import { PROMOTION_STATUSES, type PromotionStatus } from '@insidelife/shared';
 import { rangeOf } from './schedule.rules.js';
-import { admitAfterPayment, canTransition, decideModeration, effectiveStatus, matchPayment, occupiesCapacity } from './status.rules.js';
+import { admitAfterPayment, canTransition, decideModeration, effectiveStatus, matchPayment, occupiesCapacity, refundSettlement } from './status.rules.js';
 
 const run = rangeOf('2026-10-10', 3); // 10th, 11th, 12th
 const paidAt = new Date('2026-10-08T10:00:00Z');
@@ -86,5 +86,21 @@ describe('moderation decisions', () => {
     expect(decideModeration({ ...run, status: 'approved', paidAt }, { action: 'reject', refund: true }, '2026-10-20').ok).toBe(false);
     expect(decideModeration(inReview, { action: 'mark-refunded' }, '2026-10-08').ok).toBe(false);
     expect(decideModeration({ ...run, status: 'refund-due', paidAt }, { action: 'mark-refunded' }, '2026-10-08')).toEqual({ ok: true, to: 'refunded' });
+  });
+});
+
+describe('refund settlement', () => {
+  it('finishes an owed refund and takes down a running item refunded from the dashboard', () => {
+    expect(refundSettlement({ status: 'refund-due', paymentReference: 'ref-1' }, 'ref-1')).toEqual({ kind: 'refunded', takenDown: false });
+    for (const status of ['in-review', 'approved', 'live'] as const) {
+      expect(refundSettlement({ status, paymentReference: 'ref-1' }, 'ref-1')).toEqual({ kind: 'refunded', takenDown: true });
+    }
+  });
+
+  it('only logs a refunded duplicate payment and leaves finished items alone', () => {
+    expect(refundSettlement({ status: 'live', paymentReference: 'ref-1' }, 'ref-2')).toEqual({ kind: 'duplicate-payment' });
+    for (const status of ['refunded', 'rejected', 'completed', 'cancelled'] as const) {
+      expect(refundSettlement({ status, paymentReference: 'ref-1' }, 'ref-1')).toEqual({ kind: 'none' });
+    }
   });
 });

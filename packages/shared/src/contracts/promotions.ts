@@ -9,7 +9,8 @@ import type {
   TrackContentType,
 } from '../catalog/promotions.js';
 import type { DistrictId } from '../catalog/geography.js';
-import type { AdSlotKind } from '../catalog/ad-inventory.js';
+import type { AdRateKey, AdSlotKind } from '../catalog/ad-inventory.js';
+import type { AdPlacementKind } from '../world-map/ad-placements.js';
 
 /**
  * Promotions API contracts — owned by the promotions domain. Billboards (players and brands buy ad space on in-world
@@ -42,16 +43,9 @@ export type PromotionStatus = (typeof PROMOTION_STATUSES)[number];
 
 // ----- Billboards ---------------------------------------------------------------------------------------------------
 
-export interface BillboardDayAvailability {
-  readonly date: IsoDate;
-  /** Paid, approved and held (checkout in progress) bookings that day. */
-  readonly booked: number;
-  readonly capacity: number;
-}
-
 /**
  * A slot as the Promote app shows it: the static catalog entry (`findAdSlot`) joined with its live state
- * (`AdSlotStateDto`). Built on the client; the server only sends the state.
+ * (`AdSlotStateDto`). Built on the client; the server sends the state, including the current price.
  */
 export interface BillboardSlotDto {
   readonly id: BillboardSlotId;
@@ -65,34 +59,45 @@ export interface BillboardSlotDto {
   readonly width: number;
   readonly height: number;
   readonly tier: BillboardVisibilityTier;
-  readonly pricePerDayKobo: number;
-  /** One week with the bundle discount applied. */
+  /** Current price of one 7-day block, in kobo (from the server). */
   readonly weekPriceKobo: number;
   readonly maxConcurrentAds: number;
   /** Ads running on the board right now. */
   readonly liveCount: number;
-  /** Day-by-day occupancy starting today (`availabilityDays` entries). */
-  readonly availability: readonly BillboardDayAvailability[];
+  /** `nextStarts[w - 1]`: the day a booking of `w` weeks made now would start (null: no room in the next 60 days). */
+  readonly nextStarts: readonly (IsoDate | null)[];
 }
 
-/** What changes about a slot: bookings per day from today (paid, approved and held) and ads running now. */
+/** What changes about a slot: its current weekly price, when a booking would start, and ads running now. */
 export interface AdSlotStateDto {
   readonly id: BillboardSlotId;
-  /** `availabilityDays` entries starting today. */
-  readonly occupancy: readonly number[];
+  /** Current price of one 7-day block, in kobo (ops can change it; a booking keeps the price it was quoted). */
+  readonly weekPriceKobo: number;
+  /**
+   * For 1…`maxWeeks` consecutive weeks: the start date the server would give a booking made now — today when the run
+   * fits, else the day the earliest blocking booking ends. Null when there's no room within 60 days.
+   */
+  readonly nextStarts: readonly (IsoDate | null)[];
   readonly liveCount: number;
+}
+
+/** The Club DJ product as it can be bought right now. */
+export interface ClubSongOfferDto {
+  /** Current price per song, in kobo. */
+  readonly priceKobo: number;
+  readonly days: number;
+  /** When an order placed now would start playing in every club (null: rotation full for 30 days). */
+  readonly startDate: IsoDate | null;
 }
 
 /** `GET /v1/promotions/slots` — every slot for sale (phone app slots up to the server's configured count). */
 export interface BillboardSlotsDto {
   readonly today: IsoDate;
-  readonly availabilityDays: number;
+  /** Bookings are 1…`maxWeeks` consecutive 7-day blocks. */
+  readonly maxWeeks: number;
   readonly slots: readonly AdSlotStateDto[];
-  readonly minDays: number;
-  readonly maxDays: number;
-  readonly maxLeadDays: number;
-  readonly weeklyDiscountPercent: number;
   readonly rules: readonly ContentRule[];
+  readonly clubSong: ClubSongOfferDto;
 }
 
 /** `POST /v1/promotions/creatives` (multipart: `file` + `slotId`). The image is re-encoded to the slot size. */
@@ -120,9 +125,13 @@ export interface CreateCampaignRequest {
   readonly tagline?: string;
   /** https only, no IPs, localhost, shorteners or file downloads. */
   readonly linkUrl: string;
-  /** Today (Lagos) or later, at most `maxLeadDays` ahead. */
-  readonly startDate: IsoDate;
-  readonly days: number;
+  /** 1…`maxWeeks` consecutive 7-day blocks. The server picks the start: the slot's next free day. */
+  readonly weeks: number;
+  /**
+   * The start date the buyer was shown (`nextStarts[weeks - 1]`). If the slot filled up meanwhile and the run would
+   * start later, the server refuses (`DATES_CHANGED`) instead of charging for dates the buyer never saw.
+   */
+  readonly expectedStartDate?: IsoDate;
 }
 
 export interface AdCampaignDto {
@@ -142,7 +151,7 @@ export interface AdCampaignDto {
   readonly status: PromotionStatus;
   readonly rejectionReason: string | null;
   readonly paymentReference: string | null;
-  /** Resume the Paystack checkout while the hold lasts (`pending-payment` only). */
+  /** Resume the Flutterwave checkout while the hold lasts (`pending-payment` only). */
   readonly checkoutUrl: string | null;
   /** The slot is held for you until then; after it a late payment may be refunded if the slot filled up. */
   readonly holdExpiresAt: string | null;
@@ -155,7 +164,7 @@ export interface AdCampaignDto {
 
 export interface CheckoutStartedForPromotionDto {
   readonly reference: string;
-  /** Paystack hosted checkout (or the local sandbox page). Open it, then verify via the payments API. */
+  /** Flutterwave hosted checkout (or the local sandbox page). Open it, then verify via the payments API. */
   readonly authorizationUrl: string;
   readonly quote: PromotionQuote;
 }
@@ -179,7 +188,7 @@ export interface LiveBillboardCreativeDto {
 export interface BillboardHouseAdDto {
   readonly headline: string;
   readonly body: string;
-  /** e.g. "From ₦2,500/day". */
+  /** e.g. "₦300,000/week" or "From ₦2,000/day". */
   readonly priceLabel: string;
   /** Tapping it opens the in-game phone on this app and slot. */
   readonly action: { readonly type: 'open-phone-app'; readonly app: 'billboards'; readonly slotId: BillboardSlotId };
@@ -217,32 +226,38 @@ export interface LiveBillboardsDto {
   readonly generatedAt: string;
   readonly slots: readonly LiveBillboardSlotDto[];
   readonly phoneApps: readonly LivePhoneAppDto[];
+  /** "From ₦3,500/week" per street placement kind, for the empty faces the client draws (current rates). */
+  readonly priceLabels: Readonly<Partial<Record<AdPlacementKind, string>>>;
 }
 
 // ----- Club DJ ------------------------------------------------------------------------------------------------------
 
-/** `POST /v1/promotions/tracks` (multipart: `file` + these fields). MP3/OGG, ≤ 10 MB, 30 s – 6 min. */
+/** `POST /v1/promotions/tracks` (multipart: `file` + these fields). MP3/OGG, ≤ 10 MB, 30 s to under 5 min. */
 export interface UploadTrackFields {
   readonly artistName: string;
   readonly title: string;
 }
 
-/** `POST /v1/promotions/tracks/:id/orders` */
+/**
+ * `POST /v1/promotions/tracks/:id/orders` — one song, 7 days in every club and lounge, from the rotation's next free
+ * day (today when every club has room).
+ */
 export interface CreateClubOrderRequest {
   readonly productId: ClubPlayProductId;
-  /** Single-club products: exactly one club venue id. All-club products: `['all']` or omit. */
+  /** Every order plays in every club: `['all']` or omit. */
   readonly clubs?: readonly string[];
-  /** Defaults to today (Lagos). */
-  readonly startDate?: IsoDate;
+  /** The start date the artist was shown (`clubSong.startDate`); a later one is refused with `DATES_CHANGED`. */
+  readonly expectedStartDate?: IsoDate;
 }
 
 export interface ClubPlayOrderDto {
   readonly id: string;
   readonly trackId: string;
-  readonly productId: ClubPlayProductId;
+  /** A `ClubPlayProductId`, or the id of an older package on orders placed before the single ₦5,000 product. */
+  readonly productId: string;
   readonly productName: string;
   readonly allClubs: boolean;
-  /** Venue ids (empty when `allClubs`). */
+  /** Venue ids (empty when `allClubs`; older single-club orders list their club). */
   readonly clubs: readonly string[];
   readonly startDate: IsoDate;
   readonly endDate: IsoDate;
@@ -339,7 +354,7 @@ export interface ModerationQueueDto {
   /** Paid and waiting for review, soonest start first. */
   readonly campaigns: readonly ModerationCampaignDto[];
   readonly clubOrders: readonly ModerationClubOrderDto[];
-  /** Ops: refund these in the Paystack dashboard, then mark them refunded. */
+  /** Refunds the server couldn’t send automatically: refund them in the Flutterwave dashboard, then mark them refunded. */
   readonly refundsDue: {
     readonly campaigns: readonly ModerationCampaignDto[];
     readonly clubOrders: readonly ModerationClubOrderDto[];
@@ -354,7 +369,37 @@ export interface RejectPromotionRequest {
   readonly refund?: boolean;
 }
 
-/** `POST /v1/admin/moderation/{campaigns|club-orders}/:id/refunded` — after refunding in the Paystack dashboard. */
+/** `POST /v1/admin/moderation/{campaigns|club-orders}/:id/refunded` — after refunding in the Flutterwave dashboard (fallback when the automatic refund failed). */
 export interface MarkRefundedRequest {
   readonly note?: string;
+}
+
+// ----- Ad rates (admin-editable prices) -----------------------------------------------------------------------------
+
+/**
+ * One editable price. Keys: each street placement kind (`street-billboard`, `bus-shelter`, `totem`, `stadium-led`,
+ * `market-banner`, `park-board`), `lagos-tv`, `phone-app`, each premium board id, and `club-song`. Changing a rate
+ * only affects new quotes: every order keeps the price it was quoted and charged.
+ */
+export interface AdRateDto {
+  readonly key: AdRateKey;
+  readonly label: string;
+  /** `week`: per 7-day block of an ad; `song`: per club song (7 days in every club). */
+  readonly unit: 'week' | 'song';
+  /** The rate is a base weekly price that each spot scales by its district's prestige (roadside kinds). */
+  readonly byDistrict: boolean;
+  /** The catalog default, in kobo. */
+  readonly defaultKobo: number;
+  /** What new quotes use now, in kobo (the override when there is one, else the default). */
+  readonly currentKobo: number;
+  /** When and by whom the override was last set (null when the default applies). */
+  readonly updatedAt: string | null;
+  readonly updatedBy: string | null;
+}
+
+/** Set a rate: whole naira (a multiple of 100 kobo), from ₦2,000 to ₦100,000,000. */
+export interface UpdateAdRateRequest {
+  readonly priceKobo: number;
+  /** Why (kept with the rate for the audit trail). */
+  readonly reason?: string;
 }

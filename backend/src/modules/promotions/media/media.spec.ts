@@ -57,9 +57,11 @@ describe('inspectTrack', () => {
     await expect(inspectTrack(synthMp3(35), 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 35 });
   });
 
-  it('refuses songs that are too short or too long', async () => {
+  it('refuses songs that are too short, or 5 minutes and longer (measured from the frames)', async () => {
     await expect(inspectTrack(synthMp3(5), 'audio/mpeg')).rejects.toThrow(/at least 30 seconds/);
-    await expect(inspectTrack(synthMp3(6 * 60 + 5), 'audio/mpeg')).rejects.toThrow(/at most 6 minutes/);
+    await expect(inspectTrack(synthMp3(5 * 60 + 3), 'audio/mpeg')).rejects.toThrow(/must be under 5 minutes \(this one is 5:03\)/);
+    await expect(inspectTrack(synthMp3(5 * 60), 'audio/mpeg')).rejects.toThrow(/under 5 minutes/);
+    await expect(inspectTrack(synthMp3(4 * 60 + 58), 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 298 });
   });
 
   it('refuses junk behind a valid-looking signature', async () => {

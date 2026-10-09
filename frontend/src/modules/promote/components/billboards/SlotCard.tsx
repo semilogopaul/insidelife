@@ -1,8 +1,8 @@
-import { Ban } from 'lucide-react';
-import { DISTRICTS, koboToNaira, type BillboardFormat, type BillboardSlotDto } from '@insidelife/shared';
+import { Ban, CalendarCheck } from 'lucide-react';
+import { DISTRICTS, koboToNaira, type BillboardFormat, type BillboardSlotDto, type IsoDate } from '@insidelife/shared';
 import { Money } from '@/common/components';
 import { cn } from '@/common/utils/cn';
-import { dayState, formatDay } from '../../services/rules';
+import { nextFreeLabel } from '../../services/rules';
 
 const TIER_LABEL = { premium: 'Premium', high: 'High traffic', standard: 'Standard', local: 'Local' } as const;
 
@@ -16,30 +16,10 @@ export function FormatGlyph({ format, className }: { readonly format: BillboardF
   );
 }
 
-/** 28-day occupancy in one thin strip (summary only; the text beside it carries the meaning). */
-export function AvailabilityStrip({ slot }: { readonly slot: BillboardSlotDto }) {
-  return (
-    <span aria-hidden className="flex h-2 gap-px">
-      {slot.availability.map((day) => {
-        const state = dayState(day);
-        return <span key={day.date} className={cn('flex-1 first:rounded-l-full last:rounded-r-full', state === 'full' ? 'bg-okada' : state === 'filling' ? 'bg-danfo' : 'bg-naira/35')} />;
-      })}
-    </span>
-  );
-}
-
-export function availabilitySummary(slot: BillboardSlotDto): string {
-  const open = slot.availability.filter((day) => dayState(day) !== 'full');
-  const filling = slot.availability.filter((day) => dayState(day) === 'filling').length;
-  if (open.length === 0) return 'Fully booked for 4 weeks';
-  if (open.length === slot.availability.length) return filling > 0 ? `Space every day · ${filling} days filling up` : 'Free every day for 4 weeks';
-  const first = open[0];
-  return `${open.length} of ${slot.availability.length} days free${first && first.date !== slot.availability[0]?.date ? ` · next from ${formatDay(first.date)}` : ''}`;
-}
-
-/** A board in the list: shape, place, traffic tier, price per real day and the 4-week strip. */
-export function SlotCard({ slot, onOpen }: { readonly slot: BillboardSlotDto; readonly onOpen: () => void }) {
-  const soldOut = slot.availability.every((day) => dayState(day) === 'full');
+/** A board in the list: shape, place, traffic tier, price per 7 days and when a booking made now would start. */
+export function SlotCard({ slot, today, onOpen }: { readonly slot: BillboardSlotDto; readonly today: IsoDate; readonly onOpen: () => void }) {
+  const next = slot.nextStarts[0] ?? null;
+  const soldOut = next === null;
   return (
     <button type="button" onClick={onOpen} className="flex h-full w-full flex-col gap-2 rounded-sheet bg-paper-2 p-3.5 text-left ring-1 ring-transparent transition-colors hover:bg-paper-3 hover:ring-line">
       <span className="flex items-start justify-between gap-2">
@@ -52,14 +32,13 @@ export function SlotCard({ slot, onOpen }: { readonly slot: BillboardSlotDto; re
       </span>
       <span className="mt-auto">
         <span className="type-figure text-lg">
-          <Money amount={koboToNaira(slot.pricePerDayKobo)} />
+          <Money amount={koboToNaira(slot.weekPriceKobo)} />
         </span>
-        <span className="text-xs text-text-soft"> /day</span>
+        <span className="text-xs text-text-soft"> /week</span>
       </span>
-      <AvailabilityStrip slot={slot} />
-      <span className={cn('flex items-center gap-1 text-2xs', soldOut ? 'font-bold text-okada' : 'text-text-soft')}>
-        {soldOut && <Ban size={11} aria-hidden />}
-        {availabilitySummary(slot)}
+      <span className={cn('flex items-center gap-1 text-2xs', soldOut ? 'font-bold text-okada' : next === today ? 'font-bold text-naira' : 'text-text-soft')}>
+        {soldOut ? <Ban size={11} aria-hidden /> : <CalendarCheck size={11} aria-hidden />}
+        {nextFreeLabel(next, today)}
       </span>
     </button>
   );

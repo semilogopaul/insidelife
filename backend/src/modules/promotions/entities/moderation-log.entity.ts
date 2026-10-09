@@ -11,7 +11,8 @@ export type ModerationAction =
   | 'refunded'
   | 'cancelled'
   | 'checkout-failed'
-  | 'duplicate-payment';
+  | 'duplicate-payment'
+  | 'refund-failed';
 
 /** Append-only audit trail of every payment and moderation decision on promotions. */
 @Entity('promotion_moderation_log')

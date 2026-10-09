@@ -1,13 +1,29 @@
-import { AD_PLACEMENTS, type AdPlacementKind, type AdPlacementSpot } from '../world-map/ad-placements.js';
-import { DISTRICTS } from './geography.js';
-import { BILLBOARD_FORMAT_SPECS, BILLBOARD_SLOTS, type BillboardFormat, type BillboardPlacement, type BillboardSlot, type BillboardVisibilityTier } from './promotions.js';
+import { AD_PLACEMENT_KINDS, AD_PLACEMENTS, type AdPlacementKind, type AdPlacementSpot } from '../world-map/ad-placements.js';
+import { DISTRICTS, type DistrictId } from './geography.js';
+import {
+  BILLBOARD_FORMAT_SPECS,
+  BILLBOARD_SLOT_IDS,
+  BILLBOARD_SLOTS,
+  CLUB_TRACK_PRICE_KOBO,
+  PHONE_APP_WEEK_PRICE_KOBO,
+  friendlyWeekPriceKobo,
+  type BillboardFormat,
+  type BillboardPlacement,
+  type BillboardSlot,
+  type BillboardVisibilityTier,
+} from './promotions.js';
 import { findVenue } from './venues.js';
 
 /**
  * Everything an advertiser can book with real money, one list: the 12 hand-placed premium billboards, the ~540
  * generated street surfaces (roadside boards, bus shelters, lightbox totems, stadium LEDs, market banners, motor-park
  * boards), Lagos TV (every TV in every home and venue) and the phone's Sponsored apps shelf. Each slot is booked the
- * same way (creative + dates + Paystack) and rotates up to `maxConcurrentAds` ads a day.
+ * same way (creative + 1–4 consecutive weeks from its next free day + Flutterwave checkout) and rotates up to
+ * `maxConcurrentAds` ads a day.
+ *
+ * Prices are per 7 days: 7 × the old day rate (roadside kinds keep their district prestige factor; venue boards, the
+ * stadium, markets, parks, Lagos TV and the premium boards are flat), rounded to ₦500, never under ₦2,000. A
+ * Sponsored phone app is ₦100,000 a week. Ops can override any of these "rates" on the server (`ad_rates`).
  */
 
 export type AdSlotKind = 'premium-billboard' | AdPlacementKind | 'lagos-tv' | 'phone-app';
@@ -38,8 +54,8 @@ const NAIRA = 100;
 
 interface KindPricing {
   readonly placement: BillboardPlacement;
-  /** ₦ per day before the district's prestige factor. */
-  readonly baseNaira: number;
+  /** The old ₦ per day; the weekly default is 7 × this (× the district's prestige factor when `byDistrict`). */
+  readonly dailyNaira: number;
   readonly maxConcurrentAds: number;
   readonly tier: BillboardVisibilityTier;
   /** Prestige scales roadside prices (Mushin ×0.8 … Banana Island ×1.9); venue spots are flat. */
@@ -47,17 +63,69 @@ interface KindPricing {
 }
 
 const PRICING: Readonly<Record<AdPlacementKind, KindPricing>> = {
-  'street-billboard': { placement: 'street', baseNaira: 1_800, maxConcurrentAds: 3, tier: 'standard', byDistrict: true },
-  'bus-shelter': { placement: 'shelter', baseNaira: 900, maxConcurrentAds: 2, tier: 'local', byDistrict: true },
-  totem: { placement: 'totem', baseNaira: 600, maxConcurrentAds: 2, tier: 'local', byDistrict: true },
-  'stadium-led': { placement: 'arena', baseNaira: 2_500, maxConcurrentAds: 4, tier: 'high', byDistrict: false },
-  'market-banner': { placement: 'market', baseNaira: 1_000, maxConcurrentAds: 2, tier: 'standard', byDistrict: false },
-  'park-board': { placement: 'motor-park', baseNaira: 1_500, maxConcurrentAds: 3, tier: 'standard', byDistrict: false },
+  'street-billboard': { placement: 'street', dailyNaira: 1_800, maxConcurrentAds: 3, tier: 'standard', byDistrict: true },
+  'bus-shelter': { placement: 'shelter', dailyNaira: 900, maxConcurrentAds: 2, tier: 'local', byDistrict: true },
+  totem: { placement: 'totem', dailyNaira: 600, maxConcurrentAds: 2, tier: 'local', byDistrict: true },
+  'stadium-led': { placement: 'arena', dailyNaira: 2_500, maxConcurrentAds: 4, tier: 'high', byDistrict: false },
+  'market-banner': { placement: 'market', dailyNaira: 1_000, maxConcurrentAds: 2, tier: 'standard', byDistrict: false },
+  'park-board': { placement: 'motor-park', dailyNaira: 1_500, maxConcurrentAds: 3, tier: 'standard', byDistrict: false },
 };
 
-const prestigeFactor = (spot: AdPlacementSpot): number => 0.72 + (DISTRICTS[spot.districtId].prestige / 100) * 1.2;
-/** Round to a friendly price (nearest ₦50). */
-const friendly = (naira: number): number => Math.max(100, Math.round(naira / 50) * 50);
+/** Lagos TV: every TV in the game, 12 ads share the channel (was ₦6,000/day). */
+const LAGOS_TV_WEEK_PRICE_KOBO = 7 * 6_000 * NAIRA;
+
+/** District prestige multiplier for roadside spots (≈0.82 in the poorest district … 1.92 in the richest). */
+export const districtPriceFactor = (districtId: DistrictId): number => 0.72 + (DISTRICTS[districtId].prestige / 100) * 1.2;
+
+// ----- Rates (what ops can re-price) ----------------------------------------------------------------------------------
+
+/**
+ * One editable price per rate key: each placement kind (a base weekly rate; roadside kinds are then scaled per
+ * district), Lagos TV, the phone apps, each premium board, and the club song.
+ */
+export const AD_RATE_KEYS = [...AD_PLACEMENT_KINDS, 'lagos-tv', 'phone-app', ...BILLBOARD_SLOT_IDS, 'club-song'] as const;
+export type AdRateKey = (typeof AD_RATE_KEYS)[number];
+
+export interface AdRateDefinition {
+  readonly key: AdRateKey;
+  readonly label: string;
+  /** `week`: per 7-day block of an ad; `song`: per club song (7 days in every club). */
+  readonly unit: 'week' | 'song';
+  /** The stored rate is a base weekly price, scaled by each spot's district prestige. */
+  readonly byDistrict: boolean;
+  readonly defaultKobo: number;
+}
+
+export const AD_RATE_DEFINITIONS: Readonly<Record<AdRateKey, AdRateDefinition>> = Object.fromEntries([
+  ...AD_PLACEMENT_KINDS.map((kind) => [
+    kind,
+    { key: kind, label: AD_SLOT_KIND_LABELS[kind], unit: 'week', byDistrict: PRICING[kind].byDistrict, defaultKobo: 7 * PRICING[kind].dailyNaira * NAIRA },
+  ]),
+  ['lagos-tv', { key: 'lagos-tv', label: AD_SLOT_KIND_LABELS['lagos-tv'], unit: 'week', byDistrict: false, defaultKobo: LAGOS_TV_WEEK_PRICE_KOBO }],
+  ['phone-app', { key: 'phone-app', label: AD_SLOT_KIND_LABELS['phone-app'], unit: 'week', byDistrict: false, defaultKobo: PHONE_APP_WEEK_PRICE_KOBO }],
+  ...BILLBOARD_SLOTS.map((board) => [board.id, { key: board.id, label: `Premium billboard: ${board.name}`, unit: 'week', byDistrict: false, defaultKobo: board.weekPriceKobo }]),
+  ['club-song', { key: 'club-song', label: 'Club DJ song (7 days, every club)', unit: 'song', byDistrict: false, defaultKobo: CLUB_TRACK_PRICE_KOBO }],
+]) as Record<AdRateKey, AdRateDefinition>;
+
+export function isAdRateKey(key: string): key is AdRateKey {
+  return Object.hasOwn(AD_RATE_DEFINITIONS, key);
+}
+
+/** The rate a slot is priced from: its own key for a premium board, else its kind. */
+export function adRateKeyOf(slot: Pick<AdSlot, 'id' | 'kind'>): AdRateKey {
+  if (slot.kind !== 'premium-billboard') return slot.kind;
+  if (!isAdRateKey(slot.id)) throw new RangeError(`No rate for premium board ${slot.id}`);
+  return slot.id;
+}
+
+const BY_DISTRICT_KINDS: ReadonlySet<AdSlotKind> = new Set(AD_PLACEMENT_KINDS.filter((kind) => PRICING[kind].byDistrict));
+
+/** A slot's weekly price from its rate: roadside kinds are scaled by district prestige and rounded to ₦500. */
+export function adWeekPriceKobo(slot: Pick<AdSlot, 'kind' | 'districtId'>, rateKobo: number): number {
+  return BY_DISTRICT_KINDS.has(slot.kind) && slot.districtId ? friendlyWeekPriceKobo(rateKobo * districtPriceFactor(slot.districtId)) : rateKobo;
+}
+
+// ----- Slots -------------------------------------------------------------------------------------------------------
 
 const pixels = (format: BillboardFormat) => ({ format, width: BILLBOARD_FORMAT_SPECS[format].width, height: BILLBOARD_FORMAT_SPECS[format].height });
 
@@ -83,7 +151,6 @@ function describe(spot: AdPlacementSpot): { readonly name: string; readonly desc
 
 function placementSlot(spot: AdPlacementSpot): AdSlot {
   const pricing = PRICING[spot.kind];
-  const naira = pricing.byDistrict ? friendly(pricing.baseNaira * prestigeFactor(spot)) : pricing.baseNaira;
   return {
     id: spot.id,
     kind: spot.kind,
@@ -92,7 +159,7 @@ function placementSlot(spot: AdPlacementSpot): AdSlot {
     placement: pricing.placement,
     ...pixels(spot.format),
     tier: pricing.byDistrict && DISTRICTS[spot.districtId].prestige >= 70 && pricing.tier === 'standard' ? 'high' : pricing.tier,
-    pricePerDayKobo: naira * NAIRA,
+    weekPriceKobo: adWeekPriceKobo(spot, AD_RATE_DEFINITIONS[spot.kind].defaultKobo),
     maxConcurrentAds: pricing.maxConcurrentAds,
   };
 }
@@ -106,7 +173,7 @@ const LAGOS_TV: AdSlot = {
   placement: 'broadcast',
   ...pixels('wide'),
   tier: 'premium',
-  pricePerDayKobo: 6_000 * NAIRA,
+  weekPriceKobo: LAGOS_TV_WEEK_PRICE_KOBO,
   maxConcurrentAds: 12,
 };
 
@@ -119,11 +186,11 @@ const phoneAppSlot = (index: number): AdSlot => ({
   placement: 'phone',
   ...pixels('square'),
   tier: 'premium',
-  pricePerDayKobo: 4_000 * NAIRA,
+  weekPriceKobo: PHONE_APP_WEEK_PRICE_KOBO,
   maxConcurrentAds: 1,
 });
 
-/** Every bookable slot (the server hides phone app slots beyond its configured count). */
+/** Every bookable slot, with default prices (the server hides phone app slots beyond its configured count). */
 export const AD_SLOTS: readonly AdSlot[] = [
   ...BILLBOARD_SLOTS.map((slot): AdSlot => ({ ...slot, kind: 'premium-billboard' })),
   ...AD_PLACEMENTS.map(placementSlot),

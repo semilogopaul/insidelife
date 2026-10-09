@@ -1,15 +1,14 @@
-import { BILLBOARD_WEEK_DAYS, billboardQuote, findAdSlot, type BillboardSlotDto, type BillboardSlotsDto } from '@insidelife/shared';
-import { addDays } from './rules';
+import { findAdSlot, type BillboardSlotDto, type BillboardSlotsDto } from '@insidelife/shared';
 
-/** The slots response with every slot expanded for display (catalog details + live occupancy). */
+/** The slots response with every slot expanded for display (catalog details + live state and price). */
 export interface SlotCatalog extends Omit<BillboardSlotsDto, 'slots'> {
   readonly slots: readonly BillboardSlotDto[];
 }
 
 /**
- * Join the server's slot states with the shared ad catalog. The server only sends what changes (occupancy per day,
- * ads live now) for the ~560 slots; names, prices, formats and descriptions come from `AD_SLOTS`. Unknown ids (a newer
- * server) are skipped.
+ * Join the server's slot states with the shared ad catalog. The server sends what changes (current weekly price, the
+ * next start for 1–4 weeks, ads live now) for the ~560 slots; names, formats and descriptions come from `AD_SLOTS`.
+ * Unknown ids (a newer server) are skipped.
  */
 export function toSlotCatalog(dto: BillboardSlotsDto): SlotCatalog {
   const slots = dto.slots.flatMap((state): BillboardSlotDto[] => {
@@ -27,11 +26,10 @@ export function toSlotCatalog(dto: BillboardSlotsDto): SlotCatalog {
         width: slot.width,
         height: slot.height,
         tier: slot.tier,
-        pricePerDayKobo: slot.pricePerDayKobo,
-        weekPriceKobo: billboardQuote(slot, BILLBOARD_WEEK_DAYS).totalKobo,
+        weekPriceKobo: state.weekPriceKobo,
         maxConcurrentAds: slot.maxConcurrentAds,
         liveCount: state.liveCount,
-        availability: state.occupancy.map((booked, index) => ({ date: addDays(dto.today, index), booked, capacity: slot.maxConcurrentAds })),
+        nextStarts: state.nextStarts,
       },
     ];
   });

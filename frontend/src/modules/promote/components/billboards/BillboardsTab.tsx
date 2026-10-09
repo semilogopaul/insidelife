@@ -45,7 +45,7 @@ export function BillboardsTab({ view, onView, onBook }: BillboardsTabProps) {
     () =>
       (all ?? [])
         .filter((slot) => slot.kind === kind && (district === 'all' || slot.districtId === district))
-        .toSorted((a, b) => a.pricePerDayKobo - b.pricePerDayKobo || a.name.localeCompare(b.name)),
+        .toSorted((a, b) => a.weekPriceKobo - b.weekPriceKobo || a.name.localeCompare(b.name)),
     [all, kind, district],
   );
   const districts = useMemo(() => {
@@ -107,7 +107,7 @@ export function BillboardsTab({ view, onView, onBook }: BillboardsTabProps) {
             <ul className="grid grid-cols-2 gap-2.5">
               {list.slice(0, shown).map((item) => (
                 <li key={item.id}>
-                  <SlotCard slot={item} onOpen={() => onBook(item.id)} />
+                  <SlotCard slot={item} today={slots.data?.today ?? ''} onOpen={() => onBook(item.id)} />
                 </li>
               ))}
             </ul>

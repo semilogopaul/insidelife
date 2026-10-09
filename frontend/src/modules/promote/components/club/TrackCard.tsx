@@ -1,7 +1,7 @@
 'use client';
 
 import { Disc3, Play } from 'lucide-react';
-import { findVenue, koboToNaira, type ClubPlayOrderDto, type ClubTrackDto, type ContentRule, type IsoDate } from '@insidelife/shared';
+import { findVenue, koboToNaira, type ClubPlayOrderDto, type ClubSongOfferDto, type ClubTrackDto, type ContentRule } from '@insidelife/shared';
 import { Button, Money } from '@/common/components';
 import { useNow } from '@/common/hooks/use-now';
 import { formatDuration, formatRange } from '../../services/rules';
@@ -11,7 +11,8 @@ import { OrderForm } from './OrderForm';
 
 export interface TrackCardProps {
   readonly track: ClubTrackDto;
-  readonly today: IsoDate;
+  /** Today's song price and start date (null while loading). */
+  readonly offer: ClubSongOfferDto | null;
   readonly rules: readonly ContentRule[];
   readonly ordering: boolean;
   readonly onOrder: (open: boolean) => void;
@@ -20,7 +21,7 @@ export interface TrackCardProps {
 const BOOKABLE = new Set(['draft', 'completed', 'cancelled', 'refunded', 'refund-due', 'rejected']);
 
 /** One song: listen, its plays, every rotation booked and what each is doing. */
-export function TrackCard({ track, today, rules, ordering, onOrder }: TrackCardProps) {
+export function TrackCard({ track, offer, rules, ordering, onOrder }: TrackCardProps) {
   const canBook = !track.removed && BOOKABLE.has(track.status);
   return (
     <li className="flex flex-col gap-3 rounded-sheet p-4 ring-1 ring-line">
@@ -55,7 +56,7 @@ export function TrackCard({ track, today, rules, ordering, onOrder }: TrackCardP
         </ul>
       )}
       {ordering ? (
-        <OrderForm track={track} today={today} rules={rules} onCancel={() => onOrder(false)} />
+        <OrderForm track={track} offer={offer} rules={rules} onCancel={() => onOrder(false)} />
       ) : canBook ? (
         <Button variant={track.orders.length === 0 ? 'danfo' : 'paper'} onClick={() => onOrder(true)}>
           {track.orders.length === 0 ? 'Book club plays' : 'Book another run'}

@@ -5,24 +5,23 @@ import { useState } from 'react';
 import { PROMOTION_CONTENT_RULES } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, EmptyState, Section, Spinner, toast } from '@/common/components';
-import { lagosToday, useNow } from '@/common/hooks/use-now';
 import { useSlots, useTracks } from '../../hooks/use-promote';
 import { formatDuration } from '../../services/rules';
 import { TrackCard } from './TrackCard';
 import { TrackUploadForm } from './TrackUploadForm';
 
-/** Upload a song, then book club rotation (one club or every club) and watch the plays come in. */
+/** Upload a song, then book 7 days in every club's rotation and watch the plays come in. */
 export function ClubDjTab() {
   const tracks = useTracks();
   const slots = useSlots();
   const [ordering, setOrdering] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const now = useNow();
-  const today = slots.data?.today ?? lagosToday(now);
+  const offer = slots.data?.clubSong ?? null;
 
   const hasTracks = (tracks.data?.length ?? 0) > 0;
   const upload = (
     <TrackUploadForm
+      priceKobo={offer?.priceKobo}
       onCancel={hasTracks ? () => setUploading(false) : undefined}
       onUploaded={(track) => {
         toast({ title: 'Song uploaded', body: `${track.title} · ${formatDuration(track.durationSeconds)}. Now book where it plays.`, tone: 'good' });
@@ -63,7 +62,7 @@ export function ClubDjTab() {
               <TrackCard
                 key={track.id}
                 track={track}
-                today={today}
+                offer={offer}
                 rules={PROMOTION_CONTENT_RULES}
                 ordering={ordering === track.id}
                 onOrder={(open) => setOrdering(open ? track.id : null)}

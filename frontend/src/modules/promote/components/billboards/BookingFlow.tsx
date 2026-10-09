@@ -2,14 +2,14 @@
 
 import { Eye, MapPin } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { AD_SLOT_KIND_LABELS, BILLBOARD_FORMAT_SPECS, DISTRICTS, koboToNaira, type BillboardSlotDto, type CreativeDto } from '@insidelife/shared';
+import { AD_SLOT_KIND_LABELS, BILLBOARD_FORMAT_SPECS, DISTRICTS, koboToNaira, type BillboardSlotDto, type CreativeDto, type IsoDate } from '@insidelife/shared';
+import { formatDay, nextFreeLabel } from '../../services/rules';
 import type { SlotCatalog } from '../../services/slot-views';
 import { Button, Money } from '@/common/components';
 import { StepHeader } from '../shared';
-import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { CreativeStep } from './CreativeStep';
 import { DetailsStep } from './DetailsStep';
-import { FormatGlyph, availabilitySummary } from './SlotCard';
+import { FormatGlyph } from './SlotCard';
 
 type Step = 'board' | 'creative' | 'details';
 const STEP_TITLES: Readonly<Record<Step, string>> = { board: 'Board', creative: 'Your image', details: 'Dates & payment' };
@@ -29,16 +29,17 @@ export function BookingFlow({ slot, catalog, onExit }: { readonly slot: Billboar
         backLabel={step === 'board' ? 'Back to all boards' : 'Previous step'}
         aside={<span className="shrink-0 text-xs font-bold text-text-soft">Step {index + 1} of 3</span>}
       />
-      {step === 'board' && <BoardDetail slot={slot} onBook={() => setStep('creative')} />}
+      {step === 'board' && <BoardDetail slot={slot} today={catalog.today} onBook={() => setStep('creative')} />}
       {step === 'creative' && <CreativeStep slot={slot} creative={creative} onUploaded={setCreative} onNext={() => setStep('details')} />}
       {step === 'details' && creative && <DetailsStep slot={slot} catalog={catalog} creative={creative} />}
     </div>
   );
 }
 
-function BoardDetail({ slot, onBook }: { readonly slot: BillboardSlotDto; readonly onBook: () => void }) {
+function BoardDetail({ slot, today, onBook }: { readonly slot: BillboardSlotDto; readonly today: IsoDate; readonly onBook: () => void }) {
   const spec = BILLBOARD_FORMAT_SPECS[slot.format];
-  const full = slot.availability.every((day) => day.booked >= day.capacity);
+  const next = slot.nextStarts[0] ?? null;
+  const full = next === null;
   return (
     <>
       <div className="flex items-start gap-3 rounded-sheet bg-ink p-4 text-on-ink">
@@ -51,24 +52,25 @@ function BoardDetail({ slot, onBook }: { readonly slot: BillboardSlotDto; readon
         </div>
       </div>
       <dl className="grid grid-cols-3 gap-2 text-center">
-        <Fact label="Per day" value={<Money amount={koboToNaira(slot.pricePerDayKobo)} />} />
         <Fact label="Per week" value={<Money amount={koboToNaira(slot.weekPriceKobo)} />} />
         <Fact label="Ads share it" value={`Up to ${slot.maxConcurrentAds}`} />
+        <Fact label="Starts" value={full ? 'Fully booked' : next <= today ? 'Today' : formatDay(next)} />
       </dl>
       <p className="text-sm text-text-soft">
-        {spec.label} {spec.aspect} board, {spec.width} × {spec.height} px. Ads take turns every 10 seconds. Prices are real money, per real day (Lagos time).
+        {spec.label} {spec.aspect} board, {spec.width} × {spec.height} px. Ads take turns every 10 seconds. Sold in weeks of 7 real days in a
+        row (Lagos time), real money.
         {slot.liveCount > 0 && (
           <span className="ml-1 inline-flex items-center gap-1 font-bold text-text">
             <Eye size={13} aria-hidden /> {slot.liveCount} live now.
           </span>
         )}
       </p>
-      <section aria-label="Availability">
-        <h4 className="mb-2 flex items-baseline justify-between text-sm font-bold">
-          Next 4 weeks <span className="text-xs font-normal text-text-soft">{availabilitySummary(slot)}</span>
-        </h4>
-        <AvailabilityCalendar days={slot.availability} />
-      </section>
+      <p className="rounded-card bg-paper-2 p-3 text-sm">
+        <span className="font-bold">{nextFreeLabel(next, today)}.</span>{' '}
+        {full
+          ? 'Every week in the next two months is taken. Try another board.'
+          : 'Your ad starts on the next free day and runs for the weeks you pick, back to back. You don’t pick days.'}
+      </p>
       <div className="sticky bottom-0 -mx-1 bg-paper px-1 pb-1 pt-2">
         <Button size="lg" block disabled={full} onClick={onBook}>
           {full ? 'Fully booked — try another board' : 'Book this board'}
