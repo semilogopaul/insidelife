@@ -13,6 +13,7 @@ export { ComingSoon } from './ComingSoon';
 export { Badge } from './Badge';
 export { EmptyState } from './EmptyState';
 export { HoldButton, type HoldButtonProps } from './HoldButton';
+export { PressButton, type PressButtonProps } from './PressButton';
 export { ListRow, type ListRowProps } from './ListRow';
 export { ProgressBar } from './ProgressBar';
 export { Section } from './Section';
