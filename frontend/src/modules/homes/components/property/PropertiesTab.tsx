@@ -12,10 +12,12 @@ export function PropertiesTab({
   overview,
   now,
   onBuyLand,
+  onBuyHouse,
 }: {
   readonly overview: HousingOverviewDto;
   readonly now: GameMinute;
   readonly onBuyLand: () => void;
+  readonly onBuyHouse: () => void;
 }) {
   const [building, setBuilding] = useState<PropertyDto | null>(null);
   const properties = overview.properties.filter(
@@ -27,8 +29,15 @@ export function PropertiesTab({
       <EmptyState
         icon={LandPlot}
         title="No land yet"
-        body="Land in Lagos only goes up — if your papers are right. Start with a plot in Epe or Ikorodu."
-        action={<Button onClick={onBuyLand}>See land for sale</Button>}
+        body="Land in Lagos only goes up — if your papers are right. Start with a plot in Epe or Ikorodu, or buy a finished house and move in today."
+        action={
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button onClick={onBuyLand}>See land for sale</Button>
+            <Button variant="paper" onClick={onBuyHouse}>
+              Houses for sale
+            </Button>
+          </div>
+        }
       />
     );
   }
@@ -59,9 +68,14 @@ export function PropertiesTab({
           />
         ))}
       </ul>
-      <Button variant="paper" onClick={onBuyLand}>
-        Buy more land
-      </Button>
+      <div className="grid grid-cols-2 gap-2">
+        <Button variant="paper" onClick={onBuyLand}>
+          Buy more land
+        </Button>
+        <Button variant="paper" onClick={onBuyHouse}>
+          Buy a house
+        </Button>
+      </div>
       <BuildSheet property={building} onClose={() => setBuilding(null)} />
     </div>
   );

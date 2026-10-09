@@ -1,7 +1,10 @@
 import {
+  NEW_BUILD_CONDITION,
   SCAM_PRICE_THRESHOLD,
+  type BlueprintId,
   type DistrictId,
   type HomeComfortDto,
+  type HouseListingDto,
   type HousingOverviewDto,
   type HousingTypeId,
   type LandOfferDto,
@@ -93,6 +96,63 @@ export function oddsPerYear(chance: number): string {
   if (chance <= 0) return 'No known risk';
   if (chance >= 0.5) return `${Math.round(chance * 100)}% chance a year`;
   return `About 1 in ${Math.max(2, Math.round(1 / chance))} a year`;
+}
+
+// ----- Houses for sale ---------------------------------------------------------------------------------------------
+
+/** The asking price (house and land together) plus agency, legal and survey, as for land. */
+export function houseLines(listing: Pick<HouseListingDto, 'price' | 'costs' | 'total'>): {
+  readonly lines: ReceiptLine[];
+  readonly total: number;
+} {
+  return {
+    lines: [
+      { label: 'House & land', amount: listing.price },
+      { label: 'Agency fee', amount: listing.costs.agency },
+      { label: 'Legal fee', amount: listing.costs.legal },
+      { label: 'Survey plan', amount: listing.costs.survey },
+    ],
+    total: listing.total,
+  };
+}
+
+export interface HouseCondition {
+  readonly label: string;
+  readonly tone: 'good' | 'neutral' | 'warn';
+}
+
+/** Condition in words: rents and value scale with it. */
+export function houseCondition(condition: number): HouseCondition {
+  if (condition >= NEW_BUILD_CONDITION) return { label: 'Brand new', tone: 'good' };
+  if (condition >= 90) return { label: 'Excellent', tone: 'good' };
+  if (condition >= 80) return { label: 'Good', tone: 'neutral' };
+  return { label: 'Needs touch-ups', tone: 'warn' };
+}
+
+/** "Never lived in", "1 year old", "8 years old". */
+export function houseAge(ageYears: number): string {
+  if (ageYears <= 0) return 'Never lived in';
+  return ageYears === 1 ? '1 year old' : `${ageYears} years old`;
+}
+
+export interface HouseFilter {
+  readonly district: DistrictId | 'all';
+  readonly blueprint: BlueprintId | 'all';
+  readonly affordableOnly: boolean;
+}
+
+/** Filter by district/kind/affordability, cheapest all-in first. */
+export function filterHouses<
+  T extends Pick<HouseListingDto, 'districtId' | 'blueprintId' | 'affordable' | 'total'>,
+>(listings: readonly T[], filter: HouseFilter): T[] {
+  return listings
+    .filter(
+      (listing) =>
+        (filter.district === 'all' || listing.districtId === filter.district) &&
+        (filter.blueprint === 'all' || listing.blueprintId === filter.blueprint) &&
+        (!filter.affordableOnly || listing.affordable),
+    )
+    .sort((a, b) => a.total - b.total);
 }
 
 // ----- Building ----------------------------------------------------------------------------------------------------

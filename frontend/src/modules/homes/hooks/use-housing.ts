@@ -17,12 +17,13 @@ export const housingKeys = {
   overview: queryKeys.domain('housing'),
   listings: queryKeys.domain('housing', 'listings'),
   land: queryKeys.domain('housing', 'land'),
+  houses: queryKeys.domain('housing', 'houses'),
 } as const;
 
-/** Milestones worth a full-screen moment: your own place, your first land, starting to build. */
-const CELEBRATED: ReadonlySet<string> = new Set(['moved-in', 'purchased', 'building']);
+/** Milestones worth a full-screen moment: your own place, your first land or house, starting to build. */
+const CELEBRATED: ReadonlySet<string> = new Set(['moved-in', 'purchased', 'house-purchased', 'building']);
 /** Outcomes the server also announces with a push notification (show it once). */
-const SERVER_NOTIFIED: ReadonlySet<string> = new Set(['moved-in', 'moved', 'purchased']);
+const SERVER_NOTIFIED: ReadonlySet<string> = new Set(['moved-in', 'moved', 'purchased', 'house-purchased']);
 
 export function useHousing() {
   return useQuery({ queryKey: housingKeys.overview, queryFn: homesApi.overview, refetchInterval: 60_000 });
@@ -37,12 +38,17 @@ export function useLandOffers() {
   return useQuery({ queryKey: housingKeys.land, queryFn: homesApi.land, staleTime: 60_000 });
 }
 
+/** This week's ready-built houses for sale across Lagos. */
+export function useHouseListings() {
+  return useQuery({ queryKey: housingKeys.houses, queryFn: homesApi.houses, staleTime: 60_000 });
+}
+
 /**
  * Every housing command answers with `{ title, message, tone, housing }`: write the view, refresh the wallet, and
  * tell the player what happened in the server's own words.
  */
-function useHousingCommand<TVariables>(
-  fn: (variables: TVariables) => Promise<HousingActionResultDto>,
+function useHousingCommand<TVariables, TResult extends HousingActionResultDto = HousingActionResultDto>(
+  fn: (variables: TVariables) => Promise<TResult>,
   failTitle: string,
 ) {
   const client = useQueryClient();
@@ -53,6 +59,7 @@ function useHousingCommand<TVariables>(
       void client.invalidateQueries({ queryKey: queryKeys.snapshot });
       void client.invalidateQueries({ queryKey: housingKeys.listings });
       void client.invalidateQueries({ queryKey: housingKeys.land });
+      void client.invalidateQueries({ queryKey: housingKeys.houses });
       announce(result.title, {
         body: result.message,
         tone: result.tone,
@@ -77,6 +84,10 @@ export function useHousingCommands() {
     buyLand: useHousingCommand(
       (body: BuyLandRequest) => homesApi.buyLand(body),
       'Land purchase didn’t go through',
+    ),
+    buyHouse: useHousingCommand(
+      (listingId: string) => homesApi.buyHouse(listingId),
+      'House purchase didn’t go through',
     ),
     perfectTitle: useHousingCommand(
       (propertyId: string) => homesApi.perfectTitle(propertyId),

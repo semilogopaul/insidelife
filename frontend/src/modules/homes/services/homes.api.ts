@@ -1,7 +1,9 @@
 import type {
   BlueprintId,
+  BuyHouseResultDto,
   BuyLandRequest,
   ConstructionPaymentPlan,
+  HouseListingDto,
   HousingActionResultDto,
   HousingOverviewDto,
   LandOfferDto,
@@ -17,9 +19,11 @@ export const homesApi = {
   overview: () => api.get<HousingOverviewDto>('/housing'),
   listings: () => api.get<RentalListingDto[]>('/housing/listings'),
   land: () => api.get<LandOfferDto[]>('/housing/land'),
+  houses: () => api.get<HouseListingDto[]>('/housing/houses'),
   signLease: (listingId: string) => api.post<HousingActionResultDto>('/housing/leases', { listingId }),
   move: (to: 'family' | string) => api.post<HousingActionResultDto>('/housing/moves', { to }),
   buyLand: (body: BuyLandRequest) => api.post<HousingActionResultDto>('/housing/land', body),
+  buyHouse: (listingId: string) => api.post<BuyHouseResultDto>('/housing/houses', { listingId }),
   perfectTitle: (propertyId: string) =>
     api.post<HousingActionResultDto>(`/housing/properties/${id(propertyId)}/title-perfections`),
   build: (propertyId: string, blueprintId: BlueprintId, payment: ConstructionPaymentPlan) =>

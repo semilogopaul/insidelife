@@ -7,6 +7,7 @@ import type {
   HomeOwnership,
   HomePowerBackup,
   HousingTypeId,
+  LandCosts,
   LandTitleId,
   RentQuote,
 } from '../catalog/housing.js';
@@ -269,4 +270,65 @@ export interface HousingActionResultDto {
   readonly message: string;
   readonly tone: 'good' | 'bad' | 'neutral';
   readonly housing: HousingOverviewDto;
+}
+
+// ----- Houses for sale (ready-built) -------------------------------------------------------------------------------
+
+export interface HouseListingsQuery {
+  readonly districtId?: DistrictId;
+}
+
+export interface BuyHouseRequest {
+  /** Listing id from `GET /housing/houses` (valid for the current game week). */
+  readonly listingId: string;
+}
+
+export interface HouseListingDto {
+  readonly id: string;
+  readonly districtId: DistrictId;
+  readonly districtName: string;
+  readonly blueprintId: BlueprintId;
+  readonly blueprintLabel: string;
+  /** Street address — the property's name once you buy it. */
+  readonly label: string;
+  readonly title: LandTitleId;
+  readonly titleLabel: string;
+  readonly plots: number;
+  readonly sizeSqm: number;
+  readonly bedrooms: number;
+  /** Rentable units (a block of flats lets six). */
+  readonly units: number;
+  /** 0-100: rents and value scale with it. */
+  readonly condition: number;
+  readonly ageYears: number;
+  /** Why it's on the market. */
+  readonly story: string;
+  readonly features: readonly string[];
+  /** Comfort it adds when you live in it (house + area), before furniture and power. */
+  readonly comfort: number;
+  readonly gridHours: number;
+  readonly floodRisk: number;
+  readonly disputeRiskPerYear: number;
+  readonly demolitionRiskPerYear: number;
+  readonly expectedAppreciation: number;
+  /** Rent a year with every unit let at today's market rent. */
+  readonly annualRentRoll: number;
+  /** What it's worth on the books the day you buy it (land + structure × condition). */
+  readonly valuation: number;
+  /** Seller's premium over the valuation (0.25 = 25%). */
+  readonly premium: number;
+  readonly price: number;
+  /** Agency, legal and survey fees, as for land. */
+  readonly costs: LandCosts;
+  readonly total: number;
+  readonly affordable: boolean;
+  /** You already bought this one. */
+  readonly bought: boolean;
+  /** Houses for sale refresh every game week. */
+  readonly availableUntil: GameMinute;
+}
+
+/** Buying a house: the usual result card plus the new property, so the client can offer "Move in now". */
+export interface BuyHouseResultDto extends HousingActionResultDto {
+  readonly propertyId: string;
 }
