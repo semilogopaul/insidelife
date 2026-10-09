@@ -7,7 +7,7 @@ import {
   type NotificationDto,
   type Rng,
 } from '@insidelife/shared';
-import { InsufficientFundsException } from '../../common/exceptions/domain.exception.js';
+import { GameRuleException, InsufficientFundsException } from '../../common/exceptions/domain.exception.js';
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
 import type { LedgerService } from '../ledger/ledger.service.js';
 import type { CharacterAccounts, SystemAccount } from '../ledger/interfaces/ledger.interfaces.js';
@@ -25,6 +25,12 @@ export interface PayOptions {
   readonly account?: AccountKind;
   readonly counterpartyCharacterId?: string;
   readonly metadata?: LedgerMetadata;
+  /**
+   * For player purchases keyed by the game minute (`land:<district>:<title>:<time>`): if the key was already used, refuse
+   * with this message (`TOO_SOON`) instead of letting the ledger skip the charge silently. Without it, a second request
+   * inside the same game minute (half a real second) would get its land or makeover for free.
+   */
+  readonly refuseRepeat?: string;
 }
 
 export interface ReceiveOptions {
@@ -132,6 +138,8 @@ export class CharacterWallet {
       amount: rounded,
       sink: options.sink ?? 'burn',
     });
+    // Throwing rolls the whole command back, so nothing is delivered for the charge that didn't happen.
+    if (!result.applied && options.refuseRepeat) throw new GameRuleException('TOO_SOON', options.refuseRepeat);
     this.sync(result.balances);
   }
 

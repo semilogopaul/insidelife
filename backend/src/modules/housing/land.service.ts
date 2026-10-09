@@ -107,7 +107,10 @@ export class LandService {
     const plotNo = rng.int(1, 120);
     const label = plots > 1 ? `Plots ${plotNo}-${plotNo + plots - 1}, ${area}` : `Plot ${plotNo}, ${area}`;
     const key = `land:${districtId}:${title}:${ctx.time}`;
-    await ctx.wallet.pay(quote.price, 'property', `Land: ${label}, ${district.name} (${titleLabel})`, key);
+    // The key repeats for a second purchase inside the same game minute: refuse it rather than hand out a free plot.
+    await ctx.wallet.pay(quote.price, 'property', `Land: ${label}, ${district.name} (${titleLabel})`, key, {
+      refuseRepeat: 'You just bought land there — give it a moment',
+    });
     await ctx.wallet.pay(quote.costs.total, 'fee', `Agency, legal & survey fees — ${label}`, `${key}:fees`, { sink: 'fees' });
 
     const property = ctx.manager.create(PropertyEntity, {
