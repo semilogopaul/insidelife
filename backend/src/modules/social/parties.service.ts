@@ -71,7 +71,7 @@ const INVITE_FRIENDS_LIMIT = 50;
 /** Hosts are pinged when a friend or a big name (this clout or more) walks in. */
 const VIP_ARRIVAL_STATUS = 450;
 
-const EFCC_LINES: readonly string[] = [
+export const EFCC_LINES: readonly string[] = [
   'EFCC operatives in agbada were at the owambe. Spraying naira is “abuse of the national currency”, they said.',
   'Your spraying video trended on X. EFCC tagged you before the DJ could play the next song.',
   'An officer collected an “administrative charge” and advised you to use transfers next time.',

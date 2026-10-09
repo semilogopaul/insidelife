@@ -16,6 +16,7 @@ import { PartyEntity } from './entities/party.entity.js';
 import { ReportEntity } from './entities/report.entity.js';
 import { SocialProfileEntity } from './entities/social-profile.entity.js';
 import { SprayEntity } from './entities/spray.entity.js';
+import { VenueSprayEntity } from './entities/venue-spray.entity.js';
 import { FriendsController } from './friends.controller.js';
 import { FriendsService } from './friends.service.js';
 import { LeaderboardsController } from './leaderboards.controller.js';
@@ -32,14 +33,16 @@ import { SocialGuardModule } from './social-guard.module.js';
 import { SocialNotifier } from './social-notifier.service.js';
 import { SocialSystem } from './social.system.js';
 import { SocialViewer } from './social-viewer.service.js';
+import { VenueSpraysController } from './venue-sprays.controller.js';
+import { VenueSpraysService } from './venue-sprays.service.js';
 
 /**
  * Social domain: friends, blocks & reports, public profiles and search, "who's here", leaderboards and owambe parties
- * with spraying. Other domains should import `SocialGuardModule` (re-exported here) for `SocialGuard`.
+ * with spraying, and spraying in clubs and bars. Other domains should import `SocialGuardModule` (re-exported here) for `SocialGuard`.
  */
 @Module({
   imports: [
-    TypeOrmModule.forFeature([FriendshipEntity, BlockEntity, ReportEntity, SocialProfileEntity, PartyEntity, PartyGuestEntity, SprayEntity]),
+    TypeOrmModule.forFeature([FriendshipEntity, BlockEntity, ReportEntity, SocialProfileEntity, PartyEntity, PartyGuestEntity, SprayEntity, VenueSprayEntity]),
     SimulationModule,
     CharactersModule,
     NotificationsModule,
@@ -58,6 +61,7 @@ import { SocialViewer } from './social-viewer.service.js';
     VenuePlayersController,
     LeaderboardsController,
     PartiesController,
+    VenueSpraysController,
   ],
   providers: [
     PlayerCardsService,
@@ -68,6 +72,7 @@ import { SocialViewer } from './social-viewer.service.js';
     ProfilesService,
     LeaderboardsService,
     PartiesService,
+    VenueSpraysService,
     SocialSystem,
   ],
   exports: [SocialGuardModule],
