@@ -71,7 +71,7 @@ export function PregnancyCard({
             variant="ink"
             loading={treat.isPending}
             onClick={() =>
-              treat.mutate(pregnancy.id, {
+              treat.mutate({ conditionId: pregnancy.id }, {
                 onSuccess: (result) =>
                   announce('Antenatal visit', {
                     body: result.treatment.message,

@@ -1,6 +1,7 @@
 'use client';
 
-import { BedDouble, Clock3 } from 'lucide-react';
+import { BedDouble, Clock3, Pill, Syringe } from 'lucide-react';
+import { useState } from 'react';
 import {
   SEVERITY_LABELS,
   formatDate,
@@ -8,6 +9,7 @@ import {
   type FacilityDto,
   type HealthConditionDto,
   type HealthHereDto,
+  type TreatmentMethod,
 } from '@insidelife/shared';
 import { Badge, Button, Money } from '@/common/components';
 import { cn } from '@/common/utils/cn';
@@ -40,9 +42,12 @@ export function ConditionCard({ condition, facilities, here }: ConditionCardProp
     here.open &&
     condition.quotes.some((quote) => quote.facility === here.facility && quote.available);
   const bestVenue = best ? nearest(best.facility) : null;
+  const hereQuote = here ? condition.quotes.find((quote) => quote.facility === here.facility) : undefined;
+  const [method, setMethod] = useState<TreatmentMethod>('tablets');
+  const chosen: TreatmentMethod = method === 'injection' && hereQuote?.injection ? 'injection' : 'tablets';
 
   const start = (): void =>
-    treat.mutate(condition.id, {
+    treat.mutate({ conditionId: condition.id, method: chosen }, {
       onSuccess: (result) =>
         announce(`Treatment started at ${result.treatment.venueName}`, {
           body: result.treatment.message,
@@ -111,6 +116,12 @@ export function ConditionCard({ condition, facilities, here }: ConditionCardProp
                 {quote.available ? (
                   <p className="flex flex-wrap gap-x-3 text-xs text-text-soft">
                     <span>{percent(quote.successChance)} chance it works</span>
+                    {quote.injection && (
+                      <span className="inline-flex items-center gap-1">
+                        <Syringe size={11} aria-hidden />
+                        Injection <Money amount={quote.injection.youPay} compact /> · {percent(quote.injection.successChance)}
+                      </span>
+                    )}
                     <span className="inline-flex items-center gap-1">
                       <Clock3 size={11} aria-hidden />
                       {formatGameDuration(quote.durationMinutes)}
@@ -141,9 +152,38 @@ export function ConditionCard({ condition, facilities, here }: ConditionCardProp
 
       {!condition.admitted &&
         (canTreatHere && here ? (
-          <Button block loading={treat.isPending} onClick={start}>
-            Treat it here at {here.venueName}
-          </Button>
+          <div className="flex flex-col gap-2">
+            {hereQuote?.injection && (
+              <fieldset className="grid grid-cols-2 gap-2">
+                <legend className="mb-1.5 text-sm font-bold">How do you want it?</legend>
+                {(
+                  [
+                    { id: 'tablets', label: 'Tablets', icon: Pill, youPay: hereQuote.youPay, odds: hereQuote.successChance },
+                    { id: 'injection', label: 'Injection', icon: Syringe, youPay: hereQuote.injection.youPay, odds: hereQuote.injection.successChance },
+                  ] as const
+                ).map((option) => (
+                  <label
+                    key={option.id}
+                    className={cn(
+                      'flex cursor-pointer flex-col gap-0.5 rounded-card bg-paper p-2.5 text-sm ring-1 ring-line has-[:checked]:ring-2 has-[:checked]:ring-danfo has-[:focus-visible]:outline has-[:focus-visible]:outline-2',
+                    )}
+                  >
+                    <input type="radio" name={`method-${condition.id}`} value={option.id} checked={chosen === option.id} onChange={() => setMethod(option.id)} className="sr-only" />
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <option.icon size={15} aria-hidden /> {option.label}
+                    </span>
+                    <span className="text-xs text-text-soft">
+                      <Money amount={option.youPay} compact /> · {percent(option.odds)} chance
+                    </span>
+                    {option.id === 'injection' && <span className="text-xs text-text-faint">Works more often. E go pain you small.</span>}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            <Button block loading={treat.isPending} onClick={start}>
+              {chosen === 'injection' ? 'Get the injection' : 'Treat it here'} at {here.venueName}
+            </Button>
+          </div>
         ) : bestVenue && best ? (
           <div className="flex flex-col gap-2">
             <p className="text-sm">

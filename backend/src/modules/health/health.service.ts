@@ -14,6 +14,7 @@ import {
   type HealthViewDto,
   type HmoPlanId,
   type MedicalRecordDto,
+  type TreatmentMethod,
   type TreatmentResponseDto,
 } from '@insidelife/shared';
 import type { ConditionSeverity as PortSeverity, HealthPort } from '../../common/ports/health.port.js';
@@ -79,8 +80,8 @@ export class HealthService implements HealthPort {
 
   // ----- Player commands ------------------------------------------------------------------------------------------
 
-  async startTreatment(ctx: SimulationContext, conditionReference: string): Promise<TreatmentResponseDto> {
-    const treatment = await this.treatment.start(ctx, conditionReference);
+  async startTreatment(ctx: SimulationContext, conditionReference: string, method: TreatmentMethod = 'tablets'): Promise<TreatmentResponseDto> {
+    const treatment = await this.treatment.start(ctx, conditionReference, method);
     return { treatment, health: await this.view(ctx) };
   }
 

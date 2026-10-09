@@ -527,6 +527,21 @@ export interface TreatmentOddsOptions {
   readonly diagnosed: boolean;
   /** Resident doctors are on strike (public hospitals only). */
   readonly strike?: boolean;
+  readonly method?: TreatmentMethod;
+}
+
+/** Tablets (the default) or an injection ("doctor, abeg give me injection, it works faster"). */
+export const TREATMENT_METHODS = ['tablets', 'injection'] as const;
+export type TreatmentMethod = (typeof TREATMENT_METHODS)[number];
+
+/**
+ * An injection costs more (drugs, syringe, a nurse) and works more often; it stings a little. Only hospitals give
+ * them — pharmacists send you to one.
+ */
+export const INJECTION_RULES = { priceMultiplier: 1.6, successBonus: 0.1, maxSuccess: 0.97, moodPenalty: -2 } as const;
+
+export function injectionAvailableAt(facility: CareFacilityType): boolean {
+  return facility !== 'pharmacy';
 }
 
 /** Chance a treatment works (0-1). Private ≥ public ≥ pharmacy at every severity. */
@@ -546,6 +561,7 @@ export function treatmentSuccessChance(
     if (!options.diagnosed) chance *= PHARMACY_UNDIAGNOSED_MULTIPLIER;
   }
   if (facility === 'hospital-public' && options.strike) chance *= STRIKE_SUCCESS_MULTIPLIER;
+  if (options.method === 'injection' && injectionAvailableAt(facility)) chance = Math.min(INJECTION_RULES.maxSuccess, Math.max(chance, chance + INJECTION_RULES.successBonus));
   return Math.round(Math.min(1, Math.max(0, chance)) * 1000) / 1000;
 }
 

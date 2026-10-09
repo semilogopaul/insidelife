@@ -63,7 +63,11 @@ export const VENUES = [
   v({ id: 'ikeja-gra-lounge', name: 'GRA Lounge', type: 'bar', districtId: 'ikeja', blurb: 'Suya, chapman and gist.', hours: [12, 26] }),
   v({ id: 'lasuth', name: 'LASUTH', type: 'hospital-public', districtId: 'ikeja', blurb: 'State teaching hospital. Bring patience.' }),
 
+  v({ id: 'new-afrika-shrine', name: 'New Afrika Shrine', type: 'bar', districtId: 'ikeja', blurb: 'Fela’s house: live Afrobeat, cold drinks, Thursday and Sunday jump.', hours: [16, 28] }),
+  v({ id: 'allen-nights', name: 'Allen Avenue Nights', type: 'club', districtId: 'ikeja', blurb: 'Mainland turn-up: loud DJ, cheap bottles, no dress code.', minStatus: 30, hours: [22, 30] }),
+
   // Yaba
+  v({ id: 'yaba-left-joint', name: 'Yaba Left Joint', type: 'bar', districtId: 'yaba', blurb: 'Students, pepper soup, cold Star and football on the big screen.', hours: [12, 26] }),
   v({ id: 'unilag', name: 'University of Lagos', type: 'campus', districtId: 'yaba', blurb: 'University of First Choice and the Nation’s Pride.' }),
   v({ id: 'yabatech', name: 'Yaba College of Technology', type: 'campus', districtId: 'yaba', blurb: 'ND, HND and serious practicals.' }),
   v({ id: 'yaba-market', name: 'Yaba Market', type: 'market', districtId: 'yaba', blurb: 'Okrika heaven. Dig well, look fresh.', hours: [8, 19] }),
@@ -104,6 +108,8 @@ export const VENUES = [
   v({ id: 'ikoyi-fine-dining', name: 'Kowry Ikoyi', type: 'restaurant', districtId: 'ikoyi', blurb: 'Tasting menus for people who say "jollof deconstructed".', hours: [12, 24] }),
   v({ id: 'ikoyi-estate-agency', name: 'Ikoyi Realty', type: 'estate-agency', districtId: 'ikoyi', blurb: 'Rentals, land with real C of O.', hours: [8, 18] }),
 
+  v({ id: 'bourdillon-lounge', name: 'Bourdillon Lounge', type: 'bar', districtId: 'ikoyi', blurb: 'Wine, cocktails and quiet money.', minStatus: 150, hours: [14, 26] }),
+
   // Victoria Island
   v({ id: 'eko-hotel', name: 'Eko Hotel & Suites', type: 'event-centre', districtId: 'victoria-island', blurb: 'Weddings, concerts and society owambes.' }),
   v({ id: 'the-vault', name: 'The Vault VI', type: 'club', districtId: 'victoria-island', blurb: 'Bottle service, sparklers, EFCC raids.', minStatus: 250, hours: [22, 30] }),
@@ -112,7 +118,13 @@ export const VENUES = [
   v({ id: 'island-specialist', name: 'Island Specialist Hospital', type: 'hospital-private', districtId: 'victoria-island', blurb: 'Premium private care. Premium bills.' }),
   v({ id: 'tarkwa-bay', name: 'Tarkwa Bay', type: 'beach', districtId: 'victoria-island', blurb: 'Boat ride, quiet sand, fresh fish.', hours: [8, 19] }),
 
+  v({ id: 'quilox', name: 'Quilox', type: 'club', districtId: 'victoria-island', blurb: 'Ozumba Mbadiwe’s most famous door: LED walls, bottle parades, celebrities in VIP.', minStatus: 350, hours: [23, 31] }),
+  v({ id: 'cubana-lagos', name: 'Cubana Lagos', type: 'club', districtId: 'victoria-island', blurb: 'Owambe energy after midnight. A sparkler on every bottle.', minStatus: 250, hours: [22, 30] }),
+  v({ id: 'club-57', name: 'Club 57', type: 'club', districtId: 'victoria-island', blurb: 'Afrobeats DJs and Detty December’s longest queue.', minStatus: 200, hours: [22, 30] }),
+
   // Lekki
+  v({ id: 'lekki-rooftop', name: 'Admiralty Rooftop Bar', type: 'bar', districtId: 'lekki', blurb: 'Sunset cocktails over the lagoon, afrobeats after dark.', hours: [15, 27] }),
+  v({ id: 'admiralty-nights', name: 'Admiralty Nights', type: 'club', districtId: 'lekki', blurb: 'Lekki’s Friday spot: amapiano and girls’-night tables.', minStatus: 80, hours: [22, 30] }),
   v({ id: 'elegushi-beach', name: 'Elegushi Beach', type: 'beach', districtId: 'lekki', blurb: 'Horses, suya, loud speakers.', hours: [8, 26] }),
   v({ id: 'lekki-conservation', name: 'Lekki Conservation Centre', type: 'park', districtId: 'lekki', blurb: 'The canopy walk. Monkeys judge you.', hours: [8, 17] }),
   v({ id: 'lekki-mall', name: 'Lekki Circle Mall', type: 'mall', districtId: 'lekki', blurb: 'Designer stores and Shoprite.', hours: [9, 22] }),

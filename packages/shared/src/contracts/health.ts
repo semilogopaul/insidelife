@@ -4,6 +4,7 @@ import type { DistrictId } from '../catalog/geography.js';
 import type { ConditionSummaryDto } from './core.js';
 import type {
   CareFacilityType,
+  TreatmentMethod,
   ConditionKind,
   ConditionSeverity,
   HealthDriftBreakdown,
@@ -39,6 +40,8 @@ export interface TreatmentQuoteDto {
   readonly admissionDays: number;
   /** Ward bill per admitted day, after HMO cover. */
   readonly admissionPerDay: number;
+  /** The same treatment as an injection (null where they don't give injections: pharmacies). */
+  readonly injection: { readonly price: number; readonly youPay: number; readonly successChance: number } | null;
 }
 
 export interface HealthConditionDto extends ConditionSummaryDto {
@@ -203,6 +206,8 @@ export interface HealthViewDto {
 /** POST /v1/health/treatments — `conditionId` is a condition's `id` from GET /v1/health (or its catalog id once diagnosed). */
 export interface StartTreatmentRequest {
   readonly conditionId: string;
+  /** Tablets by default; `injection` at hospitals. */
+  readonly method?: TreatmentMethod;
 }
 
 export interface TreatmentStartedDto {

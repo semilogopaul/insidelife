@@ -25,7 +25,7 @@ export class HealthController {
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('treatments')
   startTreatment(@CurrentUser() user: AuthUser, @Body() body: StartTreatmentDto): Promise<TreatmentResponseDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.health.startTreatment(ctx, body.conditionId), { touch: true });
+    return this.session.run({ userId: user.userId }, (ctx) => this.health.startTreatment(ctx, body.conditionId, body.method ?? 'tablets'), { touch: true });
   }
 
   /** Get examined (diagnoses what this facility can test for). */

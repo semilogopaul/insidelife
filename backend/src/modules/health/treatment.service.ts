@@ -16,6 +16,9 @@ import {
   treatmentBasePrice,
   treatmentMinutes,
   treatmentSuccessChance,
+  INJECTION_RULES,
+  injectionAvailableAt,
+  type TreatmentMethod,
   type CareFacilityType,
   type CheckUpFindingDto,
   type CheckUpResultDto,
@@ -55,6 +58,8 @@ import { isPlayerPresent } from './player-presence.js';
 import { PregnancyService } from './pregnancy.service.js';
 
 const TREATMENT_ACTION_ID = 'treatment';
+/** Marks a visit's target when the treatment is an injection. */
+const INJECTION_SUFFIX = '#injection';
 
 /** One visit to a pharmacy or hospital whose outcome is being decided. */
 interface Visit {
@@ -63,6 +68,7 @@ interface Visit {
   readonly cost: number;
   /** Decided by the character on autopilot (results go to the away report). */
   readonly autopilot: boolean;
+  readonly method?: TreatmentMethod;
 }
 
 type Notice = Omit<NotificationDraft, 'gameMinute'>;
@@ -132,11 +138,23 @@ export class TreatmentService {
       successChance: treatmentSuccessChance(condition.conditionId, condition.severity, facility, { diagnosed: condition.diagnosed, strike }),
       admissionDays,
       admissionPerDay: admissionDays > 0 ? wardCover.youPay : 0,
+      injection: check.ok && condition.conditionId !== 'pregnancy' && injectionAvailableAt(facility) ? await this.injectionQuote(ctx, condition, facility, price, strike) : null,
+    };
+  }
+
+  /** The same visit with an injection: dearer, likelier to work. */
+  private async injectionQuote(ctx: SimulationContext, condition: HealthConditionEntity, facility: CareFacilityType, tabletPrice: number, strike: boolean): Promise<NonNullable<TreatmentQuoteDto['injection']>> {
+    const price = Math.round(tabletPrice * INJECTION_RULES.priceMultiplier);
+    const cover = await this.insurance.cover(ctx, facility, price);
+    return {
+      price,
+      youPay: cover.youPay,
+      successChance: treatmentSuccessChance(condition.conditionId, condition.severity, facility, { diagnosed: true, strike, method: 'injection' }),
     };
   }
 
   /** POST /health/treatments: pay and start the visit. The outcome is applied when the visit completes. */
-  async start(ctx: SimulationContext, reference: string): Promise<TreatmentStartedDto> {
+  async start(ctx: SimulationContext, reference: string, method: TreatmentMethod = 'tablets'): Promise<TreatmentStartedDto> {
     this.assertFree(ctx);
     const here = this.assertAtOpenFacility(ctx);
     const condition = await this.conditions.resolve(ctx, reference);
@@ -152,19 +170,26 @@ export class TreatmentService {
     }
     const check = canTreatAt(condition.conditionId, condition.severity, here.facility);
     if (!check.ok) throw new GameRuleException('CANNOT_TREAT_HERE', check.reason ?? 'They can’t treat this here');
+    const injection = method === 'injection';
+    if (injection && !injectionAvailableAt(here.facility)) {
+      throw new GameRuleException('NO_INJECTIONS_HERE', 'Pharmacists don’t give injections — a hospital will. Tablets are available here.');
+    }
 
     // A doctor examines you before treating; a pharmacist can only go by what you describe.
     if (here.facility !== 'pharmacy') await this.conditions.diagnose(ctx, condition, here.venue.id);
     const quote = await this.quote(ctx, condition, here.facility);
-    const cover = await this.insurance.cover(ctx, here.facility, quote.price);
+    const price = injection && quote.injection ? quote.injection.price : quote.price;
+    const successChance = injection && quote.injection ? quote.injection.successChance : quote.successChance;
+    const cover = await this.insurance.cover(ctx, here.facility, price);
     const label = this.conditions.label(condition, ctx.time);
     if (cover.youPay > 0) {
-      await ctx.wallet.pay(cover.youPay, 'health', `${label} treatment — ${here.venue.name}`, `treatment:${condition.id}:${ctx.time}`, {
-        metadata: { conditionId: condition.conditionId, facility: here.facility, covered: cover.covered },
+      await ctx.wallet.pay(cover.youPay, 'health', `${label} ${injection ? 'injection' : 'treatment'} — ${here.venue.name}`, `treatment:${condition.id}:${ctx.time}`, {
+        metadata: { conditionId: condition.conditionId, facility: here.facility, covered: cover.covered, method },
       });
     }
     await this.insurance.claim(ctx, cover);
-    this.engine.start(ctx, this.activity(ctx, here, `${TREATMENT_TARGET.condition}${condition.id}`, quote.durationMinutes, cover.youPay));
+    const target = `${TREATMENT_TARGET.condition}${condition.id}${injection ? INJECTION_SUFFIX : ''}`;
+    this.engine.start(ctx, this.activity(ctx, here, target, quote.durationMinutes, cover.youPay));
 
     const strike = here.facility === 'hospital-public' && this.strikeAt(ctx, ctx.time);
     return {
@@ -178,8 +203,10 @@ export class TreatmentService {
       paid: cover.youPay,
       durationMinutes: quote.durationMinutes,
       endsAt: ctx.time + quote.durationMinutes,
-      successChance: quote.successChance,
-      message: this.startMessage(here, condition, quote.durationMinutes, strike),
+      successChance,
+      message: injection
+        ? `The nurse is preparing your injection at ${here.venue.name}. Small pain, quick relief (${formatGameDuration(quote.durationMinutes)}).`
+        : this.startMessage(here, condition, quote.durationMinutes, strike),
     };
   }
 
@@ -250,10 +277,11 @@ export class TreatmentService {
       return;
     }
     if (!target.startsWith(TREATMENT_TARGET.condition)) return;
-    const id = target.slice(TREATMENT_TARGET.condition.length);
+    const injection = target.endsWith(INJECTION_SUFFIX);
+    const id = target.slice(TREATMENT_TARGET.condition.length, injection ? -INJECTION_SUFFIX.length : undefined);
     const condition = (await this.conditions.current(ctx)).find((candidate) => candidate.id === id);
     if (!condition || condition.conditionId === 'pregnancy') return;
-    await this.resolve(ctx, condition, here, { startedAt: activity.startedAt, cost: activity.cost, autopilot: false });
+    await this.resolve(ctx, condition, here, { startedAt: activity.startedAt, cost: activity.cost, autopilot: false, method: injection ? 'injection' : 'tablets' });
   }
 
   /** Chronic medication runs out monthly; refill automatically (pharmacy price, HMO share) or the condition lapses. */
@@ -368,7 +396,8 @@ export class TreatmentService {
     const trusted = here.facility === 'pharmacy' && this.profiles.isProtected(await this.profiles.get(ctx), 'trusted-pharmacy', ctx.time);
     const rng = ctx.rng('treatment', condition.id, visit.startedAt);
     const fake = !trusted && rng.chance(FACILITIES[here.facility].fakeDrugRisk);
-    const success = !fake && rng.chance(treatmentSuccessChance(condition.conditionId, condition.severity, here.facility, { diagnosed: condition.diagnosed, strike }));
+    const success = !fake && rng.chance(treatmentSuccessChance(condition.conditionId, condition.severity, here.facility, { diagnosed: condition.diagnosed, strike, method: visit.method }));
+    if (visit.method === 'injection') setMoodModifier(ctx, { id: 'injection', label: 'That injection stung', value: INJECTION_RULES.moodPenalty, until: ctx.time + 6 * 60 });
 
     if (!success) {
       await this.history.record(ctx, { kind: 'treatment-failed', conditionId: condition.conditionId, summary: `${label}: treatment at ${here.venue.name} didn’t work`, cost: visit.cost, venueId: here.venue.id });
@@ -418,7 +447,12 @@ export class TreatmentService {
       return;
     }
     await this.conditions.recover(ctx, condition, 'treatment', here.venue.id);
-    tell({ kind: 'health', title: 'Treatment worked', body: `You’re feeling much better after the treatment at ${here.venue.name}.`, tone: 'good' });
+    tell({
+      kind: 'health',
+      title: visit.method === 'injection' ? 'The injection worked' : 'Treatment worked',
+      body: visit.method === 'injection' ? `Your bum is sore, but you’re feeling much better after the injection at ${here.venue.name}.` : `You’re feeling much better after the treatment at ${here.venue.name}.`,
+      tone: 'good',
+    });
   }
 
   private async startAntenatal(ctx: SimulationContext, here: CareVenue, pregnancy: PregnancyEntity): Promise<TreatmentStartedDto> {
