@@ -2,8 +2,8 @@ import type { AvatarAnimation } from '@insidelife/shared';
 import type { AvatarProp, RigMetrics } from '../rig';
 import { Pose } from './pose';
 
-/** Every clip the avatar can play: the shared action animations plus locomotion extras (`jog`, `run`). */
-export type AvatarClip = AvatarAnimation | 'jog' | 'run';
+/** Every clip the avatar can play: the shared action animations, locomotion extras (`jog`, `run`) and `hang`. */
+export type AvatarClip = AvatarAnimation | 'jog' | 'run' | 'hang';
 
 /**
  * Ground speed (m/s, avatar at scale 1, timeScale 1) each gait is animated for. To keep feet planted, drive
@@ -518,6 +518,41 @@ const cheer: ClipDefinition = {
   },
 };
 
+/**
+ * A danfo conductor hanging out of the sliding door (on the bus's right, facing forward): left hand up on the roof
+ * rail, lean out over the road, right arm beckoning passengers, mouth going "Oshodi! Oshodi!", outer leg swinging free.
+ */
+const hang: ClipDefinition = {
+  kind: 'full',
+  stance: 'stand',
+  apply: (pose, { t, variety }) => {
+    const sway = noise(t * 1.6, variety);
+    const shout = windowed((t + variety * 5) % 3.2, 0.2, 1.5, 0.15);
+    const beckon = Math.sin(t * 8) * shout;
+    // Lean out from the grip; the body swings a little with the road.
+    pose.rootRot[2] = 0.32 + 0.06 * sway;
+    pose.set('hips', 0, 0.12, 0);
+    pose.set('chest', 0.04, 0.18 + 0.1 * shout, -0.06);
+    pose.set('head', -0.05 + 0.08 * shout, 0.45 + 0.15 * sway, 0.05);
+    // Left (inner) hand up on the roof rail.
+    pose.set('upperArmL', -0.2, 0, 2.5);
+    pose.set('foreArmL', -0.35);
+    pose.set('handL', 0, 0, 0.3);
+    // Right arm out to the side, beckoning when he calls.
+    pose.set('upperArmR', -0.55 - 0.35 * shout, 0, -1.05 - 0.2 * shout);
+    pose.set('foreArmR', -0.55 - 0.45 * Math.max(0, beckon));
+    pose.set('handR', 0, 0, 0.25 * beckon);
+    // Inner foot on the step, outer leg hanging free.
+    pose.set('thighL', -0.12, 0, 0.08);
+    pose.set('shinL', 0.22);
+    pose.set('thighR', -0.35 + 0.12 * sway, 0, -0.32);
+    pose.set('shinR', 0.45 + 0.1 * sway);
+    pose.set('footR', 0.3);
+    pose.mouth = shout > 0.3 ? 1 : 0;
+    pose.expression = 'happy';
+  },
+};
+
 export const CLIPS: Readonly<Record<AvatarClip, ClipDefinition>> = {
   idle,
   walk,
@@ -538,6 +573,7 @@ export const CLIPS: Readonly<Record<AvatarClip, ClipDefinition>> = {
   drive,
   wave,
   cheer,
+  hang,
 };
 
 /** Props each clip shows (for docs/tests; clips set them on the pose themselves). */

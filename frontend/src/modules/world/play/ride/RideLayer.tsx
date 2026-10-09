@@ -25,6 +25,7 @@ import { damp, dampAngle, yawFromHeading } from '../physics/math';
 import { groundHeightAt } from '../physics/surface';
 import { PLAYER_SCALE, type PlayRuntime } from '../runtime/play-runtime';
 import { isKitCarModel, vehicleScale, type RenderVehicleModel } from '../vehicles/vehicle-kit';
+import { DanfoConductor, useDanfoDoor } from '../vehicles/DanfoConductor';
 import { useKit } from '../vehicles/VehicleKitProvider';
 import { buildRidePath, pointAlong, rideProgress, type PathPoint, type RidePath } from './ride-path';
 
@@ -69,7 +70,7 @@ function entranceOf(locationId: string, snapshot: CharacterSnapshotDto): WorldPo
 /**
  * Plays a booked ride back along the GPS route, timed by the server (`departAt` → `arriveAt`, game minutes): the
  * right vehicle (danfo, Bolt taxi, BRT, keke, okada, or your own car on auto-drive), the camera riding along, the
- * danfo conductor shouting now and then. When the clock passes arrival it asks the server for the fresh snapshot
+ * danfo conductor hanging out of the door and shouting now and then. When the clock passes arrival it asks the server for the fresh snapshot
  * (which puts you inside the destination).
  */
 export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runtime: PlayRuntime; readonly snapshot: CharacterSnapshotDto; readonly travel: TravelDto; readonly ownCar: string | null }) {
@@ -92,6 +93,7 @@ export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runt
   }, [travel.fromLocationId, travel.toLocationId, travel.departAt, travel.mode]);
 
   const driver = useMemo(() => (model && DRIVERS[model] ? npcLook(`ride:${travel.departAt}`, 'street', 'male') : null), [model, travel.departAt]);
+  const door = useDanfoDoor();
   const point = useRef<PathPoint>({ x: 0, z: 0, heading: 0 });
   const last = useRef({ along: -1, at: 0, heading: 0, speed: 0, conductorAt: 0, refetchAt: 0 });
 
@@ -143,6 +145,7 @@ export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runt
   return (
     <group ref={group}>
       {geometry && model && <mesh geometry={geometry} material={kit.material} scale={vehicleScale(model)} castShadow receiveShadow />}
+      {model === 'danfo' && <DanfoConductor seed={String(travel.departAt)} door={door} />}
       {driver && driverSeat && (
         <Avatar
           appearance={driver.appearance}

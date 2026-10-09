@@ -32,6 +32,7 @@ import { RemotePlayers } from './players/remote-players';
 import { RideLayer } from './ride/RideLayer';
 import { PlayRuntime } from './runtime/play-runtime';
 import { usePlayUi } from './state/play-ui-store';
+import { TrafficConductors } from './traffic/TrafficConductors';
 import { TrafficLayer } from './traffic/TrafficLayer';
 import { preloadVehicleKit } from './vehicles/vehicle-kit';
 import { VehicleKitProvider } from './vehicles/VehicleKitProvider';
@@ -53,6 +54,8 @@ export interface PlayLayerProps {
 const TRAFFIC = { low: 6, medium: 14, high: 24 } as const;
 const PEDESTRIANS = { low: 3, medium: 6, high: 10 } as const;
 const REMOTE_AVATARS = { low: 4, medium: 8, high: 12 } as const;
+/** Conductors drawn hanging off the nearest traffic danfos. */
+const CONDUCTORS = { low: 2, medium: 3, high: 4 } as const;
 const REMOTE_BLOBS = 12;
 
 function prefersReducedMotion(): boolean {
@@ -224,6 +227,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
       <Suspense fallback={null}>
         <VehicleKitProvider>
           <TrafficLayer runtime={runtime} castShadow={shadows} />
+          <TrafficConductors runtime={runtime} count={CONDUCTORS[tier]} />
           {car && <PlayerCar runtime={runtime} vehicle={car} castShadow={shadows} />}
           {travel && snapshot && <RideLayer runtime={runtime} snapshot={snapshot} travel={travel} ownCar={car?.model ?? null} />}
           <OtherPlayers runtime={runtime} remotes={remotes} maxAvatars={REMOTE_AVATARS[tier]} blobs={blobs} blobBase={PEDESTRIANS.high} />

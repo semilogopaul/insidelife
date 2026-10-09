@@ -59,11 +59,12 @@ export class CharacterSession {
   async run<T>(ref: CharacterRef, command: (ctx: SimulationContext) => Promise<T>, options: SessionOptions = {}): Promise<T> {
     const pushes: { characterId: string; notifications: NotificationDto[] } = { characterId: '', notifications: [] };
     let hooks: SimulationContext['pendingAfterCommit'] = [];
-    let moved: CharacterEntity | null = null;
+    let changed: CharacterEntity | null = null;
 
     const result = await withTransaction(this.dataSource, async (manager) => {
       const character = await this.lock(manager, ref, options.skipLocked ?? false);
       const startedAt = character.locationId;
+      const startedLook = JSON.stringify(character.outfit);
       const now = this.world.now();
       const ctx = new SimulationContext(character, manager, this.world, now);
       const balances = await this.ledger.balances(manager, character.id, true);
@@ -89,11 +90,12 @@ export class CharacterSession {
       pushes.characterId = character.id;
       pushes.notifications = await this.notifications.create(manager, character.id, ctx.notifications);
       hooks = ctx.pendingAfterCommit;
-      moved = character.locationId !== startedAt ? character : null;
+      // Other players see you through presence: re-broadcast when you go somewhere or change clothes.
+      changed = character.locationId !== startedAt || JSON.stringify(character.outfit) !== startedLook ? character : null;
       return value;
     });
 
-    if (moved) await this.refreshPresence(moved);
+    if (changed) await this.refreshPresence(changed);
 
     if (pushes.notifications.length > 0) {
       this.notifications.push(pushes.characterId, pushes.notifications);
@@ -109,12 +111,18 @@ export class CharacterSession {
     return result;
   }
 
-  /** Keep "who's here" honest: online players' presence follows their committed location. */
+  /** Keep "who's here" honest: online players' presence follows their committed location and outfit. */
   private async refreshPresence(character: CharacterEntity): Promise<void> {
     try {
       const current = await this.presence.get(character.id);
       if (!current) return;
-      const updated = { ...current, locationId: character.locationId, activity: character.activity?.actionId ?? null, status: character.status };
+      const updated = {
+        ...current,
+        locationId: character.locationId,
+        activity: character.activity?.actionId ?? null,
+        status: character.status,
+        outfit: character.outfit,
+      };
       await this.presence.markOnline(updated);
       this.bus.broadcast('presence:updated', updated);
     } catch (error) {
