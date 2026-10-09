@@ -128,6 +128,23 @@ export class ChatService {
     return this.toDto(saved);
   }
 
+  /**
+   * A server-written line in a venue's chat about something a player paid for ("🎤 DJ: shout out to @ada…"). Written
+   * in the caller's transaction (so it exists only if the purchase commits); the caller pushes the returned message
+   * to `message.channel` after commit. The text is the server's, built from already-cleaned player input.
+   */
+  async postVenueSystemLine(manager: EntityManager, sender: CharacterEntity, venueId: string, body: string): Promise<ChatMessageDto> {
+    const saved = await manager.save(
+      manager.create(ChatMessageEntity, {
+        ...this.senderColumns(sender),
+        channel: `venue:${venueId}`,
+        kind: 'system' as ChatMessageKind,
+        body: sanitiseChat(body),
+      }),
+    );
+    return this.toDto(saved);
+  }
+
   /** A voice note or photo in a DM (uploaded over HTTP; the caller pushes the result to both participants). */
   async sendMedia(
     sender: CharacterEntity,

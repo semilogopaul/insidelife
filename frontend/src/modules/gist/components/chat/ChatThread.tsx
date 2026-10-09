@@ -191,7 +191,7 @@ export function ChatThread({ channel, me, placeholder, emptyTitle, emptyBody, ca
                   key={message.id}
                   message={message}
                   mine={message.sender.characterId === me.id}
-                  grouped={messages[index - 1]?.sender.characterId === message.sender.characterId}
+                  grouped={messages[index - 1]?.sender.characterId === message.sender.characterId && messages[index - 1]?.kind !== 'system'}
                   mentionsMe={mentionsHandle(message.body, me.handle)}
                   onOpenProfile={onOpenProfile}
                 />
@@ -247,6 +247,16 @@ function MessageRow({
   readonly mentionsMe: boolean;
   readonly onOpenProfile: (handle: string) => void;
 }) {
+  if (message.kind === 'system') {
+    // Something a player paid for here (a DJ shoutout, a bottle sent): a centred line, not a bubble.
+    return (
+      <li className="my-1.5 flex justify-center">
+        <p className="max-w-[92%] rounded-full bg-ink px-3.5 py-1.5 text-center text-sm font-bold text-on-ink">
+          <MessageBody body={message.body} onMention={onOpenProfile} onDark />
+        </p>
+      </li>
+    );
+  }
   return (
     <li className={cn('flex flex-col', mine ? 'items-end' : 'items-start', !grouped && 'mt-2')}>
       {!mine && !grouped && (

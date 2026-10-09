@@ -1,26 +1,47 @@
 'use client';
 
-import { Banknote, DoorClosed, Map as MapIcon } from 'lucide-react';
-import { useState } from 'react';
-import { SPRAY_VENUE_TYPES, findVenue, isHomeLocation, isStreetLocation, type CharacterSnapshotDto } from '@insidelife/shared';
+import { Banknote, DoorClosed, Map as MapIcon, PartyPopper } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { NIGHT_OUT_VENUE_TYPES, SPRAY_VENUE_TYPES, findVenue, isHomeLocation, isStreetLocation, type CharacterSnapshotDto, type NightOutSection } from '@insidelife/shared';
 import { PlaceIcon, venuePlaceKind } from '@/common/brand/place-icons';
 import { Button, EmptyState, Spinner } from '@/common/components';
 import { useUi } from '@/common/game/ui-store';
+import { useNightOutNav } from '@/common/night-out';
 import { useGistNav } from '../../hooks/use-gist-nav';
 import { useVenuePlayers } from '../../hooks/use-social';
 import { venueChannel } from '../../services/chat-channels';
 import { ChatThread } from '../chat/ChatThread';
+import { NightOutPanel } from '../night-out/NightOutPanel';
 import { PlayerAvatar } from '../PlayerAvatar';
 import { VenueSprayPanel } from '../spray/VenueSprayPanel';
 
-/** Chat with whoever is in the same place, see who's here, and (at clubs and bars) spray them or the DJ. */
+type HerePanel = 'spray' | 'night-out' | null;
+
+/**
+ * Chat with whoever is in the same place, see who's here, and at clubs and bars: spray them or the DJ, or open
+ * Night out (bottles for people, DJ shoutouts, experiences). `openNightOut(section)` from `@/common/night-out` opens
+ * this tab on the Night out panel (3D hotspots use it).
+ */
 export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto }) {
   const openPhone = useUi((state) => state.openPhone);
   const openProfile = useGistNav((state) => state.openProfile);
   const locationId = snapshot.character.locationId;
   const venue = snapshot.travel === null && !isStreetLocation(locationId) && !isHomeLocation(locationId) ? (findVenue(locationId) ?? null) : null;
   const players = useVenuePlayers(venue?.id ?? null);
-  const [spraying, setSpraying] = useState(false);
+  const [panel, setPanel] = useState<HerePanel>(null);
+  const [section, setSection] = useState<NightOutSection>('bottles');
+  // A hotspot (the bar, the DJ booth) or a deep link asked for Night out on a section: open it (adjusting state while
+  // rendering, React's pattern for reacting to a changed input), then mark the request handled.
+  const request = useNightOutNav((state) => state.request);
+  const [handled, setHandled] = useState<number | null>(null);
+  if (request && request.nonce !== handled) {
+    setHandled(request.nonce);
+    setPanel('night-out');
+    setSection(request.section);
+  }
+  useEffect(() => {
+    if (request) useNightOutNav.getState().consume();
+  }, [request]);
 
   if (!venue) {
     return (
@@ -39,6 +60,8 @@ export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto 
 
   const here = players.data?.players ?? [];
   const sprayable = (SPRAY_VENUE_TYPES as readonly string[]).includes(venue.type);
+  const nightlife = (NIGHT_OUT_VENUE_TYPES as readonly string[]).includes(venue.type);
+  const toggle = (next: Exclude<HerePanel, null>): void => setPanel((open) => (open === next ? null : next));
   return (
     <div className="flex flex-col gap-3">
       <section aria-label={`Who’s at ${venue.name}`} className="rounded-card bg-paper-2 p-3">
@@ -66,20 +89,44 @@ export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto 
             ))}
           </ul>
         )}
-        {sprayable && (
-          <Button
-            variant={spraying ? 'paper' : 'danfo'}
-            block
-            className="mt-2"
-            icon={<Banknote size={18} aria-hidden />}
-            aria-expanded={spraying}
-            onClick={() => setSpraying((open) => !open)}
-          >
-            {spraying ? 'Done spraying' : 'Spray money'}
-          </Button>
+        {(sprayable || nightlife) && (
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {sprayable && (
+              <Button
+                variant={panel === 'spray' ? 'paper' : 'danfo'}
+                block
+                icon={<Banknote size={18} aria-hidden />}
+                aria-expanded={panel === 'spray'}
+                onClick={() => toggle('spray')}
+              >
+                {panel === 'spray' ? 'Done spraying' : 'Spray money'}
+              </Button>
+            )}
+            {nightlife && (
+              <Button
+                variant={panel === 'night-out' ? 'paper' : 'ink'}
+                block
+                icon={<PartyPopper size={18} aria-hidden />}
+                aria-expanded={panel === 'night-out'}
+                onClick={() => toggle('night-out')}
+              >
+                {panel === 'night-out' ? 'Close menu' : 'Night out'}
+              </Button>
+            )}
+          </div>
         )}
       </section>
-      {sprayable && spraying && <VenueSprayPanel venue={venue} players={here} cash={snapshot.wallet.balance} />}
+      {sprayable && panel === 'spray' && <VenueSprayPanel venue={venue} players={here} cash={snapshot.wallet.balance} />}
+      {nightlife && panel === 'night-out' && (
+        <NightOutPanel
+          venue={venue}
+          people={here}
+          me={{ id: snapshot.character.id, handle: snapshot.character.handle, firstName: snapshot.character.firstName }}
+          cash={snapshot.wallet.balance}
+          section={section}
+          onSectionChange={setSection}
+        />
+      )}
       <ChatThread
         channel={venueChannel(venue.id)}
         me={{ id: snapshot.character.id, handle: snapshot.character.handle }}

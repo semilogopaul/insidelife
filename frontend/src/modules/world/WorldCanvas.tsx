@@ -26,7 +26,7 @@ import { Diagnostics } from './city/stage/Diagnostics';
 import { ReviewCamera } from './city/stage/ReviewCamera';
 import { InteriorOverlay, InteriorScene } from './interiors';
 import { NavigationLayer } from './navigation/NavigationLayer';
-import { InteriorSpray, PLAY_LAYER_OWNS_CAMERA, PlayLayer, PlayOverlay, usePlayBridge, type SandboxStart } from './play';
+import { InteriorMoments, InteriorSpray, PLAY_LAYER_OWNS_CAMERA, PlayLayer, PlayOverlay, usePlayBridge, type SandboxStart } from './play';
 
 /** Where the city opens when nothing better is known (Herbert Macaulay Way by UNILAG). */
 const DEFAULT_FOCUS: WorldPoint = venueEntrance('unilag')?.position ?? { x: 0, z: 0 };
@@ -68,7 +68,10 @@ export function WorldCanvas() {
     <>
       <WorldStage>
         {presence === 'inside' && locationId ? (
-          <InteriorScene locationId={locationId}>{!isHomeLocation(locationId) && <InteriorSpray venueId={locationId} />}</InteriorScene>
+          <InteriorScene locationId={locationId}>
+            {!isHomeLocation(locationId) && <InteriorSpray venueId={locationId} />}
+            {!isHomeLocation(locationId) && <InteriorMoments venueId={locationId} />}
+          </InteriorScene>
         ) : (
           <OutsideWorld focus={focus} play={PLAY_LAYER_OWNS_CAMERA ? 'game' : null} />
         )}

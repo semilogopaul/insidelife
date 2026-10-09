@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { findVenue, isHomeLocation, isStreetLocation } from '@insidelife/shared';
+import { NIGHT_OUT_SECTIONS, findVenue, isHomeLocation, isStreetLocation, type NightOutSection } from '@insidelife/shared';
 import { Tabs } from '@/common/components';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
+import { useNightOutNav } from '@/common/night-out';
 import { useDmThreads, useJoinedChannel } from '../hooks/use-chat';
 import { useGistNav, type GistTab } from '../hooks/use-gist-nav';
 import { useLiveChat } from '../hooks/use-live-chat';
@@ -21,7 +22,8 @@ import { PartiesTab } from './tabs/PartiesTab';
 
 /**
  * Gist: Lagos-wide chat, the venue you're in (and who's there), DMs, friends and owambes. Deep links via
- * `useUi.openPhone('gist', param)`: `@handle` opens a profile, `party:<id>` a party, `friends|parties|dms` a tab.
+ * `useUi.openPhone('gist', param)`: `@handle` opens a profile, `party:<id>` a party, `friends|parties|dms` a tab,
+ * `night-out:<bottles|shoutout|experiences>` the Night out panel (or call `openNightOut(section)`).
  */
 export function GistApp() {
   const { data: snapshot } = useSnapshot();
@@ -35,16 +37,26 @@ export function GistApp() {
   const venueId = snapshot && !snapshot.travel && locationId && !isStreetLocation(locationId) && !isHomeLocation(locationId) && findVenue(locationId) ? locationId : null;
   useJoinedChannel(venueId ? venueChannel(venueId) : null);
 
-  // Deep links from other apps (leaderboards → profile, notifications → party).
+  // Deep links from other apps (leaderboards → profile, notifications → party, `night-out:shoutout` → Here).
   useEffect(() => {
     if (!phoneParam) return;
     const { openProfile, openParty, setTab } = useGistNav.getState();
+    const nightOut = phoneParam.startsWith('night-out:') ? phoneParam.slice('night-out:'.length) : null;
     if (phoneParam.startsWith('@')) openProfile(phoneParam);
     else if (phoneParam.startsWith('party:')) openParty(phoneParam.slice('party:'.length));
-    else if (phoneParam === 'friends' || phoneParam === 'parties' || phoneParam === 'dms' || phoneParam === 'here' || phoneParam === 'lagos') setTab(phoneParam);
+    else if (nightOut !== null) {
+      if ((NIGHT_OUT_SECTIONS as readonly string[]).includes(nightOut)) useNightOutNav.getState().open(nightOut as NightOutSection);
+      setTab('here');
+    } else if (phoneParam === 'friends' || phoneParam === 'parties' || phoneParam === 'dms' || phoneParam === 'here' || phoneParam === 'lagos') setTab(phoneParam);
   }, [phoneParam]);
 
   useLiveChat(snapshot?.character.id ?? null);
+
+  // `openNightOut(section)` (3D hotspots) lands on the Here tab, which opens the panel.
+  const nightOutRequest = useNightOutNav((state) => state.request);
+  useEffect(() => {
+    if (nightOutRequest) useGistNav.getState().setTab('here');
+  }, [nightOutRequest]);
 
   const candidates = useMemo(
     () => (friends.data?.friends ?? []).map((friend) => ({ handle: friend.handle, name: `${friend.firstName} ${friend.lastName}` })),

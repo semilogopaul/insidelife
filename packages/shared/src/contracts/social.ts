@@ -7,18 +7,23 @@ import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
 import type { StatusTierId } from '../catalog/life.js';
 import type {
   LeaderboardBoardId,
+  NightOutItemId,
+  NightOutSection,
+  NightOutTarget,
   PartyDressCode,
   PartyTierId,
   PartyVenueKind,
   PlayerReportReason,
   ProfileLocationVisibility,
   SocialBadgeId,
+  VenueMomentKind,
 } from '../catalog/social.js';
 import type { DistrictId } from '../catalog/geography.js';
 import type { HomeDecor } from '../catalog/home-style.js';
 import type { GameMinute } from '../time/calendar.js';
 import type { Entrance } from '../world-map/types.js';
 import type { PublicCharacterDto } from './core.js';
+import type { VenueMomentDto, VenueMomentPersonDto } from './realtime.js';
 
 // ----- Shared bits -------------------------------------------------------------------------------------------------
 
@@ -338,6 +343,78 @@ export interface SprayResultDto {
   readonly cloutGained: number;
   readonly nairaAbuse: { readonly fined: boolean; readonly fine: number; readonly message: string } | null;
   /** True when this idempotency key was already used (nothing moved this time). */
+  readonly replayed: boolean;
+}
+
+// ----- Night out (clubs and bars) ----------------------------------------------------------------------------------
+
+/** One thing on the Night out menu at this place, priced by the server for you right now. */
+export interface NightOutOfferDto {
+  readonly id: NightOutItemId;
+  readonly section: NightOutSection;
+  readonly kind: VenueMomentKind;
+  readonly label: string;
+  readonly emoji: string;
+  readonly blurb: string;
+  /** What everyone in the room sees. */
+  readonly shows: string;
+  /** Today's price here (venue band × world price index). */
+  readonly price: number;
+  /** Clout you'd get for it now (after tonight's cap). */
+  readonly clout: number;
+  /** How long it plays (ms); 0 for the VIP section, which lasts until closing. */
+  readonly durationMs: number;
+  readonly target: NightOutTarget;
+  /** How many more of these you can buy here tonight. */
+  readonly leftTonight: number;
+  /** Why you can't buy it right now (null: you can). Picking someone is checked when you buy. */
+  readonly unavailable: string | null;
+}
+
+/** `GET /venues/:venueId/night-out`: the menu, what's playing or queued here, and your night so far. */
+export interface NightOutDto {
+  readonly venueId: string;
+  readonly venueName: string;
+  /** Server clock (epoch ms) when this was built; `startsAt` uses the same clock. */
+  readonly serverNow: number;
+  /** Why the whole panel is shut (not a nightlife spot, not inside, closed, under 18); null when it's open. */
+  readonly closedReason: string | null;
+  readonly offers: readonly NightOutOfferDto[];
+  /** Moments playing or queued here now (late arrivals still see the shoutout queue and the VIP sign). */
+  readonly moments: readonly VenueMomentDto[];
+  /** Whoever holds the VIP section here tonight. */
+  readonly vip: VenueMomentPersonDto | null;
+  readonly you: {
+    readonly adult: boolean;
+    readonly cash: number;
+    /** Paid moments tonight across Lagos, and how many more you can buy. */
+    readonly momentsTonight: number;
+    readonly momentsLeftTonight: number;
+    readonly cloutTonight: number;
+    /** When your queued shoutout here goes on screen (epoch ms), if you have one waiting. */
+    readonly queuedShoutoutAt: number | null;
+  };
+}
+
+/** `POST /venues/:venueId/night-out`: buy a bottle, a shoutout or an experience. */
+export interface NightOutRequest {
+  readonly itemId: NightOutItemId;
+  /** Who it's for (bottles: required; a birthday: optional, defaults to you). */
+  readonly toHandle?: string | null;
+  /** Shoutouts: up to 60 characters, no links or phone numbers; the DJ won't say bad words. */
+  readonly message?: string | null;
+  /** Client-generated id; retries with the same key never charge twice. */
+  readonly idempotencyKey: string;
+}
+
+export interface NightOutResultDto {
+  readonly moment: VenueMomentDto;
+  readonly price: number;
+  readonly balanceAfter: number;
+  readonly cloutGained: number;
+  /** Shoutouts ahead of yours in the queue when you bought it (0: you're next). */
+  readonly queueAhead: number;
+  /** True when this idempotency key was already used (nothing was charged this time). */
   readonly replayed: boolean;
 }
 

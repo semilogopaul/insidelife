@@ -8,4 +8,5 @@ export { PlayLayer, PLAY_LAYER_OWNS_CAMERA, type PlayLayerProps } from './PlayLa
 export { PlayOverlay } from './overlay/PlayOverlay';
 export { usePlayBridge, type WorldPresence } from './flow/use-play-bridge';
 export { InteriorSpray } from './effects/InteriorSpray';
+export { InteriorMoments } from './effects/InteriorMoments';
 export type { SandboxStart } from './flow/start-pose';
