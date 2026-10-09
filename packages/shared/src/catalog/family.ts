@@ -241,7 +241,9 @@ export const INTERACTION_TYPES = [
   'call',
   'hang-out',
   'gift',
+  'hug',
   'flirt',
+  'kiss',
   'ask-out',
   'date',
   'propose',
@@ -291,6 +293,10 @@ export interface InteractionDefinition {
   readonly effects: InteractionEffects;
   readonly failure?: InteractionEffects;
   readonly withPlayers: PlayerInteractionMode;
+  /** With a real player you must be in the same place (a venue or a home — a visit counts). */
+  readonly inPerson?: boolean;
+  /** Plays a two-person 3D moment for both of you. */
+  readonly moment?: 'hug' | 'kiss';
   /** Needs a `tier` in the request (white wedding tier). */
   readonly needsTier?: boolean;
   /** Needs an `amount` in the request (gift value, ring value). */
@@ -354,6 +360,7 @@ export const INTERACTIONS: Readonly<Record<InteractionType, InteractionDefinitio
     cooldownHours: 12,
     effects: { closeness: 7, social: 18, fun: 12 },
     withPlayers: 'direct',
+    inPerson: true,
   },
   gift: {
     id: 'gift',
@@ -412,6 +419,37 @@ export const INTERACTIONS: Readonly<Record<InteractionType, InteractionDefinitio
     cooldownHours: 20,
     effects: { romance: 8, closeness: 5, mood: 5, social: 20, fun: 15 },
     withPlayers: 'direct',
+    inPerson: true,
+  },
+  hug: {
+    id: 'hug',
+    label: 'Hug',
+    emoji: '🤗',
+    blurb: 'A proper warm hug. No side-hug, no church hug.',
+    kinds: NON_EX,
+    romantic: false,
+    minCloseness: 25,
+    baseCost: 0,
+    cooldownHours: 3,
+    effects: { closeness: 2, mood: 3, social: 6 },
+    withPlayers: 'direct',
+    inPerson: true,
+    moment: 'hug',
+  },
+  kiss: {
+    id: 'kiss',
+    label: 'Kiss',
+    emoji: '😘',
+    blurb: 'Small peck or a proper one — read the room.',
+    kinds: ['partner', 'fiance', 'spouse'],
+    romantic: true,
+    minRomance: 15,
+    baseCost: 0,
+    cooldownHours: 3,
+    effects: { romance: 4, closeness: 1, mood: 4 },
+    withPlayers: 'direct',
+    inPerson: true,
+    moment: 'kiss',
   },
   propose: {
     id: 'propose',

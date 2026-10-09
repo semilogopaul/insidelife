@@ -1,4 +1,4 @@
-import type { InteractionDefinition, InteractionRequest, VenueDefinition } from '@insidelife/shared';
+import type { InteractionDefinition, InteractionRequest, SocialMomentDto, VenueDefinition } from '@insidelife/shared';
 import type { RelationshipEntity } from '../entities/relationship.entity.js';
 import type { FamilyGraph, Identity } from './family-graph.js';
 
@@ -23,4 +23,6 @@ export interface InteractionOutcome {
   /** Negative when money was spent. */
   readonly moneyDelta: number;
   readonly proposalId?: string | null;
+  /** A hug or kiss to show in 3D. */
+  readonly moment?: SocialMomentDto;
 }

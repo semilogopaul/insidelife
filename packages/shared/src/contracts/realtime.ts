@@ -1,5 +1,6 @@
 import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
 import type { NotificationDto } from './core.js';
+import type { SocialMomentDto } from './family.js';
 import type { MilestoneMomentDto } from './progression.js';
 import type { VehicleModel } from '../catalog/vehicles.js';
 
@@ -155,6 +156,8 @@ export interface ServerToClientEvents {
   'notification': (notification: NotificationDto) => void;
   /** Something about my character changed server-side (transfer received, event created): refetch the snapshot. */
   'character:invalidate': (payload: { readonly reason: string }) => void;
+  /** Someone hugged or kissed you (in the same place): show the moment. */
+  'social:moment': (payload: SocialMomentDto) => void;
   'party:spray': (spray: SprayEventDto) => void;
   'world:online-count': (payload: { readonly count: number }) => void;
   /** Batched positions of players in your district (and neighbours), ~4 Hz. */

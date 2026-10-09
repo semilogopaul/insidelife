@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { SocialMomentDto } from '@insidelife/shared';
 import { NotificationsService, type NotificationDraft } from '../../notifications/notifications.service.js';
 import { RealtimeBus } from '../../realtime-bus/realtime-bus.service.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
@@ -21,6 +22,11 @@ export class PlayerNotifier {
       this.notifications.push(characterId, created);
       this.bus.toCharacter(characterId, 'character:invalidate', { reason });
     });
+  }
+
+  /** Show a hug or kiss on the other player's screen (after commit). */
+  moment(ctx: SimulationContext, characterId: string, moment: SocialMomentDto): void {
+    ctx.afterCommit(() => this.bus.toCharacter(characterId, 'social:moment', moment));
   }
 
   /** Ask a character's open clients to refetch (no notification). */

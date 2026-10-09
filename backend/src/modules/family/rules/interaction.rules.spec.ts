@@ -27,6 +27,23 @@ const check = (type: keyof typeof INTERACTIONS, patch: Partial<InteractionState>
   checkInteraction(INTERACTIONS[type], { ...base, ...patch })?.code ?? null;
 
 describe('interaction requirements', () => {
+  it('hugs anyone you’re close to; with a real player only when you’re together', () => {
+    expect(check('hug', { kind: 'mother' })).toBeNull();
+    expect(check('hug', { kind: 'friend', closeness: 10 })).toBe('NOT_CLOSE_ENOUGH');
+    expect(check('hug', { kind: 'friend', isPlayer: true })).toBe('NOT_TOGETHER');
+    expect(check('hug', { kind: 'friend', isPlayer: true, together: true })).toBeNull();
+    expect(check('hug', { kind: 'ex' })).toBe('NOT_ALLOWED');
+  });
+
+  it('kisses only a partner, fiancé(e) or spouse, adults, with some spark', () => {
+    expect(check('kiss', { kind: 'partner' })).toBeNull();
+    expect(check('kiss', { kind: 'friend' })).toBe('NOT_ALLOWED');
+    expect(check('kiss', { kind: 'mother' })).toBe('NOT_ALLOWED');
+    expect(check('kiss', { kind: 'spouse', romance: 5 })).toBe('NO_SPARK');
+    expect(check('kiss', { kind: 'partner', otherAge: 17 })).toBe('TOO_YOUNG');
+    expect(check('kiss', { kind: 'partner', isPlayer: true, together: false })).toBe('NOT_TOGETHER');
+  });
+
   it('lets anyone chat, but not with the dead', () => {
     expect(check('chat')).toBeNull();
     expect(check('chat', { alive: false })).toBe('DECEASED');

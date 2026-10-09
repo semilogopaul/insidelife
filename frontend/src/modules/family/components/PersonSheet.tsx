@@ -63,6 +63,7 @@ function PersonBody({ rel, relationships }: { readonly rel: RelationshipDto; rea
           }
           gameEvents.emit('sfx', { id: result.success ? (result.moneyDelta < 0 ? 'cash-out' : 'ui-success') : 'ui-error' });
           toast({ title: result.title, body: result.body, tone: result.tone, amount: result.moneyDelta || undefined });
+          if (result.moment) gameEvents.emit('social-moment', result.moment);
           if (result.success && request.type === 'propose') gameEvents.emit('celebrate', { kind: 'milestone', title: 'Engaged!', body: `${rel.firstName} said yes. Time to meet the families.` });
         },
         onError: (error) => {

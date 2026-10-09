@@ -2,8 +2,11 @@ import type { AvatarAnimation } from '@insidelife/shared';
 import type { AvatarProp, RigMetrics } from '../rig';
 import { Pose } from './pose';
 
-/** Every clip the avatar can play: the shared action animations, locomotion extras (`jog`, `run`) and `hang`. */
-export type AvatarClip = AvatarAnimation | 'jog' | 'run' | 'hang';
+/**
+ * Every clip the avatar can play: the shared action animations, locomotion extras (`jog`, `run`), `hang`, and the
+ * two-person `hug` and `kiss` (play them on two avatars facing each other ~0.5 m apart).
+ */
+export type AvatarClip = AvatarAnimation | 'jog' | 'run' | 'hang' | 'hug' | 'kiss';
 
 /**
  * Ground speed (m/s, avatar at scale 1, timeScale 1) each gait is animated for. To keep feet planted, drive
@@ -553,6 +556,65 @@ const hang: ClipDefinition = {
   },
 };
 
+/** Ease in over `seconds` (0 → 1, smooth). */
+const easeIn = (t: number, seconds: number): number => {
+  const x = Math.min(1, Math.max(0, t / seconds));
+  return x * x * (3 - 2 * x);
+};
+
+/**
+ * A warm hug, face to face: step in, arms around the other's back, head to one side on their shoulder, eyes closed,
+ * a gentle rock from side to side and a squeeze now and then.
+ */
+const hug: ClipDefinition = {
+  kind: 'full',
+  stance: 'stand',
+  apply: (pose, { t, variety }) => {
+    const hold = easeIn(t, 0.7);
+    const rock = Math.sin(t * 1.6 + variety) * 0.06 * hold;
+    const squeeze = Math.max(0, Math.sin(t * 2.2)) * 0.12 * hold;
+    pose.rootRot[2] = rock;
+    pose.set('chest', 0.14 * hold, 0.04 * hold, 0);
+    pose.set('head', 0.12 * hold, 0.55 * hold, 0.12 * hold);
+    // Arms go out and around the other's back, forearms wrapping in behind them.
+    pose.set('upperArmL', -1.35 * hold, 0, 0.45 * hold);
+    pose.set('upperArmR', -1.35 * hold, 0, -0.45 * hold);
+    pose.set('foreArmL', (-0.5 - squeeze) * hold, 0, -1.2 * hold);
+    pose.set('foreArmR', (-0.5 - squeeze) * hold, 0, 1.2 * hold);
+    pose.set('thighL', -0.06 * hold, 0, 0.04);
+    pose.set('thighR', 0.04 * hold, 0, -0.04);
+    pose.eyes = hold > 0.8 ? 1 : 0;
+    pose.mouth = 0;
+    pose.expression = 'happy';
+  },
+};
+
+/**
+ * A kiss: hands on the other's waist, lean in with the head tilted, eyes closed for a moment, then a smile and back in.
+ */
+const kiss: ClipDefinition = {
+  kind: 'full',
+  stance: 'stand',
+  apply: (pose, { t }) => {
+    const lean = easeIn(t, 0.9);
+    // Kiss for ~1.6 s, a smile back, then lean in again.
+    const cycle = (t - 0.9) % 3.2;
+    const close = t < 0.9 ? lean : cycle < 1.6 ? 1 : cycle < 2.2 ? 1 - (cycle - 1.6) / 0.6 : (cycle - 2.2) / 1.0;
+    pose.set('chest', 0.12 + 0.1 * close, 0, 0);
+    pose.set('head', 0.04 + 0.12 * close, 0, 0.28 * close);
+    pose.set('upperArmL', -0.75 * lean, 0, 0.3 * lean);
+    pose.set('upperArmR', -0.75 * lean, 0, -0.3 * lean);
+    pose.set('foreArmL', -0.9 * lean, -0.2 * lean, -0.75 * lean);
+    pose.set('foreArmR', -0.9 * lean, 0.2 * lean, 0.75 * lean);
+    pose.set('footL', 0.12 * close);
+    pose.set('footR', 0.12 * close);
+    pose.rootPos[1] = 0.015 * close;
+    pose.eyes = close > 0.75 ? 1 : 0;
+    pose.mouth = 0;
+    pose.expression = 'happy';
+  },
+};
+
 export const CLIPS: Readonly<Record<AvatarClip, ClipDefinition>> = {
   idle,
   walk,
@@ -574,6 +636,8 @@ export const CLIPS: Readonly<Record<AvatarClip, ClipDefinition>> = {
   wave,
   cheer,
   hang,
+  hug,
+  kiss,
 };
 
 /** Props each clip shows (for docs/tests; clips set them on the pose themselves). */

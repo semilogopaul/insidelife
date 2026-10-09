@@ -1,5 +1,5 @@
 /** Family & relationships API contracts — owned by the family domain. */
-import type { Gender } from '../catalog/appearance.js';
+import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
 import type {
   ChildMilestoneId,
   ChildSchoolTier,
@@ -109,6 +109,25 @@ export interface InteractionResultDto {
   readonly relationship: RelationshipDto;
   /** For player targets: a proposal was sent instead of an instant result. */
   readonly proposalId: string | null;
+  /** A hug or kiss to show in 3D (with who). */
+  readonly moment: SocialMomentDto | null;
+}
+
+/**
+ * A two-person moment (hug, kiss). `with` is the other person: real players come with their look; NPCs are drawn from
+ * their id (`seed`) and gender, the same way every time.
+ */
+export interface SocialMomentDto {
+  readonly kind: 'hug' | 'kiss';
+  readonly with: MomentPersonDto;
+}
+
+export interface MomentPersonDto {
+  readonly name: string;
+  readonly gender: Gender;
+  readonly seed: string;
+  readonly appearance: Appearance | null;
+  readonly outfit: Outfit | null;
 }
 
 export const PLAYER_PROPOSAL_KINDS = ['friend', 'date', 'marriage'] as const;

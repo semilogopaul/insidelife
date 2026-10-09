@@ -6,19 +6,21 @@ import {
   findVenue,
   formatNaira,
   isRomanticKind,
+  isStreetLocation,
   type ActionDefinition,
   type InteractionDefinition,
   type InteractionRequest,
   type InteractionResultDto,
+  type SocialMomentDto,
   type VenueDefinition,
 } from '@insidelife/shared';
 import { GameRuleException, ResourceNotFoundException } from '../../../common/exceptions/domain.exception.js';
-import type { ActivityState } from '../../characters/entities/character.entity.js';
+import { CharacterEntity, type ActivityState } from '../../characters/entities/character.entity.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
 import { SocialGuard } from '../../social/social-guard.service.js';
 import type { RelationshipEntity } from '../entities/relationship.entity.js';
 import { toRelationshipDto } from '../family.mapper.js';
-import { boostNeeds } from '../family.util.js';
+import { addMood, boostNeeds } from '../family.util.js';
 import { ageOf, currentPartner, familyTitle, identityOf, type FamilyGraph, type Identity } from '../interfaces/family-graph.js';
 import type { InteractionContext, InteractionOutcome } from '../interfaces/interaction.interface.js';
 import { checkInteraction, cooldownEnd, giftCloseness, type InteractionState } from '../rules/interaction.rules.js';
@@ -34,6 +36,8 @@ const CHAT_LINES = [
   'They sent you a 4-minute voice note. You listened at 2x.',
   'Gist so hot you forgot to charge your phone.',
 ];
+const HUG_LINES = ['{name} held on a little longer than usual. You both needed that.', 'A proper bear hug — {name} lifted you off the ground small.', '“I missed you,” {name} said into your shoulder.'];
+const KISS_LINES = ['{name} smiled into the kiss. Butterflies, still.', 'Quick peck, then another one. {name} is blushing.', '“Not in front of everybody!” {name} said — then kissed you again.'];
 const CALL_LINES = ['A proper catch-up. You promised to visit soon.', '“How far? Long time!” Twenty minutes later, still talking.'];
 const HANG_LINES = ['Suya, small chops and gist until late.', 'You argued about football and laughed until your stomach hurt.', 'Pepper soup joint, one bottle of malt each. Bonding.'];
 
@@ -79,6 +83,7 @@ export class InteractionsService {
       tone: outcome.tone,
       moneyDelta: outcome.moneyDelta,
       proposalId: outcome.proposalId ?? null,
+      moment: outcome.moment ?? null,
       relationship: toRelationshipDto(graph, rel, ctx.time),
     };
   }
@@ -128,7 +133,8 @@ export class InteractionsService {
       otherGender: identity.gender,
       datingDays: RelationshipsService.daysSince(rel.flags.datingSince, t),
       venueType: venue?.type ?? null,
-      together: identity.player !== null && venue !== null && identity.player.locationId === ctx.character.locationId,
+      // Same venue or home (not just the same district's streets).
+      together: identity.player !== null && !isStreetLocation(ctx.character.locationId) && identity.player.locationId === ctx.character.locationId,
       cooldownUntil: rel.flags.cooldowns?.[definition.id] ?? null,
       now: t,
       committedElsewhere,
@@ -151,6 +157,9 @@ export class InteractionsService {
         return this.hangOut(ctx, ic);
       case 'gift':
         return this.gift(ctx, ic);
+      case 'hug':
+      case 'kiss':
+        return this.affection(ctx, ic);
       case 'flirt':
         return this.romance.flirt(ctx, ic);
       case 'ask-out':
@@ -206,6 +215,39 @@ export class InteractionsService {
     }
     const line = ctx.rng('interaction', ic.rel.id, 'hang-out', ic.attempt).pick(HANG_LINES);
     return { success: true, title: `Hung out with ${this.title(ic)}`, body: line, tone: 'good', moneyDelta: -cost };
+  }
+
+  /** A hug or a kiss: closeness (and romance), a warm mood, and the moment in 3D for both of you. */
+  private async affection(ctx: SimulationContext, ic: InteractionContext): Promise<InteractionOutcome> {
+    const { effects } = ic.definition;
+    const kind = ic.definition.moment ?? 'hug';
+    this.relationships.touch(ic.graph, ic.rel, ctx.time, { closeness: effects.closeness ?? 0, romance: effects.romance });
+    if (effects.mood) addMood(ctx, `affection:${kind}`, kind === 'kiss' ? 'A sweet kiss' : 'A warm hug', effects.mood, effects.moodDays ?? 1);
+    boostNeeds(ctx, { social: effects.social ?? 0 });
+    const name = ic.identity.firstName;
+    const player = ic.identity.player;
+    let look: Pick<CharacterEntity, 'appearance' | 'outfit'> | null = null;
+    if (player) {
+      look = await ctx.manager.findOne(CharacterEntity, { where: { id: player.id }, select: { id: true, appearance: true, outfit: true } });
+      const me = ctx.character;
+      const moment: SocialMomentDto = { kind, with: { name: me.firstName, gender: me.gender, seed: me.id, appearance: me.appearance, outfit: me.outfit } };
+      await this.notifier.notify(ctx, player.id, {
+        kind: 'relationship',
+        title: kind === 'kiss' ? `😘 ${me.firstName} kissed you` : `🤗 ${me.firstName} hugged you`,
+        body: kind === 'kiss' ? 'Butterflies. Somebody is in love o.' : 'A proper warm hug. You needed that.',
+        tone: 'good',
+      });
+      this.notifier.moment(ctx, player.id, moment);
+    }
+    const line = ctx.rng('interaction', ic.rel.id, kind, ic.attempt).pick(kind === 'kiss' ? KISS_LINES : HUG_LINES);
+    return {
+      success: true,
+      title: kind === 'kiss' ? `You kissed ${this.title(ic)}` : `You hugged ${this.title(ic)}`,
+      body: line.replace('{name}', name),
+      tone: 'good',
+      moneyDelta: 0,
+      moment: { kind, with: { name, gender: ic.identity.gender, seed: ic.rel.id, appearance: look?.appearance ?? null, outfit: look?.outfit ?? null } },
+    };
   }
 
   private async gift(ctx: SimulationContext, ic: InteractionContext): Promise<InteractionOutcome> {

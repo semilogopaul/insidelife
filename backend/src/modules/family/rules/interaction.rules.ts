@@ -106,7 +106,7 @@ export function checkInteraction(definition: InteractionDefinition, state: Inter
       return block('WRONG_PLACE', 'Go somewhere nice first — a restaurant, lounge, cinema, beach or park.');
     }
   }
-  if (state.isPlayer && (definition.id === 'hang-out' || definition.id === 'date') && !state.together) {
+  if (state.isPlayer && definition.inPerson && !state.together) {
     return block('NOT_TOGETHER', `${state.name} isn’t here with you. Meet up at the same place first.`);
   }
   if ((definition.id === 'ask-out' || definition.id === 'propose') && state.committedElsewhere) {

@@ -1,4 +1,4 @@
-import type { SpawnPoint } from '@insidelife/shared';
+import type { SocialMomentDto, SpawnPoint } from '@insidelife/shared';
 
 /**
  * Typed fire-and-forget event bus between features (features can't import each other).
@@ -42,6 +42,8 @@ export interface GameEventMap {
   celebrate: { readonly title: string; readonly body?: string; readonly kind: 'milestone' | 'achievement' | 'goal' };
   /** Speak a GPS/voice line (audio feature decides whether voice guidance is on). */
   speak: { readonly text: string };
+  /** A hug or kiss to show in 3D (you did it; someone doing it to you arrives over realtime). */
+  'social-moment': SocialMomentDto;
 }
 
 type Handler<K extends keyof GameEventMap> = (payload: GameEventMap[K]) => void;
