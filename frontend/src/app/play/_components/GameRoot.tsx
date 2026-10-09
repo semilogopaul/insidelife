@@ -7,9 +7,11 @@ import { useEffect } from 'react';
 import { ApiError } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
 import { useSession } from '@/common/auth/session-store';
+import { dmLink, useDmAlerts } from '@/common/chat';
 import { ErrorBoundary, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot } from '@/common/game/snapshot';
+import { useUi } from '@/common/game/ui-store';
 import { useClockSync } from '@/common/game/use-game-clock';
 import { connectSocket, disconnectSocket } from '@/common/realtime/socket';
 import { useRealtimeEvent } from '@/common/realtime/use-realtime';
@@ -64,6 +66,9 @@ export function GameRoot() {
     connectSocket();
     return () => disconnectSocket();
   }, [characterId]);
+
+  // New DMs anywhere in the game: badge the phone and pop up an alert that opens the conversation in Messages.
+  useDmAlerts(characterId, (sender) => useUi.getState().openPhone('messages', dmLink(sender)));
 
   useRealtimeEvent('character:invalidate', () => {
     void client.invalidateQueries({ queryKey: queryKeys.snapshot });

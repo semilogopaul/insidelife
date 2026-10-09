@@ -1,6 +1,7 @@
 'use client';
 
 import { Smartphone } from 'lucide-react';
+import { useUnreadDms } from '@/common/chat';
 import { useState, type ReactNode } from 'react';
 import type { CharacterSnapshotDto } from '@insidelife/shared';
 import { api } from '@/common/api/http';
@@ -49,6 +50,7 @@ export function Hud({ tray, map, notices }: HudProps) {
   const data = useHudData();
   const openPhone = useUi((state) => state.openPhone);
   const phoneOpen = useUi((state) => state.phoneOpen);
+  const unreadDms = useUnreadDms();
   const nearby = useWorld((state) => state.nearby);
   const drive = useWorld((state) => state.drive);
   const mode = useWorld((state) => state.mode);
@@ -142,10 +144,15 @@ export function Hud({ tray, map, notices }: HudProps) {
                 gameEvents.emit('sfx', { id: 'ui-open' });
                 openPhone('home');
               }}
-              className="grid size-16 place-items-center rounded-[20px] bg-danfo text-ink shadow-[0_4px_0_var(--color-danfo-deep)] active:translate-y-0.5"
-              aria-label="Open phone"
+              className="relative grid size-16 place-items-center rounded-[20px] bg-danfo text-ink shadow-[0_4px_0_var(--color-danfo-deep)] active:translate-y-0.5"
+              aria-label={unreadDms > 0 ? `Open phone (${unreadDms} unread messages)` : 'Open phone'}
             >
               <Smartphone size={28} aria-hidden strokeWidth={2.4} />
+              {unreadDms > 0 && (
+                <span aria-hidden className="absolute -right-1.5 -top-1.5 grid h-6 min-w-6 place-items-center rounded-full bg-okada px-1 text-xs font-bold text-white ring-2 ring-ink">
+                  {Math.min(99, unreadDms)}
+                </span>
+              )}
             </button>
           )}
         </div>

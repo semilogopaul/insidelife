@@ -1,8 +1,9 @@
 'use client';
 
 import { ChevronDown, ChevronLeft, MailQuestion, MessageCirclePlus, UserRound } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { DmThreadDto } from '@insidelife/shared';
+import { useDmFocus } from '@/common/chat';
 import { EmptyState, LoadingRows } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { useDmThreads } from '../../hooks/use-chat';
@@ -26,6 +27,12 @@ export function DmsTab({ me }: { readonly me: Me }) {
   const thread = useGistNav((state) => state.thread);
   const closeThread = useGistNav((state) => state.closeThread);
   const openProfile = useGistNav((state) => state.openProfile);
+  const focusChannel = thread ? dmChannel(me.id, thread.id) : null;
+  // The open conversation is on screen: its messages don't pop up alerts.
+  useEffect(() => {
+    useDmFocus.getState().setChannel(focusChannel);
+    return () => useDmFocus.getState().setChannel(null);
+  }, [focusChannel]);
 
   if (thread) {
     return (

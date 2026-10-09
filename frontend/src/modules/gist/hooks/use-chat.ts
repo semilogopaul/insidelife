@@ -26,10 +26,8 @@ export function useChatHistory(channel: string | null) {
   return { ...query, messages };
 }
 
-/** Your private conversations, newest first, with unread state (refreshed when a DM arrives). */
-export function useDmThreads() {
-  return useQuery({ queryKey: gistKeys.dmThreads, queryFn: gistApi.dmThreads, staleTime: 30_000 });
-}
+/** Your private conversations, newest first, with unread state (shared with the phone's badges). */
+export { useDmThreads } from '@/common/chat';
 
 /** Message-request state of a DM: who may write what (refreshed when messages arrive or a request is answered). */
 export function useDmState(channel: string | null) {

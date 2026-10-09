@@ -7,6 +7,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 export const PHONE_APPS = [
   'home',
   'map',
+  'messages',
   'bank',
   'jobs',
   'school',

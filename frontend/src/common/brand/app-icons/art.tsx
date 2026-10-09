@@ -601,6 +601,31 @@ const invest: AppIconArt = {
   ),
 };
 
+const messages: AppIconArt = {
+  name: 'Messages',
+  tile: ['#5aa9ff', '#1b5fd6'],
+  subject: ({ id, url, compact }) => (
+    <>
+      <defs>
+        <Linear
+          id={id('bubble')}
+          stops={[
+            [0, '#ffffff'],
+            [1, '#dceaff'],
+          ]}
+        />
+      </defs>
+      <path
+        d="M20 13H44A10 10 0 0 1 54 23V36A10 10 0 0 1 44 46H31L19.5 54.5 21.7 46H20A10 10 0 0 1 10 36V23A10 10 0 0 1 20 13Z"
+        fill={url('bubble')}
+      />
+      <rect x={18} y={22.5} width={28} height={4} rx={2} fill="#2a6fe0" />
+      <rect x={18} y={31} width={20} height={4} rx={2} fill="#2a6fe0" opacity={0.75} />
+      {!compact && <rect x={18} y={39.5} width={12} height={3} rx={1.5} fill="#8fb6f2" />}
+    </>
+  ),
+};
+
 const gist: AppIconArt = {
   name: 'Gist',
   tile: ['#3fd481', '#0f8f4a'],
@@ -739,6 +764,7 @@ const me: AppIconArt = {
 
 export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   map,
+  messages,
   bank,
   jobs,
   school,

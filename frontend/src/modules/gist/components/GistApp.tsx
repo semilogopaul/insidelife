@@ -1,19 +1,16 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 import { findVenue, isHomeLocation, isStreetLocation } from '@insidelife/shared';
 import { Tabs } from '@/common/components';
-import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
-import { useRealtimeEvent } from '@/common/realtime/use-realtime';
-import { appendMessage, useDmThreads, useJoinedChannel } from '../hooks/use-chat';
+import { useDmThreads, useJoinedChannel } from '../hooks/use-chat';
 import { useGistNav, type GistTab } from '../hooks/use-gist-nav';
+import { useLiveChat } from '../hooks/use-live-chat';
 import { useParties } from '../hooks/use-parties';
 import { useFriends } from '../hooks/use-social';
-import { channelKind, dmChannel, venueChannel } from '../services/chat-channels';
-import { gistKeys } from '../services/gist-keys';
+import { venueChannel } from '../services/chat-channels';
 import { PartySheet } from './parties/PartySheet';
 import { PlayerProfileSheet } from './profile/PlayerProfileSheet';
 import { DmsTab } from './tabs/DmsTab';
@@ -28,7 +25,6 @@ import { PartiesTab } from './tabs/PartiesTab';
  */
 export function GistApp() {
   const { data: snapshot } = useSnapshot();
-  const client = useQueryClient();
   const phoneParam = useUi((state) => state.phoneParam);
   const nav = useGistNav();
   const friends = useFriends();
@@ -48,19 +44,7 @@ export function GistApp() {
     else if (phoneParam === 'friends' || phoneParam === 'parties' || phoneParam === 'dms' || phoneParam === 'here' || phoneParam === 'lagos') setTab(phoneParam);
   }, [phoneParam]);
 
-  const meId = snapshot?.character.id ?? null;
-  useRealtimeEvent('chat:message', (message) => {
-    appendMessage(client, message);
-    if (message.channel.startsWith('dm:')) {
-      void client.invalidateQueries({ queryKey: gistKeys.dmThreads });
-      // A reply accepts a request; my own sends use up a pending request's allowance.
-      void client.invalidateQueries({ queryKey: gistKeys.dmState(message.channel) });
-    }
-    if (!meId || channelKind(message.channel) !== 'dm' || message.sender.characterId === meId) return;
-    const { thread, rememberPartner } = useGistNav.getState();
-    rememberPartner({ id: message.sender.characterId, handle: message.sender.handle, name: message.sender.firstName });
-    if (!thread || dmChannel(meId, thread.id) !== message.channel) gameEvents.emit('sfx', { id: 'notification', volume: 0.6 });
-  });
+  useLiveChat(snapshot?.character.id ?? null);
 
   const candidates = useMemo(
     () => (friends.data?.friends ?? []).map((friend) => ({ handle: friend.handle, name: `${friend.firstName} ${friend.lastName}` })),

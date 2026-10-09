@@ -6,6 +6,10 @@ export interface Toast {
   readonly body?: string;
   readonly tone: 'good' | 'bad' | 'neutral';
   readonly amount?: number;
+  /** Tapping the alert does this (e.g. open the conversation), then dismisses it. */
+  readonly onOpen?: () => void;
+  /** Shown on the alert when it does something ("Reply"). */
+  readonly actionLabel?: string;
 }
 
 interface ToastState {

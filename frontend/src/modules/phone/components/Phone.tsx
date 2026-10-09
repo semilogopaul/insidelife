@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ChevronLeft, X } from 'lucide-react';
 import { formatClock12 } from '@insidelife/shared';
 import { AppIcon } from '@/common/brand/app-icons';
+import { useUnreadDms } from '@/common/chat';
 import { gameEvents } from '@/common/game/game-events';
 import { useEscapeLayer } from '@/common/hooks/use-escape-layer';
 import type { PhoneAppDefinition } from '@/common/game/phone-apps';
@@ -22,6 +23,8 @@ export interface PhoneProps {
 export function Phone({ apps }: PhoneProps) {
   const { phoneOpen, phoneApp, openPhone, closePhone } = useUi();
   const app = apps.find((candidate) => candidate.id === phoneApp);
+  const unreadDms = useUnreadDms();
+  const badges: Partial<Record<string, number>> = { messages: unreadDms };
   const [openSponsored, setSponsored] = useState<LivePhoneAppDto | null>(null);
   // A sponsored page belongs to the home screen: it only shows while home is.
   const sponsored = phoneOpen && phoneApp === 'home' ? openSponsored : null;
@@ -93,10 +96,18 @@ export function Phone({ apps }: PhoneProps) {
                         }}
                         className="group flex w-full flex-col items-center gap-1.5"
                       >
-                        <span className="rounded-[12px] shadow-[var(--shadow-lift)] motion-safe:transition-transform motion-safe:duration-150 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-active:scale-95">
+                        <span className="relative rounded-[12px] shadow-[var(--shadow-lift)] motion-safe:transition-transform motion-safe:duration-150 motion-safe:group-hover:-translate-y-0.5 motion-safe:group-active:scale-95">
                           <AppIcon app={item.id} size={56} decorative className="block" />
+                          {(badges[item.id] ?? 0) > 0 && (
+                            <span aria-hidden className="absolute -right-1.5 -top-1.5 grid h-5 min-w-5 place-items-center rounded-full bg-okada px-1 text-2xs font-bold text-white ring-2 ring-paper">
+                              {Math.min(99, badges[item.id] ?? 0)}
+                            </span>
+                          )}
                         </span>
-                        <span className="text-xs font-bold">{item.name}</span>
+                        <span className="text-xs font-bold">
+                          {item.name}
+                          {(badges[item.id] ?? 0) > 0 && <span className="sr-only"> ({badges[item.id]} unread)</span>}
+                        </span>
                       </button>
                     </li>
                   ))}

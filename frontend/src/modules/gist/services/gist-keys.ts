@@ -1,9 +1,10 @@
 import { queryKeys } from '@/common/api/query-keys';
+import { dmThreadsKey } from '@/common/chat';
 
 /** Query keys for social server state (shared names so other apps reading the same data hit the same cache). */
 export const gistKeys = {
   chat: (channel: string) => queryKeys.domain('gist', 'chat', channel),
-  dmThreads: queryKeys.domain('gist', 'dm-threads'),
+  dmThreads: dmThreadsKey,
   dmState: (channel: string) => queryKeys.domain('gist', 'dm-state', channel),
   friends: queryKeys.domain('social', 'friends'),
   blocked: queryKeys.domain('social', 'blocked'),

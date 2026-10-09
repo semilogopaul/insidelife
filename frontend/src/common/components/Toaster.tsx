@@ -20,7 +20,10 @@ export function Toaster() {
             animate={{ y: 0, opacity: 1, scale: 1 }}
             exit={{ y: -16, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 500, damping: 36 }}
-            onClick={() => dismiss(t.id)}
+            onClick={() => {
+              t.onOpen?.();
+              dismiss(t.id);
+            }}
             className="glass pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-card px-4 py-3 text-left text-on-ink"
           >
             <span
@@ -32,6 +35,7 @@ export function Toaster() {
               {t.body && <span className="mt-0.5 block text-sm text-on-ink-soft">{t.body}</span>}
             </span>
             {t.amount !== undefined && <Money amount={t.amount} compact signed className="type-figure text-sm" />}
+            {t.actionLabel && <span className="mt-0.5 shrink-0 rounded-chip bg-danfo px-2.5 py-1 text-xs font-bold text-ink">{t.actionLabel}</span>}
           </motion.button>
         ))}
       </AnimatePresence>

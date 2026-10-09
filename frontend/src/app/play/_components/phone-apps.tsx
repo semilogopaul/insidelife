@@ -22,6 +22,7 @@ const HealthApp = dynamic(() => import('@/modules/health').then((m) => m.HealthA
 const FamilyApp = dynamic(() => import('@/modules/family').then((m) => m.FamilyApp), { loading });
 const InvestApp = dynamic(() => import('@/modules/invest').then((m) => m.InvestApp), { loading });
 const GistApp = dynamic(() => import('@/modules/gist').then((m) => m.GistApp), { loading });
+const MessagesApp = dynamic(() => import('@/modules/gist').then((m) => m.MessagesApp), { loading });
 const PromoteApp = dynamic(() => import('@/modules/promote').then((m) => m.PromoteApp), { loading });
 const GoalsApp = dynamic(() => import('@/modules/goals').then((m) => m.GoalsApp), { loading });
 const MeApp = dynamic(() => import('@/modules/me').then((m) => m.MeApp), { loading });
@@ -29,6 +30,7 @@ const MeApp = dynamic(() => import('@/modules/me').then((m) => m.MeApp), { loadi
 /** The phone's home screen, in order (each app's icon is its illustrated tile in `common/brand/app-icons`). */
 export const PHONE_APPS: readonly PhoneAppDefinition[] = [
   { id: 'map', name: 'Map', component: MapApp },
+  { id: 'messages', name: 'Messages', component: MessagesApp },
   { id: 'bank', name: 'Bank', component: BankApp },
   { id: 'jobs', name: 'Jobs', component: JobsApp },
   { id: 'school', name: 'School', component: SchoolApp },
