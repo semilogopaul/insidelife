@@ -82,10 +82,10 @@ describe('ad prices: per 7 days, 7 × the old day rate', () => {
     if (mushin && vi) expect(vi.weekPriceKobo).toBeGreaterThan(mushin.weekPriceKobo);
   });
 
-  it('sells the phone app at ₦100,000 per 7 days and songs at ₦5,000 (under 5 minutes)', () => {
+  it('sells the phone app at ₦100,000 per 7 days and songs at ₦5,000 (up to 3 minutes)', () => {
     for (const app of ofKind('phone-app')) expect(app.weekPriceKobo, app.id).toBe(100_000 * NAIRA);
     expect(CLUB_PLAY_PRODUCTS).toEqual([expect.objectContaining({ id: 'all-clubs-7d', days: 7, priceKobo: 5_000 * NAIRA })]);
-    expect(TRACK_MAX_SECONDS).toBe(300);
+    expect(TRACK_MAX_SECONDS).toBe(180);
   });
 
   it('never prices an ad under ₦2,000 a week', () => {

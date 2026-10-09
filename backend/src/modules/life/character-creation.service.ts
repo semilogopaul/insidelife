@@ -26,8 +26,8 @@ import { SimulationRegistry } from '../simulation/simulation-registry.service.js
 import { WorldService } from '../world/world.service.js';
 import type { CreateCharacterDto } from './dto/create-character.dto.js';
 
-/** Characters are born 17 years before they first appear, fresh out of SS3. */
-const STARTING_AGE_YEARS = 17;
+/** Characters are born 18 years before they first appear: an adult, fresh out of SS3 with WAEC done. */
+const STARTING_AGE_YEARS = 18;
 
 export interface CreatedCharacter {
   readonly characterId: string;

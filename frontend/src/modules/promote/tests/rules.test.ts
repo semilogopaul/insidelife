@@ -89,13 +89,14 @@ describe('quoteWeeks (shared adQuote in naira)', () => {
   });
 });
 
-describe('song length (under 5 minutes)', () => {
-  it('accepts 30 seconds to just under 5 minutes, as the server does', () => {
+describe('song length (up to 3 minutes)', () => {
+  it('accepts 30 seconds to 3 minutes, as the server does', () => {
     expect(trackDurationProblem(null)).toBeNull();
     expect(trackDurationProblem(30)).toBeNull();
-    expect(trackDurationProblem(299.4)).toBeNull();
+    expect(trackDurationProblem(180)).toBeNull();
+    expect(trackDurationProblem(179.4)).toBeNull();
     expect(trackDurationProblem(29)).toMatch(/at least 30 seconds/);
-    expect(trackDurationProblem(300)).toMatch(/under 5 minutes\. This one is 5:00/);
+    expect(trackDurationProblem(181)).toMatch(/at most 3 minutes\. This one is 3:01/);
     expect(trackDurationProblem(372)).toMatch(/This one is 6:12/);
   });
 });

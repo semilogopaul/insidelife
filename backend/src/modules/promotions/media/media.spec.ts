@@ -156,32 +156,32 @@ describe('inspectTrack', () => {
     await expect(inspectTrack(synthMp3(35), 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 35 });
   });
 
-  it('refuses songs that are too short, or 5 minutes and longer (measured from the frames)', async () => {
+  it('refuses songs that are too short, or longer than 3 minutes (measured from the frames)', async () => {
     await expect(inspectTrack(synthMp3(5), 'audio/mpeg')).rejects.toThrow(/at least 30 seconds/);
-    await expect(inspectTrack(synthMp3(5 * 60 + 3), 'audio/mpeg')).rejects.toThrow(/must be under 5 minutes \(this one is 5:03\)/);
-    await expect(inspectTrack(synthMp3(5 * 60), 'audio/mpeg')).rejects.toThrow(/under 5 minutes/);
-    await expect(inspectTrack(synthMp3(4 * 60 + 58), 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 298 });
+    await expect(inspectTrack(synthMp3(3 * 60 + 3), 'audio/mpeg')).rejects.toThrow(/at most 3 minutes \(this one is 3:03\)/);
+    await expect(inspectTrack(synthMp3(3 * 60), 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 180 });
+    await expect(inspectTrack(synthMp3(2 * 60 + 58), 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 178 });
   });
 
   it('counts MP3 frames itself and refuses a Xing header that lies about the length', async () => {
-    const honest = Buffer.concat([xingFrame(framesFor(4 * 60)), synthMp3(4 * 60)]);
-    await expect(inspectTrack(honest, 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 240 });
+    const honest = Buffer.concat([xingFrame(framesFor(160)), synthMp3(160)]);
+    await expect(inspectTrack(honest, 'audio/mpeg')).resolves.toEqual({ contentType: 'audio/mpeg', durationSeconds: 160 });
     // Declares 4 minutes, carries 6: the header says "short enough", the frames say otherwise.
-    const forged = Buffer.concat([xingFrame(framesFor(4 * 60)), synthMp3(6 * 60)]);
-    expect(countMp3(forged)).toMatchObject({ declaredSeconds: expect.closeTo(240, 0) });
-    expect(countMp3(forged)?.seconds).toBeCloseTo(360, 0);
+    const forged = Buffer.concat([xingFrame(framesFor(160)), synthMp3(240)]);
+    expect(countMp3(forged)).toMatchObject({ declaredSeconds: expect.closeTo(160, 0) });
+    expect(countMp3(forged)?.seconds).toBeCloseTo(240, 0);
     await expect(inspectTrack(forged, 'audio/mpeg')).rejects.toThrow(/length information doesn’t match/);
     // Within 5% is fine (encoders round), more is not.
-    await expect(inspectTrack(Buffer.concat([xingFrame(framesFor(232)), synthMp3(240)]), 'audio/mpeg')).resolves.toMatchObject({ durationSeconds: 240 });
-    await expect(inspectTrack(Buffer.concat([xingFrame(framesFor(200)), synthMp3(240)]), 'audio/mpeg')).rejects.toThrow(/doesn’t match/);
+    await expect(inspectTrack(Buffer.concat([xingFrame(framesFor(155)), synthMp3(160)]), 'audio/mpeg')).resolves.toMatchObject({ durationSeconds: 160 });
+    await expect(inspectTrack(Buffer.concat([xingFrame(framesFor(130)), synthMp3(160)]), 'audio/mpeg')).rejects.toThrow(/doesn’t match/);
   });
 
   it('counts Opus packets from their TOC bytes and refuses granule positions that lie', async () => {
-    expect(countOgg(synthOpus(240))?.seconds).toBeCloseTo(240, 1);
-    await expect(inspectTrack(synthOpus(240), 'audio/ogg')).resolves.toEqual({ contentType: 'audio/ogg', durationSeconds: 240 });
+    expect(countOgg(synthOpus(160))?.seconds).toBeCloseTo(160, 1);
+    await expect(inspectTrack(synthOpus(160), 'audio/ogg')).resolves.toEqual({ contentType: 'audio/ogg', durationSeconds: 160 });
     // Six minutes of packets whose pages claim four.
-    const forged = synthOpus(6 * 60, 4 * 60);
-    expect(countOgg(forged)).toMatchObject({ declaredSeconds: expect.closeTo(240, 0) });
+    const forged = synthOpus(240, 160);
+    expect(countOgg(forged)).toMatchObject({ declaredSeconds: expect.closeTo(160, 0) });
     await expect(inspectTrack(forged, 'audio/ogg')).rejects.toThrow(/doesn’t match/);
   });
 
