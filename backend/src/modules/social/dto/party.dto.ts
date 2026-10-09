@@ -10,6 +10,7 @@ import {
   type PartyQuoteRequest,
   type PartyTierId,
   type SprayRequest,
+  type VenueSprayRequest,
 } from '@insidelife/shared';
 import { HANDLE_PATTERN } from './handle.dto.js';
 
@@ -71,6 +72,23 @@ export class SprayDto implements SprayRequest {
   readonly toHandle: string;
 
   /** Whole notes are validated by the shared spray rules (multiples of ₦500). */
+  @IsInt()
+  @Min(SPRAY_RULES.minAmount)
+  @Max(SPRAY_RULES.maxPerSpray)
+  readonly amount: number;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{8,64}$/, { message: 'idempotencyKey must be 8-64 letters, numbers, - or _' })
+  readonly idempotencyKey: string;
+}
+
+export class VenueSprayDto implements VenueSprayRequest {
+  /** Null sprays the DJ. */
+  @IsOptional()
+  @IsString()
+  @Matches(HANDLE_PATTERN, { message: 'Handles are 3-20 letters, numbers or _' })
+  readonly toHandle: string | null;
+
   @IsInt()
   @Min(SPRAY_RULES.minAmount)
   @Max(SPRAY_RULES.maxPerSpray)

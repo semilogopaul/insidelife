@@ -5,6 +5,8 @@
 export const site = {
   url: new URL(process.env.NEXT_PUBLIC_SITE_URL || 'https://insidelife.online'),
   supportEmail: 'hello@insidelife.online',
+  /** The company that runs Inside Life (legal pages, footer). */
+  operator: 'iLaw Legaltech Solutions',
 } as const;
 
 /**

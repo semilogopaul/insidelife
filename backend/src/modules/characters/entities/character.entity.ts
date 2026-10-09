@@ -208,6 +208,13 @@ export class CharacterEntity {
   @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
   unearnedTotal: number;
 
+  /**
+   * Unearned value that can never be sent to other players: starting money (family money + starter fund) and the value
+   * of free assets. Spendable in the game; see `peerSendable`.
+   */
+  @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
+  lockedUnearned: number;
+
   /** Paystack top-ups (subset of unearned). */
   @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
   purchasedTotal: number;

@@ -17,7 +17,7 @@ import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
 import { SocialGuard } from '../social/social-guard.service.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
-import { TransferLimitsService } from './transfer-limits.service.js';
+import { PeerMoneyGuard } from './peer-money.guard.js';
 import { checkTransfer, sanitizeNote } from './transfer-rules.js';
 
 /** Ledger metadata stored on every transfer posting (lets a retried request return the original receipt). */
@@ -39,8 +39,8 @@ const isReceipt = (metadata: LedgerMetadata): metadata is LedgerMetadata & Trans
   typeof metadata.recipientName === 'string';
 
 /**
- * Player-to-player transfers with Nigerian banking rules: fees + stamp duty to `system:fees`, tiered daily limits,
- * min/max per transfer, blocks (social `SocialGuard`). Runs in the sender's `CharacterSession`; one balanced posting
+ * Player-to-player transfers with Nigerian banking rules: fees + stamp duty to `system:fees`, min/max per transfer,
+ * blocks (social `SocialGuard`) and the player-to-player limits (`PeerMoneyGuard`). Runs in the sender's `CharacterSession`; one balanced posting
  * (sender −(amount+charges), recipient +amount, fees +charges) keyed `transfer:<senderId>:<clientKey>`, so a retried
  * request returns the original receipt instead of sending twice.
  */
@@ -50,7 +50,7 @@ export class TransfersService {
     private readonly session: CharacterSession,
     private readonly directory: CharacterDirectory,
     private readonly ledger: LedgerService,
-    private readonly limits: TransferLimitsService,
+    private readonly peerMoney: PeerMoneyGuard,
     private readonly social: SocialGuard,
     private readonly notifications: NotificationsService,
     private readonly bus: RealtimeBus,
@@ -76,13 +76,14 @@ export class TransfersService {
         // Blocks are symmetric and the 403 never reveals who blocked whom.
         await this.social.assertNotBlocked(sender.id, recipient.id, ctx.manager);
 
-        const limits = await this.limits.limitsFor(ctx);
-        const check = checkTransfer({ amount: request.amount, cash: ctx.wallet.cash, sentToday: limits.sentToday, dailyLimit: limits.dailyLimit });
+        const check = checkTransfer({ amount: request.amount, cash: ctx.wallet.cash });
         if (!check.ok) {
           if (check.code === 'INSUFFICIENT_FUNDS') throw new InsufficientFundsException(request.amount);
           throw new GameRuleException(check.code, check.message);
         }
         const { quote } = check;
+        // Tier limit, starting money and the recipient's daily cap; counted in this transaction.
+        await this.peerMoney.authorize(ctx, { id: recipient.id, handle: current.handle }, quote.amount);
         const note = sanitizeNote(request.note);
         const recipientName = `${current.firstName} ${current.lastName}`;
         const recipientAccounts = await this.ledger.characterAccounts(ctx.manager, recipient.id);

@@ -21,6 +21,8 @@ import type {
   SprayRequest,
   SprayResultDto,
   VenuePlayersDto,
+  VenueSprayRequest,
+  VenueSprayResultDto,
   DmStateDto,
   DmThreadDto,
   ChatMediaKind,
@@ -47,6 +49,7 @@ export const gistApi = {
   search: (query: string) => api.get<PlayerSearchResultDto>('/players', { query: { query } }),
   profile: (handle: string) => api.get<PlayerProfileDto>(`/players/${handlePath(handle)}`),
   venuePlayers: (venueId: string) => api.get<VenuePlayersDto>(`/venues/${encodeURIComponent(venueId)}/players`),
+  venueSpray: (venueId: string, body: VenueSprayRequest) => api.post<VenueSprayResultDto>(`/venues/${encodeURIComponent(venueId)}/sprays`, body),
 
   // Friends
   friends: () => api.get<FriendsOverviewDto>('/friends'),

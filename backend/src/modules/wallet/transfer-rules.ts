@@ -9,9 +9,9 @@ import {
 } from '@insidelife/shared';
 
 /**
- * Pure transfer rules (amount bounds, daily tier limit, affordability). The daily limit counts everything a transfer
- * debits — amount plus fee and stamp duty — because that is what `LedgerService.sumOutflowSince('transfer')` sums;
- * clients preview with `dailyLimit − sentToday ≥ amount + transferFee(amount).total`.
+ * Pure bank-transfer rules (amount bounds, charges, affordability). The player-to-player limits — the sender's daily
+ * tier limit, starting money that can't be sent and the recipient's daily receive cap — are shared with sprays and
+ * live in `checkPeerMoney` (shared) / `PeerMoneyGuard`.
  */
 
 export interface TransferQuote extends TransferFee {
@@ -24,7 +24,6 @@ export type TransferViolationCode =
   | 'INVALID_AMOUNT'
   | 'TRANSFER_TOO_SMALL'
   | 'TRANSFER_TOO_LARGE'
-  | 'DAILY_LIMIT_EXCEEDED'
   | 'INSUFFICIENT_FUNDS';
 
 export type TransferCheck =
@@ -34,12 +33,10 @@ export type TransferCheck =
 export interface TransferCheckInput {
   readonly amount: number;
   readonly cash: number;
-  readonly sentToday: number;
-  readonly dailyLimit: number;
 }
 
 export function checkTransfer(input: TransferCheckInput): TransferCheck {
-  const { amount, cash, sentToday, dailyLimit } = input;
+  const { amount, cash } = input;
   if (!Number.isSafeInteger(amount) || amount <= 0) {
     return { ok: false, code: 'INVALID_AMOUNT', message: 'Enter a whole naira amount' };
   }
@@ -51,14 +48,6 @@ export function checkTransfer(input: TransferCheckInput): TransferCheck {
   }
   const charges = transferFee(amount);
   const quote: TransferQuote = { ...charges, amount, totalDebit: amount + charges.total };
-  if (sentToday + quote.totalDebit > dailyLimit) {
-    const remaining = Math.max(0, dailyLimit - sentToday);
-    return {
-      ok: false,
-      code: 'DAILY_LIMIT_EXCEEDED',
-      message: `Daily limit reached: you can still move ${formatNaira(remaining)} today (charges included).`,
-    };
-  }
   if (cash < quote.totalDebit) {
     return {
       ok: false,

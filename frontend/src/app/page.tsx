@@ -66,7 +66,7 @@ export default function LandingPage() {
             </a>
           </span>
         </div>
-        <p className="mt-3">Game money can’t be cashed out. Top-ups are processed securely by Paystack.</p>
+        <p className="mt-3">Game money can’t be cashed out. Top-ups are processed securely by Flutterwave.</p>
         <nav aria-label="Legal" className="mt-3 flex flex-wrap gap-4">
           <Link href="/terms" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
             Terms
@@ -74,9 +74,10 @@ export default function LandingPage() {
           <Link href="/privacy" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
             Privacy
           </Link>
-          <Link href="/refunds" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
-            Refunds
+          <Link href="/disclaimer" className="underline decoration-white/30 underline-offset-4 hover:decoration-danfo">
+            Disclaimer
           </Link>
+          <span>© {new Date().getFullYear()} {site.operator}</span>
         </nav>
       </footer>
     </main>

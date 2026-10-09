@@ -368,8 +368,14 @@ export interface LedgerEntryDto {
 
 export interface WalletDto extends WalletSummaryDto {
   readonly transferTier: 1 | 2 | 3;
-  readonly dailyLimit: number;
+  /** What you may send to players per day (transfers, sprays…); null = no daily limit. */
+  readonly dailyLimit: number | null;
   readonly sentToday: number;
+  /** How much of your money can still go to players: starting money never can. */
+  readonly sendable: number;
+  /** Received from players today, and the most anyone can receive from players in a day. */
+  readonly receivedToday: number;
+  readonly receiveLimit: number;
   readonly earnedTotal: number;
   readonly purchasedTotal: number;
 }

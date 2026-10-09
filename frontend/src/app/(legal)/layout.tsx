@@ -2,7 +2,7 @@ import Link from 'next/link';
 import type { ReactNode } from 'react';
 import { site } from '@/config/site';
 
-/** Terms, privacy and refunds: plain, readable pages (no game chrome). */
+/** Terms, privacy and the disclaimer: plain, readable pages (no game chrome). */
 export default function LegalLayout({ children }: { readonly children: ReactNode }) {
   return (
     <main className="min-h-dvh bg-paper text-text">
@@ -18,9 +18,10 @@ export default function LegalLayout({ children }: { readonly children: ReactNode
         <nav aria-label="Legal" className="flex flex-wrap gap-4">
           <Link href="/terms">Terms</Link>
           <Link href="/privacy">Privacy</Link>
-          <Link href="/refunds">Refunds</Link>
+          <Link href="/disclaimer">Disclaimer</Link>
           <a href={`mailto:${site.supportEmail}`}>{site.supportEmail}</a>
         </nav>
+        <p className="mt-2">© {new Date().getFullYear()} {site.operator}</p>
       </footer>
     </main>
   );

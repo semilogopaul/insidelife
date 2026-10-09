@@ -303,6 +303,29 @@ export interface SprayRequest {
   readonly idempotencyKey: string;
 }
 
+/** Spray in a club or bar: someone here (`toHandle`), or the DJ when `toHandle` is null. */
+export interface VenueSprayRequest {
+  readonly toHandle: string | null;
+  /** Whole ₦500 / ₦1,000 notes. */
+  readonly amount: number;
+  /** Client-generated id; retries with the same key never spray twice. */
+  readonly idempotencyKey: string;
+}
+
+export interface VenueSprayResultDto {
+  readonly sprayId: string;
+  readonly amount: number;
+  readonly notes: { readonly thousands: number; readonly fiveHundreds: number };
+  /** Who got it (null: the DJ). */
+  readonly to: PlayerCardDto | null;
+  readonly balanceAfter: number;
+  /** Everything you've sprayed at this place tonight. */
+  readonly yourNightTotal: number;
+  readonly cloutGained: number;
+  readonly nairaAbuse: { readonly fined: boolean; readonly fine: number; readonly message: string } | null;
+  readonly replayed?: boolean;
+}
+
 export interface SprayResultDto {
   readonly sprayId: string;
   readonly amount: number;

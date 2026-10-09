@@ -415,3 +415,13 @@ export const VISIT_RULES = {
   ttlMinutes: 10 * 24 * 60,
   maxOpenInvites: 10,
 } as const;
+
+// ----- Spraying in clubs and bars (no party needed) ------------------------------------------------------------------
+
+/** Where you can spray without a party: the DJ or anyone in the room. */
+export const SPRAY_VENUE_TYPES = ['club', 'bar', 'event-centre'] as const;
+
+/** Nights run 06:00 to 06:00: per-night spray totals (and EFCC thresholds) reset in the morning. */
+export function sprayNightIndex(gameMinute: number): number {
+  return Math.floor((gameMinute - 6 * 60) / (24 * 60));
+}

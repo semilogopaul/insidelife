@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from "typeorm";
 
-export class AdminPortalAuditAndAccounts1791548416514 implements MigrationInterface {
-    name = 'AdminPortalAuditAndAccounts1791548416514'
+export class AdminPortalAuditAndAccounts1791559888468 implements MigrationInterface {
+    name = 'AdminPortalAuditAndAccounts1791559888468'
 
     public async up(queryRunner: QueryRunner): Promise<void> {
         await queryRunner.query(`CREATE TABLE "audit_logs" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "occurred_at" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT clock_timestamp(), "actor_user_id" uuid, "actor_email" character varying(254), "actor_role" character varying(16) NOT NULL, "action" character varying(64) NOT NULL, "target_type" character varying(32) NOT NULL, "target_id" character varying(64), "target_label" character varying(200), "before" jsonb, "after" jsonb, "reason" character varying(1000), "metadata" jsonb NOT NULL DEFAULT '{}', "ip" character varying(64), "user_agent" character varying(255), "trace_id" character varying(64), CONSTRAINT "PK_1bb179d048bbc581caa3b013439" PRIMARY KEY ("id"))`);

@@ -39,6 +39,7 @@ import { DomainException, ResourceNotFoundException } from '../../common/excepti
 import { CharacterEntity } from '../characters/entities/character.entity.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
+import { PeerMoneyGuard } from '../wallet/peer-money.guard.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { PartyGuestEntity } from './entities/party-guest.entity.js';
 import { PartyEntity } from './entities/party.entity.js';
@@ -71,7 +72,7 @@ const INVITE_FRIENDS_LIMIT = 50;
 /** Hosts are pinged when a friend or a big name (this clout or more) walks in. */
 const VIP_ARRIVAL_STATUS = 450;
 
-const EFCC_LINES: readonly string[] = [
+export const EFCC_LINES: readonly string[] = [
   'EFCC operatives in agbada were at the owambe. Spraying naira is “abuse of the national currency”, they said.',
   'Your spraying video trended on X. EFCC tagged you before the DJ could play the next song.',
   'An officer collected an “administrative charge” and advised you to use transfers next time.',
@@ -94,6 +95,7 @@ export class PartiesService {
     private readonly guard: SocialGuard,
     private readonly notifier: SocialNotifier,
     @Inject(PROGRESSION_SIGNALS_PORT) private readonly signals: ProgressionSignalsPort,
+    private readonly peerMoney: PeerMoneyGuard,
   ) {}
 
   // ----- Hosting ------------------------------------------------------------------------------------------------
@@ -317,6 +319,8 @@ export class PartiesService {
       where: { partyId: party.id, fromId: sender.id, toId: recipient.id, gameMinute: MoreThanOrEqual(ctx.time - SPRAY_RULES.notifyWindowMinutes) },
     }));
 
+    // Sprays are player-to-player money: tier limit, starting money and the recipient's daily cap apply.
+    await this.peerMoney.authorize(ctx, { id: recipient.id, handle: recipient.handle }, amount);
     // Lock order matches CharacterSession (character row, then ledger accounts) to keep deadlocks rare.
     // Sprayed money is unearned for the recipient: it never counts toward their self-made net worth.
     await ctx.manager.query(`UPDATE characters SET unearned_total = unearned_total + $1, net_worth = net_worth + $1 WHERE id = $2`, [amount, recipient.id]);

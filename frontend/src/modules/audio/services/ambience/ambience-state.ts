@@ -9,6 +9,7 @@ import {
   type GameMinute,
   type VenueType,
 } from '@insidelife/shared';
+import { sceneHour } from '@/common/game/daylight';
 
 /**
  * What the city should sound like right now — a pure function of game time, the world seed and where the player
@@ -26,6 +27,8 @@ export interface AmbienceInputs {
   readonly districtId: DistrictId | null;
   /** Driving (engine covers some of the street; windows up muffle the rest). */
   readonly driving: boolean;
+  /** Sound the morning the world is drawn in (`common/game/daylight`), not the game hour. */
+  readonly alwaysDaylight?: boolean;
 }
 
 export interface AmbienceTargets {
@@ -96,7 +99,7 @@ export function deriveAmbience(inputs: AmbienceInputs): AmbienceTargets {
   if (inputs.kind === 'menu') return SILENT_AMBIENCE;
   const { gameMinute: t, worldSeed: seed, placeType, districtId } = inputs;
   const parts = toDateParts(t);
-  const hour = parts.hour + parts.minute / 60;
+  const hour = sceneHour(parts.hour + parts.minute / 60, inputs.alwaysDaylight ?? false);
   const night = isNightHour(hour);
   const deepNight = hour >= 0 && hour < 5;
   const rush = isRushHour(hour);

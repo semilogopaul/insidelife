@@ -213,10 +213,15 @@ export class CharacterWallet {
     if (cash !== undefined) this.cashBalance = cash;
   }
 
-  /** Count the value of free assets (starter car, gifts in kind) as unearned so the self-made rich list stays honest. */
+  /**
+   * Count the value of free assets (starter car, gifts in kind) as unearned so the self-made rich list stays honest.
+   * It isn't cash, so it's also locked: it never adds to what can be sent to other players.
+   */
   recordUnearnedAsset(value: number): void {
     const rounded = Math.max(0, Math.round(value));
-    this.ctx.character.unearnedTotal = Number(this.ctx.character.unearnedTotal) + rounded;
+    const character = this.ctx.character;
+    character.unearnedTotal = Number(character.unearnedTotal) + rounded;
+    character.lockedUnearned = Number(character.lockedUnearned) + rounded;
   }
 }
 
