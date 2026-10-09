@@ -53,6 +53,9 @@ export function DevInteriors() {
   const spray = params.get('spray') === '1';
   const top = params.get('cam') === 'top';
   const enterAfter = Number(params.get('enterAfter') ?? '0');
+  // `items=tv-55,sofa-leather` furnishes the room with those belongings (your rented/owned home).
+  const itemsParam = params.get('items');
+  const homeItems = useMemo(() => (itemsParam === null ? undefined : itemsParam.split(',').filter(Boolean)), [itemsParam]);
   const [entered, setEntered] = useState(enterAfter <= 0);
 
   useEffect(() => {
@@ -106,6 +109,7 @@ export function DevInteriors() {
             player={player}
             hour={hour}
             nepa={nepa}
+            homeItems={homeItems}
             camera={top ? 'none' : 'dollhouse'}
           >
             {spray && <MoneyRain ref={rain} origin={[0.2, 2.1, 0.8]} active rate={14} spread={1.2} />}

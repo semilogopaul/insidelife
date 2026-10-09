@@ -1,3 +1,5 @@
+import type { HomeSlot } from '../templates/types';
+
 /** Procedural props (anything Kenney's kit doesn't have, made for Lagos). Positions in room space. */
 
 type At = readonly [number, number];
@@ -8,6 +10,8 @@ interface Base {
   /** Degrees about +Y (0 faces +Z). */
   readonly rot?: number;
   readonly y?: number;
+  /** Home belongings this prop stands for (see `HomeSlot`). */
+  readonly slot?: HomeSlot;
 }
 
 export type SurfaceKind = 'wood' | 'metal' | 'plastic' | 'cloth' | 'stone' | 'gloss' | 'paint' | 'rubber';

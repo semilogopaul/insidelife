@@ -10,8 +10,16 @@ export type Deg = number;
 /** Floor-plane position [x, z] (room centred at the origin; back wall at -z, left wall at -x). */
 export type At = readonly [number, number];
 
+/**
+ * What a piece of home furniture stands for. In homes you rent or own, pieces tagged with a slot only appear when you
+ * own an item that fills it (and your item decides the look); family and hostel rooms keep theirs as provided.
+ */
+export const HOME_SLOTS = ['bed', 'seating', 'dining', 'rug', 'plants', 'storage', 'fan', 'ac', 'fridge', 'cooker', 'laundry', 'tv', 'console', 'audio', 'laptop', 'books', 'lamp'] as const;
+export type HomeSlot = (typeof HOME_SLOTS)[number];
+
 export interface FurniturePlacement {
   readonly model: KitModel;
+  readonly slot?: HomeSlot;
   readonly at: At;
   readonly rot?: Deg;
   /** Lift off the floor (e.g. on a counter). */

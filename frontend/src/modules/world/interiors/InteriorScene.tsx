@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { MeshStandardMaterial } from 'three';
-import { isHomeLocation, toDateParts, type PresencePlayerDto } from '@insidelife/shared';
+import { homeLocationId, isHomeLocation, toDateParts, type PresencePlayerDto } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
@@ -14,6 +14,8 @@ import { InteriorLighting, currentHour } from './components/InteriorLighting';
 import { InteriorPeople, type InteriorPlayer } from './components/InteriorPeople';
 import { RoomShell } from './components/RoomShell';
 import { ShowroomCars } from './components/ShowroomCars';
+import { TvScreens } from './components/TvScreens';
+import { furnish } from './templates/furnish';
 import { getTemplate } from './templates/registry';
 import { isNepaOff, resolveTemplateId, type HomeInfo, type InteriorTemplateId } from './templates/resolve';
 
@@ -36,6 +38,8 @@ export interface InteriorSceneProps {
   readonly camera?: 'dollhouse' | 'none';
   /** Allow limited orbit/zoom (default true). */
   readonly interactiveCamera?: boolean;
+  /** Previews: furnish the room with these belongings as if it were your rented/owned home. */
+  readonly homeItems?: readonly string[];
   /** Extra scene content (e.g. `<MoneyRain />` triggered by the play layer). */
   readonly children?: ReactNode;
 }
@@ -45,11 +49,19 @@ export interface InteriorSceneProps {
  * home), furniture from the Kenney kit, Lagos props, the player animating by their current activity, ambient NPCs
  * and other players present. Lit by the game clock. ≤ 80 draw calls.
  */
-export function InteriorScene({ locationId, players = [], player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, children }: InteriorSceneProps) {
+export function InteriorScene({ locationId, players = [], player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, children }: InteriorSceneProps) {
   const snapshot = useSnapshot().data;
   const minute = useGameMinute(4000);
   const homeInfo = home === undefined ? snapshot?.summary.home : home;
-  const template = getTemplate(templateId ?? resolveTemplateId(locationId, homeInfo));
+  const base = getTemplate(templateId ?? resolveTemplateId(locationId, homeInfo));
+  // Your own home shows what you own; other places (and other players' homes) show their template.
+  const homeItems = snapshot?.summary.homeItems;
+  const ownership = snapshot?.summary.home.ownership;
+  const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
+  const template = useMemo(() => {
+    if (previewItems) return furnish(base, previewItems, { providedFurniture: base.id === 'home-family' || base.id === 'home-hostel' });
+    return ownHome && homeItems ? furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel' }) : base;
+  }, [base, ownHome, homeItems, ownership, previewItems]);
   const [glass, setGlass] = useState<MeshStandardMaterial | null>(null);
   const onGlass = useCallback((material: MeshStandardMaterial | null) => setGlass(material), []);
 
@@ -75,6 +87,7 @@ export function InteriorScene({ locationId, players = [], player, templateId, ho
       <RoomShell template={template} onGlass={onGlass} />
       <Suspense fallback={null}>
         <FurnitureLayer placements={template.furniture} />
+        <TvScreens furniture={template.furniture} powerCut={powerCut} />
         {template.extras?.cars && <ShowroomCars cars={template.extras.cars} />}
       </Suspense>
       {template.extras?.clubLights && <ClubLights floor={template.extras.clubLights} ceiling={room.height} />}

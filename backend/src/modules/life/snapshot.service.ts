@@ -124,6 +124,7 @@ export class SnapshotService {
       home: { label: 'Family house', districtId: character.homeDistrictId, comfort: 0, ownership: 'family' },
       relationship: { status: 'single', partnerName: null },
       children: 0,
+      homeItems: [],
       conditions: [],
       netWorth: character.netWorth,
     };

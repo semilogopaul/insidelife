@@ -1,19 +1,19 @@
 import type { AvatarClip, AvatarStance, OutfitTheme } from '@/common/three/avatar';
 import type { Palette } from '../kit/furniture-kit';
 import type { KitModel } from '../kit/kit-manifest';
-import type { At, Deg, FurniturePlacement, NpcSpot, Spot } from './types';
+import type { At, Deg, FurniturePlacement, HomeSlot, NpcSpot, Spot } from './types';
 
 /** Mattress top of the kit beds (×1.5): where a sleeping avatar lies. */
 export const BED_TOP = 0.4;
 /** Kit sofas sit a touch lower than chairs. */
 export const SOFA_SEAT_DROP = -0.02;
 
-export function place(model: KitModel, at: At, rot: Deg = 0, extra: { readonly y?: number; readonly scale?: number; readonly palette?: Palette } = {}): FurniturePlacement {
+export function place(model: KitModel, at: At, rot: Deg = 0, extra: { readonly y?: number; readonly scale?: number; readonly palette?: Palette; readonly slot?: HomeSlot } = {}): FurniturePlacement {
   return { model, at, rot, ...extra };
 }
 
 /** `count` copies from `start`, stepping by `step`. */
-export function row(model: KitModel, count: number, start: At, step: At, rot: Deg = 0, extra: { readonly y?: number; readonly palette?: Palette } = {}): FurniturePlacement[] {
+export function row(model: KitModel, count: number, start: At, step: At, rot: Deg = 0, extra: { readonly y?: number; readonly palette?: Palette; readonly slot?: HomeSlot } = {}): FurniturePlacement[] {
   return Array.from({ length: count }, (_, i) => place(model, [start[0] + step[0] * i, start[1] + step[1] * i], rot, extra));
 }
 

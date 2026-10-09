@@ -125,6 +125,8 @@ export interface CharacterSummaryDto {
   readonly home: { readonly label: string; readonly districtId: DistrictId; readonly comfort: number; readonly ownership: 'family' | 'rented' | 'owned' | 'hostel' };
   readonly relationship: { readonly status: 'single' | 'dating' | 'engaged' | 'married' | 'widowed' | 'divorced'; readonly partnerName: string | null };
   readonly children: number;
+  /** Catalog ids of belongings that live at home (furniture, appliances, TVs, laptops…) — the 3D home shows them. */
+  readonly homeItems: readonly string[];
   readonly conditions: readonly ConditionSummaryDto[];
   readonly netWorth: number;
 }
