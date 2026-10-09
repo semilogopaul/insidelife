@@ -28,3 +28,6 @@ test-results/
 
 # Per-agent build outputs
 backend/dist-*/
+
+# Claude Code agent worktrees (separate checkouts)
+.claude/worktrees/
