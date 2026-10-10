@@ -1,4 +1,5 @@
 import type { PhoneApp, StickSide } from '@/common/game/ui-store';
+import { rideAdvice } from './ride-ranking';
 
 export interface TourContext {
   /** A touch screen (the stick ring and the drive buttons are on screen). */
@@ -41,6 +42,34 @@ export const TOUR_STEPS: readonly TourStep[] = [
       context.touch
         ? 'Tap your car (or walk up to it and tap "Get in car"). At the wheel, "Get out" parks it.'
         : 'Click your car, or walk up to it and press E. At the wheel, press F (or click Get out) to park and step out.',
+  },
+  {
+    id: 'map-app',
+    targets: ['app-map'],
+    title: 'Getting around: the Map',
+    body: () => 'To go anywhere, open the Map app on your phone. Pick a place and choose how to get there.',
+    phone: { app: 'home' },
+  },
+  {
+    id: 'map-place',
+    targets: ['map-place'],
+    title: 'Tap a place',
+    body: () => 'Browse places by category and tap one. Home is always at the top.',
+    phone: { app: 'map' },
+  },
+  {
+    id: 'map-go',
+    targets: ['map-gps'],
+    title: 'Go with GPS',
+    body: () => 'Go with GPS to walk or drive there yourself; a route guides you. Nothing is charged.',
+    phone: { app: 'map', param: 'ikeja-city-mall' },
+  },
+  {
+    id: 'map-ride',
+    targets: ['map-rides'],
+    title: 'Or book a ride',
+    body: () => `${rideAdvice()} You always see the fare and time before you book.`,
+    phone: { app: 'map', param: 'ikeja-city-mall' },
   },
   {
     id: 'goals-pill',
