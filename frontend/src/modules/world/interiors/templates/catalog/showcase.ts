@@ -262,6 +262,9 @@ export const MANSION_CINEMA: InteriorTemplate = {
     { kind: 'box', at: [4.6, 3.0], size: [0.9, 1.0, 0.6], color: '#c62828', surface: 'gloss' },
     { kind: 'sign', at: [4.6, 3.31], y: 1.05, wall: true, size: [0.9, 0.35], lines: ['POPCORN · CHAPMAN · FREE'], bg: GOLD, fg: '#7b1c1c' },
     { kind: 'box', at: [0, -4.27], y: 0.05, size: [10.8, 0.05, 0.04], color: GOLD, surface: 'metal' },
+    // Gold pilasters on the back wall, a gold rail under the screen.
+    ...[-3.6, -1.6, 0.4, 2.4].map((x): PropSpec => ({ kind: 'box', at: [x, -4.27], y: 0.3, size: [0.12, 3.4, 0.05], color: GOLD, surface: 'metal' })),
+    { kind: 'box', at: [-5.47, 0], y: 0.7, size: [0.05, 0.06, 6.8], color: GOLD, surface: 'metal' },
   ],
   player: {
     default: stand([4.6, -2.6], 240),
@@ -558,7 +561,6 @@ export const JET_COCKPIT: InteriorTemplate = {
     { kind: 'sign', at: [-0.92, -0.55], rot: 90, y: 0.6, wall: true, size: [0.5, 0.28], lines: ['AIR OBO', 'LOS · DNMM'], bg: '#06121f', fg: '#46e0ff', accent: GOLD, style: 'screen' },
     { kind: 'box', at: [-0.78, 0.55], y: 0.5, size: [0.05, 0.25, 0.32], color: INK, surface: 'metal' },
     { kind: 'box', at: [-0.78, -0.55], y: 0.5, size: [0.05, 0.25, 0.32], color: INK, surface: 'metal' },
-    { kind: 'box', at: [0.2, -1.27], y: 1.4, size: [1.6, 0.3, 0.04], color: '#22262c', surface: 'metal' },
   ],
   player: {
     default: stand([0.7, 0.2], 270),

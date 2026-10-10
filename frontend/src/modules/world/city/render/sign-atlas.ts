@@ -83,10 +83,13 @@ export const EXTRA_SIGNS = {
   toll: { text: 'LEKKI TOLL PLAZA', style: { background: '#f6b90b', text: '#111111', accent: '#111111', label: 'LEKKI CONCESSION COMPANY' } satisfies SignStyle },
 } as const;
 
+/** Showcase places carry their names on their own gates and plates (`showcase-geometry.ts`), not on a signboard. */
+const OWN_SIGNAGE: ReadonlySet<LotArchetype> = new Set(['mansion', 'jet-pad', 'refinery']);
+
 export function signEntries(): readonly SignEntry[] {
   const entries: SignEntry[] = [];
   for (const lot of CITY_MAP.lots) {
-    if (lot.kind !== 'venue' || !lot.venueId || !lot.entrance) continue;
+    if (lot.kind !== 'venue' || !lot.venueId || !lot.entrance || OWN_SIGNAGE.has(lot.archetype ?? 'shop')) continue;
     if (entries.length >= POST_SLOT - 1) break;
     const venue = findVenue(lot.venueId);
     entries.push({ slot: entries.length, text: venue?.name ?? lot.venueId, style: signStyleFor(lot), lot });
