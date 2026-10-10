@@ -110,7 +110,7 @@ export class BettingService {
         dailyLossLimit: limit,
         maxDailyLossLimit: this.maxDailyLoss,
         pendingDailyLossLimit:
-          profile?.pendingLossLimit != null && profile.pendingLimitAt && !pendingDue
+          profile && profile.pendingLossLimit !== null && profile.pendingLimitAt && !pendingDue
             ? { amount: profile.pendingLossLimit, effectiveAt: profile.pendingLimitAt.toISOString() }
             : null,
         realityCheckMinutes: profile?.realityCheckMinutes ?? BETTING_RULES.defaultRealityCheckMinutes,

@@ -68,8 +68,9 @@ function FixtureCard({ fixture, clubs }: { readonly fixture: BetFixtureDto; read
 
 /** Ticks once a second: only this line re-renders with the countdown. */
 function Countdown({ kickoffAt }: { readonly kickoffAt: number }) {
-  useGameMinute(1000);
-  return <span className="tabular">{countdown(gameClock.localMsAt(kickoffAt) - Date.now())}</span>;
+  const minute = useGameMinute(1000);
+  // Game minutes left → real milliseconds at the clock's speed.
+  return <span className="tabular">{countdown(((kickoffAt - minute) * 60_000) / gameClock.scale)}</span>;
 }
 
 /** The weeks open for betting: fixtures with the house's odds (1X2 up front, the other markets a tap away). */

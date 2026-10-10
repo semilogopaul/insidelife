@@ -5,8 +5,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * settled once in the bettor's own session) and per-account responsible-play settings (loss limit, self-exclusion,
  * reality check). Fixtures and results are not stored: they are a pure function of BETTING_SECRET.
  */
-export class BettingLagosLeague1791606155887 implements MigrationInterface {
-  name = 'BettingLagosLeague1791606155887';
+export class BettingLagosLeague1791612000000 implements MigrationInterface {
+  name = 'BettingLagosLeague1791612000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(

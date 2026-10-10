@@ -18,28 +18,24 @@ function sessionStart(now: number): number {
 
 /**
  * The reality check: every `intervalMinutes` of real time in the betting app, `due` turns true until dismissed, so the
- * app can say how long you've been playing and what today has cost.
+ * app can say how long you've been playing and what today has cost. A new interval counts from the last reminder.
  */
 export function useRealityCheck(intervalMinutes: number): { readonly due: boolean; readonly minutes: number; readonly dismiss: () => void } {
   const [start] = useState(() => sessionStart(Date.now()));
-  const [nextAt, setNextAt] = useState(() => start + intervalMinutes * 60_000);
-  const [now, setNow] = useState(() => Date.now());
-
-  // A shorter interval chosen in Play safe applies from now.
-  useEffect(() => {
-    setNextAt((current) => Math.min(current, Date.now() + intervalMinutes * 60_000));
-  }, [intervalMinutes]);
+  const [lastReminder, setLastReminder] = useState(start);
+  const [now, setNow] = useState(start);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 10_000);
+    const tick = (): void => setNow(Date.now());
+    const id = window.setInterval(tick, 10_000);
     return () => window.clearInterval(id);
   }, []);
 
   const dismiss = useCallback(() => {
     const current = Date.now();
     setNow(current);
-    setNextAt(current + intervalMinutes * 60_000);
-  }, [intervalMinutes]);
+    setLastReminder(current);
+  }, []);
 
-  return { due: now >= nextAt, minutes: Math.max(0, Math.round((now - start) / 60_000)), dismiss };
+  return { due: now >= lastReminder + intervalMinutes * 60_000, minutes: Math.max(0, Math.round((now - start) / 60_000)), dismiss };
 }
