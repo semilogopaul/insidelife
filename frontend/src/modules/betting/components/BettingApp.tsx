@@ -26,7 +26,7 @@ const TABS: ReadonlyArray<{ readonly id: BettingTab; readonly label: string }> =
 
 function Masthead({ cash }: { readonly cash: number | undefined }) {
   return (
-    <header className="-mx-1 flex items-end justify-between gap-2 rounded-card bg-[linear-gradient(160deg,var(--color-pitch),var(--color-pitch-deep))] px-4 pb-3 pt-4 text-on-ink">
+    <header className="-mx-1 flex items-end justify-between gap-2 rounded-card bg-pitch-deep bg-linear-160 from-pitch to-pitch-deep px-4 pb-3 pt-4 text-on-ink">
       <div>
         <p className="type-slogan text-4xl leading-none text-danfo">{BETTING_APP_NAME}</p>
         <p className="mt-1 text-2xs font-bold uppercase tracking-[0.14em] text-on-ink-soft">Virtual football · {BETTING_LEAGUE_NAME} · 18+</p>
