@@ -407,6 +407,9 @@ const ARCHETYPE_BY_TYPE: Readonly<Record<VenueType, LotArchetype>> = {
   salon: 'shop',
   government: 'government',
   school: 'school',
+  mansion: 'mansion',
+  'private-jet': 'jet-pad',
+  refinery: 'refinery',
 };
 
 // ---------------------------------------------------------------------------------------------------------------

@@ -92,7 +92,8 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const animation = animationForSegment(segment);
   // Every place is a layout of walkable rooms (a venue has one); which room is on screen is client view state (`walk/`).
   const showsPlayer = player !== null && (player !== undefined || snapshot !== undefined);
-  const house = useHomeRoom(placeLayoutFor(resolvedId), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer);
+  const runningId = player === undefined ? (segment?.actionId ?? null) : (player?.actionId ?? null);
+  const house = useHomeRoom(placeLayoutFor(resolvedId), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer, runningId);
   const base = house?.room.template ?? getTemplate(resolvedId);
   // Your own home shows what you own; other places show their template.
   const homeItems = snapshot?.summary.homeItems;

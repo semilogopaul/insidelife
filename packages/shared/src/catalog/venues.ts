@@ -32,6 +32,9 @@ export const VENUE_TYPES = [
   'salon',
   'government',
   'school',
+  'mansion',
+  'private-jet',
+  'refinery',
 ] as const;
 export type VenueType = (typeof VENUE_TYPES)[number];
 
@@ -109,6 +112,9 @@ export const VENUES = [
   v({ id: 'ikoyi-estate-agency', name: 'Ikoyi Realty', type: 'estate-agency', districtId: 'ikoyi', blurb: 'Rentals, land with real C of O.', hours: [8, 18] }),
 
   v({ id: 'bourdillon-lounge', name: 'Bourdillon Lounge', type: 'bar', districtId: 'ikoyi', blurb: 'Wine, cocktails and quiet money.', minStatus: 150, hours: [14, 26] }),
+  // Public showcase: walk in, watch a film in the cinema, play FIFA, record in the studio. The jet never flies.
+  v({ id: 'obo-mansion', name: 'OBO Mansion', type: 'mansion', districtId: 'ikoyi', blurb: 'Open house at OBO’s: a cinema, a studio, a games room and a lot of gold.', hours: [8, 22] }),
+  v({ id: 'air-obo', name: 'AIR OBO', type: 'private-jet', districtId: 'ikoyi', blurb: 'OBO’s private jet, parked on the pad beside the mansion. Climb aboard; it’s not going anywhere.', hours: [8, 22] }),
 
   // Victoria Island
   v({ id: 'eko-hotel', name: 'Eko Hotel & Suites', type: 'event-centre', districtId: 'victoria-island', blurb: 'Weddings, concerts and society owambes.' }),
@@ -139,6 +145,7 @@ export const VENUES = [
 
   // Epe & Ibeju-Lekki
   v({ id: 'epe-land-office', name: 'Epe Land Bureau', type: 'estate-agency', districtId: 'epe', blurb: 'Plots, surveys and family-land wahala.', hours: [8, 17] }),
+  v({ id: 'dangote-refinery', name: 'Dangote Refinery', type: 'refinery', districtId: 'epe', blurb: 'Africa’s biggest refinery on the Lekki lagoon. The visitor centre runs tours by day.', hours: [8, 17] }),
 
   // Out-of-town campuses (regionId set; districtId is the departure district for travel)
   v({ id: 'ui', name: 'University of Ibadan', type: 'campus', districtId: 'ikeja', regionId: 'ibadan', blurb: 'Nigeria’s premier university.' }),

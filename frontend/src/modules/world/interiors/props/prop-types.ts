@@ -1,4 +1,4 @@
-import type { HomePiece } from '../templates/types';
+import type { HomePiece, NamedThing } from '../templates/types';
 
 /** Procedural props (anything Kenney's kit doesn't have, made for Lagos). Positions in room space. */
 
@@ -9,7 +9,7 @@ export type FoodOnPlate = 'jollof' | 'amala' | 'suya' | 'pizza' | 'small-chops' 
 type Vec3 = readonly [number, number, number];
 
 /** Home props may stand for belongings (`slot`, see `HomeSlot`), come with them (`base`) or be part of the building. */
-interface Base extends HomePiece {
+interface Base extends HomePiece, NamedThing {
   readonly at: At;
   /** Degrees about +Y (0 faces +Z). */
   readonly rot?: number;

@@ -16,6 +16,12 @@ const AT_X120: Readonly<Record<string, readonly number[]>> = {
   'jet-ski': [60], 'horse-ride': [60], 'meet-people': [60], 'call-family': [30], worship: [120], gym: [90], jog: [60],
   'home-workout': [45], study: [60, 120, 180], 'learn-code': [60, 120, 180], 'practice-craft': [60, 120],
   'make-content': [60, 120], 'manage-business': [120, 240], freelance: [120, 240],
+  // Added at ×60 (twice their game minutes here).
+  'obo-hangout': [60, 120], 'obo-big-screen': [60, 120], 'obo-art-selfie': [30], 'obo-gallery': [60], 'obo-movie': [150],
+  'obo-vip-screening': [150], 'obo-chef-table': [60], 'obo-fifa': [60, 120], 'obo-snooker': [60], 'obo-arcade': [30, 60],
+  'obo-listen': [60, 120], 'obo-record': [120], 'obo-suite-rest': [60, 120], 'obo-freshen-up': [20], 'obo-drip': [30],
+  'air-obo-cabin': [60], 'air-obo-champagne': [60], 'air-obo-captain': [30], 'air-obo-selfie': [30], 'air-obo-toilet': [20],
+  'refinery-tour': [120], 'refinery-learn': [60, 120], 'refinery-gift-shop': [30], 'refinery-view': [60],
 };
 const realSeconds = (gameMinutes: number, scale: number): number => (gameMinutes / scale) * 60;
 

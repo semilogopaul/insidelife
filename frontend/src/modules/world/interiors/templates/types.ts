@@ -1,4 +1,5 @@
 import type { Gender } from '@insidelife/shared';
+import type { PlaceObjectKind } from '@/common/places';
 import type { AvatarClip, AvatarStance, OutfitTheme } from '@/common/three/avatar';
 import type { Palette } from '../kit/furniture-kit';
 import type { KitModel, ShowroomCar } from '../kit/kit-manifest';
@@ -71,7 +72,15 @@ export interface HomePiece {
   readonly fixture?: boolean;
 }
 
-export interface FurniturePlacement extends HomePiece {
+/**
+ * A thing you use, named by the template (the pool table, the captain's seat, the refinery model) when the kind of
+ * piece alone doesn't say it. Hotspots attach to it like to a bar or a bed.
+ */
+export interface NamedThing {
+  readonly thing?: { readonly kind: PlaceObjectKind; readonly name: string };
+}
+
+export interface FurniturePlacement extends HomePiece, NamedThing {
   readonly model: KitModel;
   readonly at: At;
   readonly rot?: Deg;

@@ -9,7 +9,7 @@ import {
   type PlaceObjectKind,
   type PlaceService,
 } from '@/common/places';
-import { findRoom } from '../layouts/geometry';
+import { findRoom, listedRoom } from '../layouts/geometry';
 import type { HomeLayout } from '../layouts/types';
 import type { At, InteriorTemplate } from '../templates/types';
 import { actionAnchor, objectAnchor, serviceAnchor, type ActionAnchor } from './action-spots';
@@ -211,8 +211,13 @@ export function holdsGoal(hotspot: Hotspot, goal: GoalHere | null): boolean {
   );
 }
 
-/** The room of a home where an action's hotspot goes: the room its activity happens in, else the front room. */
-export function hotspotRoom(layout: HomeLayout, action: Pick<ActionDefinition, 'animation'>): string {
+/**
+ * The room of a place where an action's hotspot goes: the room that lists it, else the room its activity happens in,
+ * else the front room.
+ */
+export function hotspotRoom(layout: HomeLayout, action: Pick<ActionDefinition, 'animation'> & { readonly id?: string }): string {
+  const listed = listedRoom(layout, action.id);
+  if (listed) return listed;
   const mapped = layout.activityRooms[action.animation];
   return mapped && findRoom(layout, mapped) ? mapped : layout.entry;
 }

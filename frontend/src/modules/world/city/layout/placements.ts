@@ -16,6 +16,7 @@ import {
 } from '@insidelife/shared';
 import { KIT_MANIFEST } from '../assets/kit-manifest';
 import { PROC_MODELS, type ProcModelId } from './proc-models';
+import { estateSite, refinerySite, type Rect } from './showcase-sites';
 import { DISTRICT_STYLES, type BuildingRef, type KitId } from './styles';
 
 /**
@@ -673,6 +674,17 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       plan.add('nature', 'canoe', kx, 0, kz, frontFace + 1.2, 6.5, 0xffffff);
       return;
     }
+    case 'mansion':
+      plan.lotGround.set(lotIndex, 0x7aa54e);
+      estateGrounds(plan, random);
+      return;
+    case 'jet-pad':
+      plan.lotGround.set(lotIndex, 0x55595e);
+      return;
+    case 'refinery':
+      plan.lotGround.set(lotIndex, 0xcfccc5);
+      refineryGate(plan, random);
+      return;
     case 'stadium':
       plan.lotGround.set(lotIndex, 0x9a9a8c);
       return;
@@ -723,7 +735,85 @@ function sideOf(dx: number, dz: number): CompassSide {
   return dz > 0 ? 'S' : 'N';
 }
 
-function landmarkLot(plan: PlanBuilder, lot: CityLot): void {
+// ---------------------------------------------------------------------------------------------------------------
+// Showcase places: OBO's estate and Dangote Refinery (their buildings are procedural: `render/showcase-geometry.ts`)
+// ---------------------------------------------------------------------------------------------------------------
+
+const ESTATE_WALL = 0xf4f1ea;
+const GATE_HALF = 2.6;
+
+function wall(plan: PlanBuilder, x0: number, z0: number, x1: number, z1: number, height: number, color: number): void {
+  if (Math.hypot(x1 - x0, z1 - z0) > 0.2) plan.walls.push({ x0, z0, x1, z1, height, color });
+}
+
+function solid(plan: PlanBuilder, r: Rect, height: number): void {
+  plan.colliders.push({ minX: r.minX, maxX: r.maxX, minZ: r.minZ, maxZ: r.maxZ, height });
+}
+
+/**
+ * OBO's estate: a white wall round the grounds with the gold gate on the bend and the jet's apron gate beside it, a
+ * low wall on the waterfront, palms along the drive and the south wall, and solid house, jet and gates.
+ */
+function estateGrounds(plan: PlanBuilder, random: () => number): void {
+  const site = estateSite();
+  if (!site) return;
+  const { grounds: g, pad: p, apron: a, gate, jetGate } = site;
+  const i = 0.3;
+  wall(plan, g.minX + i, g.minZ + i, gate.x - GATE_HALF, g.minZ + i, 2.4, ESTATE_WALL);
+  wall(plan, gate.x + GATE_HALF, g.minZ + i, p.minX + i, g.minZ + i, 2.4, ESTATE_WALL);
+  wall(plan, g.minX + i, g.minZ + i, g.minX + i, g.maxZ - i, 2.4, ESTATE_WALL);
+  wall(plan, g.minX + i, g.maxZ - i, g.maxX - i, g.maxZ - i, 2.4, ESTATE_WALL);
+  wall(plan, g.maxX - i, g.minZ, g.maxX - i, g.maxZ - i, 0.6, ESTATE_WALL);
+  wall(plan, p.minX + i, p.minZ + i, p.minX + i, jetGate.z - GATE_HALF, 2.4, ESTATE_WALL);
+  wall(plan, p.minX + i, jetGate.z + GATE_HALF, p.minX + i, g.minZ + i, 2.4, ESTATE_WALL);
+  wall(plan, p.maxX - i, p.minZ, p.maxX - i, p.maxZ, 0.6, ESTATE_WALL);
+  if (a) {
+    wall(plan, p.minX + i, p.minZ + i, a.minX + i, p.minZ + i, 2.4, ESTATE_WALL);
+    wall(plan, a.minX + i, a.minZ + i, a.minX + i, p.minZ + i, 2.4, ESTATE_WALL);
+    wall(plan, a.minX + i, a.minZ + i, a.maxX - i, a.minZ + i, 0.6, ESTATE_WALL);
+    wall(plan, a.maxX - i, a.minZ + i, a.maxX - i, a.maxZ, 0.6, ESTATE_WALL);
+  } else wall(plan, p.minX + i, p.minZ + i, p.maxX - i, p.minZ + i, 2.4, ESTATE_WALL);
+  // The gates are drawn open but you can't walk in: the house and the jet are entered by their doors.
+  solid(plan, { minX: gate.x - GATE_HALF, maxX: gate.x + GATE_HALF, minZ: g.minZ, maxZ: g.minZ + 0.6 }, 2.4);
+  solid(plan, { minX: p.minX, maxX: p.minX + 0.6, minZ: jetGate.z - GATE_HALF, maxZ: jetGate.z + GATE_HALF }, 2.4);
+  solid(plan, site.house.first, 9.9);
+  solid(plan, site.house.top, 13.8);
+  solid(plan, { minX: site.jet.nose, maxX: site.jet.tail, minZ: site.jet.z - 1.3, maxZ: site.jet.z + 1.3 }, 3.6);
+  // Palms down the drive, along the south wall and at the pool; bushes along the west wall.
+  for (let z = g.minZ + 3; z < site.deck.minZ - 0.5; z += 4) plan.palm(g.minX + 1.3, z, random);
+  for (let x = site.house.ground.minX - 1; x < g.maxX - 1; x += 4.5) plan.palm(x, g.maxZ - 1.3, random);
+  plan.palm(site.deck.maxX - 0.6, site.deck.maxZ - 0.6, random);
+  plan.palm(g.maxX - 1.6, g.minZ + 4.2, random);
+  plan.palm(g.maxX - 1.6, site.house.ground.minZ + 2, random);
+  for (let z = site.deck.minZ + 1; z < g.maxZ - 2; z += 2.6) plan.bush(g.minX + 0.9, z, random);
+}
+
+/** Dangote Refinery's gate lot: the visitor centre is solid; flags out front. The works get a perimeter fence. */
+function refineryGate(plan: PlanBuilder, random: () => number): void {
+  const site = refinerySite();
+  if (!site) return;
+  const c = site.centre;
+  solid(plan, { minX: c.minX + 1, maxX: c.maxX - 2.6, minZ: c.minZ + 1, maxZ: c.maxZ - 1 }, 7.2);
+  for (const [k, z] of [c.minZ + 1.6, c.minZ + 3.1, c.maxZ - 1.6].entries()) plan.proc('flagpole', c.maxX - 1.1, 0, z, Math.PI / 2, 1, k === 1 ? 0x1d4f91 : 0xffffff);
+  plan.palm(c.maxX - 1.2, c.maxZ - 0.9, random);
+}
+
+function refineryWorks(plan: PlanBuilder, lotIndex: number): void {
+  const site = refinerySite();
+  if (!site) return;
+  plan.lotGround.set(lotIndex, 0xa7a49c);
+  const w = site.works;
+  const i = 0.3;
+  const fence = 0x9aa0a6;
+  wall(plan, w.minX + i, w.minZ + i, w.maxX - i, w.minZ + i, 2.6, fence);
+  wall(plan, w.maxX - i, w.minZ + i, w.maxX - i, w.maxZ - i, 2.6, fence);
+  wall(plan, w.minX + i, w.maxZ - i, w.maxX - i, w.maxZ - i, 2.6, fence);
+  wall(plan, w.minX + i, w.minZ + i, w.minX + i, w.maxZ - i, 2.6, fence);
+}
+
+function landmarkLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
+  if (lot.id === 'landmark:obo-apron') plan.lotGround.set(lotIndex, 0x55595e);
+  if (lot.id === 'landmark:dangote-works') refineryWorks(plan, lotIndex);
   if (lot.id === 'landmark:vi-towers') {
     const frame = frameOf(lot);
     const [x, z] = at(frame, 0, frame.depth / 2 - APRON);
@@ -791,7 +881,7 @@ function buildPlan(): CityPlan {
   addRoads(plan);
   CITY_MAP.lots.forEach((lot, index) => {
     if (lot.kind === 'venue') venueLot(plan, lot, index);
-    else if (lot.kind === 'landmark') landmarkLot(plan, lot);
+    else if (lot.kind === 'landmark') landmarkLot(plan, lot, index);
     else fillerLot(plan, lot, index);
   });
   beaches(plan);

@@ -89,8 +89,8 @@ describe('WelcomeFlow', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Na you sabi' }));
     await waitFor(() => expect(vi.mocked(onboardingApi.answerWelcome).mock.calls[0]?.[0]).toBe('na-you-sabi'));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Na you sabi' })).toBeNull());
-    // The featured venues are not in the catalog yet, so no second prompt appears.
-    expect(shared.liveFeaturedPlaces()).toEqual([]);
-    expect(screen.queryByText(/are now live/)).toBeNull();
+    // The featured venues are in the catalog now, so the announcement follows the note.
+    expect(shared.liveFeaturedPlaces().map((place) => place.venueId)).toEqual(['obo-mansion', 'dangote-refinery']);
+    expect(await screen.findByText('OBO Mansion and Dangote Refinery are now live!')).toBeTruthy();
   });
 });

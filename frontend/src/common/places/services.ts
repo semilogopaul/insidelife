@@ -40,6 +40,10 @@ export const PLACE_OBJECT_KINDS = [
   'salon-chair',
   'pulpit',
   'bench',
+  'toilet',
+  'game',
+  'exhibit',
+  'studio',
   'spot',
 ] as const;
 export type PlaceObjectKind = (typeof PLACE_OBJECT_KINDS)[number];

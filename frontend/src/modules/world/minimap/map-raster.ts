@@ -13,6 +13,7 @@ const LAND = '#e9ddc3';
 const SAND = '#f3e2b2';
 const PARK = '#b3cf97';
 const VENUE = '#f2e6cb';
+const INDUSTRY = '#d3cdc1';
 const CASING = '#b9a98a';
 const ROAD = '#fffdf6';
 const ARTERIAL = '#ffe9a8';
@@ -43,7 +44,8 @@ export function cityRaster(): HTMLCanvasElement {
       const lot = lotIndex >= 0 ? CITY_MAP.lots[lotIndex] : undefined;
       let fill = LAND;
       if (kind === 2) fill = SAND;
-      else if (lot?.kind === 'venue') fill = lot.archetype === 'park' || lot.archetype === 'campus' || lot.archetype === 'stadium' ? PARK : VENUE;
+      else if (lot?.kind === 'venue') fill = lot.archetype === 'park' || lot.archetype === 'campus' || lot.archetype === 'stadium' || lot.archetype === 'mansion' ? PARK : VENUE;
+      else if (lot?.id === 'landmark:dangote-works') fill = INDUSTRY;
       ctx.fillStyle = fill;
       ctx.fillRect(col * cell - 0.5, row * cell - 0.5, cell + 1, cell + 1);
     }

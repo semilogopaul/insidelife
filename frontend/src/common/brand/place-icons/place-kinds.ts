@@ -42,6 +42,9 @@ export const PLACE_KINDS = [
   'house',
   'land',
   'building-site',
+  'mansion',
+  'private-jet',
+  'refinery',
 ] as const;
 export type PlaceKind = (typeof PLACE_KINDS)[number];
 
@@ -93,6 +96,9 @@ export const PLACE_STYLES: Readonly<Record<PlaceKind, PlaceStyle>> = {
   house: { label: 'Your house', pictogram: 'house', color: '#0f7a45', ink: WHITE },
   land: { label: 'Your land', pictogram: 'land', color: '#0f7a45', ink: WHITE },
   'building-site': { label: 'Building site', pictogram: 'hardHat', color: '#0f7a45', ink: WHITE },
+  mansion: { label: 'Mansion', pictogram: 'villa', color: '#8a6a12', ink: WHITE },
+  'private-jet': { label: 'Private jet', pictogram: 'jet', color: '#1f1f1f', ink: '#e8c35a' },
+  refinery: { label: 'Refinery', pictogram: 'refinery', color: '#1d4f91', ink: WHITE },
 };
 
 const BY_VENUE_TYPE: Readonly<Record<VenueType, PlaceKind>> = {
@@ -123,6 +129,9 @@ const BY_VENUE_TYPE: Readonly<Record<VenueType, PlaceKind>> = {
   salon: 'salon',
   government: 'government',
   school: 'school',
+  mansion: 'mansion',
+  'private-jet': 'private-jet',
+  refinery: 'refinery',
 };
 
 const BY_ARCHETYPE: Readonly<Record<LotArchetype, PlaceKind>> = {
@@ -145,6 +154,9 @@ const BY_ARCHETYPE: Readonly<Record<LotArchetype, PlaceKind>> = {
   'car-dealer': 'car-dealer',
   shop: 'shop',
   school: 'school',
+  mansion: 'mansion',
+  'jet-pad': 'private-jet',
+  refinery: 'refinery',
 };
 
 /** Buildings that say more than their venue type: the National Stadium is a "park" venue, Eko Hotel an event centre. */

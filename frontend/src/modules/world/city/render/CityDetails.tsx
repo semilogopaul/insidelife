@@ -8,6 +8,7 @@ import { DoorMarkers } from './DoorMarkers';
 import { Landmarks } from './Landmarks';
 import { PowerLines } from './PowerLines';
 import { Rain } from './Rain';
+import { ShowcaseLandmarks } from './ShowcaseLandmarks';
 import { StreetLights } from './StreetLights';
 import { VenueSigns } from './VenueSigns';
 
@@ -16,6 +17,7 @@ export function CityDetails({ plan, quality }: { readonly plan: CityPlan; readon
   return (
     <>
       <Landmarks shadows={quality.shadows} />
+      <ShowcaseLandmarks shadows={quality.shadows} />
       <VenueSigns />
       <Billboards shadows={quality.shadows} />
       <StreetAds shadows={quality.shadows} />

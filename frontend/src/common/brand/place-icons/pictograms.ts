@@ -341,7 +341,44 @@ const wrench: Pictogram = [
   },
 ];
 
+/** A modern villa: a wide glass ground floor under an offset upper floor and a flat roof slab. */
+const villa: Pictogram = [
+  {
+    d:
+      rect(1.4, 12.2, 21.2, 9.2) +
+      rect(5.4, 5.8, 14.6, 6.4) +
+      rect(3.6, 4, 18.2, 1.8) +
+      rect(3.6, 14.4, 4, 4.4) +
+      rect(10, 14.4, 4, 7) +
+      rect(16.4, 14.4, 4, 4.4) +
+      rect(7.6, 7.6, 4, 2.8) +
+      rect(13.6, 7.6, 4.6, 2.8),
+    rule: 'evenodd',
+  },
+];
+
+/** A business jet side-on: fuselage with windows, swept wing, rear engine and T-tail. */
+const jet: Pictogram = [
+  { d: rounded(1.2, 9.6, 19.2, 4.8, 2.4) + circle(6.4, 11.6, 0.9) + circle(9.4, 11.6, 0.9) + circle(12.4, 11.6, 0.9), rule: 'evenodd' },
+  { d: 'M16.6 10 19.4 3.4h3.2l-1.6 6.6zM18.2 3h4.6v1.6h-4.6zM7.6 14.2h6.8l-3.8 5.6H7.8zM14.4 7.4h4.6a1.2 1.2 0 0 1 0 2.4h-4.6z' },
+];
+
+/** A refinery: two storage tanks, a distillation column and a flare. */
+const refinery: Pictogram = [
+  {
+    d:
+      rounded(1.4, 12.6, 8, 8.4, 1.6) +
+      rounded(10.4, 14.8, 6.2, 6.2, 1.2) +
+      rect(18, 7, 3.4, 14) +
+      rect(1, 21, 22, 1.8) +
+      'M19.7 1c1.7 1.6 2.4 3 1.7 4.6h-3.4c-.7-1.6 0-3 1.7-4.6z',
+  },
+];
+
 export const PICTOGRAMS = {
+  villa,
+  jet,
+  refinery,
   fuelPump,
   wrench,
   plane,
