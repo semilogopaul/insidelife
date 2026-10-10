@@ -1,6 +1,5 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
-import type { Redis } from 'ioredis';
 import type { DataSource } from 'typeorm';
 import {
   LEADERBOARDS,
@@ -10,12 +9,11 @@ import {
   type LeaderboardEntryDto,
   type LeaderboardYouDto,
 } from '@insidelife/shared';
-import { REDIS } from '../../common/redis/redis.module.js';
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
 import { SELF_MADE_SQL, presentLeaderboardValue, type LeaderboardRow } from './rules/leaderboard.rules.js';
+import { RankingCache } from './ranking-cache.service.js';
 import { statusTierDto } from './rules/profile.rules.js';
 
-const CACHE_TTL_SECONDS = 60;
 const CACHE_PREFIX = 'social:leaderboard:v1';
 
 interface RankedRow extends LeaderboardRow {
@@ -80,11 +78,9 @@ const DYNASTY_CTE = `WITH d AS (
  */
 @Injectable()
 export class LeaderboardsService {
-  private readonly logger = new Logger(LeaderboardsService.name);
-
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
-    @Inject(REDIS) private readonly redis: Redis,
+    private readonly cache: RankingCache,
   ) {}
 
   async board(board: LeaderboardBoardId, viewer: CharacterEntity | null): Promise<LeaderboardDto> {
@@ -123,7 +119,7 @@ export class LeaderboardsService {
   }
 
   private top(board: LeaderboardBoardId): Promise<CachedBoard> {
-    return this.cached(`${CACHE_PREFIX}:${board}`, async () => ({
+    return this.cache.get(`${CACHE_PREFIX}:${board}`, async () => ({
       generatedAt: new Date().toISOString(),
       rows: (board === 'dynasties' ? await this.dynastyRows() : await this.characterRows(board)).map((row) => ({
         ...this.toRow(row),
@@ -133,7 +129,7 @@ export class LeaderboardsService {
   }
 
   private you(board: LeaderboardBoardId, viewer: CharacterEntity): Promise<CachedYou> {
-    return this.cached(`${CACHE_PREFIX}:${board}:you:${viewer.id}`, () => (board === 'dynasties' ? this.dynastyRank(viewer) : this.characterRank(board, viewer)));
+    return this.cache.get(`${CACHE_PREFIX}:${board}:you:${viewer.id}`, () => (board === 'dynasties' ? this.dynastyRank(viewer) : this.characterRank(board, viewer)));
   }
 
   private characterRows(board: Exclude<LeaderboardBoardId, 'dynasties'>): Promise<SqlRow[]> {
@@ -221,22 +217,5 @@ export class LeaderboardsService {
       children: Number(row.children_count ?? 0),
       generations: Number(row.generations),
     };
-  }
-
-  /** Redis read-through cache; a Redis hiccup degrades to computing fresh rather than failing the request. */
-  private async cached<T>(key: string, load: () => Promise<T>): Promise<T> {
-    try {
-      const hit = await this.redis.get(key);
-      if (hit) return JSON.parse(hit) as T;
-    } catch (error) {
-      this.logger.warn(`Leaderboard cache read failed: ${error instanceof Error ? error.message : 'unknown'}`);
-    }
-    const value = await load();
-    try {
-      await this.redis.set(key, JSON.stringify(value), 'EX', CACHE_TTL_SECONDS);
-    } catch (error) {
-      this.logger.warn(`Leaderboard cache write failed: ${error instanceof Error ? error.message : 'unknown'}`);
-    }
-    return value;
   }
 }

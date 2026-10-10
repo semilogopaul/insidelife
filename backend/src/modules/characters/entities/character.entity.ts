@@ -68,6 +68,10 @@ export interface MoodModifier {
 @Index('characters_settle_queue', ['alive', 'settledAt'])
 @Index('characters_location_alive', ['locationId'], { where: '"alive" = true' })
 @Index('characters_status_alive', ['status'], { where: '"alive" = true' })
+// Rich lists (Fobes, leaderboards): sorted by net worth and by self-made worth. The second is an expression index,
+// GREATEST(0, net_worth - unearned_total), created by its migration (TypeORM can't declare expressions).
+@Index('characters_net_worth_ranked', ['netWorth'], { where: '"alive" = true AND "hidden_at" IS NULL' })
+@Index('characters_self_made_ranked', { synchronize: false })
 export class CharacterEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;

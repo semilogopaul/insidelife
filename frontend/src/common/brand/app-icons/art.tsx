@@ -655,6 +655,36 @@ const gist: AppIconArt = {
   ),
 };
 
+/** The rich list: a gold crown over a bold gold F on a deep green-black tile. */
+const fobes: AppIconArt = {
+  name: 'Fobes',
+  tile: ['#1f4d38', '#06110c'],
+  backdrop: ({ compact }) => (compact ? null : <path d="M10 58.5H54" stroke="#d4a63a" strokeOpacity={0.45} strokeWidth={1} />),
+  subject: ({ id, url, compact }) => (
+    <>
+      <defs>
+        <Linear
+          id={id('gold')}
+          x2={1}
+          stops={[
+            [0, '#fff0b3'],
+            [0.45, '#e8b64a'],
+            [1, '#9c6c12'],
+          ]}
+        />
+      </defs>
+      <path d="M17.5 25.5 15.5 12.5 24 19 32 9 40 19 48.5 12.5 46.5 25.5Z" fill={url('gold')} />
+      <circle cx={15.5} cy={12.5} r={2.1} fill={url('gold')} />
+      <circle cx={32} cy={9} r={2.1} fill={url('gold')} />
+      <circle cx={48.5} cy={12.5} r={2.1} fill={url('gold')} />
+      <rect x={17.5} y={24.5} width={29} height={4.2} rx={1.2} fill="#b9891f" />
+      {!compact && <circle cx={32} cy={26.6} r={1.3} fill="#2fcf83" />}
+      <path d="M21 32.5H45V39H30.5V42.5H41V48.5H30.5V55.5H21Z" fill={url('gold')} />
+      {!compact && <path d="M21 32.5H45V34H21Z" fill="#fff6d6" opacity={0.6} />}
+    </>
+  ),
+};
+
 const promote: AppIconArt = {
   name: 'Promote',
   tile: ['#ffd84e', '#eb9e00'],
@@ -775,6 +805,7 @@ export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   family,
   invest,
   gist,
+  fobes,
   promote,
   goals,
   me,

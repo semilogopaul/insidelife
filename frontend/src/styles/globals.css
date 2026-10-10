@@ -38,6 +38,12 @@
   --color-cobalt: #2457d6;
   --color-cobalt-soft: #dde6fd;
 
+  /* Fobes (the rich list): old gold on near-black, for a magazine feel */
+  --color-gold: #d4a63a;
+  --color-gold-ink: #7a5a10;
+  --color-gold-soft: #f8efd8;
+  --color-noir: #0d1210;
+
   /* Needs (paired with icons; never colour alone) */
   --color-need-energy: #f6b90b;
   --color-need-hunger: #e8742b;
