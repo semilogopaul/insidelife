@@ -1,13 +1,17 @@
 'use client';
 
+import { useState } from 'react';
 import { PAINT_FINISH_LABELS, VEHICLE_PAINTS, formatNairaCompact, type VehiclePaintId } from '@insidelife/shared';
 import { Money } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 
 /**
  * Paint picker: a radio group of swatches (name read out, visible on hover/focus and below). Premium finishes
- * (metallic, pearl, matte, special order) show a gold dot and their extra cost.
+ * (metallic, pearl, matte, special order) show a gold dot and their extra cost. Every car comes in every colour, so the
+ * car's signature paints show first and "+N colours" opens the rest.
  */
+const SIGNATURE_COUNT = 6;
+
 export function PaintSwatches({
   paints,
   value,
@@ -23,10 +27,15 @@ export function PaintSwatches({
   readonly fees?: Readonly<Partial<Record<VehiclePaintId, number>>>;
 }) {
   const fee = fees[value] ?? 0;
+  const [all, setAll] = useState(false);
+  const signature = paints.slice(0, SIGNATURE_COUNT);
+  // The chosen paint always stays visible, even when it's one of the extra colours.
+  const shown = all ? paints : signature.includes(value) ? signature : [...signature, value];
+  const hidden = paints.length - shown.length;
   return (
     <div className="flex items-center gap-2">
       <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
-        {paints.map((paint) => {
+        {shown.map((paint) => {
           const selected = paint === value;
           return (
             <button
@@ -50,6 +59,15 @@ export function PaintSwatches({
             </button>
           );
         })}
+        {hidden > 0 && (
+          <button
+            type="button"
+            onClick={() => setAll(true)}
+            className="h-8 rounded-full px-2.5 text-xs font-bold text-ink ring-1 ring-line hover:bg-paper-3"
+          >
+            +{hidden} colours
+          </button>
+        )}
       </div>
       <span className="min-w-0 text-xs font-bold leading-tight text-text-soft">
         {VEHICLE_PAINTS[value].label}

@@ -22,6 +22,8 @@ export const HOUSE_PAINTS = [
   { id: 'terracotta', label: 'Terracotta', hex: '#c9805a' },
   { id: 'ash', label: 'Ash grey', hex: '#b9bbb8' },
   { id: 'lilac', label: 'Lilac', hex: '#c3a9df' },
+  { id: 'pink', label: 'Candy pink', hex: '#f2a7c3' },
+  { id: 'coral', label: 'Coral', hex: '#f08a7a' },
 ] as const satisfies readonly Swatch<string>[];
 export type HousePaintId = (typeof HOUSE_PAINTS)[number]['id'];
 
@@ -44,6 +46,7 @@ export const GATE_COLOURS = [
   { id: 'green', label: 'Green', hex: '#1f5f3f' },
   { id: 'maroon', label: 'Maroon', hex: '#6b1f2a' },
   { id: 'navy', label: 'Navy', hex: '#1f3f6b' },
+  { id: 'pink', label: 'Pink', hex: '#e07aa5' },
 ] as const satisfies readonly Swatch<string>[];
 export type GateColourId = (typeof GATE_COLOURS)[number]['id'];
 
@@ -56,6 +59,7 @@ export const WALL_PAINTS = [
   { id: 'butter', label: 'Butter yellow', hex: '#f2e2a6' },
   { id: 'blush', label: 'Blush pink', hex: '#efcfcb' },
   { id: 'lavender', label: 'Lavender', hex: '#d9d0e8' },
+  { id: 'rose', label: 'Rose pink', hex: '#e9a9bd' },
   { id: 'teal', label: 'Deep teal', hex: '#2f6f73' },
   { id: 'navy', label: 'Navy', hex: '#273c5a' },
   { id: 'charcoal', label: 'Charcoal', hex: '#45484d' },

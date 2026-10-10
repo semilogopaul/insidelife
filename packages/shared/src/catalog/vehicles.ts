@@ -102,6 +102,18 @@ export const VEHICLE_PAINTS = {
   'midnight-purple': { label: 'Midnight purple', hex: '#3b1f5c', finish: 'special' },
   'rose-gold': { label: 'Rose gold', hex: '#c98f7a', finish: 'special' },
   'chrome-gold': { label: 'Gold chrome', hex: '#d4a52a', finish: 'special' },
+  'hot-pink': { label: 'Hot pink', hex: '#e8459a', finish: 'pearl' },
+  'baby-pink': { label: 'Baby pink', hex: '#f4b6cf', finish: 'solid' },
+  magenta: { label: 'Magenta', hex: '#b0157a', finish: 'metallic' },
+  lavender: { label: 'Lavender', hex: '#a98bd6', finish: 'pearl' },
+  teal: { label: 'Teal', hex: '#127c7c', finish: 'metallic' },
+  mint: { label: 'Mint', hex: '#8fd3b6', finish: 'solid' },
+  'electric-blue': { label: 'Electric blue', hex: '#1677ff', finish: 'pearl' },
+  'cherry-red': { label: 'Cherry red', hex: '#9e0f2e', finish: 'pearl' },
+  'burnt-orange': { label: 'Burnt orange', hex: '#c4561d', finish: 'metallic' },
+  'sand-beige': { label: 'Sand beige', hex: '#d8c3a0', finish: 'solid' },
+  'coffee-brown': { label: 'Coffee brown', hex: '#5a3a24', finish: 'metallic' },
+  'chrome-silver': { label: 'Chrome silver', hex: '#dfe3e8', finish: 'special' },
 } as const satisfies Readonly<Record<string, VehiclePaint>>;
 export type VehiclePaintId = keyof typeof VEHICLE_PAINTS;
 export const VEHICLE_PAINT_IDS = Object.keys(VEHICLE_PAINTS) as readonly VehiclePaintId[];
@@ -151,7 +163,12 @@ export interface VehicleDefinition {
 
 type VehicleInput = Omit<VehicleDefinition, 'color'>;
 
-const car = (input: VehicleInput): VehicleDefinition => ({ ...input, color: VEHICLE_PAINTS[input.defaultPaint].hex });
+/** Every car comes in every colour: its signature paints first (the dealer's picks), then the rest of the palette. */
+const car = (input: VehicleInput): VehicleDefinition => ({
+  ...input,
+  paints: [...new Set<VehiclePaintId>([...input.paints, ...VEHICLE_PAINT_IDS])],
+  color: VEHICLE_PAINTS[input.defaultPaint].hex,
+});
 
 const perf = (topSpeedKmh: number, zeroToHundredSeconds: number, handling: number, braking: number): VehiclePerformance => ({
   topSpeedKmh,
