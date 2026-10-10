@@ -79,9 +79,10 @@ describe('adQuote', () => {
     }
   });
 
-  it('sells the expensive slots in 3-day blocks (₦100,000 a week or more), the rest by the week', () => {
+  it('sells the expensive slots in 3-day blocks (₦35,000 a week or more), the rest by the week', () => {
     expect(adQuote(findBillboardSlot('mmia-arrivals')!.weekPriceKobo, 1)).toMatchObject({ blockDays: 3, days: 3, totalKobo: 75_000 * NAIRA });
-    expect(adQuote(findBillboardSlot('ozumba-mbadiwe')!.weekPriceKobo, 1)).toMatchObject({ blockDays: 7, days: 7, totalKobo: 84_000 * NAIRA });
+    expect(adQuote(findBillboardSlot('ozumba-mbadiwe')!.weekPriceKobo, 1)).toMatchObject({ blockDays: 3, days: 3, totalKobo: 36_000 * NAIRA });
+    expect(adQuote(findBillboardSlot('ajah-roundabout')!.weekPriceKobo, 1)).toMatchObject({ blockDays: 7, days: 7, totalKobo: 28_000 * NAIRA });
   });
 
   it('refuses lengths other than 1–4 weeks, or 1–9 three-day blocks', () => {

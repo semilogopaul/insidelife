@@ -177,7 +177,7 @@ export interface QuotePreview extends PromotionQuote {
 }
 
 /**
- * Shared `adQuote` in naira: `blocks` consecutive blocks of `blockDays` (7, or 3 for slots of ₦100,000 a week or more)
+ * Shared `adQuote` in naira: `blocks` consecutive blocks of `blockDays` (7, or 3 for slots of ₦35,000 a week or more)
  * at the slot's current weekly rate, or null when it can't be sold. The server quotes the same.
  */
 export function quoteBlocks(weekPriceKobo: number, blocks: number, blockDays: number): QuotePreview | null {

@@ -316,20 +316,20 @@ export interface BillboardSpec {
 
 /**
  * Physical boards for the promotions catalog's slot ids (BILLBOARD_SLOT_IDS). Sized to read on a phone (most about
- * 1.5–1.9× the first city's area) where they fit: the Lekki toll gantry spans its one road cell and stays as it was.
- * Third Mainland North stands on the kerb apron in front of the building row (clear of its facades), Third Mainland South
- * out over the lagoon beside the bridge, and Surulere's pole between two of the stadium's LED boards.
- * `ad-placements.spec.ts` checks they keep clear of each other, of the street spots and of the carriageway.
+ * 1.4–1.9× the first city's area) where they fit. Three stay as they were: the Lekki toll gantry spans its one road
+ * cell, and Third Mainland North and Surulere already reach the buildings beside them. Never move a board's cell or
+ * offset: the street spots are picked around these positions, so moving one reshuffles spot ids that bookings point at.
+ * `ad-placements.spec.ts` checks the ids, and that faces keep clear of each other, the carriageway and doors.
  */
 export const BILLBOARD_SPECS: readonly BillboardSpec[] = [
   { slotId: 'mmia-arrivals', cell: [4, 3], offset: [5, -5.6], faces: 'S', mount: 'roof', elevation: 12.4, width: 17.5 },
-  { slotId: 'third-mainland-north', cell: [30, 9], offset: [-1.5, -3.9], faces: 'N', mount: 'pole', elevation: 6.5, width: 15 },
-  { slotId: 'third-mainland-south', cell: [32, 28], offset: [3, 0], faces: 'S', mount: 'pole', elevation: 7, width: 16 },
+  { slotId: 'third-mainland-north', cell: [30, 9], offset: [-1, 0], faces: 'N', mount: 'pole', elevation: 6.5, width: 12 },
+  { slotId: 'third-mainland-south', cell: [32, 28], offset: [0, 0], faces: 'S', mount: 'pole', elevation: 7, width: 16 },
   { slotId: 'lekki-toll-gate', cell: [45, 35], offset: [0, 0], faces: 'W', mount: 'gantry', elevation: 7, width: 9 },
   { slotId: 'ozumba-mbadiwe', cell: [40, 34], offset: [0, 1], faces: 'S', mount: 'pole', elevation: 6, width: 16.5 },
   { slotId: 'ikeja-allen', cell: [14, 9], offset: [-2.5, -2.5], faces: 'NW', mount: 'pole', elevation: 5, width: 7.5 },
   { slotId: 'yaba-hub', cell: [24, 18], offset: [3.55, 0], faces: 'E', mount: 'wall', elevation: 4.5, width: 7 },
-  { slotId: 'surulere-stadium', cell: [18, 30], offset: [3, 2], faces: 'S', mount: 'pole', elevation: 5.5, width: 15 },
+  { slotId: 'surulere-stadium', cell: [19, 30], offset: [1, 2], faces: 'S', mount: 'pole', elevation: 5.5, width: 12 },
   { slotId: 'balogun-market', cell: [26, 30], offset: [-5, -1.5], faces: 'S', mount: 'roof', elevation: 9, width: 7 },
   { slotId: 'vi-towers', cell: [39, 37], offset: [5, 3.55], faces: 'S', mount: 'wall', elevation: 16, width: 8 },
   { slotId: 'ajah-roundabout', cell: [56, 35], offset: [0, 0], faces: 'W', mount: 'pole', elevation: 4.5, width: 7.5 },

@@ -101,28 +101,46 @@ describe('ad prices: per 7 days, 7 × the old day rate', () => {
     expect(friendlyWeekPriceKobo(400 * NAIRA)).toBe(AD_MIN_PRICE_KOBO);
   });
 
-  it('quotes 1–4 consecutive weeks with no discount below ₦100,000 a week', () => {
-    expect(adQuote(84_000 * NAIRA, 1)).toEqual({ blocks: 1, blockDays: 7, days: 7, blockPriceKobo: 8_400_000, weekPriceKobo: 8_400_000, weeks: 1, totalKobo: 8_400_000 });
-    expect(adQuote(84_000 * NAIRA, 4)).toMatchObject({ days: 28, totalKobo: 33_600_000 });
+  it('quotes 1–4 consecutive weeks with no discount below ₦35,000 a week', () => {
+    expect(adQuote(28_000 * NAIRA, 1)).toEqual({ blocks: 1, blockDays: 7, days: 7, blockPriceKobo: 2_800_000, weekPriceKobo: 2_800_000, weeks: 1, totalKobo: 2_800_000 });
+    expect(adQuote(28_000 * NAIRA, 4)).toMatchObject({ days: 28, totalKobo: 11_200_000 });
     for (const weeks of [0, 5, 1.5]) {
       expect(adWeeksProblem(weeks)).toMatch(/1 to 4 weeks/);
-      expect(() => adQuote(84_000 * NAIRA, weeks)).toThrow(RangeError);
+      expect(() => adQuote(28_000 * NAIRA, weeks)).toThrow(RangeError);
     }
     expect(() => adQuote(1_999 * NAIRA, 1)).toThrow(/₦2,000/);
     expect(() => adQuote(2_000 * NAIRA + 50, 1)).toThrow(RangeError);
     expect(adWeekPriceLabel(17_500 * NAIRA)).toBe('₦17,500/week');
   });
 
-  it('sells expensive slots (₦100,000 a week or more) in 3-day blocks, everything else by the week', () => {
-    expect(AD_SHORT_BLOCK_FROM_KOBO).toBe(100_000 * NAIRA);
-    expect(adBlockDays(99_500 * NAIRA)).toBe(7);
-    expect(adBlockDays(100_000 * NAIRA)).toBe(3);
-    // Today's 3-day slots: MMIA, Third Mainland N/S, Lekki Toll Gate and the sponsored phone apps.
+  it('sells expensive slots (₦35,000 a week or more) in 3-day blocks, everything else by the week', () => {
+    expect(AD_SHORT_BLOCK_FROM_KOBO).toBe(35_000 * NAIRA);
+    expect(adBlockDays(34_500 * NAIRA)).toBe(7);
+    expect(adBlockDays(35_000 * NAIRA)).toBe(3);
+    // Today's 3-day slots: the premium boards from ₦35,000 a week, Lagos TV and the sponsored phone apps.
     const short = AD_SLOTS.filter((slot) => adBlockDays(slot.weekPriceKobo) === 3).map((slot) => (slot.kind === 'phone-app' ? 'app' : slot.id));
-    expect([...new Set(short)].toSorted()).toEqual(['app', 'lekki-toll-gate', 'mmia-arrivals', 'third-mainland-north', 'third-mainland-south']);
+    expect([...new Set(short)].toSorted()).toEqual([
+      'app',
+      'balogun-market',
+      'ikeja-allen',
+      'lagos-tv',
+      'lekki-toll-gate',
+      'mmia-arrivals',
+      'ozumba-mbadiwe',
+      'surulere-stadium',
+      'third-mainland-north',
+      'third-mainland-south',
+      'vi-towers',
+      'yaba-hub',
+    ]);
+    // Street spots, the stadium, markets and parks stay weekly; so do the two cheapest premium boards.
+    for (const id of ['ajah-roundabout', 'ikorodu-garage']) expect(adBlockDays(findAdSlot(id)!.weekPriceKobo), id).toBe(7);
+    for (const slot of AD_SLOTS.filter((entry) => entry.kind !== 'premium-billboard' && entry.kind !== 'lagos-tv' && entry.kind !== 'phone-app')) {
+      expect(adBlockDays(slot.weekPriceKobo), slot.id).toBe(7);
+    }
     // A re-price moves a slot between the two.
-    expect(adBlockDays(adWeekPriceKobo(findAdSlot('ozumba-mbadiwe')!, 120_000 * NAIRA))).toBe(3);
-    expect(adBlockDays(adWeekPriceKobo(findAdSlot('mmia-arrivals')!, 90_000 * NAIRA))).toBe(7);
+    expect(adBlockDays(adWeekPriceKobo(findAdSlot('ajah-roundabout')!, 40_000 * NAIRA))).toBe(3);
+    expect(adBlockDays(adWeekPriceKobo(findAdSlot('mmia-arrivals')!, 30_000 * NAIRA))).toBe(7);
   });
 
   it('prices a block as the daily rate × its days, rounded to ₦500, never under ₦2,000', () => {
@@ -135,7 +153,9 @@ describe('ad prices: per 7 days, 7 × the old day rate', () => {
     expect(adBlockPriceLabel(43_000 * NAIRA, 3)).toBe('₦43,000 per 3 days');
     expect(adBlockPriceLabel(17_500 * NAIRA, 7)).toBe('₦17,500/week');
     expect(adRateSummary(100_000 * NAIRA)).toBe('₦100,000 per 7 days · sold in 3-day blocks of ₦43,000');
-    expect(adRateSummary(42_000 * NAIRA)).toBe('₦42,000 per 7 days · sold by the week');
+    expect(adRateSummary(42_000 * NAIRA)).toBe('₦42,000 per 7 days · sold in 3-day blocks of ₦18,000');
+    expect(adRateSummary(17_500 * NAIRA)).toBe('₦17,500 per 7 days · sold by the week');
+    expect(adRateSummary(35_000 * NAIRA, 7)).toBe('₦35,000 per 7 days · sold by the week');
   });
 
   it('quotes 1–9 three-day blocks (at most 28 days) for expensive slots', () => {

@@ -48,7 +48,7 @@ export class AdCampaignEntity {
   @Column({ type: 'smallint' })
   days: number;
 
-  /** Days per block it was sold in (7, or 3 for slots of ₦100,000 a week or more at booking time). */
+  /** Days per block it was sold in (7, or 3 for slots of ₦35,000 a week or more at booking time). */
   @Column({ type: 'smallint', default: 7 })
   blockDays: number;
 

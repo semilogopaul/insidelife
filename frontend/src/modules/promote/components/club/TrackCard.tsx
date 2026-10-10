@@ -1,27 +1,28 @@
 'use client';
 
-import { Disc3, Play } from 'lucide-react';
-import { findVenue, koboToNaira, type ClubPlayOrderDto, type ClubSongOfferDto, type ClubTrackDto, type ContentRule } from '@insidelife/shared';
+import { ChevronRight, Disc3, Play } from 'lucide-react';
+import { koboToNaira, runLengthLabel, type ClubPlayOrderDto, type ClubSongOfferDto, type ClubTrackDto, type ContentRule } from '@insidelife/shared';
 import { Button, Money } from '@/common/components';
-import { useNow } from '@/common/hooks/use-now';
 import { formatDuration, formatRange } from '../../services/rules';
-import { STATUS_META } from '../../services/status';
+import { PendingPayment } from '../detail/PendingPayment';
 import { StatusBadge } from '../shared';
 import { OrderForm } from './OrderForm';
 
 export interface TrackCardProps {
   readonly track: ClubTrackDto;
-  /** Today's song price and start date (null while loading). */
+  /** Today's song price, start dates and plays guarantee (null while loading). */
   readonly offer: ClubSongOfferDto | null;
   readonly rules: readonly ContentRule[];
   readonly ordering: boolean;
   readonly onOrder: (open: boolean) => void;
+  /** Open a run's page (times, plays, listeners, receipt). */
+  readonly onOpenOrder: (orderId: string) => void;
 }
 
 const BOOKABLE = new Set(['draft', 'completed', 'cancelled', 'refunded', 'refund-due', 'rejected']);
 
-/** One song: listen, its plays, every rotation booked and what each is doing. */
-export function TrackCard({ track, offer, rules, ordering, onOrder }: TrackCardProps) {
+/** One song: listen, its plays, every run booked (tap one for everything about it). */
+export function TrackCard({ track, offer, rules, ordering, onOrder, onOpenOrder }: TrackCardProps) {
   const canBook = !track.removed && BOOKABLE.has(track.status);
   return (
     <li className="flex flex-col gap-3 rounded-sheet p-4 ring-1 ring-line">
@@ -49,9 +50,9 @@ export function TrackCard({ track, offer, rules, ordering, onOrder }: TrackCardP
         </audio>
       )}
       {track.orders.length > 0 && (
-        <ul className="flex flex-col divide-y divide-line rounded-card bg-paper-2 px-3 text-sm">
+        <ul className="flex flex-col divide-y divide-line rounded-card bg-paper-2 text-sm">
           {track.orders.map((order) => (
-            <OrderRow key={order.id} order={order} />
+            <OrderRow key={order.id} order={order} onOpen={() => onOpenOrder(order.id)} />
           ))}
         </ul>
       )}
@@ -66,30 +67,27 @@ export function TrackCard({ track, offer, rules, ordering, onOrder }: TrackCardP
   );
 }
 
-function OrderRow({ order }: { readonly order: ClubPlayOrderDto }) {
-  const where = order.allClubs ? 'All clubs' : order.clubs.map((id) => findVenue(id)?.name ?? id).join(', ');
-  const now = useNow();
-  const holdOpen = order.holdExpiresAt !== null && Date.parse(order.holdExpiresAt) > now;
+function OrderRow({ order, onOpen }: { readonly order: ClubPlayOrderDto; readonly onOpen: () => void }) {
   return (
-    <li className="flex flex-col gap-1 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate font-bold">{order.productName}</span>
-        <StatusBadge status={order.status} />
-      </div>
-      <p className="text-xs text-text-soft">
-        {where} · {formatRange(order.startDate, order.endDate)} · <Money amount={koboToNaira(order.amountKobo)} /> · {order.plays.toLocaleString('en-NG')} plays
-      </p>
-      {order.rejectionReason ? (
-        <p className="text-xs">
-          <span className="font-bold">Moderator:</span> “{order.rejectionReason}” {order.status === 'refund-due' ? STATUS_META['refund-due'].next : ''}
-        </p>
-      ) : (
-        order.status === 'in-review' && <p className="text-xs text-text-soft">{STATUS_META['in-review'].next}</p>
-      )}
-      {order.status === 'pending-payment' && order.checkoutUrl && holdOpen && (
-        <Button size="sm" className="self-start" onClick={() => order.checkoutUrl && window.location.assign(order.checkoutUrl)}>
-          Finish payment
-        </Button>
+    <li className="flex flex-col">
+      <button type="button" onClick={onOpen} className="flex items-center gap-2 px-3 py-2.5 text-left hover:bg-paper-3" aria-label={`Run of ${formatRange(order.startDate, order.endDate)}: open its plays and times`}>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate font-bold">{formatRange(order.startDate, order.endDate)}</span>
+            <StatusBadge status={order.status} />
+          </span>
+          <span className="block text-xs text-text-soft">
+            {runLengthLabel(order.days)} · <Money amount={koboToNaira(order.amountKobo)} /> · {order.plays.toLocaleString('en-NG')} plays · heard by{' '}
+            {order.listeners.toLocaleString('en-NG')}
+          </span>
+          {order.rejectionReason && <span className="block text-xs">Moderator: “{order.rejectionReason}”</span>}
+        </span>
+        <ChevronRight size={16} aria-hidden className="shrink-0 text-text-faint" />
+      </button>
+      {order.status === 'pending-payment' && (
+        <div className="px-3 pb-2.5">
+          <PendingPayment compact paymentReference={order.paymentReference} checkoutUrl={order.checkoutUrl} holdExpiresAt={order.holdExpiresAt} />
+        </div>
       )}
     </li>
   );

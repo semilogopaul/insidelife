@@ -102,8 +102,8 @@ export const AD_MAX_WEEKS = 4;
 export const AD_MAX_RUN_DAYS = 28;
 /** The short block for expensive slots. */
 export const AD_SHORT_BLOCK_DAYS = 3;
-/** The single definition of "expensive" (owner's rule): a weekly rate of ₦100,000 or more is sold in 3-day blocks. */
-export const AD_SHORT_BLOCK_FROM_KOBO = 100_000 * NAIRA;
+/** The single definition of "expensive" (owner's rule, Oct 2026): a weekly rate of ₦35,000 or more is sold in 3-day blocks. */
+export const AD_SHORT_BLOCK_FROM_KOBO = 35_000 * NAIRA;
 export type AdBlockDays = typeof AD_SHORT_BLOCK_DAYS | typeof AD_WEEK_DAYS;
 /** No ad costs less than ₦2,000 a week; no rate can be set above ₦100m. */
 export const AD_MIN_PRICE_KOBO = 2_000 * NAIRA;

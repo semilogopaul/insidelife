@@ -69,7 +69,7 @@ export function highlightGeometry(spot: Pick<AdSpotGeometry, 'width' | 'height' 
 export function AdHighlight() {
   const mesh = useMemo(() => {
     const material = new MeshBasicMaterial({ color: DANFO.clone(), transparent: true, opacity: 0, depthWrite: false, toneMapped: false });
-    const object = new Mesh(new BoxGeometry(0, 0, 0), material);
+    const object = new Mesh<BufferGeometry, MeshBasicMaterial>(new BoxGeometry(0, 0, 0), material);
     object.visible = false;
     object.renderOrder = 4;
     object.name = 'ad-highlight';

@@ -79,7 +79,7 @@ export interface AdSlotStateDto {
   readonly id: BillboardSlotId;
   /** Current weekly rate, in kobo (ops can change it; a booking keeps the price it was quoted). */
   readonly weekPriceKobo: number;
-  /** Days per block at this rate (3 when the weekly rate is ₦100,000 or more, else 7). */
+  /** Days per block at this rate (3 when the weekly rate is ₦35,000 or more, else 7). */
   readonly blockDays: number;
   /** Price of one block at this rate. */
   readonly blockPriceKobo: number;
@@ -562,7 +562,7 @@ export interface AdRateDto {
   /** What new quotes use now, in kobo per 7 days (the override when there is one, else the default). */
   readonly currentKobo: number;
   /**
-   * Days per block it's sold in at the current rate: 3 when the weekly rate is ₦100,000 or more (`adBlockDays`), else
+   * Days per block it's sold in at the current rate: 3 when the weekly rate is ₦35,000 or more (`adBlockDays`), else
    * 7; club songs always 7. For district-scaled kinds it's the base rate's (each spot may differ).
    */
   readonly blockDays: number;

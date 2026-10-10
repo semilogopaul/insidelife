@@ -52,7 +52,7 @@ export type AdRateHook = (manager: EntityManager, rate: AdRateDto) => Promise<vo
 export interface AdPricing {
   /** Current weekly rate on this slot (rate override or catalog default, district-scaled). */
   weekPriceKobo(slot: Pick<AdSlot, 'id' | 'kind' | 'districtId'>): number;
-  /** The weekly rate with the block it's sold in (3 days from ₦100,000 a week, else 7: `adBlockDays`). */
+  /** The weekly rate with the block it's sold in (3 days from ₦35,000 a week, else 7: `adBlockDays`; songs always 7). */
   block(slot: Pick<AdSlot, 'id' | 'kind' | 'districtId'>): SlotBlockPrice;
   /** Current price of one week of a club song (always sold by the week). */
   readonly songPriceKobo: number;

@@ -115,15 +115,15 @@ describe('AdRatesService', () => {
     expect(list.find((rate) => rate.key === 'street-billboard')).toMatchObject({ byDistrict: true, blockDays: 7, blockPriceKobo: null });
     const pricing = await rates.pricing();
     expect(pricing.weekPriceKobo(lagosTv)).toBe(42_000 * NAIRA);
-    expect(pricing.block(lagosTv)).toEqual({ weekPriceKobo: 42_000 * NAIRA, blockDays: 7, blockPriceKobo: 42_000 * NAIRA });
+    expect(pricing.block(lagosTv)).toEqual({ weekPriceKobo: 42_000 * NAIRA, blockDays: 3, blockPriceKobo: 18_000 * NAIRA });
     expect(pricing.songPriceKobo).toBe(35_000 * NAIRA);
   });
 
-  it('moves a slot between 7-day and 3-day blocks when its rate crosses ₦100,000 a week', async () => {
+  it('moves a slot between 7-day and 3-day blocks when its rate crosses ₦35,000 a week', async () => {
     const rates = await node(new FakeTable(), new FakeBus());
     await rates.setRate('lagos-tv', 120_000 * NAIRA, ADMIN);
     expect((await rates.pricing()).block(lagosTv)).toEqual({ weekPriceKobo: 120_000 * NAIRA, blockDays: 3, blockPriceKobo: 51_500 * NAIRA });
-    await rates.setRate('lagos-tv', 99_500 * NAIRA, ADMIN);
+    await rates.setRate('lagos-tv', 34_500 * NAIRA, ADMIN);
     expect((await rates.pricing()).block(lagosTv).blockDays).toBe(7);
   });
 
