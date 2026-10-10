@@ -14,6 +14,7 @@ import { useUi } from '@/common/game/ui-store';
 import { useWorld, type Interactable } from '@/common/game/world-store';
 import { useMediaQuery } from '@/common/hooks/use-media-query';
 import { useStickSide } from '@/common/hooks/use-touch-ui';
+import { useGoalGuide } from '@/common/goal-guide';
 import { cn } from '@/common/utils/cn';
 import { toggleHud, useAutoShowHud, useHudKeys } from '../hooks/use-clean-screen';
 import { useHudData } from '../hooks/use-hud-data';
@@ -24,6 +25,7 @@ import { ClockCard } from './ClockCard';
 import { DriveAlert } from './DriveAlert';
 import { DrivePanel } from './DrivePanel';
 import { GpsBanner } from './GpsBanner';
+import { NextGoalChip } from './NextGoalChip';
 import { RoutinePrompt } from './RoutinePrompt';
 import { SuggestionChips } from './SuggestionChips';
 import { VitalsPanel } from './VitalsPanel';
@@ -133,6 +135,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const mode = useWorld((state) => state.mode);
   const navigation = useNavigation();
   const suggestions = useSuggestions();
+  const goalGuide = useGoalGuide(suggestions.data);
   const wide = useMediaQuery('(min-width: 768px)');
   // Stick on the right: the buttons go bottom-left and the bottom-right is the thumb zone.
   const stickSide = useStickSide();
@@ -181,6 +184,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const centre = (
     <>
       {drive?.warning && <DriveAlert warning={drive.warning} />}
+      {!phoneOpen && !drive && <NextGoalChip guide={goalGuide} compact={inside} />}
       {gps}
       {routinePrompt}
       {notices}
