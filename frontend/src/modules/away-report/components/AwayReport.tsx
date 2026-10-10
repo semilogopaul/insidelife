@@ -41,8 +41,8 @@ function realDuration(ms: number): string {
  */
 export function AwayReport() {
   const client = useQueryClient();
-  const hasCharacter = useSnapshot().data !== undefined;
-  const session = useAwaySession(hasCharacter);
+  const characterId = useSnapshot().data?.character.id ?? null;
+  const session = useAwaySession(characterId);
   const since = session.since;
 
   const report = useQuery({
