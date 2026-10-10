@@ -6,9 +6,9 @@ import { useCurrentPlace } from '@/common/hooks/use-current-place';
 import { useStudy } from '../../hooks/use-education';
 import { announce, complain } from '@/common/game/feedback';
 
-const STUDY_MINUTES = 120;
+const STUDY_MINUTES = 60;
 
-/** "Study 2h" when you're home or on campus and free; otherwise says where studying works. */
+/** "Study 1h" when you're home or on campus and free; otherwise says where studying works. */
 export function StudyButton({ tone = 'paper' }: { readonly tone?: 'paper' | 'ink' }) {
   const place = useCurrentPlace();
   const study = useStudy();
@@ -28,12 +28,12 @@ export function StudyButton({ tone = 'paper' }: { readonly tone?: 'paper' | 'ink
       loading={study.isPending}
       onClick={() =>
         study.mutate(STUDY_MINUTES, {
-          onSuccess: () => announce('Reading time', { body: '2 hours with your books. Phone face down!' }),
+          onSuccess: () => announce('Reading time', { body: 'An hour with your books. Phone face down!' }),
           onError: (error) => complain('Couldn’t start studying', error),
         })
       }
     >
-      {place.busyWith ? `Busy: ${place.busyWith}` : 'Study for 2 hours'}
+      {place.busyWith ? `Busy: ${place.busyWith}` : 'Study for an hour'}
     </Button>
   );
 }

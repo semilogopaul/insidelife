@@ -25,8 +25,12 @@ import { setWorldTimeOverride } from './city/lib/world-time';
 import { Diagnostics } from './city/stage/Diagnostics';
 import { ReviewCamera } from './city/stage/ReviewCamera';
 import { InteriorOverlay, InteriorScene } from './interiors';
+import { useVenueGuests } from './interiors/use-venue-guests';
 import { NavigationLayer } from './navigation/NavigationLayer';
 import { InteriorMoments, InteriorSpray, PLAY_LAYER_OWNS_CAMERA, PlayLayer, PlayOverlay, usePlayBridge, type SandboxStart } from './play';
+import { STREET_CAMERA } from './play/camera-defaults';
+import { SpeechBubbles } from './speech/SpeechBubbles';
+import { SpeechProjector } from './speech/SpeechProjector';
 
 /** Where the city opens when nothing better is known (Herbert Macaulay Way by UNILAG). */
 const DEFAULT_FOCUS: WorldPoint = venueEntrance('unilag')?.position ?? { x: 0, z: 0 };
@@ -53,6 +57,8 @@ export function WorldCanvas() {
   const setMode = useWorld((state) => state.setMode);
   const locationId = snapshot?.character.locationId ?? null;
   const presence: Presence = snapshot?.travel ? 'riding' : !locationId || isStreetLocation(locationId) ? 'outside' : 'inside';
+  // Other players at the venue you're in are drawn at its guest spots (homes get their host and guests from visits).
+  const guests = useVenueGuests(presence === 'inside' && locationId && !isHomeLocation(locationId) ? locationId : null);
 
   useEffect(() => {
     const mode: PlayerMode = presence === 'outside' ? 'walking' : presence;
@@ -68,15 +74,17 @@ export function WorldCanvas() {
     <>
       <WorldStage>
         {presence === 'inside' && locationId ? (
-          <InteriorScene locationId={locationId}>
+          <InteriorScene locationId={locationId} players={guests}>
             {!isHomeLocation(locationId) && <InteriorSpray venueId={locationId} />}
             {!isHomeLocation(locationId) && <InteriorMoments venueId={locationId} />}
           </InteriorScene>
         ) : (
           <OutsideWorld focus={focus} play={PLAY_LAYER_OWNS_CAMERA ? 'game' : null} />
         )}
+        <SpeechProjector />
       </WorldStage>
       <PlayOverlay presence={presence} />
+      <SpeechBubbles inside={presence === 'inside'} />
       {presence === 'inside' && <InteriorOverlay />}
     </>
   );
@@ -139,7 +147,7 @@ function WorldStage({ children, graphics: forced }: { readonly children: ReactNo
       className="!absolute inset-0"
       dpr={[quality.dpr[0], quality.dpr[1]]}
       shadows={quality.shadows ? 'percentage' : false}
-      camera={{ fov: 50, near: 0.5, far: 2000, position: [0, 80, 120] }}
+      camera={{ ...STREET_CAMERA, position: [0, 80, 120] }}
       gl={{ antialias: quality.tier !== 'low', powerPreference: 'high-performance', stencil: false }}
     >
       <PerformanceMonitor onDecline={() => setDeclines((count) => Math.min(2, count + 1))} flipflops={3} />

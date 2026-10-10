@@ -1,6 +1,6 @@
 import type { BlueprintId } from '../catalog/housing.js';
 import type { HomeDecor, HouseExterior } from '../catalog/home-style.js';
-import type { GameClockConfig } from '../time/clock.js';
+import type { ClockRescale, GameClockConfig } from '../time/clock.js';
 import type { GameMinute } from '../time/calendar.js';
 import type { NeedProfile, Needs } from '../needs/needs.js';
 import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
@@ -102,6 +102,8 @@ export interface WorldClockDto extends GameClockConfig {
   /** Server wall clock (ms) when the response was produced — clients use it to estimate offset. */
   readonly serverNowMs: number;
   readonly worldSeed: string;
+  /** The next scheduled speed change (the clock re-anchors there and runs at the new scale), or null. */
+  readonly nextRescale: ClockRescale | null;
 }
 
 export interface WorldStateDto {
@@ -260,6 +262,26 @@ export interface CharacterSnapshotDto {
   readonly openWorld: OpenWorldPoseDto | null;
 }
 
+/**
+ * Whether the player is at the controls. The client reports `playing` while the tab is visible and the player is
+ * touching it, and `away` when they leave; the autopilot only runs the character's routine while they're away.
+ */
+export const PLAY_STATES = ['playing', 'away'] as const;
+export type PlayState = (typeof PLAY_STATES)[number];
+
+/** `PUT /v1/characters/me/play-state` */
+export interface PlayStateRequestDto {
+  readonly state: PlayState;
+}
+
+export interface PlayStateDto {
+  readonly state: PlayState;
+  /** The player was away until this report (the snapshot's timeline was planned for the autopilot: refetch it). */
+  readonly resumed: boolean;
+  /** Game minute the autopilot takes over again unless the player reports in before then. */
+  readonly presentUntil: GameMinute;
+}
+
 /** Epitaph for the player's most recently deceased character. */
 export interface LastLifeDto {
   readonly characterId: string;
@@ -378,6 +400,13 @@ export interface WalletDto extends WalletSummaryDto {
   readonly receiveLimit: number;
   readonly earnedTotal: number;
   readonly purchasedTotal: number;
+  /**
+   * Coins bought in the last 48 hours: spendable, but not sendable to players yet (already left out of `sendable`).
+   * `releasesAt` (ISO) is when the last of them can be sent. Null when nothing is on hold.
+   */
+  readonly purchaseHold: { readonly amount: number; readonly releasesAt: string } | null;
+  /** Owed from a refunded top-up whose coins were already spent: repaid from money that comes in; blocks sending. */
+  readonly debt: number;
 }
 
 export interface TransferRequest {

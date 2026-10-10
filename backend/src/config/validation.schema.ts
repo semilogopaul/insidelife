@@ -1,4 +1,5 @@
 import Joi from 'joi';
+import { parseClockRescales } from '@insidelife/shared';
 
 /**
  * Environment contract. Validated at startup so a misconfigured server never boots.
@@ -53,7 +54,15 @@ export const validationSchema = Joi.object({
   REQUIRE_EMAIL_VERIFICATION: Joi.boolean().default(false),
 
   GAME_EPOCH: Joi.date().iso().required(),
-  GAME_TIME_SCALE: Joi.number().min(1).max(10_000).default(120),
+  GAME_TIME_SCALE: Joi.number().min(1).max(10_000).default(60),
+  // `<ISO time>@<scale>,…`: later speed changes, each continuous with the clock before it (docs/DEPLOY.md).
+  GAME_TIME_RESCALES: Joi.string()
+    .allow('')
+    .default('')
+    .custom((value: string) => {
+      parseClockRescales(value);
+      return value;
+    }, 'clock rescales'),
   WORLD_SEED: Joi.string().min(4).max(64).required(),
   /** Secret seed for market prices (the world seed is public). Set it in production; derived from JWT secret otherwise. */
   MARKET_SEED: Joi.string().min(16).max(128).optional(),

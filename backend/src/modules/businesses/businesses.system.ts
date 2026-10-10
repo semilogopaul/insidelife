@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { findBusinessType, type ActionDefinition } from '@insidelife/shared';
+import { actionHours, findBusinessType, type ActionDefinition } from '@insidelife/shared';
 import type { ActivityState } from '../characters/entities/character.entity.js';
 import type { SimulationSystem } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
@@ -39,7 +39,7 @@ export class BusinessesSystem implements SimulationSystem, OnModuleInit {
     if (!action.hooks?.includes('manage-business')) return;
     const businesses = await this.store.active(ctx);
     if (businesses.length === 0) return;
-    const minutes = Math.max(0, activity.endsAt - activity.startedAt);
+    const minutes = Math.max(0, Math.round(actionHours(activity) * 60));
     const target = businesses.find((business) => business.id === activity.targetId);
     const recipients = target ? [target] : businesses;
     const share = Math.round(minutes / recipients.length);

@@ -1,7 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  COLLAPSE_TARGET,
   findAction,
   findVenue,
+  formatClock12,
   formatGameDuration,
   homeLocationId,
   isHomeLocation,
@@ -78,6 +80,7 @@ export class ActionsService {
     const character = ctx.character;
     if (!character.activity) throw new GameRuleException('NOTHING_TO_CANCEL', 'You’re not doing anything right now');
     if (character.activity.actionId === 'explore') return;
+    this.assertConscious(ctx);
     const action = findAction(character.activity.actionId);
     // Exams, treatments and tests can't be walked out of (and restarted to re-roll the result).
     if (action?.system && !isInterruptibleAction(action.id)) {
@@ -91,9 +94,18 @@ export class ActionsService {
     const character = ctx.character;
     if (!character.alive) throw new GameRuleException('DECEASED', 'This character has passed on');
     if (character.travel) throw new GameRuleException('TRAVELLING', 'You’re on the move. Arrive first.');
+    this.assertConscious(ctx);
     if (character.activity && !isInterruptibleActivity(character.activity)) {
       const current = findAction(character.activity.actionId);
       throw new GameRuleException('BUSY', `You’re busy (${current?.verb.toLowerCase() ?? 'doing something'}). Cancel it first.`);
+    }
+  }
+
+  /** Collapsed from exhaustion: out cold until it's slept off (no cancelling, no replacing it). */
+  private assertConscious(ctx: SimulationContext): void {
+    const activity = ctx.character.activity;
+    if (activity?.targetId === COLLAPSE_TARGET && activity.endsAt > ctx.time) {
+      throw new GameRuleException('COLLAPSED', `You collapsed from exhaustion. You’ll come round at ${formatClock12(activity.endsAt)}.`);
     }
   }
 

@@ -40,7 +40,7 @@ export function formatMinuteOfDay(minute: number): string {
 /** Every allowed start time (05:00–22:00 in quarter hours). */
 export const HABIT_START_OPTIONS: readonly number[] = Array.from({ length: (HABIT_LATEST_START - HABIT_EARLIEST_START) / 15 + 1 }, (_, index) => HABIT_EARLIEST_START + index * 15);
 
-/** "Learn to code · 2h at 8:00 PM, weekdays" in words. */
+/** "Learn to code · 1h at 8:00 PM, weekdays" in words. */
 export function describeHabit(habit: Habit): string {
   const action = findAction(habit.actionId);
   return `${action?.label ?? habit.actionId}, ${formatGameDuration(habit.durationMinutes)} at ${formatMinuteOfDay(habit.startMinute)}, ${DAY_LABELS[habit.days].toLowerCase()}`;
@@ -76,7 +76,7 @@ export function unmetHabitRequirement(actionId: HabitActionId, subject: HabitSub
 /** A new habit for `actionId` at the first start time that doesn't clash with the others (evening first). */
 export function draftHabit(actionId: HabitActionId, existing: readonly Habit[]): Habit {
   const durations = findAction(actionId)?.durations ?? [60];
-  const durationMinutes = durations.includes(2 * MINUTES_PER_HOUR) ? 2 * MINUTES_PER_HOUR : (durations[0] ?? 60);
+  const durationMinutes = durations.includes(MINUTES_PER_HOUR) ? MINUTES_PER_HOUR : (durations[0] ?? 60);
   const preferred = [20 * 60, 19 * 60, 18 * 60, 21 * 60, 7 * 60, 6 * 60, 22 * 60, ...HABIT_START_OPTIONS];
   for (const startMinute of preferred) {
     const habit: Habit = { actionId, startMinute, durationMinutes, days: 'daily' };

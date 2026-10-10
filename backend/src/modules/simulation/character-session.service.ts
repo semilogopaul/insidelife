@@ -22,7 +22,10 @@ export interface SessionOptions {
   readonly skipLocked?: boolean;
   /** Settle up to now before running the command (default true). */
   readonly settle?: boolean;
-  /** Mark the player as active (resets idle timers, used for the settle queue). */
+  /**
+   * The player did something (a command): stamp `lastActiveAt`, so they count as at the controls for the next few
+   * real minutes and the autopilot leaves the character alone (`player-presence.ts`). Reads don't touch.
+   */
   readonly touch?: boolean;
 }
 
@@ -81,11 +84,15 @@ export class CharacterSession {
         hookProfiler.flush(`settle ${days.toFixed(1)} game days`, performance.now() - started);
       }
       ctx.time = Math.max(ctx.time, now);
+      // Money owed from a refunded top-up comes out of whatever just arrived (gifts, transfers) before anything else.
+      await ctx.wallet.collectDebt();
+      // After the settle (the past keeps the presence it had), before the command (whose snapshot timeline should
+      // already plan for a player at the controls).
+      if (options.touch) character.lastActiveAt = new Date();
 
       const value = await command(ctx);
       await ctx.wallet.flush();
 
-      if (options.touch) character.lastActiveAt = new Date();
       await manager.save(character);
       pushes.characterId = character.id;
       pushes.notifications = await this.notifications.create(manager, character.id, ctx.notifications);

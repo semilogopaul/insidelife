@@ -74,6 +74,8 @@ export interface VehiclePurchaseRequest {
   readonly vehicleId: string;
   /** Paint id from the vehicle's `paints` (defaults to its `defaultPaint`). */
   readonly colour?: string;
+  /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
+  readonly idempotencyKey?: string;
 }
 
 export interface VehiclePurchaseResultDto {

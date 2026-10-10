@@ -11,7 +11,6 @@ export const gistKeys = {
   profile: (handle: string) => queryKeys.domain('social', 'profile', handle.replace(/^@/, '').toLowerCase()),
   profiles: queryKeys.domain('social', 'profile'),
   search: (query: string) => queryKeys.domain('social', 'search', query.toLowerCase()),
-  venuePlayers: (venueId: string) => queryKeys.domain('social', 'venue-players', venueId),
   parties: queryKeys.domain('social', 'parties'),
   party: (id: string) => queryKeys.domain('social', 'parties', id),
   quote: (key: string) => queryKeys.domain('social', 'party-quote', key),

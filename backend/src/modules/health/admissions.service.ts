@@ -17,7 +17,7 @@ import { HospitalAdmissionEntity } from './entities/hospital-admission.entity.js
 import { DISCHARGE_MINUTE_OF_DAY, HEALTH_MEMO, MEDICATION_PERIOD } from './health.constants.js';
 import { InsuranceService } from './insurance.service.js';
 import { MedicalHistoryService } from './medical-history.service.js';
-import { isPlayerPresent } from './player-presence.js';
+import { isPlayerPresent } from '../simulation/player-presence.js';
 
 export interface AdmitParams {
   readonly venueId: string;

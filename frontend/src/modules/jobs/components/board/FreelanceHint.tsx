@@ -1,6 +1,7 @@
 'use client';
 
 import { Laptop } from 'lucide-react';
+import { findAction } from '@insidelife/shared';
 import { Button } from '@/common/components';
 import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
 import { useCurrentPlace } from '@/common/hooks/use-current-place';
@@ -9,7 +10,8 @@ import { announce, complain } from '@/common/game/feedback';
 import { jobsApi } from '../../services/jobs.api';
 
 const FREELANCE_MIN_TECH = 20;
-const GIG_MINUTES = 120;
+/** The shortest gig the catalog allows (1 game hour). */
+const GIG_MINUTES = findAction('freelance')?.durations[0] ?? 60;
 
 /** Laptop + tech skill = side income: start a freelance gig from home (or any office). */
 export function FreelanceHint() {
@@ -40,12 +42,12 @@ export function FreelanceHint() {
             onClick={() =>
               start.mutate(undefined, {
                 onSuccess: () =>
-                  announce('Gig started', { body: '2 hours of client work. Payment lands when you finish.' }),
+                  announce('Gig started', { body: 'An hour of client work. Payment lands when you finish.' }),
                 onError: (error) => complain('Couldn’t start the gig', error),
               })
             }
           >
-            Start a 2-hour gig
+            Start a 1-hour gig
           </Button>
         ) : (
           <p className="mt-1.5 text-xs font-bold text-cobalt">Gigs run from home or any office.</p>

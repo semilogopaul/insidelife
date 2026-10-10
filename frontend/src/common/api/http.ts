@@ -11,6 +11,8 @@ interface RequestOptions {
   readonly signal?: AbortSignal;
   /** Skip auth header and refresh (login/register/refresh themselves). */
   readonly anonymous?: boolean;
+  /** Let the request outlive the page (a last word on `pagehide`). */
+  readonly keepalive?: boolean;
 }
 
 /**
@@ -104,6 +106,7 @@ async function send(method: Method, path: string, options: RequestOptions): Prom
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
     credentials: 'same-origin',
     signal: options.signal,
+    keepalive: options.keepalive,
   });
 }
 

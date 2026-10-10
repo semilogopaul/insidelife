@@ -39,7 +39,9 @@ export class BusinessesService {
   ) {}
 
   async view(ctx: SimulationContext): Promise<BusinessesViewDto> {
-    const [active, past] = await Promise.all([this.store.active(ctx), this.store.past(ctx)]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const active = await this.store.active(ctx);
+    const past = await this.store.past(ctx);
     const all = [...active, ...past];
     const appraisals = await this.appraiser.appraise(ctx, all);
     return {

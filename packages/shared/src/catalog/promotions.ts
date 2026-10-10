@@ -363,8 +363,8 @@ export const TRACK_ACCEPTED_TYPES = ['audio/mpeg', 'audio/ogg'] as const;
 export type TrackContentType = (typeof TRACK_ACCEPTED_TYPES)[number];
 export const TRACK_MAX_BYTES = 10 * 1024 * 1024;
 export const TRACK_MIN_SECONDS = 30;
-/** Songs must be strictly shorter than this (owner's rule: under 5 minutes), measured from the file on the server. */
-export const TRACK_MAX_SECONDS = 5 * 60;
+/** Longest song allowed (owner's rule: 3 minutes or shorter), measured from the file on the server. */
+export const TRACK_MAX_SECONDS = 3 * 60;
 
 export const PROMOTION_TITLE_MAX = 60;
 export const ARTIST_NAME_MAX = 40;

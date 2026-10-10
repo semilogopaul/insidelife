@@ -10,11 +10,13 @@ import { useSession } from '@/common/auth/session-store';
 import { dmLink, useDmAlerts } from '@/common/chat';
 import { ErrorBoundary, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
-import { useSnapshot } from '@/common/game/snapshot';
+import { usePlayState } from '@/common/game/play-state';
+import { useSnapshot, useSnapshotConsistency } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useClockSync } from '@/common/game/use-game-clock';
 import { connectSocket, disconnectSocket } from '@/common/realtime/socket';
 import { useRealtimeEvent } from '@/common/realtime/use-realtime';
+import { useSpeechFeed } from '@/common/speech';
 import { visitsKey } from '@/common/visits';
 import { AudioDirector } from '@/modules/audio';
 import { AwayReport } from '@/modules/away-report';
@@ -25,6 +27,7 @@ import { LifeEventsLayer, PendingDecisionsChip } from '@/modules/life-events';
 import { MomentLayer, VenueMomentLayer } from '@/modules/moments';
 import { NotificationBell, NotificationCenter } from '@/modules/notifications';
 import { Phone } from '@/modules/phone';
+import { TalkButton, TalkFeed, TalkLayer } from '@/modules/talk';
 import { VenueSheet } from '@/modules/venue';
 import { VisitCards } from '@/modules/visits';
 import { LoadingScreen } from './LoadingScreen';
@@ -67,8 +70,15 @@ export function GameRoot() {
     return () => disconnectSocket();
   }, [characterId]);
 
+  // Tell the server while the player is at the controls (the autopilot then leaves the character alone), and keep
+  // the world in step with the server when it moves the character anyway (the player was away, a collapse…).
+  usePlayState(characterId);
+  useSnapshotConsistency();
+
   // New DMs anywhere in the game: badge the phone and pop up an alert that opens the conversation in Messages.
   useDmAlerts(characterId, (sender) => useUi.getState().openPhone('messages', dmLink(sender)));
+  // Speech bubbles and the Nearby log: what people around you say out loud.
+  useSpeechFeed(characterId);
 
   useRealtimeEvent('character:invalidate', () => {
     void client.invalidateQueries({ queryKey: queryKeys.snapshot });
@@ -107,9 +117,12 @@ export function GameRoot() {
         }
         map={<Minimap className="w-[118px] sm:w-[188px]" />}
         notices={<VisitCards />}
+        talk={<TalkButton />}
+        feed={<TalkFeed />}
       />
       <VenueSheet />
       <VenueMomentLayer />
+      <TalkLayer />
       <Phone apps={PHONE_APPS} />
       <LifeEventsLayer />
       <NotificationCenter />

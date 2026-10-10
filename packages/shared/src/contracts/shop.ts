@@ -59,6 +59,8 @@ export interface ShopPurchaseRequest {
   readonly itemId: string;
   /** Default 1. Clothing is always 1. */
   readonly quantity?: number;
+  /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
+  readonly idempotencyKey?: string;
 }
 
 export type ShopChannel = 'in-store' | 'online';

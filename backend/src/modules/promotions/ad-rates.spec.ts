@@ -23,6 +23,19 @@ class FakeTable {
       return saved;
     },
     delete: async (where: { key: string }) => void this.rows.delete(where.key),
+    // Price changes run in a transaction (with their audit entry): the same table through a transaction manager.
+    manager: {
+      transaction: async <T>(work: (manager: unknown) => Promise<T>): Promise<T> =>
+        work({
+          create: (_entity: unknown, fields: Partial<AdRateEntity>) => Object.assign(new AdRateEntity(), fields),
+          save: async (row: AdRateEntity) => {
+            const saved = Object.assign(new AdRateEntity(), row, { updatedAt: new Date('2026-10-09T10:00:00Z') });
+            this.rows.set(row.key, saved);
+            return saved;
+          },
+          delete: async (_entity: unknown, where: { key: string }) => void this.rows.delete(where.key),
+        }),
+    },
   } as unknown as Repository<AdRateEntity>;
 }
 

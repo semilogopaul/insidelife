@@ -23,7 +23,7 @@ const DECLARED_TOLERANCE = 0.05;
 const disagree = (a: number, b: number): boolean => Math.abs(a - b) > DECLARED_TOLERANCE * Math.max(a, b);
 
 /**
- * Confirm a sniffed MP3/OGG really is playable audio of an acceptable length (30 s to under 5 minutes). The length is
+ * Confirm a sniffed MP3/OGG really is playable audio of an acceptable length (30 s to 3 minutes). The length is
  * counted from every frame (MP3) or packet (Ogg) in the file (`audio-frames.ts`), never taken from a header or from
  * what the browser says: a file whose declared length (Xing/Info/VBRI frame count, granule position, or the parser's
  * reading) differs from the counted one by more than 5% is refused as forged or broken. The file is stored as-is
@@ -53,9 +53,9 @@ export async function inspectTrack(input: Buffer, sniffed: TrackContentType): Pr
   }
   const duration = counted.seconds;
   if (duration < TRACK_MIN_SECONDS) throw new InvalidMediaException(`Songs must be at least ${TRACK_MIN_SECONDS} seconds long`);
-  if (duration >= TRACK_MAX_SECONDS) {
-    throw new InvalidMediaException(`Songs must be under ${TRACK_MAX_SECONDS / 60} minutes (this one is ${clock(duration)}). Trim it or upload a radio edit`);
+  if (duration > TRACK_MAX_SECONDS + 0.5) {
+    throw new InvalidMediaException(`Songs can be at most ${TRACK_MAX_SECONDS / 60} minutes (this one is ${clock(duration)}). Trim it or upload a radio edit`);
   }
 
-  return { contentType: sniffed, durationSeconds: Math.min(Math.round(duration), TRACK_MAX_SECONDS - 1) };
+  return { contentType: sniffed, durationSeconds: Math.min(Math.round(duration), TRACK_MAX_SECONDS) };
 }

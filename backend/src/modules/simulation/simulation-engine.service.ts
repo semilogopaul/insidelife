@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  actionHours,
   BACKGROUNDS,
+  COLLAPSE_TARGET,
   DAYS_PER_MONTH,
   MAX_STATUS,
   MINUTES_PER_DAY,
@@ -10,11 +12,13 @@ import {
   findAction,
   findVenue,
   homeLocationId,
+  formatClock,
   moodPerformanceMultiplier,
   projectNeeds,
   startOfDay,
   type ActionDefinition,
   type GameMinute,
+  type NeedDrift,
   type SkillKey,
   type Skills,
 } from '@insidelife/shared';
@@ -23,15 +27,20 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import type { Segment } from './interfaces/simulation-system.interface.js';
 import type { SimulationContext } from './simulation-context.js';
 import { hookProfiler } from './hook-profiler.js';
+import { daysWithoutSleep, restedThrough, sleepDebtWarningDue } from './rest.js';
 import { SimulationRegistry } from './simulation-registry.service.js';
 import { TimelinePlanner } from './timeline-planner.service.js';
 
 /** Grace period after deliberately arriving somewhere before autopilot may send the character home. */
-const HANG_AROUND_MINUTES = 90;
+const HANG_AROUND_MINUTES = 45;
 
 /** Below these need levels health starts draining every hour (points/hour scale with how deep you are). */
 const HEALTH_HUNGER_THRESHOLD = 15;
 const HEALTH_ENERGY_THRESHOLD = 8;
+/** Health points per game hour at a need of 0 (linear up to the threshold). */
+const HEALTH_HUNGER_DRAIN = 0.9;
+const HEALTH_ENERGY_DRAIN = 0.6;
+const COLLAPSED_MODIFIER = 'collapsed';
 
 /** Hard cap on loop iterations per settle (≈ several game years); the background settler keeps gaps small. */
 const MAX_STEPS = 20_000;
@@ -58,7 +67,9 @@ export class SimulationEngine {
       return;
     }
 
-    const state = this.planner.stateOf(character);
+    // The sleep clock starts at the first settle for characters that predate it.
+    character.lastSleptAt ??= character.settledAt;
+    const state = this.planner.stateOf(ctx);
     let steps = 0;
     while (ctx.time < until && character.alive) {
       if (++steps > MAX_STEPS) {
@@ -76,6 +87,7 @@ export class SimulationEngine {
         continue;
       }
       if (step.type === 'begin') {
+        if (step.activity.targetId === COLLAPSE_TARGET) await this.collapse(ctx, step.activity);
         this.start(ctx, step.activity);
         state.activity = character.activity;
         state.travel = null;
@@ -93,6 +105,7 @@ export class SimulationEngine {
       state.regionId = character.regionId;
       state.energy = character.needs.energy;
       state.hunger = character.needs.hunger;
+      state.lastSleptAt = character.lastSleptAt;
 
       if (ctx.time === dayEnd) await this.endDay(ctx, dayEnd / MINUTES_PER_DAY - 1);
     }
@@ -140,23 +153,45 @@ export class SimulationEngine {
     const hours = (segment.endsAt - segment.startsAt) / MINUTES_PER_HOUR;
     const before = ctx.character.needs;
     ctx.character.needs = projectNeeds(before, segment.profile, hours);
-    this.applyDeprivation(ctx, before, hours);
+    this.applyDeprivation(ctx, before, segment, hours);
+    ctx.character.lastSleptAt = restedThrough(segment, ctx.character.activity, ctx.character.lastSleptAt ?? segment.startsAt);
     if (segment.kind !== 'commute' && !ctx.character.travel) ctx.character.locationId = segment.locationId;
     for (const system of this.registry.all) if (system.onSegment) await hookProfiler.time(`${system.key}.onSegment`, () => system.onSegment!(ctx, segment));
   }
 
   /**
    * Starving or running on empty hurts health directly (hour by hour, not just at day end), so the health bar visibly
-   * falls when you skip meals or sleep. Uses the average of the need over the segment.
+   * falls when you skip meals or sleep. The drain is the exact integral over the segment of the need's path (linear
+   * drift, then flat at its target), so a span costs the same however it is split into segments or settles.
    */
-  private applyDeprivation(ctx: SimulationContext, before: SimulationContext['character']['needs'], hours: number): void {
-    const after = ctx.character.needs;
-    const hunger = (before.hunger + after.hunger) / 2;
-    const energy = (before.energy + after.energy) / 2;
-    let drain = 0;
-    if (hunger < HEALTH_HUNGER_THRESHOLD) drain += ((HEALTH_HUNGER_THRESHOLD - hunger) / HEALTH_HUNGER_THRESHOLD) * 0.9;
-    if (energy < HEALTH_ENERGY_THRESHOLD) drain += ((HEALTH_ENERGY_THRESHOLD - energy) / HEALTH_ENERGY_THRESHOLD) * 0.6;
-    if (drain > 0) ctx.character.health = Math.max(0, ctx.character.health - drain * hours);
+  private applyDeprivation(ctx: SimulationContext, before: SimulationContext['character']['needs'], segment: Segment, hours: number): void {
+    const drain =
+      deprivationHours(before.hunger, segment.profile.hunger, hours, HEALTH_HUNGER_THRESHOLD) * HEALTH_HUNGER_DRAIN +
+      deprivationHours(before.energy, segment.profile.energy, hours, HEALTH_ENERGY_THRESHOLD) * HEALTH_ENERGY_DRAIN;
+    if (drain > 0) ctx.character.health = Math.max(0, ctx.character.health - drain);
+  }
+
+  /**
+   * Ten game days without a real sleep: the character drops where they are (indoors) and sleeps it off. The planner
+   * decides when (`rest.ts`); this is the part the player sees.
+   */
+  private async collapse(ctx: SimulationContext, activity: ActivityState): Promise<void> {
+    const character = ctx.character;
+    const days = daysWithoutSleep(character.lastSleptAt ?? activity.startedAt, activity.startedAt);
+    const place = await this.planner.placeLabel(ctx, activity.locationId);
+    const where = place === 'home' ? 'at home' : place === 'a friend’s place' ? 'at a friend’s place' : `at ${place}`;
+    character.moodModifiers = [
+      ...character.moodModifiers.filter((modifier) => modifier.id !== COLLAPSED_MODIFIER),
+      { id: COLLAPSED_MODIFIER, label: 'Collapsed from exhaustion', value: -12, until: activity.startedAt + MINUTES_PER_DAY },
+    ];
+    ctx.notify({
+      kind: 'health',
+      title: 'You collapsed from exhaustion',
+      body: `${days} days without a proper sleep caught up with you ${where}. You're out cold until ${formatClock(activity.endsAt)}. Sleep at home regularly so it doesn't happen again.`,
+      tone: 'bad',
+      gameMinute: activity.startedAt,
+    });
+    ctx.report({ label: `Collapsed from exhaustion after ${days} days without sleep`, tone: 'bad' });
   }
 
   private async startRoutineTrip(ctx: SimulationContext, travel: NonNullable<SimulationContext['character']['travel']>): Promise<void> {
@@ -184,7 +219,8 @@ export class SimulationEngine {
     character.activity = null;
     if (!action) return;
 
-    const hours = (activity.endsAt - activity.startedAt) / MINUTES_PER_HOUR;
+    // Actions keep their real-time feel at ×60, so a game hour of one counts double (pacing.ts).
+    const hours = actionHours(activity);
     const mood = this.mood(ctx);
     const background = BACKGROUNDS[character.background];
     const xp = action.skillXpPerHour ?? {};
@@ -219,6 +255,14 @@ export class SimulationEngine {
   private async endDay(ctx: SimulationContext, dayIndex: number): Promise<void> {
     const character = ctx.character;
     character.moodModifiers = character.moodModifiers.filter((modifier) => modifier.until > ctx.time);
+    if (character.lastSleptAt !== null && sleepDebtWarningDue(character.lastSleptAt, ctx.time)) {
+      ctx.notify({
+        kind: 'health',
+        title: `${daysWithoutSleep(character.lastSleptAt, ctx.time)} days without proper sleep`,
+        body: 'Your body is shutting down. Sleep at home soon, or you’ll collapse wherever you are.',
+        tone: 'bad',
+      });
+    }
     // Fitness fades without exercise; clout from one-off flexes fades back toward what your life supports.
     character.fitness = Math.max(0, character.fitness - 0.15);
     character.status = Math.round(character.status * 0.985);
@@ -271,4 +315,29 @@ export class SimulationEngine {
   static dayOf(t: GameMinute): number {
     return Math.floor(t / MINUTES_PER_DAY);
   }
+}
+
+/**
+ * Hour-weighted depth below `threshold` of a need drifting from `value` under `drift` for `hours`:
+ * ∫ max(0, (threshold − need(τ)) / threshold) dτ, with need(τ) moving linearly toward the target, then flat.
+ */
+export function deprivationHours(value: number, drift: NeedDrift, hours: number, threshold: number): number {
+  if (hours <= 0) return 0;
+  const target = Math.min(100, Math.max(0, drift.target));
+  const rate = drift.rate > 0 ? (target < value ? -drift.rate : drift.rate) : 0;
+  const reach = rate === 0 || target === value ? 0 : Math.min(hours, (target - value) / rate);
+  const depth = (need: number): number => Math.max(0, threshold - need) / threshold;
+  // Linear part: integrate a piecewise-linear function exactly by splitting where it crosses the threshold.
+  let total = 0;
+  if (reach > 0) {
+    const end = value + rate * reach;
+    const cross = (threshold - value) / rate;
+    if (cross > 0 && cross < reach) {
+      total += ((depth(value) + depth(threshold)) / 2) * cross + ((depth(threshold) + depth(end)) / 2) * (reach - cross);
+    } else {
+      total += ((depth(value) + depth(end)) / 2) * reach;
+    }
+  }
+  const flat = reach > 0 ? value + rate * reach : value;
+  return total + depth(flat) * (hours - reach);
 }

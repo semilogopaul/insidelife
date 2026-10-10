@@ -9,6 +9,7 @@ import { SimulationModule } from '../simulation/simulation.module.js';
 import { UsersModule } from '../users/users.module.js';
 import { CheckoutReconciler } from './checkout-reconciler.service.js';
 import { CheckoutService } from './checkout.service.js';
+import { CharacterDebtEntity } from './entities/character-debt.entity.js';
 import { PaymentEntity } from './entities/payment.entity.js';
 import { FlutterwaveWebhookController } from './flutterwave-webhook.controller.js';
 import { FlutterwaveWebhookService } from './flutterwave-webhook.service.js';
@@ -29,7 +30,7 @@ import { TopupsService } from './topups.service.js';
  * without creating a cycle.
  */
 @Module({
-  imports: [SimulationModule, CharactersModule, UsersModule, TypeOrmModule.forFeature([PaymentEntity]), BullModule.registerQueue({ name: PAYMENTS_QUEUE })],
+  imports: [SimulationModule, CharactersModule, UsersModule, TypeOrmModule.forFeature([PaymentEntity, CharacterDebtEntity]), BullModule.registerQueue({ name: PAYMENTS_QUEUE })],
   controllers: [PaymentsController, PaymentsSandboxController, FlutterwaveWebhookController],
   providers: [
     FlutterwaveClient,

@@ -1,7 +1,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import {
+  actionHours,
   HOSTEL_LIVING_COST_MULTIPLIER,
-  MINUTES_PER_HOUR,
   findCourse,
   findInstitution,
   type ActionDefinition,
@@ -159,7 +159,7 @@ export class EducationSystem implements SimulationSystem, OnModuleInit {
     const targets = pendingExams.length + (enrolled ? 1 : 0) + programmes.length;
     if (targets === 0) return;
 
-    const hours = (activity.endsAt - activity.startedAt) / MINUTES_PER_HOUR / targets;
+    const hours = actionHours(activity) / targets;
     for (const exam of pendingExams) await this.exams.addPrep(ctx, exam, hours);
     if (enrolled) await this.enrolments.addStudy(ctx, enrolled, hours, activity.locationId === enrolled.institution.venueId);
     for (const programme of programmes) await this.programmes.addPrep(ctx, programme, hours);

@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  CUSTOM_TOPUP_ID,
   DEFAULT_TOPUP_DAILY_LIMIT_NGN,
   DEFAULT_TOPUP_MAX_PER_PAYMENT_NGN,
   TOPUP_MIN_NGN,
   TOPUP_PACKAGES,
   TOPUP_RATE_TIERS,
+  findTopupPackage,
   topupAmountProblem,
   topupRateFor,
   topupVirtualAmount,
@@ -73,5 +75,21 @@ describe('top-up rates', () => {
 
   it('has no daily cap by default', () => {
     expect(DEFAULT_TOPUP_DAILY_LIMIT_NGN).toBe(0);
+  });
+});
+
+/** Added after mutation testing: the pack ids and the custom id are part of the payments contract. */
+describe('top-up packs and ids', () => {
+  it('keeps the pack ids the app and stored payments use, cheapest first', () => {
+    expect(TOPUP_PACKAGES.map((pack) => pack.id)).toEqual(['small-chops', 'jollof-pack', 'owambe-pack', 'big-boy-pack', 'odogwu-pack']);
+    for (const pack of TOPUP_PACKAGES) expect(findTopupPackage(pack.id)).toBe(pack);
+    expect(findTopupPackage('free-money')).toBeUndefined();
+    expect(findTopupPackage('')).toBeUndefined();
+    expect(CUSTOM_TOPUP_ID).toBe('custom');
+    expect(findTopupPackage(CUSTOM_TOPUP_ID)).toBeUndefined();
+  });
+
+  it('explains a refused amount', () => {
+    expect(() => topupVirtualAmount(100)).toThrow('Top-ups are whole naira from ₦500');
   });
 });

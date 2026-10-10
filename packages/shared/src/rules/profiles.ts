@@ -1,6 +1,7 @@
 import type { NeedDrift, NeedKey, NeedProfile } from '../needs/needs.js';
 import type { ActionDefinition } from '../catalog/actions.js';
 import { TRANSPORT, type TransportMode } from '../catalog/transport.js';
+import { ACTION_PACE } from './pacing.js';
 
 /**
  * Need-drift profiles for every kind of activity. The server builds timeline segments with these; the client
@@ -23,6 +24,8 @@ export interface ProfileContext {
 export const DEFAULT_PROFILE_CONTEXT: ProfileContext = { comfort: 55, bedQuality: 0.3, jobStress: 0.4, energyCap: 100 };
 
 const d = (target: number, rate: number): NeedDrift => ({ target, rate });
+/** An action's own drift runs at `ACTION_PACE` (it lasts half the game minutes it did at ×120, same effect). */
+const paced = (drift: NeedDrift): NeedDrift => ({ target: drift.target, rate: drift.rate * ACTION_PACE });
 
 function capEnergy(profile: NeedProfile, cap: number): NeedProfile {
   if (cap >= 100) return profile;
@@ -61,8 +64,9 @@ export function idleOutProfile(ctx: ProfileContext): NeedProfile {
   );
 }
 
+/** A full rest is 3 game hours: from empty to full on a mat (34/h), faster on a good bed. */
 export function sleepProfile(ctx: ProfileContext): NeedProfile {
-  const recovery = 9 + ctx.bedQuality * 6;
+  const recovery = 34 + ctx.bedQuality * 16;
   return capEnergy(
     {
       energy: d(100, recovery),
@@ -101,17 +105,18 @@ export function lectureProfile(ctx: ProfileContext): NeedProfile {
   );
 }
 
+/** On the road. Rides take half the game minutes they did at ×120 (`pacedTripMinutes`), so they drift at the pace. */
 export function commuteProfile(ctx: ProfileContext, mode: TransportMode): NeedProfile {
   const transport = TRANSPORT[mode];
   const energy = transport.energyPerHour < 0 ? d(0, -transport.energyPerHour) : d(100, transport.energyPerHour);
   const fun = transport.funPerHour < 0 ? d(0, -transport.funPerHour) : d(80, transport.funPerHour);
   return capEnergy(
     {
-      energy,
-      hunger: d(20, 4),
-      hygiene: d(30, mode === 'walk' || mode === 'okada' ? 6 : 3),
-      fun,
-      social: d(45, 1),
+      energy: paced(energy),
+      hunger: paced(d(20, 4)),
+      hygiene: paced(d(30, mode === 'walk' || mode === 'okada' ? 6 : 3)),
+      fun: paced(fun),
+      social: paced(d(45, 1)),
     },
     ctx.energyCap,
   );
@@ -131,15 +136,25 @@ export function hospitalProfile(): NeedProfile {
   return { energy: d(60, 4), hunger: d(55, 4), hygiene: d(60, 3), fun: d(15, 3), social: d(30, 2) };
 }
 
-/** Action profile: start from the location's idle profile and apply the action's overrides. */
+/**
+ * Action profile: start from the location's idle profile and apply the action's overrides, at `ACTION_PACE`. Sleep and
+ * naps recover at the sleep rate; eating at home is the lifestyle budget's meal (broke: garri and sugar).
+ */
 export function actionProfile(action: ActionDefinition, atHome: boolean, ctx: ProfileContext): NeedProfile {
   if (action.id === 'sleep' || action.id === 'nap') {
     const base = sleepProfile(ctx);
     if (action.id === 'sleep') return base;
     return { ...idleHomeProfile(ctx), energy: base.energy };
   }
+  if (action.id === 'home-meal') {
+    const meal = homeMealProfile(ctx);
+    return { ...meal, hunger: paced(meal.hunger), fun: paced(meal.fun) };
+  }
   const base = atHome ? idleHomeProfile(ctx) : idleOutProfile(ctx);
-  const pick = (key: NeedKey): NeedDrift => action.drift[key] ?? base[key];
+  const pick = (key: NeedKey): NeedDrift => {
+    const own = action.drift[key];
+    return own ? paced(own) : base[key];
+  };
   return capEnergy(
     { energy: pick('energy'), hunger: pick('hunger'), hygiene: pick('hygiene'), fun: pick('fun'), social: pick('social') },
     ctx.energyCap,

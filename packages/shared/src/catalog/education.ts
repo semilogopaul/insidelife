@@ -23,7 +23,7 @@ export const JAMB_MIN_POLYTECHNIC = 100;
 /** Game days between registering and sitting (prep time). */
 export const EXAM_PREP_DAYS = 3;
 /** Length of the `write-exam` action in game minutes. */
-export const EXAM_DURATION_MINUTES = 180;
+export const EXAM_DURATION_MINUTES = 90;
 /** Latest hour a sitting can start so it ends before the CBT centre closes. */
 export const EXAM_LATEST_START_HOUR = 15;
 /** WAEC GCE results arrive this many game days after the paper. */

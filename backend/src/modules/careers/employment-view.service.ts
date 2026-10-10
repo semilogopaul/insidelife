@@ -30,11 +30,10 @@ export class EmploymentViewService {
   ) {}
 
   async view(ctx: SimulationContext): Promise<EmploymentViewDto> {
-    const [employment, history, applications] = await Promise.all([
-      this.store.active(ctx),
-      this.store.history(ctx),
-      this.store.recentApplications(ctx),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const employment = await this.store.active(ctx);
+    const history = await this.store.history(ctx);
+    const applications = await this.store.recentApplications(ctx);
     return {
       employment: employment ? await this.employmentDto(ctx, employment) : null,
       history: history.map(historyDto),

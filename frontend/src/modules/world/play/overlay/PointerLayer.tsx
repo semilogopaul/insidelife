@@ -60,13 +60,16 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
   const sideRef = useRef(side);
   // Pixels at the bottom the stick's base must not cover (e.g. the venue sheet indoors).
   const reserveRef = useRef(reserveBottom);
-  // The "drag to walk" hint shows briefly when you step outside, until the first time you use the stick.
-  const [hint, setHint] = useState(true);
+  // The stick's resting ring is always there on touch screens while you can walk (clean screen too): it says
+  // "Drag to walk" for a few seconds when you arrive (until you first use it), then stays as a faint ring. It fades
+  // while your thumb holds the stick (the stick itself shows where it is).
+  const rest = useRef<HTMLDivElement>(null);
+  const [fresh, setFresh] = useState(true);
   useEffect(() => {
-    const id = window.setTimeout(() => setHint(false), 9000);
+    const id = window.setTimeout(() => setFresh(false), 9000);
     return () => window.clearTimeout(id);
   }, []);
-  const hideHint = useRef(() => setHint(false)).current;
+  const hideHint = useRef(() => setFresh(false)).current;
   useEffect(() => {
     walkingRef.current = walking;
     reserveRef.current = reserveBottom;
@@ -79,6 +82,7 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
     const k = knob.current;
     if (!b || !k) return;
     b.style.opacity = '1';
+    if (rest.current) rest.current.style.opacity = '0';
     b.style.transform = `translate(${x - 60}px, ${y - 60}px)`;
     k.style.opacity = '1';
     k.style.transform = `translate(${kx - 26}px, ${ky - 26}px)`;
@@ -90,6 +94,7 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
     controls.run = false;
     if (base.current) base.current.style.opacity = '0';
     if (knob.current) knob.current.style.opacity = '0';
+    if (rest.current) rest.current.style.opacity = '';
   }
 
   useEffect(() => {
@@ -208,22 +213,29 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
 
   return (
     <div ref={surface} className="absolute inset-0 touch-none select-none" aria-hidden data-testid="play-surface">
-      {touchUi && walking && hint && (
+      {touchUi && walking && (
         <div
+          ref={rest}
           data-testid="stick-hint"
           data-side={side}
+          data-fresh={fresh ? 'true' : undefined}
           className={cn(
-            'pointer-events-none absolute bottom-[max(env(safe-area-inset-bottom),1rem)] grid size-[120px] place-items-center rounded-full border-2 border-white/25 bg-ink/15',
+            'pointer-events-none absolute bottom-[max(env(safe-area-inset-bottom),1rem)] grid size-[120px] place-items-center rounded-full border-2 transition-opacity duration-300',
+            fresh ? 'border-white/25 bg-ink/15' : 'border-white/20 bg-ink/10 opacity-70',
             side === 'left' ? 'left-[max(env(safe-area-inset-left),1rem)]' : 'right-[max(env(safe-area-inset-right),1rem)]',
             hintClassName,
           )}
           style={reserveBottom > 0 ? { bottom: `calc(max(env(safe-area-inset-bottom), 1rem) + ${reserveBottom}px)` } : undefined}
         >
-          <span className="text-center text-2xs font-bold uppercase tracking-wide text-white/60">
-            Drag
-            <br />
-            to walk
-          </span>
+          {fresh ? (
+            <span className="text-center text-2xs font-bold uppercase tracking-wide text-white/60">
+              Drag
+              <br />
+              to walk
+            </span>
+          ) : (
+            <span className="size-[44px] rounded-full border-2 border-white/25" />
+          )}
         </div>
       )}
       <div ref={base} className="pointer-events-none absolute left-0 top-0 size-[120px] rounded-full border-2 border-white/40 bg-ink/25 opacity-0 transition-opacity duration-150" />

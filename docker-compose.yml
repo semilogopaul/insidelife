@@ -73,7 +73,8 @@ services:
       SMTP_URL: ${SMTP_URL:-}
       MAIL_FROM: ${MAIL_FROM:-Inside Life <hello@insidelife.online>}
       GAME_EPOCH: ${GAME_EPOCH:-2026-10-01T00:00:00.000Z}
-      GAME_TIME_SCALE: ${GAME_TIME_SCALE:-120}
+      GAME_TIME_SCALE: ${GAME_TIME_SCALE:-60}
+      GAME_TIME_RESCALES: ${GAME_TIME_RESCALES:-}
       WORLD_SEED: ${WORLD_SEED:-eko-o-ni-baje}
       MARKET_SEED: ${MARKET_SEED:-docker-local-market-seed-0123456789}
       # Empty → the sandbox checkout. Set Flutterwave TEST keys to try the real hosted checkout locally.

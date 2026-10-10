@@ -19,7 +19,7 @@ import { NextStep } from '@/common/components';
 
 const MIN_AGE = 18;
 
-/** FRSC driver's licence: held, in progress, or how to get one (age 18+, the fee, a 2-hour test at a government office). */
+/** FRSC driver's licence: held, in progress, or how to get one (age 18+, the fee, a 1-hour test at a government office). */
 export function LicenceTab({ data, now }: { readonly data: VehiclesDto; readonly now: GameMinute }) {
   const { applyForLicence } = useVehicleCommands();
   const { data: snapshot } = useSnapshot();
@@ -82,7 +82,7 @@ export function LicenceTab({ data, now }: { readonly data: VehiclesDto; readonly
                 applyForLicence.mutate(undefined, {
                   onSuccess: (result) =>
                     announce('Test started', {
-                      body: 'Mirror, signal, manoeuvre. Two hours with the examiner.',
+                      body: `Mirror, signal, manoeuvre. ${formatGameDuration(DRIVERS_LICENCE.testMinutes)} with the examiner.`,
                       amount: -result.fee,
                     }),
                   onError: (error) => complain('No test today', error),

@@ -202,6 +202,7 @@ export class SuccessionService {
       activity: null,
       travel: null,
       settledAt: ctx.time,
+      lastSleptAt: ctx.time,
       seed: heirSeed(rng),
       earnedTotal: 0,
       unearnedTotal: estate.inherited,

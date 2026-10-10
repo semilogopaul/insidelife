@@ -1,3 +1,5 @@
+import { parseClockRescales, type ClockRescale } from '@insidelife/shared';
+
 /**
  * Typed configuration. Read through `ConfigService<AppConfig, true>` so every key is checked at compile time.
  */
@@ -31,7 +33,10 @@ export interface AppConfig {
   };
   readonly game: {
     readonly epochRealMs: number;
+    /** Game minutes per real minute from the epoch (until the first rescale). */
     readonly timeScale: number;
+    /** Later speed changes, each continuous with the clock before it. */
+    readonly rescales: readonly ClockRescale[];
     readonly worldSeed: string;
   };
   readonly storage: {
@@ -128,7 +133,8 @@ export const configuration = (): AppConfig => {
     },
     game: {
       epochRealMs: Date.parse(env.GAME_EPOCH ?? '2026-10-01T00:00:00.000Z'),
-      timeScale: Number(env.GAME_TIME_SCALE ?? 120),
+      timeScale: Number(env.GAME_TIME_SCALE ?? 60),
+      rescales: parseClockRescales(env.GAME_TIME_RESCALES),
       worldSeed: env.WORLD_SEED ?? 'eko-o-ni-baje',
     },
     storage: {

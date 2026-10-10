@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { CharactersModule } from '../characters/characters.module.js';
 import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { CharacterSession } from './character-session.service.js';
+import { CommandReceiptEntity } from './entities/command-receipt.entity.js';
 import { SimulationEngine } from './simulation-engine.service.js';
 import { SimulationRegistry } from './simulation-registry.service.js';
 import { AllowanceSystem } from './systems/allowance.system.js';
@@ -15,7 +17,7 @@ import { TimelinePlanner } from './timeline-planner.service.js';
  * Domain modules import this module and register their `SimulationSystem` in `onModuleInit`.
  */
 @Module({
-  imports: [CharactersModule, NotificationsModule, PresenceModule],
+  imports: [CharactersModule, NotificationsModule, PresenceModule, TypeOrmModule.forFeature([CommandReceiptEntity])],
   providers: [SimulationRegistry, TimelinePlanner, SimulationEngine, CharacterSession, LifestyleSystem, AllowanceSystem, HabitsSystem],
   exports: [SimulationRegistry, TimelinePlanner, SimulationEngine, CharacterSession],
 })

@@ -1,11 +1,13 @@
-import { gameMinuteAt, realMsAt, type GameClockConfig, type GameMinute, type WorldClockDto } from '@insidelife/shared';
+import { clockAt, gameMinuteAt, realMsAt, type ClockRescale, type GameClockConfig, type GameMinute, type WorldClockDto } from '@insidelife/shared';
 
 /**
  * Client-side game clock. Synced once from `GET /world/clock` (with a round-trip-corrected server offset) and then
  * computed locally — no polling. 3D code reads `gameClock.now()` inside `useFrame` without touching React state.
  */
 class GameClock {
-  private config: GameClockConfig | null = null;
+  private base: GameClockConfig | null = null;
+  /** A scheduled speed change the server told us about: the clock switches there by itself, without a refetch. */
+  private rescales: readonly ClockRescale[] = [];
   private offsetMs = 0;
   private seed = '';
   private readonly listeners = new Set<() => void>();
@@ -19,13 +21,19 @@ class GameClock {
   sync(dto: WorldClockDto, requestStartedAt: number, responseReceivedAt: number): void {
     const midpoint = (requestStartedAt + responseReceivedAt) / 2;
     this.offsetMs = dto.serverNowMs - midpoint;
-    this.config = { epochRealMs: dto.epochRealMs, epochGameMinute: dto.epochGameMinute, scale: dto.scale };
+    this.base = { epochRealMs: dto.epochRealMs, epochGameMinute: dto.epochGameMinute, scale: dto.scale };
+    this.rescales = dto.nextRescale ? [dto.nextRescale] : [];
     this.seed = dto.worldSeed;
     for (const listener of this.listeners) listener();
   }
 
   get ready(): boolean {
-    return this.config !== null;
+    return this.base !== null;
+  }
+
+  /** The clock piece running now (null until synced). */
+  private get config(): GameClockConfig | null {
+    return this.base ? clockAt(this.base, this.rescales, this.serverNow()) : null;
   }
 
   get worldSeed(): string {
@@ -33,7 +41,7 @@ class GameClock {
   }
 
   get scale(): number {
-    return this.config?.scale ?? 120;
+    return this.config?.scale ?? 60;
   }
 
   /** Server-corrected wall clock (ms). */
@@ -43,14 +51,16 @@ class GameClock {
 
   /** Fractional game minute right now. */
   now(): GameMinute {
-    if (!this.config) return 0;
-    return gameMinuteAt(this.config, this.serverNow());
+    const config = this.config;
+    if (!config) return 0;
+    return gameMinuteAt(config, this.serverNow());
   }
 
   /** Local wall-clock ms when the game clock reaches `t` (for scheduling refetches). */
   localMsAt(t: GameMinute): number {
-    if (!this.config) return Date.now();
-    return realMsAt(this.config, t) - this.offsetMs;
+    const config = this.config;
+    if (!config) return Date.now();
+    return realMsAt(config, t) - this.offsetMs;
   }
 }
 

@@ -20,7 +20,7 @@ type Exit = 'sell' | 'close' | null;
 export function BusinessCard({ business }: { readonly business: OwnedBusinessDto }) {
   const { expand, sell, close } = useBusinessCommands();
   const place = useCurrentPlace();
-  const manage = useSnapshotMutation(() => jobsApi.startAction('manage-business', 120));
+  const manage = useSnapshotMutation(() => jobsApi.startAction('manage-business', 60));
   const [expandOpen, setExpandOpen] = useState(false);
   const [exit, setExit] = useState<Exit>(null);
   const active = business.status === 'active';
@@ -97,13 +97,13 @@ export function BusinessCard({ business }: { readonly business: OwnedBusinessDto
                 manage.mutate(undefined, {
                   onSuccess: () =>
                     announce('Managing your businesses', {
-                      body: '2 hours of calls with suppliers, staff and customers.',
+                      body: 'An hour of calls with suppliers, staff and customers.',
                     }),
                   onError: (error) => complain('Couldn’t start managing', error),
                 })
               }
             >
-              Manage 2h
+              Manage 1h
             </Button>
             {business.expansionCost !== null && (
               <Button

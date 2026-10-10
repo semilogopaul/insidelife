@@ -13,13 +13,14 @@ import { CharactersController } from './characters.controller.js';
 import { MovementTracker } from './movement-tracker.service.js';
 import { MovementService } from './movement.service.js';
 import { NotificationsController } from './notifications.controller.js';
+import { PlayStateService } from './play-state.service.js';
 import { SnapshotService } from './snapshot.service.js';
 
 /** Player-facing character lifecycle: creation, snapshot, settings, actions and movement. */
 @Module({
   imports: [CharactersModule, SimulationModule, NotificationsModule, PresenceModule, VehiclesModule, VisitsModule],
   controllers: [CharactersController, ActivitiesController, NotificationsController],
-  providers: [CharacterCreationService, SnapshotService, ActionsService, SettingsService, MovementService, MovementTracker],
+  providers: [CharacterCreationService, SnapshotService, ActionsService, SettingsService, MovementService, MovementTracker, PlayStateService],
   exports: [SnapshotService],
 })
 export class LifeModule {}

@@ -32,6 +32,21 @@ describe('transfer limits', () => {
     expect(checkTransfer({ amount: -500, cash: RICH })).toMatchObject({ ok: false, code: 'INVALID_AMOUNT' });
   });
 
+  it('accepts exactly ₦100 and exactly ₦5m, refuses zero, and explains every refusal (mutation-tested edges)', () => {
+    expect(checkTransfer({ amount: 100, cash: RICH }).ok).toBe(true);
+    expect(checkTransfer({ amount: 5_000_000, cash: RICH }).ok).toBe(true);
+    expect(checkTransfer({ amount: 0, cash: RICH })).toEqual({ ok: false, code: 'INVALID_AMOUNT', message: 'Enter a whole naira amount' });
+    expect(checkTransfer({ amount: 99, cash: RICH })).toEqual({ ok: false, code: 'TRANSFER_TOO_SMALL', message: 'The smallest transfer is ₦100' });
+    expect(checkTransfer({ amount: 5_000_001, cash: RICH })).toEqual({ ok: false, code: 'TRANSFER_TOO_LARGE', message: 'You can send at most ₦5,000,000 at once' });
+    expect(checkTransfer({ amount: 10_000, cash: 10_000 })).toEqual({ ok: false, code: 'INSUFFICIENT_FUNDS', message: 'You need ₦10,060 including ₦60 charges' });
+  });
+
+  it('turns every control character in a note into a single space', () => {
+    expect(sanitizeNote('a\u0000\u0001\u001fb')).toBe('a b');
+    expect(sanitizeNote('a\u007fb')).toBe('a b');
+    expect(sanitizeNote('suya\u0007money')).toBe('suya money');
+  });
+
   it('requires the sender to afford amount plus charges', () => {
     expect(checkTransfer({ amount: 10_000, cash: 10_059 })).toMatchObject({ ok: false, code: 'INSUFFICIENT_FUNDS' });
     expect(checkTransfer({ amount: 10_000, cash: 10_060 }).ok).toBe(true);

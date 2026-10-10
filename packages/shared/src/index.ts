@@ -11,6 +11,7 @@ export * from './world/world.js';
 // Rules
 export * from './rules/finance.js';
 export * from './rules/profiles.js';
+export * from './rules/pacing.js';
 export * from './rules/account.js';
 
 // Catalog

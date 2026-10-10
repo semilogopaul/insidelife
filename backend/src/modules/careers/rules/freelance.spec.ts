@@ -1,3 +1,4 @@
+import { ACTION_PACE, MINUTES_PER_HOUR, findAction } from '@insidelife/shared';
 import { FREELANCE_MAX_RATE, freelanceHourlyRate, freelancePay } from './freelance.js';
 
 describe('freelance pay', () => {
@@ -7,7 +8,10 @@ describe('freelance pay', () => {
     expect(freelanceHourlyRate(100)).toBe(FREELANCE_MAX_RATE);
   });
 
-  it('pays a 4-hour gig at tech 20 a few thousand naira, not a fortune', () => {
+  it('pays the longest gig (4 effective hours) at tech 20 a few thousand naira, not a fortune', () => {
+    // The longest gig is 2 game hours, which counts as 4 effective hours (game hours × ACTION_PACE).
+    const longest = Math.max(...(findAction('freelance')?.durations ?? []));
+    expect((longest / MINUTES_PER_HOUR) * ACTION_PACE).toBe(4);
     const pay = freelancePay(20, 4, 1, 1);
     expect(pay).toBeGreaterThan(8_000);
     expect(pay).toBeLessThan(15_000);

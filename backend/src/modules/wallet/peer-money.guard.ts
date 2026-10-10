@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import {
   DAILY_PEER_RECEIVE_LIMIT,
+  PURCHASE_HOLD_HOURS,
   checkPeerMoney,
+  debtOutstandingMessage,
   dailyTransferLimit,
   formatNaira,
   peerSendable,
@@ -10,6 +12,7 @@ import {
 } from '@insidelife/shared';
 import { GameRuleException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
+import { LedgerService } from '../ledger/ledger.service.js';
 import { UsersService } from '../users/users.service.js';
 import { WorldService } from '../world/world.service.js';
 import { characterAgeDays } from './transfer-rules.js';
@@ -25,6 +28,10 @@ export interface PeerMoneyLimits {
   readonly receiveLimit: number;
   readonly characterAgeDays: number;
   readonly emailVerified: boolean;
+  /** Bought coins on hold (left out of `sendable`) and when the last of them is freed; null when none. */
+  readonly purchaseHold: { readonly amount: number; readonly releasesAt: Date } | null;
+  /** Owed from a refunded top-up: nothing goes to players until it's repaid. */
+  readonly debt: number;
 }
 
 export interface PeerRecipient {
@@ -48,7 +55,28 @@ export class PeerMoneyGuard {
   constructor(
     private readonly users: UsersService,
     private readonly world: WorldService,
+    private readonly ledger: LedgerService,
   ) {}
+
+  /**
+   * Bought coins credited in the last 48 hours (net of claw-backs and debt repayments: every posting between this
+   * character's cash and `system:topup`), and when the newest of them is released.
+   */
+  async heldPurchases(ctx: SimulationContext, now: Date = new Date()): Promise<{ readonly amount: number; readonly releasesAt: Date } | null> {
+    const since = new Date(now.getTime() - PURCHASE_HOLD_HOURS * 3_600_000);
+    const rows: Array<{ net: string | null; latest: Date | null }> = await ctx.manager.query(
+      `SELECT SUM(mine.amount) AS net, MAX(t.created_at) FILTER (WHERE mine.amount > 0) AS latest
+         FROM ledger_entries topup
+         JOIN ledger_entries mine ON mine.transaction_id = topup.transaction_id AND mine.account_id = $2
+         JOIN ledger_transactions t ON t.id = topup.transaction_id
+        WHERE topup.account_id = $1 AND t.created_at >= $3`,
+      [this.ledger.systemAccount('topup'), ctx.wallet.accounts.cash, since],
+    );
+    const net = Number(rows[0]?.net ?? 0);
+    const latest = rows[0]?.latest ?? null;
+    if (net <= 0 || !latest) return null;
+    return { amount: net, releasesAt: new Date(new Date(latest).getTime() + PURCHASE_HOLD_HOURS * 3_600_000) };
+  }
 
   async limitsFor(ctx: SimulationContext, now: Date = new Date()): Promise<PeerMoneyLimits> {
     const character = ctx.character;
@@ -62,6 +90,7 @@ export class PeerMoneyGuard {
       [character.id, utcDayKey(now)],
     );
     const row = rows[0];
+    const purchaseHold = await this.heldPurchases(ctx, now);
     return {
       tier,
       dailyLimit: dailyTransferLimit(tier),
@@ -71,15 +100,27 @@ export class PeerMoneyGuard {
         unearnedTotal: Number(character.unearnedTotal),
         lockedUnearned: Number(character.lockedUnearned),
         peerSentTotal: Number(row?.sent_total ?? 0),
+        heldPurchases: purchaseHold?.amount ?? 0,
       }),
       receivedToday: Number(row?.received_today ?? 0),
       receiveLimit: DAILY_PEER_RECEIVE_LIMIT,
       characterAgeDays: ageDays,
       emailVerified,
+      purchaseHold,
+      debt: Number(character.debt),
     };
   }
 
   /** Check every player-to-player rule for `amount` to `recipient`, then count it. Throws a `GameRuleException`. */
+  /**
+   * Nothing goes to players while a refunded top-up is owed. Checked before "not enough cash" (also true then: what's
+   * owed is taken from cash as soon as it arrives), so the player is told the real reason.
+   */
+  assertNoDebt(ctx: SimulationContext): void {
+    const debt = Number(ctx.character.debt);
+    if (debt > 0) throw new GameRuleException('DEBT_OUTSTANDING', debtOutstandingMessage(debt));
+  }
+
   async authorize(ctx: SimulationContext, recipient: PeerRecipient, amount: number, now: Date = new Date()): Promise<void> {
     const day = utcDayKey(now);
     const limits = await this.limitsFor(ctx, now);
@@ -91,6 +132,8 @@ export class PeerMoneyGuard {
       sendable: limits.sendable,
       receivedToday: Number(received[0]?.received ?? 0),
       recipientHandle: recipient.handle,
+      heldPurchases: limits.purchaseHold?.amount ?? 0,
+      debt: limits.debt,
     });
     if (!check.ok) throw new GameRuleException(check.code, check.message);
 

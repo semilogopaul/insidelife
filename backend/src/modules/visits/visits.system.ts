@@ -1,7 +1,7 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import type { ActionDefinition } from '@insidelife/shared';
 import type { ActivityState } from '../characters/entities/character.entity.js';
-import type { SimulationSystem } from '../simulation/interfaces/simulation-system.interface.js';
+import type { SimulationSystem, SummaryContribution } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationEngine } from '../simulation/simulation-engine.service.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
@@ -49,5 +49,15 @@ export class VisitsSystem implements SimulationSystem, OnModuleInit {
   async onSettled(ctx: SimulationContext): Promise<void> {
     await this.hosting.applyPending(ctx);
     await this.visits.evictIfUninvited(ctx);
+  }
+
+  /**
+   * Snapshots apply treats too: the engine skips `onSettled` when no game time has passed since the last settle, so a
+   * guest whose client refetches (on `character:invalidate`) in the same game minute as the host's order would
+   * otherwise not feel it until a later request. Each row still applies exactly once (`applied_at`).
+   */
+  async summarize(ctx: SimulationContext): Promise<SummaryContribution> {
+    await this.hosting.applyPending(ctx);
+    return {};
   }
 }

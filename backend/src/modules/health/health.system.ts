@@ -1,10 +1,10 @@
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import {
+  actionHours,
   CONDITION_SEVERITIES,
   FACILITIES,
   FOOD_RISK,
   MINUTES_PER_DAY,
-  MINUTES_PER_HOUR,
   MOSQUITO_NET_FACTOR,
   MOSQUITO_NET_TAG,
   ROAD_INJURY,
@@ -201,7 +201,7 @@ export class HealthSystem implements SimulationSystem, OnModuleInit {
 
   /** Exercise is good for you (fitness itself is applied by the engine) — and occasionally humbling. */
   private async exercise(ctx: SimulationContext, action: ActionDefinition, activity: ActivityState): Promise<void> {
-    const hours = (activity.endsAt - activity.startedAt) / MINUTES_PER_HOUR;
+    const hours = actionHours(activity);
     ctx.character.health = Math.min(100, ctx.character.health + Math.min(EXERCISE_HEALTH_CAP, EXERCISE_HEALTH_PER_HOUR * hours));
     await this.profiles.adjustStress(ctx, -1);
 

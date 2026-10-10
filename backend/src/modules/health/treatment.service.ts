@@ -54,7 +54,7 @@ import { HealthProfileService } from './health-profile.service.js';
 import { InsuranceService, type CoverQuote } from './insurance.service.js';
 import { MedicalHistoryService } from './medical-history.service.js';
 import { setMoodModifier } from './mood-modifiers.js';
-import { isPlayerPresent } from './player-presence.js';
+import { isPlayerPresent } from '../simulation/player-presence.js';
 import { PregnancyService } from './pregnancy.service.js';
 
 const TREATMENT_ACTION_ID = 'treatment';
