@@ -33,8 +33,8 @@ import { isSaneTopupRate, quoteTopup, topupCredit, TOPUP_RATE_MAX, TOPUP_RATE_MI
 const REF = '7c2b1f0e-6a4d-4c51-9b7e-0d2f3a4b5c6d';
 
 describe('decideCharge', () => {
-  const expected = { reference: REF, amountKobo: 250_000, currency: 'NGN', status: 'initialized' as PaymentStatus };
-  const charge = { reference: REF, status: 'success' as const, amountKobo: 250_000, chargedAmountKobo: 250_000, currency: 'NGN' };
+  const expected = { reference: REF, amountMinor: 250_000, currency: 'NGN', status: 'initialized' as PaymentStatus };
+  const charge = { reference: REF, status: 'success' as const, amountMinor: 250_000, chargedAmountMinor: 250_000, currency: 'NGN' };
 
   it('records why a payment did not go through', () => {
     expect(decideCharge(expected, { ...charge, status: 'failed' })).toEqual({ kind: 'not-paid', status: 'failed', reason: 'charge_failed' });
@@ -44,9 +44,26 @@ describe('decideCharge', () => {
 
   it('accepts exactly the price (and more), never a kobo less', () => {
     expect(decideCharge(expected, charge)).toEqual({ kind: 'record-success' });
-    expect(decideCharge(expected, { ...charge, amountKobo: 250_001, chargedAmountKobo: 250_001 })).toEqual({ kind: 'record-success' });
-    expect(decideCharge(expected, { ...charge, amountKobo: 249_999 })).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
-    expect(decideCharge(expected, { ...charge, chargedAmountKobo: 249_999 })).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(expected, { ...charge, amountMinor: 250_001, chargedAmountMinor: 250_001 })).toEqual({ kind: 'record-success' });
+    expect(decideCharge(expected, { ...charge, amountMinor: 249_999 })).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(expected, { ...charge, chargedAmountMinor: 249_999 })).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+  });
+
+  it('checks a dollar payment in cents, and never accepts another currency whatever the number', () => {
+    const dollars = { ...expected, amountMinor: 1_000, currency: 'USD' };
+    const paid = { ...charge, amountMinor: 1_000, chargedAmountMinor: 1_000, currency: 'USD' };
+    expect(decideCharge(dollars, paid)).toEqual({ kind: 'record-success' });
+    // Card fees passed to the payer make charged_amount larger: still paid.
+    expect(decideCharge(dollars, { ...paid, chargedAmountMinor: 1_048 })).toEqual({ kind: 'record-success' });
+    expect(decideCharge(dollars, { ...paid, amountMinor: 999 })).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(dollars, { ...paid, chargedAmountMinor: 999 })).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(dollars, { ...paid, chargedAmountMinor: null })).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    // ₦1,000 is not $1,000 and $2,500 is not ₦2,500: a currency mismatch never credits, even when the number is bigger.
+    expect(decideCharge(dollars, { ...paid, currency: 'NGN', amountMinor: 1_500_000, chargedAmountMinor: 1_500_000 })).toEqual({ kind: 'mismatch', reason: 'currency_mismatch' });
+    expect(decideCharge(expected, { ...charge, currency: 'USD' })).toEqual({ kind: 'mismatch', reason: 'currency_mismatch' });
+    expect(decideCharge(dollars, { ...paid, currency: '' })).toEqual({ kind: 'mismatch', reason: 'currency_mismatch' });
+    expect(decideCharge({ ...dollars, currency: '' }, { ...paid, currency: '' })).toEqual({ kind: 'mismatch', reason: 'currency_mismatch' });
+    expect(decideCharge(dollars, { ...paid, reference: 'someone-else' })).toEqual({ kind: 'mismatch', reason: 'reference_mismatch' });
   });
 });
 
@@ -69,7 +86,7 @@ describe('claimRefund', () => {
   });
 });
 
-const report = (state: RefundReport['state'], refundId = 'r1', amountKobo = 250_000): RefundReport => ({ refundId, amountKobo, state, gatewayStatus: state });
+const report = (state: RefundReport['state'], refundId = 'r1', amountMinor = 250_000): RefundReport => ({ refundId, amountMinor, state, gatewayStatus: state });
 const record = (refundStatus: PaymentRefundStatus | null, refundId: string | null = 'r1'): RefundRecord => ({ refundStatus, refundId, refundGatewayStatus: null });
 
 describe('decideRefundReport (every state × every report)', () => {
@@ -133,10 +150,10 @@ describe('reconciler schedule and the UTC day', () => {
 
 describe('top-up quotes at their edges', () => {
   it('refuses unknown packs and packs above the per-payment maximum, with a reason', () => {
-    expect(quoteTopup({ packageId: 'free-money' }, 10_000_000)).toEqual({ ok: false, reason: 'That top-up pack doesn’t exist' });
-    expect(quoteTopup({ packageId: 'odogwu-pack' }, 9_999)).toEqual({ ok: false, reason: 'One top-up can be at most ₦9,999' });
-    expect(quoteTopup({ packageId: 'odogwu-pack' }, 10_000)).toMatchObject({ ok: true, quote: { priceNgn: 10_000, virtualAmount: 5_000_000 } });
-    expect(quoteTopup({ amountNgn: 10_000_000 }, 10_000_000)).toMatchObject({ ok: true, quote: { virtualAmount: 5_000_000_000 } });
+    expect(quoteTopup({ packageId: 'free-money' }, { maxNgn: 10_000_000, usd: null })).toEqual({ ok: false, reason: 'That top-up pack doesn’t exist' });
+    expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 9_999, usd: null })).toEqual({ ok: false, reason: 'One top-up can be at most ₦9,999' });
+    expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 10_000, usd: null })).toMatchObject({ ok: true, quote: { priceNgn: 10_000, virtualAmount: 5_000_000 } });
+    expect(quoteTopup({ amountNgn: 10_000_000 }, { maxNgn: 10_000_000, usd: null })).toMatchObject({ ok: true, quote: { virtualAmount: 5_000_000_000 } });
   });
 
   it('only trusts whole rates from 1 to 2,000 game naira per ₦1', () => {
@@ -149,12 +166,12 @@ describe('top-up quotes at their edges', () => {
   });
 
   it('explains why a stored payment can’t be credited', () => {
-    expect(topupCredit({ subjectId: 'big-boy-pack', amountKobo: 50_000, paidKobo: 50_000, topupRate: null })).toEqual({ ok: false, reason: 'No stored rate for top-up big-boy-pack' });
-    expect(topupCredit({ subjectId: 'custom', amountKobo: 50_000, paidKobo: 50_000, topupRate: 9_999 })).toEqual({ ok: false, reason: 'Stored top-up rate 9999 is out of bounds' });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'big-boy-pack', amountMinor: 50_000, paidMinor: 50_000, topupRate: null })).toEqual({ ok: false, reason: 'No stored rate for top-up big-boy-pack' });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 50_000, paidMinor: 50_000, topupRate: 9_999 })).toEqual({ ok: false, reason: 'Stored top-up rate 9999 is out of bounds' });
     // A rate of exactly 1 is sane (and credits 1 game naira per ₦1).
-    expect(topupCredit({ subjectId: 'custom', amountKobo: 50_000, paidKobo: 50_000, topupRate: 1 })).toMatchObject({ ok: true, credit: { virtualAmount: 500 } });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 50_000, paidMinor: 50_000, topupRate: 1 })).toMatchObject({ ok: true, credit: { virtualAmount: 500 } });
     // Kobo below a naira are never credited.
-    expect(topupCredit({ subjectId: 'custom', amountKobo: 50_099, paidKobo: 50_099, topupRate: 300 })).toMatchObject({ ok: true, credit: { virtualAmount: 150_000 } });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 50_099, paidMinor: 50_099, topupRate: 300 })).toMatchObject({ ok: true, credit: { virtualAmount: 150_000 } });
   });
 });
 
@@ -180,14 +197,14 @@ describe('Flutterwave parsing, field by field', () => {
   const transaction = { id: 9_231_836, tx_ref: REF, flw_ref: 'FLW-1', amount: 2_500, charged_amount: 2_535, currency: 'ngn', status: 'successful', created_at: '2026-10-09T11:02:03.000Z' };
 
   it('reads envelopes and the "not found" answer', () => {
-    expect(parseEnvelope({ status: 'success', message: 'ok', data: 1 })).toEqual({ ok: true, message: 'ok', data: 1 });
-    expect(parseEnvelope({ status: 'error', data: null })).toEqual({ ok: false, message: '', data: null });
+    expect(parseEnvelope({ status: 'success', message: 'ok', data: 1 })).toEqual({ ok: true, message: 'ok', data: 1, meta: null });
+    expect(parseEnvelope({ status: 'error', data: null })).toEqual({ ok: false, message: '', data: null, meta: null });
     expect(parseEnvelope({ message: 'no status' })).toBeNull();
     expect(parseEnvelope([])).toBeNull();
     expect(parseEnvelope(null)).toBeNull();
-    expect(isNotFound({ ok: false, message: 'No transaction was found for this id', data: null })).toBe(true);
-    expect(isNotFound({ ok: false, message: 'no transaction found', data: null })).toBe(true);
-    expect(isNotFound({ ok: false, message: 'Invalid authorization key', data: null })).toBe(false);
+    expect(isNotFound({ ok: false, message: 'No transaction was found for this id', data: null, meta: null })).toBe(true);
+    expect(isNotFound({ ok: false, message: 'no transaction found', data: null, meta: null })).toBe(true);
+    expect(isNotFound({ ok: false, message: 'Invalid authorization key', data: null, meta: null })).toBe(false);
     expect(isNotFound(null)).toBe(false);
   });
 
@@ -209,13 +226,13 @@ describe('Flutterwave parsing, field by field', () => {
 
   it('reads amounts, currency and time carefully', () => {
     const parsed = parseTransaction(transaction)!;
-    expect(parsed).toMatchObject({ amountKobo: 250_000, chargedAmountKobo: 253_500, currency: 'NGN', status: 'success' });
+    expect(parsed).toMatchObject({ amountMinor: 250_000, chargedAmountMinor: 253_500, currency: 'NGN', status: 'success' });
     expect(parsed.paidAt?.toISOString()).toBe('2026-10-09T11:02:03.000Z');
-    expect(parseTransaction({ ...transaction, amount: 0 })?.amountKobo).toBe(0);
+    expect(parseTransaction({ ...transaction, amount: 0 })?.amountMinor).toBe(0);
     expect(parseTransaction({ ...transaction, amount: -1 })).toBeNull();
     expect(parseTransaction({ ...transaction, amount: '2500' })).toBeNull();
     expect(parseTransaction({ ...transaction, amount: Number.POSITIVE_INFINITY })).toBeNull();
-    expect(parseTransaction({ ...transaction, charged_amount: '2535' })?.chargedAmountKobo).toBeNull();
+    expect(parseTransaction({ ...transaction, charged_amount: '2535' })?.chargedAmountMinor).toBeNull();
     expect(parseTransaction({ ...transaction, currency: undefined })?.currency).toBe('');
     expect(parseTransaction({ ...transaction, created_at: 'yesterday' })?.paidAt).toBeNull();
     expect(parseTransaction({ ...transaction, created_at: undefined })?.paidAt).toBeNull();
@@ -242,9 +259,9 @@ describe('Flutterwave parsing, field by field', () => {
   });
 
   it('reads refunds in either casing and refuses incomplete ones', () => {
-    expect(parseRefund({ id: 77, amount_refunded: 2_500, status: 'completed', tx_id: 9_231_836 })).toEqual({ refundId: '77', amountKobo: 250_000, status: 'completed', transactionId: '9231836' });
-    expect(parseRefund({ id: '77', AmountRefunded: 1_250, status: 'completed', TransactionId: '9231836' })).toMatchObject({ amountKobo: 125_000, transactionId: '9231836' });
-    expect(parseRefund({ id: 77, amountRefunded: 10, status: 'processing', transactionId: 5 })).toMatchObject({ amountKobo: 1_000, transactionId: '5' });
+    expect(parseRefund({ id: 77, amount_refunded: 2_500, status: 'completed', tx_id: 9_231_836 })).toEqual({ refundId: '77', amountMinor: 250_000, status: 'completed', transactionId: '9231836' });
+    expect(parseRefund({ id: '77', AmountRefunded: 1_250, status: 'completed', TransactionId: '9231836' })).toMatchObject({ amountMinor: 125_000, transactionId: '9231836' });
+    expect(parseRefund({ id: 77, amountRefunded: 10, status: 'processing', transactionId: 5 })).toMatchObject({ amountMinor: 1_000, transactionId: '5' });
     expect(parseRefund({ amount_refunded: 2_500, status: 'completed' })).toBeNull();
     expect(parseRefund({ id: 77, status: 'completed' })).toBeNull();
     expect(parseRefund({ id: 77, amount_refunded: 2_500 })).toBeNull();

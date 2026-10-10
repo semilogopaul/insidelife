@@ -76,7 +76,19 @@ describe('detail components', () => {
   });
 
   it('shows the receipt with the block price, total and the payment reference', () => {
-    const receipt: PromotionReceiptDto = { amountKobo: 15_000_000, blocks: 2, blockDays: 3, blockPriceKobo: 7_500_000, paymentReference: ORDER, paidAt: '2026-10-09T10:05:00.000Z', refundedKobo: 0 };
+    const receipt: PromotionReceiptDto = {
+      amountKobo: 15_000_000,
+      currency: 'NGN',
+      chargedMinor: 15_000_000,
+      ngnPerUsd: null,
+      refundedMinor: 0,
+      blocks: 2,
+      blockDays: 3,
+      blockPriceKobo: 7_500_000,
+      paymentReference: ORDER,
+      paidAt: '2026-10-09T10:05:00.000Z',
+      refundedKobo: 0,
+    };
     render(<ReceiptCard receipt={receipt} />);
     expect(screen.getByText(/per 3 days × 2/)).toBeTruthy();
     expect(screen.getByText('6 days')).toBeTruthy();

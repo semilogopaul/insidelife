@@ -119,3 +119,14 @@ describe('accounts and characters', () => {
     expect(statuses[8]).toBe(429);
   });
 });
+
+describe('dollars are off unless the server switches them on', () => {
+  it('offers naira only and refuses dollar requests', async () => {
+    const player = await createPlayer(e2e);
+    expect(ok<{ usd: unknown }>(await player.get('/payments/packages')).usd).toBeNull();
+    expect(ok<{ usd: unknown }>(await player.get('/promotions/slots')).usd).toBeNull();
+    refused(await player.post('/payments/topups', { currency: 'USD', amountUsd: 10 }), 422, 'PAYMENT_CURRENCY_UNAVAILABLE');
+    refused(await player.post('/payments/topups', { amountNgn: 5_000, method: 'applepay' }), 422, 'INVALID_TOPUP');
+    expect(await e2e.dataSource.query(`SELECT 1 FROM payments WHERE user_id = $1`, [player.userId])).toHaveLength(0);
+  });
+});

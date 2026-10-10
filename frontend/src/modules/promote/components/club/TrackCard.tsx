@@ -1,8 +1,9 @@
 'use client';
 
 import { ChevronRight, Disc3, Play } from 'lucide-react';
-import { koboToNaira, runLengthLabel, type ClubPlayOrderDto, type ClubSongOfferDto, type ClubTrackDto, type ContentRule } from '@insidelife/shared';
-import { Button, Money } from '@/common/components';
+import { runLengthLabel, type ClubPlayOrderDto, type ClubSongOfferDto, type ClubTrackDto, type ContentRule, type UsdPaymentOptionsDto } from '@insidelife/shared';
+import { Button } from '@/common/components';
+import { PaymentAmount } from '@/common/payments';
 import { formatDuration, formatRange } from '../../services/rules';
 import { PendingPayment } from '../detail/PendingPayment';
 import { StatusBadge } from '../shared';
@@ -13,6 +14,8 @@ export interface TrackCardProps {
   /** Today's song price, start dates and plays guarantee (null while loading). */
   readonly offer: ClubSongOfferDto | null;
   readonly rules: readonly ContentRule[];
+  /** Paying in dollars, when the server offers it (null: naira only). */
+  readonly usd: UsdPaymentOptionsDto | null;
   readonly ordering: boolean;
   readonly onOrder: (open: boolean) => void;
   /** Open a run's page (times, plays, listeners, receipt). */
@@ -22,7 +25,7 @@ export interface TrackCardProps {
 const BOOKABLE = new Set(['draft', 'completed', 'cancelled', 'refunded', 'refund-due', 'rejected']);
 
 /** One song: listen, its plays, every run booked (tap one for everything about it). */
-export function TrackCard({ track, offer, rules, ordering, onOrder, onOpenOrder }: TrackCardProps) {
+export function TrackCard({ track, offer, rules, usd, ordering, onOrder, onOpenOrder }: TrackCardProps) {
   const canBook = !track.removed && BOOKABLE.has(track.status);
   return (
     <li className="flex flex-col gap-3 rounded-sheet p-4 ring-1 ring-line">
@@ -57,7 +60,7 @@ export function TrackCard({ track, offer, rules, ordering, onOrder, onOpenOrder 
         </ul>
       )}
       {ordering ? (
-        <OrderForm track={track} offer={offer} rules={rules} onCancel={() => onOrder(false)} />
+        <OrderForm track={track} offer={offer} rules={rules} usd={usd} onCancel={() => onOrder(false)} />
       ) : canBook ? (
         <Button variant={track.orders.length === 0 ? 'danfo' : 'paper'} onClick={() => onOrder(true)}>
           {track.orders.length === 0 ? 'Book club plays' : 'Book another run'}
@@ -77,7 +80,7 @@ function OrderRow({ order, onOpen }: { readonly order: ClubPlayOrderDto; readonl
             <StatusBadge status={order.status} />
           </span>
           <span className="block text-xs text-text-soft">
-            {runLengthLabel(order.days)} · <Money amount={koboToNaira(order.amountKobo)} /> · {order.plays.toLocaleString('en-NG')} plays · heard by{' '}
+            {runLengthLabel(order.days)} · <PaymentAmount currency={order.currency} minor={order.chargeMinor} /> · {order.plays.toLocaleString('en-NG')} plays · heard by{' '}
             {order.listeners.toLocaleString('en-NG')}
           </span>
           {order.rejectionReason && <span className="block text-xs">Moderator: “{order.rejectionReason}”</span>}

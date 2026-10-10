@@ -72,7 +72,7 @@ export class FlutterwaveWebhookService implements OnModuleInit {
         ? { name: 'charge', data: { transactionId: event.transactionId } }
         : {
             name: 'refund',
-            data: { refundId: event.refund.refundId, transactionId: event.refund.transactionId, amountKobo: event.refund.amountKobo, status: event.refund.status },
+            data: { refundId: event.refund.refundId, transactionId: event.refund.transactionId, amountMinor: event.refund.amountMinor, status: event.refund.status },
           };
     try {
       await this.queue.add(job.name, job.data, { ...PAYMENTS_JOB_OPTIONS, jobId: jobIdFor(job) });

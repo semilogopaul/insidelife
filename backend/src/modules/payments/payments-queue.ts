@@ -10,7 +10,10 @@ export interface ChargeJob {
 export interface RefundJob {
   readonly refundId: string;
   readonly transactionId: string | null;
-  readonly amountKobo: number;
+  /** In minor units of the refunded charge's currency (kobo, cents). */
+  readonly amountMinor: number;
+  /** Jobs queued before dollar payments carried kobo here (every payment was NGN then, so it equals `amountMinor`). */
+  readonly amountKobo?: number;
   /** The gateway's refund status in the webhook (`completed`, `processing`, `failed`…). */
   readonly status: string;
 }

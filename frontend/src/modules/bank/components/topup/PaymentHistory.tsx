@@ -1,11 +1,11 @@
 'use client';
 
 import { CreditCard, Megaphone, Music } from 'lucide-react';
-import type { PaymentDto, PaymentPurpose } from '@insidelife/shared';
+import { formatNaira, type PaymentDto, type PaymentPurpose } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Badge, Button, Money, Spinner, toast } from '@/common/components';
 import { useNow } from '@/common/hooks/use-now';
-import { checkErrorAlert } from '@/common/payments';
+import { checkErrorAlert, PaymentAmount } from '@/common/payments';
 import { usePaymentHistory, useVerifyPayment } from '../../hooks/use-topups';
 import { checkResultAlert, isRefunded, offersPaidCheck, OUTCOME_LABELS, paymentOutcome, type PaymentOutcome } from '../../services/payment-status';
 
@@ -86,8 +86,9 @@ export function PaymentHistory({ onRetry }: { readonly onRetry: (payment: Paymen
             <div className="shrink-0 text-right">
               <p className="text-2xs text-text-faint">You paid</p>
               <p className="type-figure text-sm">
-                <Money amount={payment.amountNgn} />
+                <PaymentAmount currency={payment.currency} minor={payment.amountMinor} />
               </p>
+              {payment.currency === 'USD' && <p className="tabular text-2xs text-text-faint">{formatNaira(payment.amountNgn)}</p>}
               <Badge tone={isRefunded(payment) ? 'neutral' : OUTCOME_TONES[outcome]} className="mt-1">
                 {isRefunded(payment) ? 'Refunded' : OUTCOME_LABELS[outcome]}
               </Badge>

@@ -58,6 +58,10 @@ export const E2E_ENV: Readonly<Record<string, string>> = {
   PAYMENT_CALLBACK_URL: `${E2E.gameOrigin}/payments/callback`,
   TOPUP_DAILY_LIMIT_NGN: '0',
   TOPUP_MAX_PER_PAYMENT_NGN: '10000000',
+  // Dollars off, as on a fresh live site; the dollar specs switch them on for their own app.
+  PAYMENTS_USD_ENABLED: 'false',
+  TOPUP_MAX_PER_PAYMENT_USD: '5000',
+  PAYMENTS_WALLETS_ENABLED: 'false',
   ALLOW_PAYMENT_SANDBOX: 'false',
   S3_ENDPOINT: 'http://storage.e2e.invalid:8333',
   S3_REGION: 'us-east-1',

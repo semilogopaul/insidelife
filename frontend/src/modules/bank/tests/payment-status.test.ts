@@ -10,6 +10,9 @@ const payment = (overrides: Partial<PaymentDto> = {}): PaymentDto => ({
   purpose: 'topup',
   subjectId: 'owambe-pack',
   description: 'Inside Life top-up: ₦1,000,000 in game (Owambe pack)',
+  currency: 'NGN',
+  amountMinor: 250_000,
+  ngnPerUsd: null,
   amountNgn: 2_500,
   amountKobo: 250_000,
   status: 'initialized',
@@ -17,6 +20,7 @@ const payment = (overrides: Partial<PaymentDto> = {}): PaymentDto => ({
   channel: null,
   createdAt: new Date(NOW - HOUR).toISOString(),
   verifiedAt: null,
+  refundedMinor: 0,
   refundedNgn: 0,
   topup: { packageId: 'owambe-pack', label: 'Owambe pack', ratePerNaira: 400, virtualAmount: 1_000_000 },
   ...overrides,
@@ -54,12 +58,18 @@ describe('checkResultAlert (what the check found)', () => {
       expect(alert.tone, status).not.toBe('good');
     }
     expect(checkResultAlert(payment({ status: 'success' }))).toMatchObject({ title: 'Paid. Delivering now…', tone: 'good' });
-    expect(checkResultAlert(payment({ status: 'success', fulfilled: true, refundedNgn: 2_500 }))).toMatchObject({ title: 'Payment refunded' });
+    expect(checkResultAlert(payment({ status: 'success', fulfilled: true, refundedMinor: 250_000, refundedNgn: 2_500 }))).toMatchObject({ title: 'Payment refunded' });
   });
 
   it('says a failed or closed checkout can still be checked on the callback page', () => {
     expect(outcomeCopy(payment({ status: 'failed' })).body).toMatch(/Paid anyway\? Check again/);
     expect(outcomeCopy(payment({ status: 'abandoned' })).body).toMatch(/Paid anyway\? Check again/);
     expect(outcomeCopy(payment()).body).toMatch(/it’s safe/);
+  });
+
+  it('says a refund in the currency it was paid in', () => {
+    const dollars = payment({ status: 'success', fulfilled: true, currency: 'USD', amountMinor: 1_000, ngnPerUsd: 1_500, amountNgn: 15_000, amountKobo: 1_500_000, refundedMinor: 1_000, refundedNgn: 15_000 });
+    expect(outcomeCopy(dollars).body).toBe('$10 went back to your card or bank. It can take a few working days to show.');
+    expect(checkResultAlert(dollars).body).toBe('$10 went back to your card or bank.');
   });
 });

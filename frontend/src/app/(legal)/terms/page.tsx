@@ -37,7 +37,12 @@ export default function TermsPage() {
       <h2>Buying things with real money</h2>
       <ul>
         <li>You can buy game naira (top-ups), ad space and club song plays. Payments are processed by Flutterwave; we never see your card details.</li>
-        <li>The price and what you get are shown before you pay. Purchases are final once delivered.</li>
+        <li>
+          Prices are in naira. Where we offer it, you can pay in US dollars instead (card, Apple Pay or Google Pay): the dollar price is the naira price at
+          our exchange rate shown at checkout, rounded up to the cent, and the game itself always stays in naira. Your bank may add its own fees for
+          paying in another currency.
+        </li>
+        <li>The price and what you get are shown before you pay. Purchases are final once delivered. Refunds go back in the currency you paid in.</li>
         <li>
           If a payment goes through but you don’t receive what you paid for, or you’re charged twice, email{' '}
           <a href={`mailto:${site.supportEmail}`}>{site.supportEmail}</a> with your payment reference.

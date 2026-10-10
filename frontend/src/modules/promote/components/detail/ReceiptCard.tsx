@@ -1,8 +1,9 @@
 'use client';
 
 import { Copy } from 'lucide-react';
-import { koboToNaira, runLengthLabel, type PromotionReceiptDto } from '@insidelife/shared';
+import { formatNaira, koboToNaira, runLengthLabel, type PromotionReceiptDto } from '@insidelife/shared';
 import { Money, toast } from '@/common/components';
+import { PaymentAmount } from '@/common/payments';
 
 const when = new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
@@ -26,19 +27,28 @@ export function ReceiptCard({ receipt }: { readonly receipt: PromotionReceiptDto
       <dd className="tabular text-right">{runLengthLabel(receipt.blocks * receipt.blockDays)}</dd>
       <dt className="font-bold">You paid (real money)</dt>
       <dd className="type-figure text-right text-lg">
-        <Money amount={koboToNaira(receipt.amountKobo)} />
+        <PaymentAmount currency={receipt.currency} minor={receipt.chargedMinor} />
       </dd>
+      {receipt.currency === 'USD' && (
+        <>
+          <dt className="text-text-soft">In naira</dt>
+          <dd className="tabular text-right text-text-soft">
+            {formatNaira(koboToNaira(receipt.amountKobo))}
+            {receipt.ngnPerUsd ? ` at ${formatNaira(receipt.ngnPerUsd)} per $1` : ''}
+          </dd>
+        </>
+      )}
       {receipt.paidAt && (
         <>
           <dt className="text-text-soft">Paid</dt>
           <dd className="text-right">{when.format(new Date(receipt.paidAt))}</dd>
         </>
       )}
-      {receipt.refundedKobo > 0 && (
+      {receipt.refundedMinor > 0 && (
         <>
           <dt className="text-text-soft">Refunded</dt>
           <dd className="text-right font-bold text-naira">
-            <Money amount={koboToNaira(receipt.refundedKobo)} />
+            <PaymentAmount currency={receipt.currency} minor={receipt.refundedMinor} />
           </dd>
         </>
       )}

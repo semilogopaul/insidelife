@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { TOPUP_PACKAGES, type PaymentDto, type PaymentVerificationDto, type TopupStartedDto, type TopupVerificationDto } from '@insidelife/shared';
+import { TOPUP_PACKAGES, topupVirtualAmountUsd, type PaymentDto, type PaymentVerificationDto, type TopupStartedDto, type TopupVerificationDto } from '@insidelife/shared';
 import { bootApp, type E2eApp } from './support/app.js';
 import { E2E } from './support/env.js';
 import { burst } from './support/game.js';
@@ -9,7 +9,8 @@ import { call, createPlayer, ok, refused, type Player } from './support/players.
 let e2e: E2eApp;
 
 beforeAll(async () => {
-  e2e = await bootApp();
+  // Dollars on (with wallets): the naira flows below must behave exactly as with dollars off.
+  e2e = await bootApp({ env: { PAYMENTS_USD_ENABLED: 'true', PAYMENTS_WALLETS_ENABLED: 'true' } });
 });
 
 afterAll(async () => {
@@ -156,6 +157,28 @@ describe('top-ups are credited exactly once', () => {
     const history = ok<PaymentDto[]>(await owner.get('/payments'));
     expect(history.map((payment) => payment.reference)).toContain(started.reference);
     expect(ok<PaymentDto[]>(await stranger.get('/payments')).map((payment) => payment.reference)).not.toContain(started.reference);
+  });
+});
+
+describe('dollar top-ups through the sandbox checkout', () => {
+  it('pays whole dollars on the fake checkout (card or wallet) and credits the naira value once', async () => {
+    const player = await createPlayer(e2e);
+    for (const [amountUsd, method] of [[1, 'card'], [10, 'applepay'], [25, 'googlepay']] as const) {
+      const before = await player.cash();
+      const started = await startTopup(player, { currency: 'USD', amountUsd, method, expectedNgnPerUsd: 1_500 });
+      expect(started.authorizationUrl).toBe(`/payments/sandbox?reference=${started.reference}`);
+      expect(started.topup).toMatchObject({ currency: 'USD', amountMinor: amountUsd * 100, priceUsd: amountUsd, ngnPerUsd: 1_500, virtualAmount: promisedCredit(amountUsd * 1_500) });
+      const paid = await payInSandbox(player, started.reference);
+      expect(paid.fulfilledNow).toBe(true);
+      expect(paid.payment).toMatchObject({ currency: 'USD', amountMinor: amountUsd * 100, ngnPerUsd: 1_500, amountNgn: amountUsd * 1_500, channel: 'sandbox' });
+      // Equal value, equal credit: $1 at ₦1,500 credits what ₦1,500 does.
+      expect(await player.cash()).toBe(before + topupVirtualAmountUsd(amountUsd, 1_500));
+      expect(topupVirtualAmountUsd(amountUsd, 1_500)).toBe(promisedCredit(amountUsd * 1_500));
+      expect((await payInSandbox(player, started.reference)).fulfilledNow).toBe(false);
+      expect(await topupPostings(player, started.reference)).toHaveLength(1);
+    }
+    const history = ok<PaymentDto[]>(await player.get('/payments'));
+    expect(history.filter((payment) => payment.currency === 'USD').map((payment) => payment.amountMinor)).toEqual([2_500, 1_000, 100]);
   });
 });
 

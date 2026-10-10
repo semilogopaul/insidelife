@@ -30,7 +30,10 @@ export const bankApi = {
 
   packages: () => api.get<TopupCatalogDto>('/payments/packages'),
   payments: () => api.get<PaymentDto[]>('/payments'),
-  /** A pack (`{ packageId }`) or any whole-naira amount (`{ amountNgn }`); the server quotes the rate. */
+  /**
+   * A pack (`{ packageId }`), any whole-naira amount (`{ amountNgn }`) or whole dollars
+   * (`{ currency: 'USD', amountUsd, method, expectedNgnPerUsd }`); the server quotes the rate.
+   */
   startTopup: (body: CreateTopupRequest) => api.post<TopupStartedDto>('/payments/topups', body),
   /** `transactionId`: Flutterwave's `transaction_id` from the redirect (a hint; the server reads the charge back itself). */
   verify: (reference: string, transactionId?: string) =>

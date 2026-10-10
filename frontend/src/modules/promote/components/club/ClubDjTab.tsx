@@ -65,6 +65,7 @@ export function ClubDjTab({ onOpenOrder, initialOrdering = null }: { readonly on
                 track={track}
                 offer={offer}
                 rules={PROMOTION_CONTENT_RULES}
+                usd={slots.data?.usd ?? null}
                 ordering={ordering === track.id}
                 onOrder={(open) => setOrdering(open ? track.id : null)}
                 onOpenOrder={onOpenOrder}

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
-import type { PaymentPurpose, PaymentStatus } from '@insidelife/shared';
+import type { PaymentCurrency, PaymentPurpose, PaymentStatus } from '@insidelife/shared';
 import { toCsv, type CsvColumn } from '../../../common/utils/csv.js';
 import { EXPORT_ROW_LIMIT, SqlWhere, containsPattern, offsetOf, pageOf, type PageRequest } from '../../../common/utils/paging.js';
 import type { AdminPaymentRowDto, AdminPaymentsPageDto, PaymentsQueryDto } from './dto/payments.dto.js';
@@ -13,6 +13,9 @@ interface PaymentRow {
   readonly subject_id: string;
   readonly description: string;
   readonly amount_kobo: string;
+  readonly currency: PaymentCurrency;
+  readonly amount_minor: string;
+  readonly ngn_per_usd: number | null;
   readonly status: PaymentStatus;
   readonly provider: string;
   readonly channel: string | null;
@@ -34,7 +37,7 @@ const FROM = `
   LEFT JOIN promotion_campaigns pc ON pm.purpose = 'billboard' AND pc.id::text = pm.subject_id
   LEFT JOIN promotion_club_orders po ON pm.purpose = 'club-play' AND po.id::text = pm.subject_id`;
 
-const COLUMNS = `pm.id, pm.reference, pm.purpose, pm.subject_id, pm.description, pm.amount_kobo, pm.status, pm.provider, pm.channel,
+const COLUMNS = `pm.id, pm.reference, pm.purpose, pm.subject_id, pm.description, pm.amount_kobo, pm.currency, pm.amount_minor, pm.ngn_per_usd, pm.status, pm.provider, pm.channel,
                  pm.failure_reason, pm.created_at, pm.verified_at, pm.fulfilled_at, pm.user_id, u.email, pm.character_id, c.handle,
                  COALESCE(pc.status, po.status) AS order_status`;
 
@@ -45,6 +48,9 @@ const toDto = (row: PaymentRow): AdminPaymentRowDto => ({
   subjectId: row.subject_id,
   description: row.description,
   amountKobo: Number(row.amount_kobo),
+  currency: row.currency,
+  amountMinor: Number(row.amount_minor),
+  ngnPerUsd: row.ngn_per_usd,
   status: row.status,
   provider: row.provider,
   channel: row.channel,
@@ -62,7 +68,10 @@ const CSV_COLUMNS: readonly CsvColumn<AdminPaymentRowDto>[] = [
   { header: 'Started', value: (row) => row.createdAt },
   { header: 'Purpose', value: (row) => row.purpose },
   { header: 'Description', value: (row) => row.description },
-  { header: 'Amount (NGN)', value: (row) => row.amountKobo / 100 },
+  { header: 'Currency', value: (row) => row.currency },
+  { header: 'Charged', value: (row) => row.amountMinor / 100 },
+  { header: 'NGN per USD', value: (row) => row.ngnPerUsd },
+  { header: 'Amount (NGN value)', value: (row) => row.amountKobo / 100 },
   { header: 'Status', value: (row) => row.status },
   { header: 'Refund', value: (row) => row.refund },
   { header: 'Provider', value: (row) => row.provider },

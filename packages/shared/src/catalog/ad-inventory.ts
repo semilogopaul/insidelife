@@ -14,6 +14,7 @@ import {
   type BillboardVisibilityTier,
 } from './promotions.js';
 import { findVenue } from './venues.js';
+import { DEFAULT_USD_RATE_NGN, USD_RATE_KEY, USD_RATE_MAX_NGN, USD_RATE_MIN_NGN, isValidUsdRateNgn } from './payments.js';
 
 /**
  * Everything an advertiser can book with real money, one list: the 12 hand-placed premium billboards, the ~540
@@ -114,6 +115,36 @@ export const AD_RATE_DEFINITIONS: Readonly<Record<AdRateKey, AdRateDefinition>> 
 export function isAdRateKey(key: string): key is AdRateKey {
   return Object.hasOwn(AD_RATE_DEFINITIONS, key);
 }
+
+/**
+ * The owner's rate card: every ad price, plus `usd-rate`, the exchange rate dollar payments use ("₦ per $1 for
+ * payments", unit `ngn-per-usd`). Like the prices it is stored in kobo (₦1,500 per $1 = 150,000) and edited through
+ * the same audited admin route; it is not an ad, so it isn't one of `AD_RATE_KEYS`.
+ */
+export const RATE_CARD_KEYS = [...AD_RATE_KEYS, USD_RATE_KEY] as const;
+export type RateCardKey = (typeof RATE_CARD_KEYS)[number];
+export type RateCardUnit = AdRateDefinition['unit'] | 'ngn-per-usd';
+
+export function isRateCardKey(key: string): key is RateCardKey {
+  return key === USD_RATE_KEY || isAdRateKey(key);
+}
+
+export const USD_RATE_DEFINITION = {
+  key: USD_RATE_KEY,
+  label: '₦ per $1 for payments',
+  unit: 'ngn-per-usd',
+  byDistrict: false,
+  defaultKobo: DEFAULT_USD_RATE_NGN * NAIRA,
+} as const;
+
+/** Whole naira per $1 (in kobo) from ₦500 to ₦5,000: what `usd-rate` can be set to. */
+export function isValidUsdRateKobo(kobo: number): boolean {
+  return Number.isSafeInteger(kobo) && kobo % NAIRA === 0 && isValidUsdRateNgn(kobo / NAIRA);
+}
+
+/** Lowest value any rate-card entry can take (₦500 per $1), for request shape checks. */
+export const RATE_CARD_MIN_KOBO = USD_RATE_MIN_NGN * NAIRA;
+export const USD_RATE_MAX_KOBO = USD_RATE_MAX_NGN * NAIRA;
 
 /** The rate a slot is priced from: its own key for a premium board, else its kind. */
 export function adRateKeyOf(slot: Pick<AdSlot, 'id' | 'kind'>): AdRateKey {

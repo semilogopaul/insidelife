@@ -68,6 +68,9 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 | `PAYMENT_CALLBACK_URL` | Where Flutterwave returns players after checkout (`/payments/callback`). |
 | `TOPUP_DAILY_LIMIT_NGN` | Real-money top-up cap per account per UTC day. `0` (default) = no cap; set one if chargebacks appear. |
 | `TOPUP_MAX_PER_PAYMENT_NGN` | Largest single top-up in real naira (default ₦10,000,000). Players pay a pack or any whole amount from ₦500. |
+| `PAYMENTS_USD_ENABLED` | `true` lets players pay top-ups, ads and club songs in US dollars (default `false`). The game stays in naira; prices convert at the owner's "₦ per $1 for payments" rate (admin → Ad prices → `usd-rate`, default ₦1,500, ₦500–₦5,000). Needs international cards on the Flutterwave account (docs/DEPLOY.md). |
+| `TOPUP_MAX_PER_PAYMENT_USD` | Largest single dollar top-up, whole dollars (default 5,000; at most 20,000 on the live site). Dollar top-ups start at $1. |
+| `PAYMENTS_WALLETS_ENABLED` | `true` also offers Apple Pay (Safari only) and Google Pay for dollar payments (default `false`; needs `PAYMENTS_USD_ENABLED` and the wallets switched on in the Flutterwave dashboard). |
 | `ADMIN_EMAILS` | Owners of the admin portal (moderation, players, payments, audit log); they can grant the admin role to others. |
 | `ADMIN_ORIGINS` | Origins of the separate admin portal (`insidelife-admin` repo), e.g. `https://admin.insidelife.online`. The only origins the admin API admits, and required on its state-changing requests. |
 | `ADMIN_API_HOST` | Optional: serve the admin API only on this host (e.g. `admin-api.insidelife.online`). |

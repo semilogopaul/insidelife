@@ -47,6 +47,7 @@ import {
 } from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
+import { UsdRateService } from '../payments/usd-rate.service.js';
 import { AdRatesService, type AdPricing, type SlotBlockPrice } from './ad-rates.service.js';
 import { CreativeService } from './creative.service.js';
 import type { CreateCampaignDto } from './dto/campaign.dto.js';
@@ -66,6 +67,8 @@ import { admitAfterPayment, COMMITTED_STATUSES, matchPayment } from './rules/sta
 import type { Buyer } from './promotions.types.js';
 import { CachedValue } from './util/cached-value.js';
 import { assertExpectedPrice, assertExpectedStart } from './util/dates.js';
+import { chargeDto, requireCharge } from './util/charge.js';
+import type { BookingCharge } from './rules/charge.rules.js';
 
 /** Unpaid bookings (live holds) per account, so nobody can squat on every board. */
 const MAX_UNPAID_HOLDS = 3;
@@ -134,6 +137,7 @@ export class CampaignsService implements OnModuleInit {
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(AdCampaignEntity) private readonly campaigns: Repository<AdCampaignEntity>,
     @Inject(CHECKOUT_PORT) private readonly checkout: CheckoutPort,
+    private readonly usdRate: UsdRateService,
     private readonly creatives: CreativeService,
     private readonly directory: CharacterDirectory,
     private readonly notifier: PromotionsNotifier,
@@ -166,13 +170,15 @@ export class CampaignsService implements OnModuleInit {
   /** Every slot for sale with its current weekly price and the start date of a 1…4-week booking made now. */
   async slots(clubSong: ClubSongOfferDto): Promise<BillboardSlotsDto> {
     const clock = clockAt();
-    const [bookings, pricing] = await Promise.all([
+    const [bookings, pricing, usd] = await Promise.all([
       this.activeBookings(this.campaigns.manager, rangeOf(clock.today, SCHEDULE_HORIZON_DAYS), clock.now),
       this.rates.pricing(),
+      this.usdRate.options(),
     ]);
     const bySlot = new Map<string, AdCampaignEntity[]>();
     for (const booking of bookings) bySlot.set(booking.slotId, [...(bySlot.get(booking.slotId) ?? []), booking]);
     return {
+      usd,
       today: clock.today,
       maxWeeks: AD_MAX_WEEKS,
       maxRunDays: AD_MAX_RUN_DAYS,
@@ -199,6 +205,7 @@ export class CampaignsService implements OnModuleInit {
     const blocks = requestedBlocks(request, pricing.block(slot).blockDays);
     const quote = quoteFor(pricing, slot, blocks);
     assertExpectedPrice(request.expectedPriceKobo, quote);
+    const charge = requireCharge(quote, request, await this.usdRate.options());
     const title = validateDisplayText(request.title, 'Title', 3, PROMOTION_TITLE_MAX);
     if (!title.ok) throw new PromotionRuleException('INVALID_TITLE', title.reason);
     const link = validatePromotionLink(request.linkUrl);
@@ -239,18 +246,22 @@ export class CampaignsService implements OnModuleInit {
           days: quote.days,
           blockDays: quote.blockDays,
           amountKobo: quote.totalKobo,
+          currency: charge.currency,
+          chargeMinor: charge.chargeMinor,
+          ngnPerUsd: charge.ngnPerUsd,
           status: 'pending-payment',
           holdExpiresAt: new Date(clock.now.getTime() + CHECKOUT_HOLD_MINUTES * 60_000),
         }),
       );
     });
 
-    const session = await this.startCheckout(user, character, campaign, slot, returnOrigin);
+    const session = await this.startCheckout(user, character, campaign, slot, charge, returnOrigin);
     return {
       campaignId: campaign.id,
       reference: session.reference,
       authorizationUrl: session.authorizationUrl,
       quote,
+      charge: chargeDto(charge),
       campaign: toCampaignDto(campaign, clock),
     };
   }
@@ -333,7 +344,14 @@ export class CampaignsService implements OnModuleInit {
     );
   }
 
-  private async startCheckout(user: AuthUser, character: Buyer | null, campaign: AdCampaignEntity, slot: AdSlot, returnOrigin: string | null): Promise<CheckoutSession> {
+  private async startCheckout(
+    user: AuthUser,
+    character: Buyer | null,
+    campaign: AdCampaignEntity,
+    slot: AdSlot,
+    charge: BookingCharge,
+    returnOrigin: string | null,
+  ): Promise<CheckoutSession> {
     let session: CheckoutSession;
     try {
       session = await this.checkout.start({
@@ -342,7 +360,10 @@ export class CampaignsService implements OnModuleInit {
         customerName: character ? `@${character.handle}` : undefined,
         characterId: character?.id ?? null,
         purpose: 'billboard',
-        amountKobo: campaign.amountKobo,
+        currency: campaign.currency,
+        amountMinor: campaign.chargeMinor,
+        ...(campaign.ngnPerUsd === null ? {} : { ngnPerUsd: campaign.ngnPerUsd }),
+        method: charge.method,
         description: `Inside Life ad: ${slot.name}, ${runLengthLabel(campaign.days)} from ${campaign.startDate}`.slice(0, 120),
         subjectId: campaign.id,
         returnOrigin,
@@ -409,8 +430,10 @@ export class CampaignsService implements OnModuleInit {
       const admission = admitAfterPayment({
         range: campaign,
         today: clock.today,
-        amountKobo: campaign.amountKobo,
-        paidKobo: payment.amountKobo,
+        currency: campaign.currency,
+        chargeMinor: campaign.chargeMinor,
+        paidCurrency: payment.currency,
+        paidMinor: payment.amountMinor,
         hasRoom: slot !== undefined && firstFullDay(others, campaign, slot.maxConcurrentAds) === null,
       });
 
@@ -455,7 +478,7 @@ export class CampaignsService implements OnModuleInit {
     if (applied?.settlement.kind !== 'refunded') return;
     if (applied.settlement.takenDown) this.invalidateLive();
     this.logger.log({ campaignId: applied.item.id, reference: payment.reference, refundId: refund.refundId }, 'Billboard booking refunded');
-    await this.notifier.notifyOwner(applied.item.ownerUserId, refundedNotice(subjectOf(applied.item), refund.amountKobo));
+    await this.notifier.notifyOwner(applied.item.ownerUserId, refundedNotice(subjectOf(applied.item), refund.currency, refund.amountMinor));
   }
 
   /** Bookings that take a place on their dates: paid & not refused, or unpaid with a live hold. */

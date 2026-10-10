@@ -1,9 +1,10 @@
 'use client';
 
 import { ChevronRight, Eye, Megaphone, Users } from 'lucide-react';
-import { koboToNaira, runLengthLabel, type AdCampaignDto, type BillboardSlotDto } from '@insidelife/shared';
+import { runLengthLabel, type AdCampaignDto, type BillboardSlotDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
-import { Button, EmptyState, Money, Spinner } from '@/common/components';
+import { Button, EmptyState, Spinner } from '@/common/components';
+import { PaymentAmount } from '@/common/payments';
 import { useCancelCampaign, useCampaigns } from '../../hooks/use-promote';
 import { formatRange } from '../../services/rules';
 import { STATUS_META } from '../../services/status';
@@ -59,7 +60,7 @@ function CampaignCard({ campaign, aspect, onOpen }: { readonly campaign: AdCampa
             {campaign.slotName} · {formatRange(campaign.startDate, campaign.endDate)}
           </span>
           <span className="block text-xs text-text-soft">
-            <Money amount={koboToNaira(campaign.amountKobo)} /> · {runLengthLabel(campaign.days)}
+            <PaymentAmount currency={campaign.currency} minor={campaign.chargeMinor} /> · {runLengthLabel(campaign.days)}
           </span>
           {showsReach && (
             <span className="mt-1 flex gap-3 text-xs">

@@ -1,4 +1,4 @@
-import type { PromotionStatus } from '@insidelife/shared';
+import type { PaymentCurrency, PromotionStatus } from '@insidelife/shared';
 
 /** One paid billboard campaign or club order in the moderation history. */
 export interface AdminPromotionRowDto {
@@ -9,7 +9,12 @@ export interface AdminPromotionRowDto {
   /** Slot name for campaigns; artist and package for club orders. */
   readonly subtitle: string;
   readonly status: PromotionStatus;
+  /** The naira price. */
   readonly amountKobo: number;
+  /** What was charged: `chargeMinor` in `currency`'s minor units (kobo, cents). */
+  readonly currency: PaymentCurrency;
+  readonly chargeMinor: number;
+  readonly ngnPerUsd: number | null;
   readonly startDate: string;
   readonly endDate: string;
   readonly days: number;

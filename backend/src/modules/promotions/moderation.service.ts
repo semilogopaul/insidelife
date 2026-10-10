@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { In, Not, type DataSource, type EntityManager, type Repository } from 'typeorm';
-import { findAdSlot, type ModerationCampaignDto, type ModerationClubOrderDto, type ModerationQueueDto, type PromotionStatus } from '@insidelife/shared';
+import { findAdSlot, type ModerationCampaignDto, type ModerationClubOrderDto, type ModerationQueueDto, type PaymentCurrency, type PromotionStatus } from '@insidelife/shared';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import { CHECKOUT_PORT, type CheckoutPort, type RefundOutcome } from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
@@ -42,14 +42,14 @@ const logAction = (decision: ModerationDecision): ModerationAction =>
 
 type Decided = Extract<ModerationOutcome, { readonly ok: true }>;
 
-function noticeFor(decision: ModerationDecision, outcome: Decided, subject: NoticeSubject, item: { startDate: string; amountKobo: number }, reason: string | null): PromotionNotice {
+function noticeFor(decision: ModerationDecision, outcome: Decided, subject: NoticeSubject, item: { startDate: string; currency: PaymentCurrency; chargeMinor: number }, reason: string | null): PromotionNotice {
   switch (decision.action) {
     case 'approve':
       return approvedNotice(subject, outcome.to === 'live', item.startDate);
     case 'reject':
       return rejectedNotice(subject, reason ?? 'it breaks our content rules.', outcome.to === 'refund-due', outcome.wasRunning);
     case 'mark-refunded':
-      return refundedNotice(subject, item.amountKobo);
+      return refundedNotice(subject, item.currency, item.chargeMinor);
   }
 }
 

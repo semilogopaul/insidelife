@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { randomBytes } from 'node:crypto';
 import type { DataSource } from 'typeorm';
-import { findVehicle, formatNaira, yearsBetween } from '@insidelife/shared';
+import { findVehicle, formatNaira, yearsBetween, type PaymentCurrency } from '@insidelife/shared';
 import { ForbiddenActionException, ResourceNotFoundException } from '../../../common/exceptions/domain.exception.js';
 import { toCsv, type CsvColumn } from '../../../common/utils/csv.js';
 import { EXPORT_ROW_LIMIT, SqlWhere, containsPattern, offsetOf, pageOf, type Page, type PageRequest } from '../../../common/utils/paging.js';
@@ -558,8 +558,8 @@ export class AdminPlayersService {
   }
 
   private async payments(userId: string): Promise<AdminPlayerDetailDto['payments']> {
-    const rows = await this.dataSource.query<Array<{ id: string; reference: string; purpose: string; description: string; amount_kobo: string; status: string; provider: string; created_at: Date }>>(
-      `SELECT id, reference, purpose, description, amount_kobo, status, provider, created_at
+    const rows = await this.dataSource.query<Array<{ id: string; reference: string; purpose: string; description: string; amount_kobo: string; currency: PaymentCurrency; amount_minor: string; status: string; provider: string; created_at: Date }>>(
+      `SELECT id, reference, purpose, description, amount_kobo, currency, amount_minor, status, provider, created_at
          FROM payments WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`,
       [userId],
     );
@@ -569,6 +569,8 @@ export class AdminPlayersService {
       purpose: row.purpose,
       description: row.description,
       amountKobo: Number(row.amount_kobo),
+      currency: row.currency,
+      amountMinor: Number(row.amount_minor),
       status: row.status,
       provider: row.provider,
       createdAt: row.created_at.toISOString(),

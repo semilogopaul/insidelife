@@ -56,11 +56,17 @@ describe('payment fulfilment', () => {
   });
 
   it('sends paid items to review, or to refund when the run can no longer happen', () => {
-    const base = { range: run, today: '2026-10-08', amountKobo: 500_000, paidKobo: 500_000, hasRoom: true };
+    const base = { range: run, today: '2026-10-08', currency: 'NGN', chargeMinor: 500_000, paidCurrency: 'NGN', paidMinor: 500_000, hasRoom: true };
     expect(admitAfterPayment(base)).toEqual({ kind: 'review' });
     expect(admitAfterPayment({ ...base, hasRoom: false }).kind).toBe('refund');
     expect(admitAfterPayment({ ...base, today: '2026-10-13' }).kind).toBe('refund');
-    expect(admitAfterPayment({ ...base, paidKobo: 499_900 }).kind).toBe('refund');
+    expect(admitAfterPayment({ ...base, paidMinor: 499_900 }).kind).toBe('refund');
+    // Dollars: the payment must be in the booking's currency, for at least its charge in cents.
+    const dollars = { ...base, currency: 'USD', chargeMinor: 334, paidCurrency: 'USD', paidMinor: 334 };
+    expect(admitAfterPayment(dollars)).toEqual({ kind: 'review' });
+    expect(admitAfterPayment({ ...dollars, paidMinor: 333 }).kind).toBe('refund');
+    expect(admitAfterPayment({ ...dollars, paidCurrency: 'NGN', paidMinor: 500_000 }).kind).toBe('refund');
+    expect(admitAfterPayment({ ...base, paidCurrency: 'USD', paidMinor: 500_000 }).kind).toBe('refund');
   });
 });
 

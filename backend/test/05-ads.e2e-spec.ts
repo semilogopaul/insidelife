@@ -47,7 +47,7 @@ interface PaymentRow {
   readonly amount_kobo: string;
   readonly status: string;
   readonly refund_status: string | null;
-  readonly refunded_kobo: string;
+  readonly refunded_minor: string;
 }
 const payment = async (reference: string): Promise<PaymentRow> => (await e2e.dataSource.query<PaymentRow[]>(`SELECT * FROM payments WHERE reference = $1`, [reference]))[0]!;
 
@@ -175,12 +175,12 @@ describe('a billboard from booking to the live feed', () => {
     // Rejected before it starts running (approved for next week): refunded automatically.
     const rejected = ok<{ status: string }>(await moderator.post(`/moderation/campaigns/${two.campaignId}/reject`, { reason: 'Unlicensed transport service' }));
     expect(rejected.status).toBe('refunded');
-    expect(await payment(two.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(43_000 * NAIRA) });
+    expect(await payment(two.reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: String(43_000 * NAIRA) });
 
     // Rejected while running: taken down, no refund.
     const takenDown = ok<{ status: string }>(await moderator.post(`/moderation/campaigns/${one.campaignId}/reject`, { reason: 'Reported by players' }));
     expect(takenDown.status).toBe('rejected');
-    expect(await payment(one.reference)).toMatchObject({ refund_status: null, refunded_kobo: '0' });
+    expect(await payment(one.reference)).toMatchObject({ refund_status: null, refunded_minor: '0' });
     expect((await live()).phoneApps.find((app) => app.slotId === 'app-1')).toBeUndefined();
   });
 
@@ -190,7 +190,7 @@ describe('a billboard from booking to the live feed', () => {
     await payInSandbox(buyer, checkout.reference);
     const rejected = ok<{ status: string }>(await moderator.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Gambling' }));
     expect(rejected.status).toBe('refunded');
-    expect(await payment(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(3 * 18_000 * NAIRA) });
+    expect(await payment(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: String(3 * 18_000 * NAIRA) });
     refused(await moderator.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Again' }), 409);
     refused(await moderator.post(`/moderation/campaigns/${checkout.campaignId}/approve`), 409);
   });
@@ -269,7 +269,7 @@ describe('club songs', () => {
     await payInSandbox(artist, second.reference);
     const rejected = ok<{ status: string }>(await moderator.post(`/moderation/club-orders/${second.orderId}/reject`, { reason: 'Explicit lyrics' }));
     expect(rejected.status).toBe('refunded');
-    expect(await payment(second.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(70_000 * NAIRA) });
+    expect(await payment(second.reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: String(70_000 * NAIRA) });
   });
 });
 
@@ -280,7 +280,9 @@ describe('ad prices set by the owner', () => {
     const pending = ok<CampaignCheckoutDto>(await book(buyer, 'app-2', { title: 'Old Price Co', tagline: 'Booked before', expectedPriceKobo: 43_000 * NAIRA }));
 
     refused(await moderator.put('/ad-rates/phone-app', { priceKobo: 120_000 * NAIRA, reason: 'Moderators can’t' }), 403);
-    refused(await owner.put('/ad-rates/phone-app', { priceKobo: 1_999 * NAIRA, reason: 'Below the minimum' }), 400);
+    // The request shape allows the rate card's lowest value (the ₦500 exchange rate); each key's own range is checked after.
+    refused(await owner.put('/ad-rates/phone-app', { priceKobo: 1_999 * NAIRA, reason: 'Below the minimum' }), 422, 'INVALID_RATE');
+    refused(await owner.put('/ad-rates/phone-app', { priceKobo: 499 * NAIRA, reason: 'Far below the minimum' }), 400);
     refused(await owner.put('/ad-rates/no-such-rate', { priceKobo: 120_000 * NAIRA, reason: 'Unknown key' }), 404);
     const updated = ok<AdRateDto>(await owner.put('/ad-rates/phone-app', { priceKobo: 120_000 * NAIRA, reason: 'Demand is high' }));
     expect(updated).toMatchObject({ key: 'phone-app', currentKobo: 120_000 * NAIRA, defaultKobo: 100_000 * NAIRA });

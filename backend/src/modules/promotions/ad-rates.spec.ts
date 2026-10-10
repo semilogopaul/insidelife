@@ -3,6 +3,7 @@ import type { Repository } from 'typeorm';
 import { AD_RATE_KEYS, AD_SLOTS, findAdSlot } from '@insidelife/shared';
 import { AD_RATES_CHANNEL, AdRatesService } from './ad-rates.service.js';
 import { AdRateEntity } from './entities/ad-rate.entity.js';
+import type { UsdRateService } from '../payments/usd-rate.service.js';
 
 const NAIRA = 100;
 const ADMIN = '9f0c3a52-1b2d-4e5f-8a9b-0c1d2e3f4a5b';
@@ -83,8 +84,16 @@ class FakeSubscriber {
   }
 }
 
-async function node(table: FakeTable, bus: FakeBus): Promise<AdRatesService> {
-  const service = new AdRatesService(table.repository, bus.client());
+/** The payments module's reader of the ₦ per $1 rate: counts the change notices it gets. */
+class FakeUsdRate {
+  invalidations = 0;
+  invalidate(): void {
+    this.invalidations += 1;
+  }
+}
+
+async function node(table: FakeTable, bus: FakeBus, usdRate = new FakeUsdRate()): Promise<AdRatesService> {
+  const service = new AdRatesService(table.repository, bus.client(), usdRate as unknown as UsdRateService);
   await service.onModuleInit();
   return service;
 }
@@ -95,7 +104,7 @@ describe('AdRatesService', () => {
   it('uses the catalog defaults until a rate is overridden', async () => {
     const rates = await node(new FakeTable(), new FakeBus());
     const list = await rates.list();
-    expect(list.map((rate) => rate.key)).toEqual([...AD_RATE_KEYS]);
+    expect(list.map((rate) => rate.key)).toEqual([...AD_RATE_KEYS, 'usd-rate']);
     expect(list.find((rate) => rate.key === 'phone-app')).toEqual({
       key: 'phone-app',
       label: 'Sponsored phone apps',
@@ -161,6 +170,36 @@ describe('AdRatesService', () => {
     expect(bus.published).toEqual([AD_RATES_CHANNEL]);
     expect(changes).toEqual(['changed']);
     expect(await second.rateKobo('lagos-tv')).toBe(60_000 * NAIRA);
+  });
+
+  it('carries the ₦ per $1 rate for dollar payments: ₦500 to ₦5,000, and every node re-reads it when it changes', async () => {
+    const table = new FakeTable();
+    const bus = new FakeBus();
+    const [firstUsd, secondUsd] = [new FakeUsdRate(), new FakeUsdRate()];
+    const [first] = await Promise.all([node(table, bus, firstUsd), node(table, bus, secondUsd)]);
+    expect((await first.list()).find((rate) => rate.key === 'usd-rate')).toEqual({
+      key: 'usd-rate',
+      label: '₦ per $1 for payments',
+      unit: 'ngn-per-usd',
+      byDistrict: false,
+      defaultKobo: 1_500 * NAIRA,
+      currentKobo: 1_500 * NAIRA,
+      blockDays: 0,
+      blockPriceKobo: null,
+      summary: '₦1,500 per $1 · converts naira prices to dollar prices and dollar top-ups to naira',
+      updatedAt: null,
+      updatedBy: null,
+    });
+    for (const bad of [499 * NAIRA, 5_001 * NAIRA, 1_500 * NAIRA + 50, 2_000_000 * NAIRA]) {
+      await expect(first.setRate('usd-rate', bad, ADMIN), String(bad)).rejects.toMatchObject({ errorCode: 'INVALID_RATE', message: expect.stringMatching(/₦500 to ₦5,000 per \$1/) });
+    }
+    await expect(first.setRate('usd-rate', 500 * NAIRA, ADMIN)).resolves.toMatchObject({ currentKobo: 500 * NAIRA });
+    await expect(first.setRate('usd-rate', 5_000 * NAIRA, ADMIN)).resolves.toMatchObject({ currentKobo: 5_000 * NAIRA, summary: expect.stringMatching(/^₦5,000 per \$1/) });
+    expect(firstUsd.invalidations).toBeGreaterThanOrEqual(2);
+    expect(secondUsd.invalidations).toBeGreaterThanOrEqual(2);
+    expect(await first.resetRate('usd-rate')).toMatchObject({ currentKobo: 1_500 * NAIRA, updatedAt: null });
+    // The exchange rate is not an ad price: ad keys keep their own range.
+    await expect(first.setRate('totem', 1_500 * NAIRA, ADMIN)).rejects.toMatchObject({ errorCode: 'INVALID_RATE' });
   });
 
   it('resets a rate to the catalog default', async () => {

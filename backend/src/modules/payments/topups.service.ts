@@ -1,13 +1,17 @@
-import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import {
   KOBO_PER_NAIRA,
   TOPUP_MIN_NGN,
+  TOPUP_MIN_USD,
   TOPUP_PACKAGES,
+  TOPUP_USD_QUICK_PICKS,
   formatNaira,
+  formatPaymentAmount,
   type CreateTopupRequest,
+  type TopupUsdCatalogDto,
   type TopupCatalogDto,
   type TopupStartedDto,
   type TopupVerificationDto,
@@ -23,11 +27,20 @@ import { CheckoutService } from './checkout.service.js';
 import { toPaymentDto } from './payment.mapper.js';
 import { TopupCreditor } from './topup-creditor.service.js';
 import { quoteTopup, topupCredit } from './topup-quote.js';
+import { UsdRateService } from './usd-rate.service.js';
+
+/** The player saw another ₦ per $1 than the one in force now: show them the new one rather than charge differently. */
+export class TopupRateChangedException extends DomainException {
+  constructor(ngnPerUsd: number) {
+    super('RATE_CHANGED', `The dollar rate just changed to ${formatNaira(ngnPerUsd)} per $1. Check what you get and pay again`, HttpStatus.CONFLICT);
+  }
+}
 
 /**
- * Top-ups: real naira (Flutterwave) buy in-game naira (flagged *purchased*). A player picks a pack or types any whole
- * amount from ₦500 to the configured maximum; the server quotes the rate (the largest pack the amount reaches) and
- * stores it on the payment. Delivery is this module's `topup` fulfiller: it credits the amount Flutterwave verified
+ * Top-ups: real naira or US dollars (Flutterwave) buy in-game naira (flagged *purchased*). A player picks a pack or
+ * types any whole amount from ₦500 to the configured maximum, or (when dollars are on) any whole amount from $1 to the
+ * dollar maximum; the server quotes the rate (the largest pack the naira value reaches, the dollar amount converted at
+ * the owner's ₦ per $1) and stores both rates on the payment. Delivery is this module's `topup` fulfiller: it credits the amount Flutterwave verified
  * × that stored rate via `ctx.wallet.receive(…, 'topup:<reference>', { income: 'purchased' })` — the ledger
  * idempotency key makes a second delivery of the same reference a no-op even if verify and webhook race.
  *
@@ -41,6 +54,7 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
   /** 0 = no daily cap. */
   private readonly dailyLimitKobo: number;
   private readonly maxNgn: number;
+  private readonly maxUsd: number;
 
   constructor(
     private readonly checkout: CheckoutService,
@@ -48,12 +62,14 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
     private readonly directory: CharacterDirectory,
     private readonly users: UsersService,
     private readonly ledger: LedgerService,
+    private readonly usdRate: UsdRateService,
     @InjectDataSource() private readonly dataSource: DataSource,
     config: ConfigService<AppConfig, true>,
   ) {
     const payments = config.get('payments', { infer: true });
     this.dailyLimitKobo = Math.max(0, payments.dailyLimitNgn) * KOBO_PER_NAIRA;
     this.maxNgn = payments.maxTopupNgn;
+    this.maxUsd = payments.usd.maxTopupUsd;
   }
 
   onModuleInit(): void {
@@ -63,6 +79,15 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
   async catalog(userId: string): Promise<TopupCatalogDto> {
     const spentKobo = await this.checkout.committedKoboSince(this.dataSource.manager, userId, 'topup', startOfUtcDay(new Date()));
     const capped = this.dailyLimitKobo > 0;
+    const usdOptions = await this.usdRate.options();
+    const usd: TopupUsdCatalogDto | null = usdOptions
+      ? {
+          ...usdOptions,
+          minUsd: TOPUP_MIN_USD,
+          maxPerPaymentUsd: this.maxUsd,
+          quickPicksUsd: TOPUP_USD_QUICK_PICKS.filter((dollars) => dollars <= this.maxUsd),
+        }
+      : null;
     return {
       packages: TOPUP_PACKAGES.filter((pack) => pack.priceNgn <= this.maxNgn),
       minNgn: TOPUP_MIN_NGN,
@@ -70,6 +95,7 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
       dailyLimitNgn: capped ? this.dailyLimitKobo / KOBO_PER_NAIRA : null,
       spentTodayNgn: spentKobo / KOBO_PER_NAIRA,
       remainingTodayNgn: capped ? Math.max(0, this.dailyLimitKobo - spentKobo) / KOBO_PER_NAIRA : null,
+      usd,
       sandbox: this.checkout.sandbox,
     };
   }
@@ -79,9 +105,18 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
    * the web origin the player is on (`requestOrigin`), so Flutterwave sends them back there when it is one of ours.
    */
   async start(userId: string, request: CreateTopupRequest, returnOrigin: string | null = null): Promise<TopupStartedDto> {
-    const quoted = quoteTopup(request, this.maxNgn);
+    const currency = request.currency ?? 'NGN';
+    if (currency === 'USD' && !this.usdRate.usdEnabled) throw new GameRuleException('PAYMENT_CURRENCY_UNAVAILABLE', 'Top-ups are in naira only for now');
+    if (currency === 'NGN' && request.method !== undefined && request.method !== 'card') {
+      throw new GameRuleException('INVALID_TOPUP', 'Apple Pay and Google Pay are for dollar payments');
+    }
+    if (request.method !== undefined && !this.usdRate.methods.includes(request.method)) throw new GameRuleException('INVALID_TOPUP', 'That way to pay isn’t available');
+    const ngnPerUsd = currency === 'USD' ? await this.usdRate.ngnPerUsd() : null;
+    if (ngnPerUsd !== null && request.expectedNgnPerUsd !== undefined && request.expectedNgnPerUsd !== ngnPerUsd) throw new TopupRateChangedException(ngnPerUsd);
+    const quoted = quoteTopup(request, { maxNgn: this.maxNgn, usd: ngnPerUsd === null ? null : { maxUsd: this.maxUsd, ngnPerUsd } });
     if (!quoted.ok) throw new GameRuleException('INVALID_TOPUP', quoted.reason);
     const { quote } = quoted;
+    const price = formatPaymentAmount(quote.currency, quote.amountMinor);
     const character = await this.directory.findLivingByUser(userId);
     if (!character) throw new NoCharacterException();
     const user = await this.users.findById(userId);
@@ -93,15 +128,21 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
         email: user.email,
         characterId: character.id,
         purpose: 'topup',
-        amountKobo: quote.priceNgn * KOBO_PER_NAIRA,
-        description: `Inside Life top-up: ${formatNaira(quote.virtualAmount)} in game (${quote.label})`.slice(0, 120),
+        currency: quote.currency,
+        amountMinor: quote.amountMinor,
+        ...(quote.ngnPerUsd === null ? {} : { ngnPerUsd: quote.ngnPerUsd }),
+        method: request.method ?? 'card',
+        description: `Inside Life top-up: ${formatNaira(quote.virtualAmount)} in game (${quote.label}, ${price})`.slice(0, 120),
         subjectId: quote.subjectId,
         topupRate: quote.ratePerNaira,
         returnOrigin,
       },
       (manager, checkoutRequest) => this.enforceDailyCap(manager, checkoutRequest),
     );
-    this.logger.log({ reference: session.reference, priceNgn: quote.priceNgn, rate: quote.ratePerNaira }, 'Top-up checkout started');
+    this.logger.log(
+      { reference: session.reference, currency: quote.currency, amountMinor: quote.amountMinor, priceNgn: quote.priceNgn, rate: quote.ratePerNaira, ngnPerUsd: quote.ngnPerUsd },
+      'Top-up checkout started',
+    );
     const { subjectId: _subject, ...topup } = quote;
     return { ...session, sandbox: this.checkout.sandbox, topup };
   }
@@ -123,7 +164,10 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
     if (!result.ok) throw new DomainException('TOPUP_UNDELIVERABLE', result.reason);
     const characterId = await this.recipientFor(payment);
     await this.creditor.credit(characterId, result.credit, payment.reference);
-    this.logger.log({ reference: payment.reference, paidKobo: payment.paidKobo, rate: result.credit.ratePerNaira }, 'Top-up credited');
+    this.logger.log(
+      { reference: payment.reference, currency: payment.currency, paidMinor: payment.paidMinor, ngnPerUsd: payment.ngnPerUsd, rate: result.credit.ratePerNaira },
+      'Top-up credited',
+    );
     return { kind: 'delivered' };
   }
 
@@ -138,7 +182,8 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
       return;
     }
     // Each refund takes back its own share (a second partial refund takes the rest); keyed by refund id, never twice.
-    const share = Math.min(1, refund.amountKobo / payment.paidKobo);
+    // Same currency on both sides (Flutterwave refunds in the charge's currency), so the share is exact either way.
+    const share = Math.min(1, refund.amountMinor / payment.paidMinor);
     const owed = Math.ceil(result.credit.virtualAmount * share);
     const { taken, shortfall } = await this.creditor.clawBack(await this.recipientFor(payment), result.credit, owed, payment.reference, refund.refundId);
     const summary = `Top-up refunded after delivery (refund ${refund.refundId}): clawed back ${formatNaira(taken)} of ${formatNaira(owed)}`;
@@ -169,7 +214,9 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
   private async enforceDailyCap(manager: EntityManager, request: CheckoutRequest): Promise<void> {
     if (this.dailyLimitKobo <= 0) return;
     const committed = await this.checkout.committedKoboSince(manager, request.userId, 'topup', startOfUtcDay(new Date()));
-    if (committed + request.amountKobo > this.dailyLimitKobo) {
+    // Every currency counts at its naira value (dollars at the rate quoted).
+    const valueKobo = request.ngnPerUsd === undefined ? request.amountMinor : request.amountMinor * request.ngnPerUsd;
+    if (committed + valueKobo > this.dailyLimitKobo) {
       const remaining = Math.max(0, this.dailyLimitKobo - committed) / KOBO_PER_NAIRA;
       throw new GameRuleException(
         'TOPUP_DAILY_LIMIT',

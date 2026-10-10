@@ -4,9 +4,10 @@ import { useMutation } from '@tanstack/react-query';
 import { FlaskConical } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { formatNaira, type PaymentDto } from '@insidelife/shared';
+import { formatNaira, formatPaymentAmount, type PaymentDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, Money, Spinner } from '@/common/components';
+import { PaymentAmount } from '@/common/payments';
 import { usePaymentHistory } from '../../hooks/use-topups';
 import { bankApi } from '../../services/bank.api';
 import { isPaymentReference, paymentOutcome, PURPOSE_LABELS } from '../../services/payment-status';
@@ -77,7 +78,7 @@ function SandboxBody({ reference }: { readonly reference: string }) {
       ) : (
         <div className="flex flex-col gap-2">
           <Button size="lg" block loading={decide.isPending && decide.variables === 'succeed'} disabled={decide.isPending} onClick={() => decide.mutate('succeed')}>
-            Pay {formatNaira(payment.amountNgn)} (simulate success)
+            Pay {formatPaymentAmount(payment.currency, payment.amountMinor)} (simulate success)
           </Button>
           <Button size="lg" variant="paper" block loading={decide.isPending && decide.variables === 'fail'} disabled={decide.isPending} onClick={() => decide.mutate('fail')}>
             Simulate failure
@@ -113,8 +114,17 @@ function PaymentSummary({ payment }: { readonly payment: PaymentDto }) {
       <div aria-hidden className="col-span-2 border-t border-line" />
       <dt className="self-center font-bold">Amount</dt>
       <dd className="type-figure text-right text-3xl">
-        <Money amount={payment.amountNgn} />
+        <PaymentAmount currency={payment.currency} minor={payment.amountMinor} />
       </dd>
+      {payment.currency === 'USD' && (
+        <>
+          <dt className="text-text-soft">In naira</dt>
+          <dd className="tabular text-right text-text-soft">
+            {formatNaira(payment.amountNgn)}
+            {payment.ngnPerUsd ? ` at ${formatNaira(payment.ngnPerUsd)} per $1` : ''}
+          </dd>
+        </>
+      )}
       <dt className="text-text-soft">Reference</dt>
       <dd className="truncate text-right text-xs text-text-faint" title={payment.reference}>
         {payment.reference}

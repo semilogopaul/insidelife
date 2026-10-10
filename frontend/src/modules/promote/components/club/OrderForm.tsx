@@ -2,9 +2,10 @@
 
 import { CalendarDays, Lock, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
-import { CLUB_PLAY_PRODUCT, formatNaira, koboToNaira, type ClubSongOfferDto, type ClubTrackDto, type ContentRule } from '@insidelife/shared';
+import { CLUB_PLAY_PRODUCT, formatNaira, formatUsdCents, koboToNaira, type ClubSongOfferDto, type ClubTrackDto, type ContentRule, type UsdPaymentOptionsDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, Money } from '@/common/components';
+import { dollarPriceFor, dollarUnavailableReason, PAYMENT_METHOD_LABELS, PayInPicker, paymentChoiceBody, usePaymentChoice } from '@/common/payments';
 import { cn } from '@/common/utils/cn';
 import { useOrderRotation } from '../../hooks/use-promote';
 import { blocksLabel, quoteBlocks, runSummary } from '../../services/rules';
@@ -16,6 +17,8 @@ export interface OrderFormProps {
   /** Today's price, start dates and plays guarantee (null while loading). */
   readonly offer: ClubSongOfferDto | null;
   readonly rules: readonly ContentRule[];
+  /** Paying in dollars, when the server offers it (null: naira only). */
+  readonly usd: UsdPaymentOptionsDto | null;
   readonly onCancel: () => void;
 }
 
@@ -23,13 +26,16 @@ export interface OrderFormProps {
  * One product: a song in every club and lounge, ₦5,000 a day sold by the week (1–4 weeks), from the rotation's next
  * free day, with a guaranteed number of plays a day. Check the dates and the guarantee, pay.
  */
-export function OrderForm({ track, offer, rules, onCancel }: OrderFormProps) {
+export function OrderForm({ track, offer, rules, usd, onCancel }: OrderFormProps) {
   const [weeks, setWeeks] = useState(1);
   const [accepted, setAccepted] = useState(false);
   const order = useOrderRotation();
   const product = CLUB_PLAY_PRODUCT;
   const weekPriceKobo = offer?.weekPriceKobo ?? product.priceKobo;
   const quote = quoteBlocks(weekPriceKobo, weeks, 7);
+  const dollarPrice = quote ? dollarPriceFor(quote.totalKobo, usd) : null;
+  const payment = usePaymentChoice(usd, dollarPrice !== null && !dollarPrice.belowMinimum);
+  const inDollars = payment.currency === 'USD' && dollarPrice !== null;
   const start = offer?.nextStarts[weeks - 1] ?? null;
   const ready = accepted && start !== null && quote !== null;
   const leaving = order.isPending || order.isSuccess;
@@ -86,7 +92,23 @@ export function OrderForm({ track, offer, rules, onCancel }: OrderFormProps) {
           <dd className="type-figure text-right text-lg">
             <Money amount={quote.totalNaira} />
           </dd>
+          {inDollars && (
+            <>
+              <dt className="font-bold">You pay in dollars</dt>
+              <dd className="type-figure text-right text-lg">{formatUsdCents(dollarPrice.cents)}</dd>
+            </>
+          )}
         </dl>
+      )}
+
+      {quote && (
+        <PayInPicker
+          usd={usd}
+          payment={payment}
+          nairaPrice={formatNaira(quote.totalNaira)}
+          dollarPrice={dollarPrice ? formatUsdCents(dollarPrice.cents) : null}
+          dollarNote={dollarUnavailableReason(dollarPrice, usd)}
+        />
       )}
 
       <ContentRules rules={rules} scope="music" accepted={accepted} onAccept={setAccepted} />
@@ -104,9 +126,20 @@ export function OrderForm({ track, offer, rules, onCancel }: OrderFormProps) {
           icon={<Lock size={18} aria-hidden />}
           disabled={!ready}
           loading={leaving}
-          onClick={() => start && quote && order.mutate({ trackId: track.id, body: { productId: product.id, weeks, clubs: ['all'], expectedStartDate: start, expectedPriceKobo: quote.totalKobo } })}
+          onClick={() =>
+            start &&
+            quote &&
+            order.mutate({
+              trackId: track.id,
+              body: { productId: product.id, weeks, clubs: ['all'], expectedStartDate: start, expectedPriceKobo: quote.totalKobo, ...paymentChoiceBody(payment, usd) },
+            })
+          }
         >
-          {leaving ? 'Opening checkout…' : `Pay ${formatNaira(quote?.totalNaira ?? koboToNaira(weekPriceKobo))}`}
+          {leaving
+            ? 'Opening checkout…'
+            : inDollars
+              ? `Pay ${formatUsdCents(dollarPrice.cents)}${payment.method !== 'card' ? ` with ${PAYMENT_METHOD_LABELS[payment.method]}` : ''}`
+              : `Pay ${formatNaira(quote?.totalNaira ?? koboToNaira(weekPriceKobo))}`}
         </Button>
       </div>
     </div>

@@ -36,8 +36,14 @@ describe('the whole ledger after the run', () => {
           AND p.status <> 'success'`,
     );
     expect(creditedButNotPaid).toEqual([]);
-    const overRefunded = await db.query(`SELECT reference FROM payments WHERE refunded_kobo > COALESCE(paid_kobo, amount_kobo)`);
+    const overRefunded = await db.query(`SELECT reference FROM payments WHERE refunded_minor > COALESCE(paid_minor, amount_minor)`);
     expect(overRefunded).toEqual([]);
+    // A payment is only ever confirmed by a charge in its own currency (₦ is never $, and $ is never ₦).
+    const paidInAnotherCurrency = await db.query(
+      `SELECT reference, currency, gateway_response->>'currency' AS charged_in FROM payments
+        WHERE status = 'success' AND gateway_response ? 'currency' AND upper(gateway_response->>'currency') <> currency`,
+    );
+    expect(paidInAnotherCurrency).toEqual([]);
     const paidItemsWithoutPayment = await db.query(
       `SELECT c.id FROM promotion_campaigns c
         WHERE c.status IN ('in-review', 'approved', 'live', 'completed')
@@ -52,6 +58,7 @@ describe('the whole ledger after the run', () => {
               (SELECT COUNT(*)::int FROM ledger_transactions) AS postings,
               (SELECT COUNT(*)::int FROM payments WHERE status = 'success') AS paid_checkouts,
               (SELECT COUNT(*)::int FROM payments WHERE refund_status = 'refunded') AS refunded_checkouts,
+              (SELECT COUNT(*)::int FROM payments WHERE status = 'success' AND currency = 'USD') AS paid_dollar_checkouts,
               (SELECT COUNT(*)::int FROM ledger_transactions WHERE kind = 'transfer') AS transfers,
               (SELECT COUNT(*)::int FROM promotion_campaigns) AS ad_bookings,
               (SELECT COUNT(*)::int FROM promotion_club_orders) AS song_orders`,

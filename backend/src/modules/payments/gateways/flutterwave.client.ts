@@ -5,11 +5,13 @@ import type { AppConfig } from '../../../config/configuration.js';
 import {
   isAcceptedRefundStatus,
   isNotFound,
+  minorToMajor,
   parseEnvelope,
   parseHostedLink,
   parseRefund,
   parseRefundList,
   parseTransaction,
+  parseWalletRedirect,
   type FlutterwaveEnvelope,
   type ParsedRefund,
 } from './flutterwave.parsers.js';
@@ -38,9 +40,12 @@ interface CallResult {
 }
 
 /**
- * Thin Flutterwave v3 client: Standard (hosted) checkout, transaction verification and refunds. Cards never touch our
- * servers (no encryption key, no direct charges). The secret key never leaves this class and is never logged;
- * failures surface as `ExternalServiceException` (502) with no gateway internals.
+ * Thin Flutterwave v3 client: Standard (hosted) checkout in NGN or USD, Apple Pay / Google Pay wallet checkouts (USD,
+ * `POST /v3/charges?type=applepay|googlepay`, which hand back a Flutterwave-hosted page to send the player to),
+ * transaction verification and refunds. Cards never touch our servers (no encryption key, no card charges). Whatever
+ * started the checkout, the payment is only ever trusted after reading the transaction back (`verify*`). The secret
+ * key never leaves this class and is never logged; failures surface as `ExternalServiceException` (502) with no
+ * gateway internals.
  */
 @Injectable()
 export class FlutterwaveClient implements PaymentGateway {
@@ -58,12 +63,13 @@ export class FlutterwaveClient implements PaymentGateway {
 
   async initialize(input: GatewayInitializeInput): Promise<{ readonly authorizationUrl: string }> {
     const redirectUrl = input.redirectUrl || this.callbackUrl;
+    if (input.method !== 'card') return this.startWallet(input, redirectUrl);
     // The logo comes from the site the player returns to (same page they are on), else from the configured one.
     const logo = logoOn(redirectUrl) ?? logoOn(this.callbackUrl);
     const { envelope } = await this.call('POST', '/payments', {
       tx_ref: input.reference,
-      amount: input.amountKobo / 100,
-      currency: 'NGN',
+      amount: minorToMajor(input.amountMinor),
+      currency: input.currency,
       redirect_url: redirectUrl,
       customer: { email: input.email, name: input.customerName },
       customizations: { title: 'Inside Life', description: input.description, ...(logo ? { logo } : {}) },
@@ -73,6 +79,39 @@ export class FlutterwaveClient implements PaymentGateway {
     const link = envelope?.ok ? parseHostedLink(envelope.data) : null;
     if (!link) {
       this.logger.warn({ reference: input.reference, message: envelope?.message ?? null }, 'Flutterwave checkout rejected');
+      throw new ExternalServiceException('Flutterwave');
+    }
+    return { authorizationUrl: link };
+  }
+
+  /**
+   * Apple Pay / Google Pay (USD only): a direct wallet charge whose response carries the Flutterwave page that
+   * completes it (`meta.authorization.redirect`). The charge starts `pending`; it is confirmed like any other, by the
+   * webhook, the player's check or the reconciler reading the transaction back by our reference.
+   */
+  private async startWallet(input: GatewayInitializeInput, redirectUrl: string): Promise<{ readonly authorizationUrl: string }> {
+    if (input.currency !== 'USD') {
+      this.logger.warn({ reference: input.reference, method: input.method }, 'Wallet checkout refused: wallets are dollar payments');
+      throw new ExternalServiceException('Flutterwave');
+    }
+    const { envelope } = await this.call(
+      'POST',
+      `/charges?type=${input.method}`,
+      {
+        tx_ref: input.reference,
+        amount: minorToMajor(input.amountMinor),
+        currency: input.currency,
+        email: input.email,
+        fullname: input.customerName,
+        narration: input.description.slice(0, 100),
+        redirect_url: redirectUrl,
+        meta: { ...input.metadata, paymentId: input.paymentId, kind: input.metadata.purpose ?? null },
+      },
+      { allowClientErrors: true },
+    );
+    const link = envelope?.ok ? parseWalletRedirect(envelope) : null;
+    if (!link) {
+      this.logger.warn({ reference: input.reference, method: input.method, message: envelope?.message ?? null }, 'Flutterwave wallet checkout rejected');
       throw new ExternalServiceException('Flutterwave');
     }
     return { authorizationUrl: link };
@@ -93,14 +132,14 @@ export class FlutterwaveClient implements PaymentGateway {
       this.logger.warn({ reference: input.reference }, 'Refund impossible: Flutterwave has no transaction for this reference');
       throw new ExternalServiceException('Flutterwave');
     }
-    const body = { comments: input.comments.slice(0, 120), ...(input.amountKobo !== undefined ? { amount: input.amountKobo / 100 } : {}) };
+    const body = { comments: input.comments.slice(0, 120), ...(input.amountMinor !== undefined ? { amount: minorToMajor(input.amountMinor) } : {}) };
     const { envelope } = await this.call('POST', `/transactions/${transactionId}/refund`, body, { allowClientErrors: true });
     const refund = envelope?.ok ? parseRefund(envelope.data) : null;
     if (!refund || !isAcceptedRefundStatus(refund.status)) {
       this.logger.warn({ reference: input.reference, message: envelope?.message ?? null, status: refund?.status ?? null }, 'Flutterwave refused the refund');
       throw new ExternalServiceException('Flutterwave');
     }
-    return { refundId: refund.refundId, amountKobo: refund.amountKobo, status: refund.status };
+    return { refundId: refund.refundId, amountMinor: refund.amountMinor, status: refund.status };
   }
 
   /** `GET /v3/refunds/:id` — confirms a refund reported by a webhook. Null when Flutterwave doesn't know it. */

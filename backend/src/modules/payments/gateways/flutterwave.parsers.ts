@@ -3,7 +3,8 @@ import type { GatewayCharge, GatewayChargeStatus, GatewayDetails, GatewayRefund 
 /**
  * Runtime parsing of Flutterwave v3 JSON (https://developer.flutterwave.com/v3.0/docs). Everything arrives as
  * `unknown` and is narrowed field by field; anything unexpected becomes `null` instead of trusting the payload's shape.
- * Flutterwave amounts are in naira (major units, possibly with kobo decimals); we work in kobo.
+ * Flutterwave amounts are in major units of the transaction's currency (naira or dollars, possibly with decimals); we
+ * work in minor units (kobo, cents: both 1/100).
  */
 
 type JsonRecord = Readonly<Record<string, unknown>>;
@@ -17,24 +18,29 @@ const id = (value: unknown): string | null => {
   return typeof value === 'string' && /^\d{1,20}$/.test(value) ? value : null;
 };
 
-/** Naira (major units) → kobo, or null for anything that isn't a sane non-negative amount. */
-export function nairaToKoboAmount(value: unknown): number | null {
-  const naira = num(value);
-  if (naira === null || naira < 0) return null;
-  const kobo = Math.round(naira * 100);
-  return Number.isSafeInteger(kobo) ? kobo : null;
+/** Major units (naira, dollars) → minor units (kobo, cents), or null for anything that isn't a sane non-negative amount. */
+export function majorToMinorAmount(value: unknown): number | null {
+  const major = num(value);
+  if (major === null || major < 0) return null;
+  const minor = Math.round(major * 100);
+  return Number.isSafeInteger(minor) ? minor : null;
 }
 
-/** `{ status: 'success' | 'error', message, data }` — every Flutterwave response. */
+/** Minor units → the major-unit number Flutterwave takes (`amount: 6.67`). */
+export const minorToMajor = (minor: number): number => minor / 100;
+
+/** `{ status: 'success' | 'error', message, data, meta? }` — every Flutterwave response. */
 export interface FlutterwaveEnvelope {
   readonly ok: boolean;
   readonly message: string;
   readonly data: unknown;
+  /** Top-level `meta` (direct charges put the authorization redirect here). */
+  readonly meta: unknown;
 }
 
 export function parseEnvelope(json: unknown): FlutterwaveEnvelope | null {
   if (!isRecord(json) || typeof json.status !== 'string') return null;
-  return { ok: json.status === 'success', message: str(json.message) ?? '', data: json.data };
+  return { ok: json.status === 'success', message: str(json.message) ?? '', data: json.data, meta: json.meta ?? null };
 }
 
 /** "No transaction was found for this id" (HTTP 400) — the reference or id is unknown to Flutterwave. */
@@ -45,6 +51,28 @@ export function parseHostedLink(data: unknown): string | null {
   if (!isRecord(data)) return null;
   const link = str(data.link);
   return link && link.startsWith('https://') ? link : null;
+}
+
+const httpsUrl = (value: unknown): string | null => {
+  const url = str(value);
+  return url && url.startsWith('https://') && URL.canParse(url) ? url : null;
+};
+
+/**
+ * `POST /v3/charges?type=applepay|googlepay` → where the customer completes the wallet payment: the redirect of
+ * `meta.authorization` (`mode: 'redirect'`), at the top level or inside `data`, else `data.auth_url`. Https only;
+ * null when there is none (the charge then can't be completed and checkout fails).
+ */
+export function parseWalletRedirect(envelope: FlutterwaveEnvelope): string | null {
+  const data = isRecord(envelope.data) ? envelope.data : {};
+  for (const meta of [envelope.meta, data.meta]) {
+    const authorization = isRecord(meta) && isRecord(meta.authorization) ? meta.authorization : null;
+    if (!authorization) continue;
+    const mode = str(authorization.mode);
+    const redirect = httpsUrl(authorization.redirect);
+    if (redirect && (mode === null || mode.toLowerCase() === 'redirect')) return redirect;
+  }
+  return httpsUrl(data.auth_url);
 }
 
 const STATUS_MAP: Readonly<Record<string, GatewayChargeStatus>> = {
@@ -60,9 +88,9 @@ const STATUS_MAP: Readonly<Record<string, GatewayChargeStatus>> = {
 export function parseTransaction(data: unknown): GatewayCharge | null {
   if (!isRecord(data)) return null;
   const reference = str(data.tx_ref);
-  const amountKobo = nairaToKoboAmount(data.amount);
+  const amountMinor = majorToMinorAmount(data.amount);
   const rawStatus = str(data.status);
-  if (!reference || amountKobo === null || !rawStatus) return null;
+  if (!reference || amountMinor === null || !rawStatus) return null;
 
   const card = isRecord(data.card) ? data.card : {};
   const createdAt = str(data.created_at);
@@ -89,8 +117,8 @@ export function parseTransaction(data: unknown): GatewayCharge | null {
     reference,
     transactionId,
     status: STATUS_MAP[rawStatus.toLowerCase()] ?? 'pending',
-    amountKobo,
-    chargedAmountKobo: nairaToKoboAmount(data.charged_amount),
+    amountMinor,
+    chargedAmountMinor: majorToMinorAmount(data.charged_amount),
     currency: str(data.currency)?.toUpperCase() ?? '',
     channel,
     paidAt,
@@ -108,10 +136,10 @@ export interface ParsedRefund extends GatewayRefund {
 export function parseRefund(data: unknown): ParsedRefund | null {
   if (!isRecord(data)) return null;
   const refundId = id(data.id);
-  const amountKobo = nairaToKoboAmount(data.amount_refunded ?? data.AmountRefunded ?? data.amountRefunded);
+  const amountMinor = majorToMinorAmount(data.amount_refunded ?? data.AmountRefunded ?? data.amountRefunded);
   const status = str(data.status);
-  if (!refundId || amountKobo === null || !status) return null;
-  return { refundId, amountKobo, status: status.slice(0, 32), transactionId: id(data.tx_id ?? data.TransactionId ?? data.transactionId) };
+  if (!refundId || amountMinor === null || !status) return null;
+  return { refundId, amountMinor, status: status.slice(0, 32), transactionId: id(data.tx_id ?? data.TransactionId ?? data.transactionId) };
 }
 
 /** Refund states that mean Flutterwave accepted the refund (money is on its way back, or already there). */

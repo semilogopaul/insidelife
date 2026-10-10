@@ -12,14 +12,17 @@ export type ChargeDecision =
 
 export interface ExpectedPayment {
   readonly reference: string;
-  readonly amountKobo: number;
+  /** The price in minor units of `currency` (kobo for NGN, cents for USD). */
+  readonly amountMinor: number;
+  /** The currency the checkout charges in (`NGN` or `USD`). */
   readonly currency: string;
   readonly status: PaymentStatus;
 }
 
 /**
- * Flutterwave's rule for a paid checkout: `status === 'successful'`, `tx_ref` is ours, `currency === 'NGN'`,
- * `amount >= expected` and `charged_amount >= expected`.
+ * Flutterwave's rule for a paid checkout: `status === 'successful'`, `tx_ref` is ours, `currency` is exactly the
+ * checkout's (NGN or USD), and `amount >= expected` and `charged_amount >= expected`, both in that currency.
+ * - A charge in another currency never counts, whatever its amount: $25 is not ₦25, and ₦2,500 is not $2,500.
  * - `success` is terminal: a confirmed payment is never downgraded (later reports are ignored here).
  * - A success only counts when reference and currency match and at least the price was paid and charged — a cheaper
  *   charge on someone else's reference must never deliver the expensive pack. A missing `charged_amount` counts as
@@ -28,15 +31,16 @@ export interface ExpectedPayment {
  */
 export function decideCharge(
   expected: ExpectedPayment,
-  charge: Pick<GatewayCharge, 'reference' | 'status' | 'amountKobo' | 'chargedAmountKobo' | 'currency'>,
+  charge: Pick<GatewayCharge, 'reference' | 'status' | 'amountMinor' | 'chargedAmountMinor' | 'currency'>,
 ): ChargeDecision {
   if (expected.status === 'success') return { kind: 'already-paid' };
   if (charge.reference !== expected.reference) return { kind: 'mismatch', reason: 'reference_mismatch' };
   switch (charge.status) {
     case 'success':
-      if (charge.currency !== expected.currency) return { kind: 'mismatch', reason: 'currency_mismatch' };
-      if (charge.amountKobo < expected.amountKobo) return { kind: 'mismatch', reason: 'amount_mismatch' };
-      if (charge.chargedAmountKobo === null || charge.chargedAmountKobo < expected.amountKobo) return { kind: 'mismatch', reason: 'amount_mismatch' };
+      if (!expected.currency || charge.currency !== expected.currency) return { kind: 'mismatch', reason: 'currency_mismatch' };
+      if (!Number.isSafeInteger(expected.amountMinor) || expected.amountMinor <= 0) return { kind: 'mismatch', reason: 'amount_mismatch' };
+      if (charge.amountMinor < expected.amountMinor) return { kind: 'mismatch', reason: 'amount_mismatch' };
+      if (charge.chargedAmountMinor === null || charge.chargedAmountMinor < expected.amountMinor) return { kind: 'mismatch', reason: 'amount_mismatch' };
       return { kind: 'record-success' };
     case 'failed':
       return { kind: 'not-paid', status: 'failed', reason: 'charge_failed' };
@@ -79,7 +83,8 @@ export function claimRefund(payment: { readonly status: PaymentStatus; readonly 
 /** A refund as the gateway reports it (API response, webhook, re-check), with its state normalised. */
 export interface RefundReport {
   readonly refundId: string;
-  readonly amountKobo: number;
+  /** In minor units of the payment's currency (Flutterwave refunds in the charge's currency). */
+  readonly amountMinor: number;
   readonly state: 'completed' | 'pending' | 'failed';
   /** The gateway's own wording, stored for audit. */
   readonly gatewayStatus: string;

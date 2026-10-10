@@ -1,11 +1,12 @@
 import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AD_MAX_RUN_DAYS, AD_MAX_WEEKS, AD_SHORT_BLOCK_DAYS, LINK_URL_MAX, type BillboardSlotId, type CreateCampaignRequest } from '@insidelife/shared';
+import { PaymentChoiceDto } from '../../../common/http/payment-choice.dto.js';
 
 /** Slot ids are short kebab-case catalog keys (`findAdSlot` decides whether one exists and is for sale). */
 const SLOT_ID = /^[a-z0-9-]{2,32}$/;
 
 /** Shape checks only; dates, link safety, text cleaning and capacity are domain rules in CampaignsService. */
-export class CreateCampaignDto implements CreateCampaignRequest {
+export class CreateCampaignDto extends PaymentChoiceDto implements CreateCampaignRequest {
   @IsString()
   @Matches(SLOT_ID, { message: 'slotId must be a slot from GET /promotions/slots' })
   readonly slotId: BillboardSlotId;

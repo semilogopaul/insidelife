@@ -38,11 +38,11 @@ interface PaymentRow {
   readonly next_check_at: Date | null;
   readonly status: string;
   readonly failure_reason: string | null;
-  readonly paid_kobo: string | null;
+  readonly paid_minor: string | null;
   readonly gateway_transaction_id: string | null;
   readonly fulfilled_at: Date | null;
   readonly refund_status: string | null;
-  readonly refunded_kobo: string;
+  readonly refunded_minor: string;
   readonly flag_reason: string | null;
   readonly provider: string;
 }
@@ -85,7 +85,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     expect(verified.balance).toBe(before + 1_000_000);
     const row = await paymentRow(started.reference);
     expect(row).toMatchObject({ status: 'success', gateway_transaction_id: String(transaction.id) });
-    expect(Number(row.paid_kobo)).toBe(250_000);
+    expect(Number(row.paid_minor)).toBe(250_000);
 
     for (let i = 0; i < 3; i++) ok(await webhook(fw.chargeWebhook(transaction)));
     expect(await processed(`charge-${transaction.id}`)).toBe('already-paid');
@@ -243,7 +243,7 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     expect(await player.cash()).toBe(start);
     const after = await player.character();
     expect(after.purchased_total).toBe(0);
-    expect(await paymentRow(reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: '250000' });
+    expect(await paymentRow(reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: '250000' });
 
     await (await queue.getJob(`refund-${refund.id}-completed`))?.remove();
     ok(await webhook(fw.refundWebhook(refund)));
@@ -373,7 +373,7 @@ describe('ads paid through Flutterwave and refunded automatically', () => {
     const rejected = ok<{ status: string }>(await owner.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Misleading claims' }));
     expect(rejected.status).toBe('refunded');
     expect(fw.callsTo('POST', `/transactions/${transaction.id}/refund`)).toBe(1);
-    expect(await paymentRow(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(checkout.quote.totalKobo) });
+    expect(await paymentRow(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: String(checkout.quote.totalKobo) });
     refused(await owner.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Again' }), 409);
     expect(fw.callsTo('POST', `/transactions/${transaction.id}/refund`)).toBe(1);
   });
