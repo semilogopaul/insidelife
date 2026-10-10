@@ -6,7 +6,7 @@ import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
 import { BusinessAppraiser } from './business-appraiser.service.js';
 import { BusinessPnlService } from './business-pnl.service.js';
-import { BusinessesStore } from './businesses.store.js';
+import { ACTIVE_BUSINESS_ROWS, BusinessesStore } from './businesses.store.js';
 
 const BUSINESS_TAG = 'business';
 
@@ -18,6 +18,7 @@ const BUSINESS_TAG = 'business';
 export class BusinessesSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'businesses';
   readonly order = 300;
+  readonly rowProbes = [ACTIVE_BUSINESS_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

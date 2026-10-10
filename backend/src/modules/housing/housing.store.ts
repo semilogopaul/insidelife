@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { In, MoreThanOrEqual } from 'typeorm';
 import { BACKGROUNDS } from '@insidelife/shared';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { BuildingEntity } from './entities/building.entity.js';
 import { LeaseEntity } from './entities/lease.entity.js';
@@ -19,6 +20,13 @@ const KEYS = {
 export const OPEN_LEASE_STATUSES = ['active', 'grace', 'notice'] as const;
 /** Properties the character still holds. */
 export const HELD_PROPERTY_STATUSES = ['owned', 'selling'] as const;
+
+const sqlList = (values: readonly string[]): string => values.map((value) => `'${value}'`).join(', ');
+/** Most characters rent nothing and own no land: those reads are skipped when there's no such row (see `RowProbe`). */
+export const HOUSING_ROWS = {
+  lease: { key: 'housing:lease', table: 'housing_leases', where: `character_id = $1 AND status IN (${sqlList(OPEN_LEASE_STATUSES)})` },
+  portfolio: { key: 'housing:portfolio', table: 'housing_properties', where: `character_id = $1 AND status IN (${sqlList(HELD_PROPERTY_STATUSES)})` },
+} as const satisfies Record<string, RowProbe>;
 
 /** Everything the character owns, loaded once per transaction and mutated in place. */
 export interface Portfolio {
@@ -78,11 +86,13 @@ export class HousingStore {
 
   /** The lease that currently binds the character, if any. */
   async lease(ctx: SimulationContext): Promise<LeaseEntity | null> {
-    return this.cached(ctx, KEYS.lease, () =>
-      ctx.manager.findOne(LeaseEntity, {
-        where: { characterId: ctx.character.id, status: In([...OPEN_LEASE_STATUSES]) },
-        order: { startAt: 'DESC' },
-      }),
+    return this.cached(ctx, KEYS.lease, async () =>
+      (await ctx.mayHaveRows(HOUSING_ROWS.lease))
+        ? ctx.manager.findOne(LeaseEntity, {
+            where: { characterId: ctx.character.id, status: In([...OPEN_LEASE_STATUSES]) },
+            order: { startAt: 'DESC' },
+          })
+        : null,
     );
   }
 
@@ -94,6 +104,7 @@ export class HousingStore {
   async portfolio(ctx: SimulationContext): Promise<Portfolio> {
     return this.cached(ctx, KEYS.portfolio, async () => {
       const characterId = ctx.character.id;
+      if (!(await ctx.mayHaveRows(HOUSING_ROWS.portfolio))) return { properties: [], buildings: [], sales: [] };
       const properties = await ctx.manager.find(PropertyEntity, {
         where: { characterId, status: In([...HELD_PROPERTY_STATUSES]) },
         order: { acquiredAt: 'ASC' },

@@ -5,6 +5,7 @@ import { NotificationsModule } from '../notifications/notifications.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { CharacterSession } from './character-session.service.js';
 import { CommandReceiptEntity } from './entities/command-receipt.entity.js';
+import { RowPresenceSubscriber } from './row-presence.subscriber.js';
 import { SimulationEngine } from './simulation-engine.service.js';
 import { SimulationRegistry } from './simulation-registry.service.js';
 import { AllowanceSystem } from './systems/allowance.system.js';
@@ -18,7 +19,16 @@ import { TimelinePlanner } from './timeline-planner.service.js';
  */
 @Module({
   imports: [CharactersModule, NotificationsModule, PresenceModule, TypeOrmModule.forFeature([CommandReceiptEntity])],
-  providers: [SimulationRegistry, TimelinePlanner, SimulationEngine, CharacterSession, LifestyleSystem, AllowanceSystem, HabitsSystem],
+  providers: [
+    SimulationRegistry,
+    TimelinePlanner,
+    SimulationEngine,
+    CharacterSession,
+    RowPresenceSubscriber,
+    LifestyleSystem,
+    AllowanceSystem,
+    HabitsSystem,
+  ],
   exports: [SimulationRegistry, TimelinePlanner, SimulationEngine, CharacterSession],
 })
 export class SimulationModule {}

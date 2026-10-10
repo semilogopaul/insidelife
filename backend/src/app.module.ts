@@ -7,6 +7,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { redisOptionsFromUrl } from './common/redis/redis-options.js';
+import { OverloadModule } from './common/overload/overload.module.js';
 import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage.js';
 import { REDIS, RedisModule } from './common/redis/redis.module.js';
 import type { Redis } from 'ioredis';
@@ -73,6 +74,7 @@ import { DOMAIN_MODULES } from './modules/domain-modules.js';
     DatabaseModule,
     RedisModule,
     MetricsModule,
+    OverloadModule,
     HealthModule,
     RealtimeBusModule,
     LedgerModule,

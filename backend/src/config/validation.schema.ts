@@ -31,6 +31,11 @@ export const validationSchema = Joi.object({
   ADMIN_API_HOST: Joi.string().hostname().allow('').default(''),
   /** Players allowed online at once (0 = unlimited). Past it, newcomers see "Lagos is full" and retry; reconnects always get in. */
   MAX_ONLINE_PLAYERS: Joi.number().integer().min(0).max(1_000_000).default(0),
+  /**
+   * Load shedding: when the p99 event-loop delay over the last second passes this many ms, new HTTP requests get 503
+   * SERVER_BUSY with Retry-After and new sockets get `world:full`, instead of queueing. 0 = off.
+   */
+  OVERLOAD_LAG_MS: Joi.number().integer().min(0).max(10_000).default(150),
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
   /** Reverse proxies in front of the API: 1 behind nginx, 2 with an edge (Caddy) in front of nginx. */
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),

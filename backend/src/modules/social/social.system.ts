@@ -3,9 +3,9 @@ import { socialClout } from '@insidelife/shared';
 import type { SimulationSystem, SummaryContribution } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
-import { NightOutService } from './night-out.service.js';
-import { PartiesService } from './parties.service.js';
-import { ProfilesService } from './profiles.service.js';
+import { NightOutService, RECEIVED_MOMENT_ROWS } from './night-out.service.js';
+import { HOSTED_PARTY_ROWS, PartiesService } from './parties.service.js';
+import { FRIENDSHIP_ROWS, ProfilesService } from './profiles.service.js';
 
 /**
  * Social life over time:
@@ -21,6 +21,7 @@ import { ProfilesService } from './profiles.service.js';
 export class SocialSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'social';
   readonly order = 800;
+  readonly rowProbes = [RECEIVED_MOMENT_ROWS, HOSTED_PARTY_ROWS, FRIENDSHIP_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

@@ -7,7 +7,7 @@ import { ComfortService } from './comfort.service.js';
 import { ConstructionService } from './construction.service.js';
 import { HomeService } from './home.service.js';
 import { HousingService } from './housing.service.js';
-import { HousingStore } from './housing.store.js';
+import { HOUSING_ROWS, HousingStore } from './housing.store.js';
 import { LandService } from './land.service.js';
 import { LettingsService } from './lettings.service.js';
 import { PowerService } from './power.service.js';
@@ -23,6 +23,7 @@ import { UpkeepService } from './upkeep.service.js';
 export class HousingSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'housing';
   readonly order = 150;
+  readonly rowProbes = Object.values(HOUSING_ROWS);
 
   constructor(
     private readonly registry: SimulationRegistry,

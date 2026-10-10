@@ -18,6 +18,11 @@ export interface AppConfig {
   /** CLIENT_IP_HEADER (lowercase, e.g. `cf-connecting-ip`): when set, the client IP comes from this header instead of `trust proxy`. */
   readonly clientIpHeader: string | null;
   readonly logLevel: string;
+  /** Load shedding. */
+  readonly overload: {
+    /** OVERLOAD_LAG_MS: p99 event-loop delay (ms, over the last second) above which new requests get 503. 0 = off. */
+    readonly lagMs: number;
+  };
   /** Realtime limits. */
   readonly realtime: {
     /** MAX_ONLINE_PLAYERS: players allowed online at once; a newcomer past it gets `world:full`. 0 = unlimited. */
@@ -145,6 +150,7 @@ export const configuration = (): AppConfig => {
     trustProxyHops: Number(env.TRUST_PROXY_HOPS ?? 1),
     clientIpHeader: env.CLIENT_IP_HEADER?.trim().toLowerCase() || null,
     logLevel: env.LOG_LEVEL ?? 'info',
+    overload: { lagMs: Number(env.OVERLOAD_LAG_MS ?? 150) },
     realtime: { maxOnlinePlayers: Number(env.MAX_ONLINE_PLAYERS ?? 0) },
     database: {
       url: env.DATABASE_URL ?? '',

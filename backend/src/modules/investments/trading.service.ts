@@ -16,6 +16,7 @@ import {
   type TradeResultDto,
 } from '@insidelife/shared';
 import { ConflictException, GameRuleException, InsufficientFundsException } from '../../common/exceptions/domain.exception.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { InvestmentHoldingEntity } from './entities/holding.entity.js';
 import { InvestmentTradeEntity } from './entities/trade.entity.js';
@@ -31,6 +32,8 @@ export interface MarketOrder {
 }
 
 const HOLDINGS_MEMO = 'investments:holdings';
+/** Most characters hold no shares or coins: the read is skipped when there's no row (see `RowProbe`). */
+export const HOLDING_ROWS: RowProbe = { key: 'investments:holdings', table: 'investment_holdings', where: 'character_id = $1' };
 const MAX_MICRO_UNITS = MAX_UNITS_PER_HOLDING * MICRO_UNITS_PER_UNIT;
 
 /**
@@ -48,8 +51,10 @@ export class TradingService {
   ) {}
 
   holdings(ctx: SimulationContext): Promise<InvestmentHoldingEntity[]> {
-    return ctx.memo(HOLDINGS_MEMO, () =>
-      ctx.manager.find(InvestmentHoldingEntity, { where: { characterId: ctx.character.id }, order: { instrumentId: 'ASC' } }),
+    return ctx.memo(HOLDINGS_MEMO, async () =>
+      (await ctx.mayHaveRows(HOLDING_ROWS))
+        ? ctx.manager.find(InvestmentHoldingEntity, { where: { characterId: ctx.character.id }, order: { instrumentId: 'ASC' } })
+        : [],
     );
   }
 

@@ -27,9 +27,25 @@ const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHORT = /^[A-Za-z0-9_-]{22}$/;
 
+/**
+ * Short ids already worked out: the gateway encodes every moving player's id four times a second, and a player's id
+ * never changes. Bounded (cleared when full), so it stays small whatever the churn.
+ */
+const SHORT_IDS = new Map<string, string>();
+const SHORT_IDS_MAX = 50_000;
+
 /** uuid -> 22 base64url characters (128 bits). Anything that isn't a uuid is returned unchanged. */
 export function shortenId(id: string): string {
+  const known = SHORT_IDS.get(id);
+  if (known !== undefined) return known;
   if (!UUID.test(id)) return id;
+  const short = encodeShortId(id);
+  if (SHORT_IDS.size >= SHORT_IDS_MAX) SHORT_IDS.clear();
+  SHORT_IDS.set(id, short);
+  return short;
+}
+
+function encodeShortId(id: string): string {
   const hex = id.replace(/-/g, '');
   let out = '';
   // 32 hex digits = 128 bits; 6 bits per character, the last character carries 2 bits (padded with zeros).

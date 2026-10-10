@@ -20,6 +20,11 @@ export class ApiError extends Error {
     return this.status === 401;
   }
 
+  /** The server was too busy to take it (shedding load, or rate limited): worth trying again in a moment. */
+  get isBusy(): boolean {
+    return this.status === 429 || (this.status === 503 && this.code === 'SERVER_BUSY');
+  }
+
   /** Signed in, but the email isn't confirmed yet: send the player to the code screen. */
   get isEmailUnverified(): boolean {
     return this.code === 'EMAIL_UNVERIFIED';

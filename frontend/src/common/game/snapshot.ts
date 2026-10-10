@@ -17,6 +17,15 @@ import { queryKeys } from '@/common/api/query-keys';
 import { useSession } from '@/common/auth/session-store';
 import { gameClock } from './game-clock';
 
+/**
+ * A definite answer (no character, signed out, email to confirm, any other 4xx) is final. Network trouble, 5xx (the API
+ * restarting) and a busy server (503 SERVER_BUSY, 429) keep retrying, backing off to 30 s, so "Retrying…" on the loading
+ * screen is true and the snapshot keeps refreshing once the server has room again.
+ */
+export function retrySnapshot(_failures: number, error: unknown): boolean {
+  return !(error instanceof ApiError && error.status >= 400 && error.status < 500 && !error.isBusy);
+}
+
 /** Refetch a little before the planned timeline runs out (≈ 1 game day ahead = 24 real minutes at ×60). */
 const REFETCH_MARGIN_MINUTES = 30;
 
@@ -31,9 +40,7 @@ export function useSnapshot() {
     queryFn: ({ signal }) => api.get<CharacterSnapshotDto>('/characters/me', { signal }),
     enabled: authenticated,
     staleTime: 60_000,
-    // A definite answer (no character, signed out, email to confirm, any 4xx) is final. Network trouble and 5xx (the
-    // API restarting) keep retrying, backing off to 30 s, so "Retrying…" on the loading screen is true.
-    retry: (_failures, error) => !(error instanceof ApiError && error.status >= 400 && error.status < 500),
+    retry: retrySnapshot,
     retryDelay: (attempt) => Math.min(30_000, 1_000 * 2 ** attempt),
   });
 

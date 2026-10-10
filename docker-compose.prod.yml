@@ -15,6 +15,7 @@ x-backend-env: &backend-env
   CORS_ORIGINS: https://insidelife.online,https://www.insidelife.online
   TRUST_PROXY_HOPS: 2
   MAX_ONLINE_PLAYERS: ${MAX_ONLINE_PLAYERS:-0}
+  OVERLOAD_LAG_MS: ${OVERLOAD_LAG_MS:-150}
   DATABASE_URL: postgres://insidelife:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/insidelife
   DATABASE_POOL_SIZE: 30
   DATABASE_RUN_MIGRATIONS: "true"

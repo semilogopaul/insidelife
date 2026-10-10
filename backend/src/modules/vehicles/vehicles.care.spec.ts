@@ -50,6 +50,7 @@ function harness(overrides: Partial<OwnedVehicleEntity> = {}, cash = 5_000_000) 
     wallet,
     manager: { find: async () => [row], save: async (entity: unknown) => entity },
     memo: async (_key: string, load: () => Promise<unknown>) => load(),
+    mayHaveRows: async () => true,
     invalidate: () => undefined,
     rng: (...parts: (string | number)[]) => rngFor('character-seed', ...parts),
     notify: (note: { title: string }) => void notes.push(note.title),

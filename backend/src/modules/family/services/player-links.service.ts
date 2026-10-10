@@ -12,6 +12,7 @@ import {
 } from '@insidelife/shared';
 import { ConflictException, GameRuleException, ResourceNotFoundException } from '../../../common/exceptions/domain.exception.js';
 import { CharacterEntity } from '../../characters/entities/character.entity.js';
+import type { RowProbe } from '../../simulation/row-presence.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
 import { SocialGuard } from '../../social/social-guard.service.js';
 import { PersonEntity } from '../entities/person.entity.js';
@@ -27,6 +28,8 @@ import { RelationshipsService } from './relationships.service.js';
 import { RING_BUYBACK, RomanceService } from './romance.service.js';
 
 const RECONCILE_KEY = 'family:reconcile';
+/** Answers to this character's proposals not yet applied on their side: almost always none (see `RowProbe`). */
+export const UNSYNCED_ANSWER_ROWS: RowProbe = { key: 'family:unsynced-answers', table: 'family_proposals', where: 'from_character_id = $1 AND proposer_synced = false' };
 const MAX_PENDING_OUTGOING = 10;
 const ROMANTIC_PROPOSALS: readonly ProposalKind[] = ['date', 'marriage'];
 
@@ -251,6 +254,7 @@ export class PlayerLinksService {
   }
 
   private async applyAnswers(ctx: SimulationContext, graph: FamilyGraph, changed: Set<RelationshipEntity>): Promise<void> {
+    if (!(await ctx.mayHaveRows(UNSYNCED_ANSWER_ROWS))) return;
     const answered = await ctx.manager.find(ProposalEntity, {
       where: { fromCharacterId: ctx.character.id, proposerSynced: false },
       order: { respondedAtGame: 'ASC' },

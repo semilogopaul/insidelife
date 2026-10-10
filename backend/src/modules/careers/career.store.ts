@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { In, LessThanOrEqual } from 'typeorm';
 import { MINUTES_PER_YEAR, type JobApplicationStatus } from '@insidelife/shared';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { EmploymentHistoryEntity } from './entities/employment-history.entity.js';
 import { EmploymentEntity } from './entities/employment.entity.js';
 import { JobApplicationEntity } from './entities/job-application.entity.js';
 
 const EMPLOYMENT_MEMO = 'careers:employment';
+/** Most characters have no job: skip the employment read when there's no row (see `RowProbe`). */
+export const EMPLOYMENT_ROWS: RowProbe = { key: 'careers:employment', table: 'employments', where: 'character_id = $1' };
 const OPEN_STATUSES: readonly JobApplicationStatus[] = ['pending', 'interview'];
 
 /** Persistence for the careers domain, scoped to the locked character and memoised per transaction. */
@@ -14,7 +17,9 @@ const OPEN_STATUSES: readonly JobApplicationStatus[] = ['pending', 'interview'];
 export class CareerStore {
   /** The current job, if any (memoised; call `forget` after replacing or deleting it). */
   active(ctx: SimulationContext): Promise<EmploymentEntity | null> {
-    return ctx.memo(EMPLOYMENT_MEMO, () => ctx.manager.findOne(EmploymentEntity, { where: { characterId: ctx.character.id } }));
+    return ctx.memo(EMPLOYMENT_MEMO, async () =>
+      (await ctx.mayHaveRows(EMPLOYMENT_ROWS)) ? ctx.manager.findOne(EmploymentEntity, { where: { characterId: ctx.character.id } }) : null,
+    );
   }
 
   forget(ctx: SimulationContext): void {

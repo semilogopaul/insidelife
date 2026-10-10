@@ -30,6 +30,7 @@ import { CharacterEntity } from '../characters/entities/character.entity.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { ChatService } from '../realtime/chat.service.js';
 import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { NightMomentEntity } from './entities/night-moment.entity.js';
 import {
@@ -49,6 +50,8 @@ import { SocialNotifier } from './social-notifier.service.js';
 
 /** Everyone in the room who sees the moment (an instance holds ~200 people). */
 const AUDIENCE = 200;
+/** Bottles and birthdays bought for this character and not yet felt: almost always none (see `RowProbe`). */
+export const RECEIVED_MOMENT_ROWS: RowProbe = { key: 'social:received-moments', table: 'social_night_moments', where: 'to_id = $1 AND recipient_applied = false' };
 /** Moments listed for someone who just walked in. */
 const LIST_LIMIT = 40;
 
@@ -218,6 +221,7 @@ export class NightOutService {
    * lift. The claim is one indexed UPDATE, so it's cheap when nothing is waiting and can never apply a gift twice.
    */
   async applyReceived(ctx: SimulationContext): Promise<void> {
+    if (!(await ctx.mayHaveRows(RECEIVED_MOMENT_ROWS))) return;
     const rows: Array<{ item_id: string; from_handle: string; recipient_mood: number; game_minute: string }> = await ctx.manager.query(
       `WITH claimed AS (
          UPDATE social_night_moments SET recipient_applied = true

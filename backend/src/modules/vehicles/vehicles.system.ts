@@ -8,7 +8,7 @@ import { SimulationRegistry } from '../simulation/simulation-registry.service.js
 import { TimelinePlanner } from '../simulation/timeline-planner.service.js';
 import { LicenceService } from './licence.service.js';
 import { vehicleLifeEvents } from './vehicles.events.js';
-import { VehiclesService } from './vehicles.service.js';
+import { GARAGE_ROWS, VehiclesService } from './vehicles.service.js';
 
 /** The car a Nepo Baby finds in the compound on day one. */
 const NEPO_BABY_CAR = 'toyota-corolla-2017';
@@ -25,6 +25,7 @@ const SECONDARY_CAR_STATUS = 0.25;
 export class VehiclesSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'vehicles';
   readonly order = 130;
+  readonly rowProbes = [GARAGE_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

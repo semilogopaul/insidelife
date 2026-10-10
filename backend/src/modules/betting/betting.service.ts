@@ -29,6 +29,7 @@ import {
 } from '@insidelife/shared';
 import { GameRuleException, ValidationFailedException } from '../../common/exceptions/domain.exception.js';
 import type { AppConfig } from '../../config/configuration.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { UsersService } from '../users/users.service.js';
 import { BetSlipEntity, type BetSlipLeg } from './entities/bet-slip.entity.js';
@@ -46,6 +47,8 @@ import {
 
 /** Slips listed in My bets (open ones first by kickoff, then the latest settled). */
 const LIST_LIMIT = 60;
+/** Open slips: most characters have none, so the settle skips looking for due ones (see `RowProbe`). */
+export const OPEN_SLIP_ROWS: RowProbe = { key: 'betting:open-slips', table: 'betting_slips', where: "character_id = $1 AND status = 'open'" };
 
 interface DayTotals {
   readonly staked: number;
@@ -261,6 +264,7 @@ export class BettingService {
   async settleDue(ctx: SimulationContext): Promise<void> {
     if (this.settledAt.get(ctx) === ctx.time) return;
     this.settledAt.set(ctx, ctx.time);
+    if (!(await ctx.mayHaveRows(OPEN_SLIP_ROWS))) return;
     const due = await ctx.manager
       .createQueryBuilder(BetSlipEntity, 'slip')
       .where('slip.character_id = :id AND slip.status = :open AND slip.settles_at <= :now', {

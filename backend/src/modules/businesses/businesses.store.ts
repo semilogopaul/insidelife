@@ -1,18 +1,23 @@
 import { Injectable } from '@nestjs/common';
 import { In, Not } from 'typeorm';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { BusinessPnlEntity } from './entities/business-pnl.entity.js';
 import { BusinessEntity } from './entities/business.entity.js';
 
 const ACTIVE_MEMO = 'businesses:active';
 const HISTORY_MONTHS = 12;
+/** Most characters run no business: the read is skipped when there's no active one (see `RowProbe`). */
+export const ACTIVE_BUSINESS_ROWS: RowProbe = { key: 'businesses:active', table: 'businesses', where: "character_id = $1 AND status = 'active'" };
 
 /** Persistence for the businesses domain, scoped to the locked character and memoised per transaction. */
 @Injectable()
 export class BusinessesStore {
   active(ctx: SimulationContext): Promise<BusinessEntity[]> {
-    return ctx.memo(ACTIVE_MEMO, () =>
-      ctx.manager.find(BusinessEntity, { where: { characterId: ctx.character.id, status: 'active' }, order: { openedAt: 'ASC' } }),
+    return ctx.memo(ACTIVE_MEMO, async () =>
+      (await ctx.mayHaveRows(ACTIVE_BUSINESS_ROWS))
+        ? ctx.manager.find(BusinessEntity, { where: { characterId: ctx.character.id, status: 'active' }, order: { openedAt: 'ASC' } })
+        : [],
     );
   }
 

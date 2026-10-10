@@ -43,6 +43,7 @@ function fakeContext(rows: { stakes?: PonziStakeEntity[]; deposits?: InvestmentD
     invalidate: (key: string) => {
       for (const cached of cache.keys()) if (cached === key || cached.startsWith(`${key}:`)) cache.delete(cached);
     },
+    mayHaveRows: async () => true,
     notify: (draft: { title: string }) => notifications.push(draft.title),
     report: () => undefined,
   } as unknown as SimulationContext;

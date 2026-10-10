@@ -11,6 +11,7 @@ import {
 } from '@insidelife/shared';
 import type { TravelState } from '../characters/entities/character.entity.js';
 import type { ScheduleBlock } from '../simulation/interfaces/simulation-system.interface.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { ConditionsService } from './conditions.service.js';
 import { HospitalAdmissionEntity } from './entities/hospital-admission.entity.js';
@@ -18,6 +19,9 @@ import { DISCHARGE_MINUTE_OF_DAY, HEALTH_MEMO, MEDICATION_PERIOD } from './healt
 import { InsuranceService } from './insurance.service.js';
 import { MedicalHistoryService } from './medical-history.service.js';
 import { isPlayerPresent } from '../simulation/player-presence.js';
+
+/** Nearly nobody is on a ward: skip the admission read when there's no open one (see `RowProbe`). */
+export const ADMITTED_ROWS: RowProbe = { key: 'health:admission', table: 'hospital_admissions', where: "character_id = $1 AND status = 'admitted'" };
 
 export interface AdmitParams {
   readonly venueId: string;
@@ -48,8 +52,10 @@ export class AdmissionsService {
   ) {}
 
   async current(ctx: SimulationContext): Promise<HospitalAdmissionEntity | null> {
-    return ctx.memo(HEALTH_MEMO.admission, () =>
-      ctx.manager.findOne(HospitalAdmissionEntity, { where: { characterId: ctx.character.id, status: 'admitted' } }),
+    return ctx.memo(HEALTH_MEMO.admission, async () =>
+      (await ctx.mayHaveRows(ADMITTED_ROWS))
+        ? ctx.manager.findOne(HospitalAdmissionEntity, { where: { characterId: ctx.character.id, status: 'admitted' } })
+        : null,
     );
   }
 

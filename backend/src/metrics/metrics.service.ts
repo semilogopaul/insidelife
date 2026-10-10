@@ -38,6 +38,18 @@ export class MetricsService {
     registers: [this.registry],
   });
 
+  readonly shedRequests = new Counter({
+    name: 'http_requests_shed_total',
+    help: 'HTTP requests refused with 503 SERVER_BUSY because the node was overloaded (OVERLOAD_LAG_MS)',
+    registers: [this.registry],
+  });
+
+  readonly eventLoopDelayP99 = new Gauge({
+    name: 'overload_event_loop_delay_p99_seconds',
+    help: 'p99 event-loop delay over the last second, as judged by the load shedder',
+    registers: [this.registry],
+  });
+
   readonly onlinePlayers = new Gauge({
     name: 'realtime_online_players',
     help: 'Players connected to the realtime gateway on this instance',

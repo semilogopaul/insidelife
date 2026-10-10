@@ -20,6 +20,7 @@ import {
   InsufficientFundsException,
   ResourceNotFoundException,
 } from '../../common/exceptions/domain.exception.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { InvestmentDepositEntity } from './entities/deposit.entity.js';
 import { depositDto, interestAtMaturity } from './investment.mapper.js';
@@ -38,6 +39,8 @@ interface Payout {
 }
 
 const DEPOSITS_MEMO = 'investments:deposits';
+/** Most characters have no fixed deposit running: the read is skipped when there's no active row (see `RowProbe`). */
+export const ACTIVE_DEPOSIT_ROWS: RowProbe = { key: 'investments:deposits', table: 'investment_deposits', where: "character_id = $1 AND status = 'active'" };
 
 /**
  * Fixed deposits and T-bills (rate locked at purchase, simple interest at maturity, early break forfeits interest and
@@ -47,8 +50,10 @@ const DEPOSITS_MEMO = 'investments:deposits';
 @Injectable()
 export class DepositsService {
   active(ctx: SimulationContext): Promise<InvestmentDepositEntity[]> {
-    return ctx.memo(DEPOSITS_MEMO, () =>
-      ctx.manager.find(InvestmentDepositEntity, { where: { characterId: ctx.character.id, status: 'active' }, order: { startedAt: 'ASC' } }),
+    return ctx.memo(DEPOSITS_MEMO, async () =>
+      (await ctx.mayHaveRows(ACTIVE_DEPOSIT_ROWS))
+        ? ctx.manager.find(InvestmentDepositEntity, { where: { characterId: ctx.character.id, status: 'active' }, order: { startedAt: 'ASC' } })
+        : [],
     );
   }
 

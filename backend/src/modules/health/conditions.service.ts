@@ -17,6 +17,7 @@ import {
   type ConditionSymptoms,
   type GameMinute,
 } from '@insidelife/shared';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { HealthConditionEntity } from './entities/health-condition.entity.js';
 import { HEALTH_MEMO } from './health.constants.js';
@@ -42,6 +43,13 @@ export interface DailyCourseOptions {
 
 /** Mood modifiers are refreshed every day end; this keeps them alive until the next refresh. */
 const SYMPTOM_MODIFIER_TTL = MINUTES_PER_DAY + 60;
+/** Conditions that aren't over. Most characters are well: the read is skipped when there's no such row (see `RowProbe`). */
+const CURRENT_CONDITION_STATUSES = ['active', 'chronic-managed'] as const;
+export const CURRENT_CONDITION_ROWS: RowProbe = {
+  key: 'health:conditions',
+  table: 'health_conditions',
+  where: `character_id = $1 AND status IN (${CURRENT_CONDITION_STATUSES.map((status) => `'${status}'`).join(', ')})`,
+};
 
 /**
  * Conditions a character has: onset, diagnosis, the untreated daily course (natural recovery or getting worse),
@@ -53,11 +61,13 @@ export class ConditionsService {
 
   /** Conditions that aren't over (active or chronic-managed), oldest first. */
   async current(ctx: SimulationContext): Promise<HealthConditionEntity[]> {
-    return ctx.memo(HEALTH_MEMO.conditions, () =>
-      ctx.manager.find(HealthConditionEntity, {
-        where: { characterId: ctx.character.id, status: In(['active', 'chronic-managed']) },
-        order: { onsetAt: 'ASC' },
-      }),
+    return ctx.memo(HEALTH_MEMO.conditions, async () =>
+      (await ctx.mayHaveRows(CURRENT_CONDITION_ROWS))
+        ? ctx.manager.find(HealthConditionEntity, {
+            where: { characterId: ctx.character.id, status: In([...CURRENT_CONDITION_STATUSES]) },
+            order: { onsetAt: 'ASC' },
+          })
+        : [],
     );
   }
 

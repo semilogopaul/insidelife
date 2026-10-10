@@ -2,11 +2,11 @@ import { Injectable, type OnModuleInit } from '@nestjs/common';
 import type { SimulationSystem } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
-import { DepositsService } from './deposits.service.js';
+import { ACTIVE_DEPOSIT_ROWS, DepositsService } from './deposits.service.js';
 import { PonziService } from './ponzi.service.js';
 import { PortfolioService } from './portfolio.service.js';
 import { SavingsInterestService } from './savings-interest.service.js';
-import { TradingService } from './trading.service.js';
+import { HOLDING_ROWS, TradingService } from './trading.service.js';
 
 /**
  * Investments over time. Day end: savings and money-market accrual, deposit maturities, dividends on record dates,
@@ -19,6 +19,7 @@ import { TradingService } from './trading.service.js';
 export class InvestmentsSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'investments';
   readonly order = 150;
+  readonly rowProbes = [HOLDING_ROWS, ACTIVE_DEPOSIT_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ThrottlerStorage } from '@nestjs/throttler';
 import type { ThrottlerStorageRecord } from '@nestjs/throttler/dist/throttler-storage-record.interface.js';
 import type { Redis } from 'ioredis';
@@ -19,8 +20,21 @@ end
 return { hits, ttl, blocked }
 `;
 
+/** Redis caches scripts by SHA1: send the 40-character digest per request, and the script only when Redis lost it. */
+const SCRIPT_SHA = createHash('sha1').update(SCRIPT).digest('hex');
+const isNoScript = (error: unknown): boolean => error instanceof Error && error.message.startsWith('NOSCRIPT');
+
 export class RedisThrottlerStorage implements ThrottlerStorage {
   constructor(private readonly redis: Redis) {}
+
+  private async hit(keys: readonly [string, string], args: readonly number[]): Promise<unknown> {
+    try {
+      return await this.redis.evalsha(SCRIPT_SHA, 2, ...keys, ...args);
+    } catch (error) {
+      if (!isNoScript(error)) throw error;
+      return this.redis.eval(SCRIPT, 2, ...keys, ...args);
+    }
+  }
 
   async increment(
     key: string,
@@ -30,15 +44,7 @@ export class RedisThrottlerStorage implements ThrottlerStorage {
     throttlerName: string,
   ): Promise<ThrottlerStorageRecord> {
     const base = `throttle:${throttlerName}:${key}`;
-    const [hits, ttlMs, blockedMs] = (await this.redis.eval(
-      SCRIPT,
-      2,
-      `${base}:hits`,
-      `${base}:block`,
-      ttl,
-      limit,
-      Math.max(1, blockDuration),
-    )) as [number, number, number];
+    const [hits, ttlMs, blockedMs] = (await this.hit([`${base}:hits`, `${base}:block`], [ttl, limit, Math.max(1, blockDuration)])) as [number, number, number];
     const isBlocked = blockedMs > 0;
     return {
       totalHits: hits,
