@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, ChevronLeft, MailQuestion, MessageCirclePlus, UserRound } from 'lucide-react';
+import { ChevronDown, ChevronLeft, MailQuestion, MessageCirclePlus, UserPlus, UserRound } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { DmThreadDto } from '@insidelife/shared';
 import { useDmFocus } from '@/common/chat';
@@ -149,6 +149,16 @@ function Conversations() {
   }
   return (
     <>
+      <div className="flex justify-end">
+        {/* Always reachable, not only while the list is empty. */}
+        <button
+          type="button"
+          onClick={() => useUi.getState().openPhone('gist', 'friends')}
+          className="inline-flex h-9 items-center gap-1.5 rounded-full bg-danfo px-3.5 text-sm font-bold text-ink"
+        >
+          <UserPlus size={16} aria-hidden /> Find friends
+        </button>
+      </div>
       {requestsSection}
       <ul className="flex flex-col gap-1" aria-label="Conversations">
         {list.map((item) => (

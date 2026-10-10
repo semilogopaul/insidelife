@@ -24,6 +24,8 @@ export function MessagesApp() {
     const partner = parseDmLink(phoneParam);
     if (partner) nav.openThread(partner);
     else if (phoneParam?.startsWith('@')) nav.openProfile(phoneParam);
+    // Opened from its icon: start on the conversation list, not inside the last chat.
+    else nav.closeThread();
   }, [phoneParam]);
 
   if (!snapshot) return null;
