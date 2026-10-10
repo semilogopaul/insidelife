@@ -100,10 +100,9 @@ export class HousingStore {
       });
       if (properties.length === 0) return { properties, buildings: [], sales: [] };
       const ids = properties.map((property) => property.id);
-      const [buildings, sales] = await Promise.all([
-        ctx.manager.find(BuildingEntity, { where: { characterId, propertyId: In(ids) }, order: { startedAt: 'ASC' } }),
-        ctx.manager.find(PropertySaleEntity, { where: { characterId, propertyId: In(ids), status: 'listed' } }),
-      ]);
+      // One at a time: these share the session's transaction connection (pg runs one query at a time).
+      const buildings = await ctx.manager.find(BuildingEntity, { where: { characterId, propertyId: In(ids) }, order: { startedAt: 'ASC' } });
+      const sales = await ctx.manager.find(PropertySaleEntity, { where: { characterId, propertyId: In(ids), status: 'listed' } });
       return { properties, buildings, sales };
     });
   }

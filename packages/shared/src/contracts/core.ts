@@ -378,6 +378,13 @@ export interface WalletDto extends WalletSummaryDto {
   readonly receiveLimit: number;
   readonly earnedTotal: number;
   readonly purchasedTotal: number;
+  /**
+   * Coins bought in the last 48 hours: spendable, but not sendable to players yet (already left out of `sendable`).
+   * `releasesAt` (ISO) is when the last of them can be sent. Null when nothing is on hold.
+   */
+  readonly purchaseHold: { readonly amount: number; readonly releasesAt: string } | null;
+  /** Owed from a refunded top-up whose coins were already spent: repaid from money that comes in; blocks sending. */
+  readonly debt: number;
 }
 
 export interface TransferRequest {

@@ -58,7 +58,9 @@ export class VehiclesSystem implements SimulationSystem, OnModuleInit {
     if (travel.mode !== 'car' || travel.source === 'open-world') return;
     const car = await this.vehicles.driving(ctx);
     if (!car) return;
-    const [from, to] = await Promise.all([this.planner.place(ctx, travel.fromLocationId), this.planner.place(ctx, travel.toLocationId)]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const from = await this.planner.place(ctx, travel.fromLocationId);
+    const to = await this.planner.place(ctx, travel.toLocationId);
     if (from.regionId !== to.regionId) return;
     const { distance } = quoteTrip(from.districtId, to.districtId, 'car', { hour: 12, weekend: false, raining: false, priceIndex: 1 });
     car.row.mileageKm += distance;

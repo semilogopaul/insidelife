@@ -53,10 +53,9 @@ export class CareerStore {
 
   /** Years served per job id: finished employments plus the current one. */
   async experienceYears(ctx: SimulationContext): Promise<Map<string, number>> {
-    const [history, current] = await Promise.all([
-      ctx.manager.find(EmploymentHistoryEntity, { where: { characterId: ctx.character.id }, select: { jobId: true, startedAt: true, endedAt: true } }),
-      this.active(ctx),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const history = await ctx.manager.find(EmploymentHistoryEntity, { where: { characterId: ctx.character.id }, select: { jobId: true, startedAt: true, endedAt: true } });
+    const current = await this.active(ctx);
     const years = new Map<string, number>();
     const add = (jobId: string, from: number, to: number): void => {
       years.set(jobId, (years.get(jobId) ?? 0) + Math.max(0, to - from) / MINUTES_PER_YEAR);

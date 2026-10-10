@@ -62,7 +62,10 @@ export class JobBoardService {
   }
 
   private async context(ctx: SimulationContext): Promise<BoardContext> {
-    const [profile, current, open] = await Promise.all([this.profiles.build(ctx), this.store.active(ctx), this.store.openApplications(ctx)]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const profile = await this.profiles.build(ctx);
+    const current = await this.store.active(ctx);
+    const open = await this.store.openApplications(ctx);
     return {
       profile,
       currentJobId: current?.jobId ?? null,

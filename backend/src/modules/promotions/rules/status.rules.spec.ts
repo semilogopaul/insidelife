@@ -123,8 +123,15 @@ describe('refund settlement', () => {
 
   it('only logs a refunded duplicate payment and leaves finished items alone', () => {
     expect(refundSettlement({ status: 'live', paymentReference: 'ref-1' }, 'ref-2')).toEqual({ kind: 'duplicate-payment' });
-    for (const status of ['refunded', 'rejected', 'completed', 'cancelled'] as const) {
+    for (const status of ['refunded', 'rejected', 'completed'] as const) {
       expect(refundSettlement({ status, paymentReference: 'ref-1' }, 'ref-1')).toEqual({ kind: 'none' });
+    }
+  });
+
+  it('ends a booking whose payment was refunded before it was confirmed (no "awaiting payment" afterwards)', () => {
+    for (const status of ['pending-payment', 'draft', 'cancelled'] as const) {
+      expect(refundSettlement({ status, paymentReference: 'ref-1' }, 'ref-1'), status).toEqual({ kind: 'refunded', takenDown: false });
+      expect(canTransition(status, 'refunded'), status).toBe(true);
     }
   });
 });

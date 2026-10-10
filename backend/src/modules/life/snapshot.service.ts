@@ -37,14 +37,13 @@ export class SnapshotService {
   /** Build the full snapshot for the owner. Must run inside a `CharacterSession` (settled, locked). */
   async build(ctx: SimulationContext): Promise<CharacterSnapshotDto> {
     const character = ctx.character;
-    const [timeline, balances, summary, pendingEvents, unreadNotifications, openWorld] = await Promise.all([
-      this.planner.plan(ctx, ctx.time, TIMELINE_HORIZON),
-      this.ledger.balances(ctx.manager, character.id),
-      this.summary(ctx),
-      this.pendingEvents(ctx),
-      this.notifications.unreadCount(ctx.manager, character.id),
-      this.openWorldPose(character),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const timeline = await this.planner.plan(ctx, ctx.time, TIMELINE_HORIZON);
+    const balances = await this.ledger.balances(ctx.manager, character.id);
+    const summary = await this.summary(ctx);
+    const pendingEvents = await this.pendingEvents(ctx);
+    const unreadNotifications = await this.notifications.unreadCount(ctx.manager, character.id);
+    const openWorld = await this.openWorldPose(character);
 
     return {
       asOf: ctx.time,

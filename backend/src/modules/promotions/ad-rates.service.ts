@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Redis } from 'ioredis';
-import type { Repository } from 'typeorm';
+import type { EntityManager, Repository } from 'typeorm';
 import {
   AD_RATE_DEFINITIONS,
   AD_RATE_KEYS,
@@ -30,6 +30,12 @@ const RATES_TTL_MS = 30_000;
 const REASON_MAX = 300;
 
 type Overrides = ReadonlyMap<AdRateKey, AdRateEntity>;
+
+/**
+ * Runs inside the price change's transaction, after the change is saved (the admin API writes its audit entry here):
+ * throwing rolls the change back, so a price never changes without its audit entry.
+ */
+export type AdRateHook = (manager: EntityManager, rate: AdRateDto) => Promise<void>;
 
 /** Current prices, resolved once for a batch (e.g. the ~560 slots of the slots endpoint). */
 export interface AdPricing {
@@ -104,7 +110,7 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
    * Set a rate (whole naira, ₦2,000 – ₦100m). Applies to new quotes on every node within a second; existing orders
    * keep their price. Knows nothing about who may call it: the admin route checks roles and writes the audit log.
    */
-  async setRate(key: string, priceKobo: number, actorUserId: string | null, reason?: string): Promise<AdRateDto> {
+  async setRate(key: string, priceKobo: number, actorUserId: string | null, reason?: string, inTransaction?: AdRateHook): Promise<AdRateDto> {
     const rateKey = this.requireKey(key);
     if (!isValidAdPriceKobo(priceKobo)) {
       throw new PromotionRuleException(
@@ -112,21 +118,31 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
         `Rates are whole naira from ${formatNaira(koboToNaira(AD_MIN_PRICE_KOBO))} to ${formatNaira(koboToNaira(AD_MAX_PRICE_KOBO))}`,
       );
     }
-    const saved = await this.rates.save(
-      this.rates.create({ key: rateKey, priceKobo, updatedBy: actorUserId, reason: reason?.trim().slice(0, REASON_MAX) || null }),
-    );
+    const dto = await this.rates.manager.transaction(async (manager) => {
+      const saved = await manager.save(
+        manager.create(AdRateEntity, { key: rateKey, priceKobo, updatedBy: actorUserId, reason: reason?.trim().slice(0, REASON_MAX) || null }),
+      );
+      const result = this.toDto(rateKey, saved);
+      await inTransaction?.(manager, result);
+      return result;
+    });
     this.logger.log({ key: rateKey, priceKobo, actorUserId }, 'Ad rate changed');
     await this.broadcast();
-    return this.toDto(rateKey, saved);
+    return dto;
   }
 
   /** Drop the override: the catalog default applies again. */
-  async resetRate(key: string): Promise<AdRateDto> {
+  async resetRate(key: string, inTransaction?: AdRateHook): Promise<AdRateDto> {
     const rateKey = this.requireKey(key);
-    await this.rates.delete({ key: rateKey });
+    const dto = await this.rates.manager.transaction(async (manager) => {
+      await manager.delete(AdRateEntity, { key: rateKey });
+      const result = this.toDto(rateKey, undefined);
+      await inTransaction?.(manager, result);
+      return result;
+    });
     this.logger.log({ key: rateKey }, 'Ad rate reset to the default');
     await this.broadcast();
-    return this.toDto(rateKey, undefined);
+    return dto;
   }
 
   // ----- Internals --------------------------------------------------------------------------------------------------

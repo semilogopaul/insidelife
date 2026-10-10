@@ -38,3 +38,7 @@ backend/dist-*/
 
 # Claude Code agent worktrees (separate checkouts)
 .claude/worktrees/
+
+# Mutation testing (npm run mutation)
+.stryker-tmp/
+/reports/mutation/

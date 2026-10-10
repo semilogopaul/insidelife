@@ -18,6 +18,8 @@ import { HousingStore } from './housing.store.js';
 
 /** A fresh coat of paint outside also fixes the wear it covers (cracks, mould, faded render). */
 const REPAINT_CONDITION_BONUS = 5;
+/** Two makeovers inside one game minute share a ledger key (`…:<time>`): the second is refused, never free. */
+const MAKEOVER_TOO_SOON = 'The painters are still setting up — give it a moment';
 
 /**
  * Making a house yours: paint, roofing sheets, gate colour and gate plate for a finished house you own; wall paint and
@@ -54,6 +56,8 @@ export class MakeoverService {
       'property',
       `House makeover — ${property.label}: ${quote.lines.map((line) => line.label).join(', ')}`,
       `makeover:${building.id}:${ctx.time}`,
+      // A second makeover inside the same game minute reuses the key: refuse it instead of restyling for free.
+      { refuseRepeat: MAKEOVER_TOO_SOON },
     );
     building.exterior = {
       paint: next.paint ?? current.paint,
@@ -96,6 +100,7 @@ export class MakeoverService {
       'property',
       `Painters & tilers — ${home.label}: ${quote.lines.map((line) => line.label).join(', ')}`,
       key,
+      { refuseRepeat: MAKEOVER_TOO_SOON },
     );
     if (home.ownership === 'rented') {
       const lease = await this.store.lease(ctx);

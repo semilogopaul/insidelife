@@ -9,10 +9,11 @@ import type { DateRange } from './schedule.rules.js';
  *            cancelled (late pay)  └──── refund-due / rejected ────┘ → refunded
  */
 const TRANSITIONS: Readonly<Record<PromotionStatus, readonly PromotionStatus[]>> = {
-  draft: ['pending-payment', 'cancelled'],
-  'pending-payment': ['in-review', 'refund-due', 'cancelled'],
+  // `refunded` straight from an unpaid state: the payment was refunded before it was ever delivered.
+  draft: ['pending-payment', 'cancelled', 'refunded'],
+  'pending-payment': ['in-review', 'refund-due', 'cancelled', 'refunded'],
   // A payment that lands after the buyer cancelled is honoured (back to review) or refunded.
-  cancelled: ['in-review', 'refund-due'],
+  cancelled: ['in-review', 'refund-due', 'refunded'],
   'in-review': ['approved', 'live', 'refund-due', 'rejected'],
   approved: ['live', 'completed', 'refund-due', 'rejected'],
   live: ['completed', 'refund-due', 'rejected'],
@@ -95,6 +96,9 @@ export function refundSettlement(item: { readonly status: PromotionStatus; reado
   if (item.paymentReference !== paymentReference) return { kind: 'duplicate-payment' };
   if (item.status === 'refund-due') return { kind: 'refunded', takenDown: false };
   if (COMMITTED_STATUSES.includes(item.status)) return { kind: 'refunded', takenDown: true };
+  // Refunded before the payment was ever confirmed (e.g. from the dashboard): the booking ends now, its hold is released,
+  // instead of sitting at "awaiting payment" until the hold runs out.
+  if (PAYABLE_STATUSES.includes(item.status)) return { kind: 'refunded', takenDown: false };
   return { kind: 'none' };
 }
 

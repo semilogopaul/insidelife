@@ -294,12 +294,12 @@ export class PartiesService {
     if (!recipient) throw playerNotFound();
 
     const amount = request.amount;
-    const [senderJoined, recipientJoined, blocked, before] = await Promise.all([
-      this.hasJoined(ctx.manager, party, sender.id),
-      this.hasJoined(ctx.manager, party, recipient.id),
-      this.guard.isBlocked(sender.id, recipient.id, ctx.manager),
-      this.sprayedBy(ctx.manager, party.id, sender.id),
-    ]);
+    this.peerMoney.assertNoDebt(ctx);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const senderJoined = await this.hasJoined(ctx.manager, party, sender.id);
+    const recipientJoined = await this.hasJoined(ctx.manager, party, recipient.id);
+    const blocked = await this.guard.isBlocked(sender.id, recipient.id, ctx.manager);
+    const before = await this.sprayedBy(ctx.manager, party.id, sender.id);
     assertRule(
       checkSpray({
         amount,
@@ -558,11 +558,10 @@ export class PartiesService {
 
   private async toDtos(manager: EntityManager, parties: readonly PartyEntity[], viewerId: string, now: number): Promise<PartyDto[]> {
     if (parties.length === 0) return [];
-    const [hosts, joined, friendIds] = await Promise.all([
-      this.cards.cards(parties.map((party) => party.hostId), manager),
-      manager.find(PartyGuestEntity, { where: { characterId: viewerId, partyId: In(parties.map((party) => party.id)) }, select: { partyId: true } }),
-      this.friends.friendIds(viewerId, manager),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const hosts = await this.cards.cards(parties.map((party) => party.hostId), manager);
+    const joined = await manager.find(PartyGuestEntity, { where: { characterId: viewerId, partyId: In(parties.map((party) => party.id)) }, select: { partyId: true } });
+    const friendIds = await this.friends.friendIds(viewerId, manager);
     const attending = new Set(joined.map((row) => row.partyId));
     const friends = new Set(friendIds);
     return parties.flatMap((party) => {

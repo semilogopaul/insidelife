@@ -14,6 +14,7 @@ import {
   type RoofColourId,
   type WallPaintId,
 } from '@insidelife/shared';
+import { IsIdempotencyKey } from '../../../common/decorators/idempotency-key.decorator.js';
 
 const ids = (list: readonly { readonly id: string }[]): string[] => list.map((entry) => entry.id);
 
@@ -36,6 +37,8 @@ export class ExteriorMakeoverDto implements ExteriorMakeoverRequest {
   @IsString()
   @Matches(HOUSE_NAME_PATTERN, { message: "House names are 2-24 letters, numbers, spaces and . & - '" })
   readonly name?: string | null;
+  @IsIdempotencyKey()
+  readonly idempotencyKey?: string;
 }
 
 export class DecorMakeoverDto implements DecorMakeoverRequest {
@@ -46,4 +49,6 @@ export class DecorMakeoverDto implements DecorMakeoverRequest {
   @IsOptional()
   @IsIn(ids(FLOOR_FINISHES))
   readonly floor?: FloorFinishId;
+  @IsIdempotencyKey()
+  readonly idempotencyKey?: string;
 }

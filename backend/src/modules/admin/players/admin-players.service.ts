@@ -437,13 +437,14 @@ export class AdminPlayersService {
         earned_total: string;
         unearned_total: string;
         purchased_total: string;
+        debt: string;
         created_at: Date;
         last_active_at: Date;
         cause_of_death: string | null;
       }>
     >(
       `SELECT id, handle, first_name, last_name, alive, net_worth, hidden_at, gender, born_at, died_at, generation, lifestyle,
-              health, location_id, home_district_id, status, earned_total, unearned_total, purchased_total, created_at,
+              health, location_id, home_district_id, status, earned_total, unearned_total, purchased_total, debt, created_at,
               last_active_at, cause_of_death
          FROM characters WHERE id = $1`,
       [characterId],
@@ -470,6 +471,7 @@ export class AdminPlayersService {
       earnedTotal: Number(c.earned_total),
       unearnedTotal: Number(c.unearned_total),
       purchasedTotal: Number(c.purchased_total),
+      debt: Number(c.debt),
       createdAt: c.created_at.toISOString(),
       lastActiveAt: c.last_active_at.toISOString(),
       causeOfDeath: c.cause_of_death,

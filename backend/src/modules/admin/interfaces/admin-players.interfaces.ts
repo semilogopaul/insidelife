@@ -67,6 +67,8 @@ export interface AdminPlayerDetailDto {
         readonly earnedTotal: number;
         readonly unearnedTotal: number;
         readonly purchasedTotal: number;
+        /** Owed from a refunded top-up whose coins were already spent (repaid automatically from money coming in). */
+        readonly debt: number;
         readonly createdAt: string;
         readonly lastActiveAt: string;
         readonly causeOfDeath: string | null;
