@@ -521,6 +521,12 @@ export interface OnboardingDto {
   readonly welcomeReaction: 'i-dey-for-you' | 'na-you-sabi' | null;
   /** The "featured places are live" prompt has been dismissed. */
   readonly featuredSeen: boolean;
+  /** How the guided walkthrough ended, or null while it hasn't (accounts that existed before it launched count as completed). */
+  readonly tourOutcome: 'completed' | 'skipped' | null;
+}
+
+export interface TourOutcomeRequest {
+  readonly outcome: 'completed' | 'skipped';
 }
 
 export interface WelcomeReactionRequest {

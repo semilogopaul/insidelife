@@ -9,6 +9,7 @@ import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { REFRESH_COOKIE, REFRESH_COOKIE_PATH } from '../auth/auth.controller.js';
 import { AccountLifecycleService } from './account-lifecycle.service.js';
 import { DeleteAccountDto } from './dto/delete-account.dto.js';
+import { TourOutcomeDto } from './dto/tour-outcome.dto.js';
 import { WelcomeReactionDto } from './dto/welcome-reaction.dto.js';
 import { UsersService } from '../users/users.service.js';
 
@@ -38,6 +39,13 @@ export class AccountsController {
   @Post('onboarding/featured')
   featuredSeen(@CurrentUser() user: AuthUser): Promise<OnboardingDto> {
     return this.users.markFeaturedSeen(user.userId);
+  }
+
+  /** The guided walkthrough ended (finished or skipped). */
+  @HttpCode(HttpStatus.OK)
+  @Post('onboarding/tour')
+  tourDone(@CurrentUser() user: AuthUser, @Body() body: TourOutcomeDto): Promise<OnboardingDto> {
+    return this.users.markTourDone(user.userId, body.outcome);
   }
 
   /**

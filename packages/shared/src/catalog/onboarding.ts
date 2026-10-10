@@ -7,6 +7,9 @@ import { findVenue } from './venues.js';
 export const WELCOME_REACTIONS = ['i-dey-for-you', 'na-you-sabi'] as const;
 export type WelcomeReaction = (typeof WELCOME_REACTIONS)[number];
 
+export const TOUR_OUTCOMES = ['completed', 'skipped'] as const;
+export type TourOutcome = (typeof TOUR_OUTCOMES)[number];
+
 export const WELCOME_NOTE = {
   title: 'A note from the Inside Life team',
   body: "Hello 👋 We built Inside Life to be super fun and immersive, and we'd love your support. Tell us what you love about the game and what you'd love to see, and we'll ship it ASAP. Let's make Inside Life fun for everyone. Much love 💛",

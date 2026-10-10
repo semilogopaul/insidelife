@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { OnboardingDto, WelcomeReaction } from '@insidelife/shared';
+import type { OnboardingDto, TourOutcome, WelcomeReaction } from '@insidelife/shared';
 import { IsNull, type EntityManager, type Repository } from 'typeorm';
 import { UserEntity } from './entities/user.entity.js';
 
@@ -47,7 +47,12 @@ export class UsersService {
 
   async onboarding(id: string): Promise<OnboardingDto> {
     const user = await this.findById(id);
-    return { welcomeSeen: (user?.welcomeSeenAt ?? null) !== null, welcomeReaction: user?.welcomeReaction ?? null, featuredSeen: (user?.featuredSeenAt ?? null) !== null };
+    return {
+      welcomeSeen: (user?.welcomeSeenAt ?? null) !== null,
+      welcomeReaction: user?.welcomeReaction ?? null,
+      featuredSeen: (user?.featuredSeenAt ?? null) !== null,
+      tourOutcome: user?.tourCompletedAt ? (user.tourSkipped ? 'skipped' : 'completed') : null,
+    };
   }
 
   /** Records the first answer to the welcome note; later answers (another tab or device) change nothing. */
@@ -58,6 +63,12 @@ export class UsersService {
 
   async markFeaturedSeen(id: string): Promise<OnboardingDto> {
     await this.users.update({ id, featuredSeenAt: IsNull() }, { featuredSeenAt: new Date() });
+    return this.onboarding(id);
+  }
+
+  /** Records how the walkthrough ended; the first outcome sticks (another tab or device changes nothing). */
+  async markTourDone(id: string, outcome: TourOutcome): Promise<OnboardingDto> {
+    await this.users.update({ id, tourCompletedAt: IsNull() }, { tourCompletedAt: new Date(), tourSkipped: outcome === 'skipped' });
     return this.onboarding(id);
   }
 }

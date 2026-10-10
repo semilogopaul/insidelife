@@ -15,10 +15,12 @@ export interface TabsProps<T extends string> {
   readonly onChange: (id: T) => void;
   readonly label: string;
   readonly className?: string;
+  /** Stable id for the guided walkthrough (`data-tour` on the tab list). */
+  readonly tour?: string;
 }
 
 /** Accessible segmented tabs (arrow keys move between tabs). Content is rendered by the caller. */
-export function Tabs<T extends string>({ items, value, onChange, label, className }: TabsProps<T>) {
+export function Tabs<T extends string>({ items, value, onChange, label, className, tour }: TabsProps<T>) {
   const id = useId();
   const refs = useRef<Array<HTMLButtonElement | null>>([]);
   const onKey = (event: KeyboardEvent<HTMLButtonElement>, index: number): void => {
@@ -32,7 +34,7 @@ export function Tabs<T extends string>({ items, value, onChange, label, classNam
     }
   };
   return (
-    <div role="tablist" aria-label={label} className={cn('-mx-1 flex gap-1 overflow-x-auto px-1 pb-1', className)}>
+    <div role="tablist" aria-label={label} data-tour={tour} className={cn('-mx-1 flex gap-1 overflow-x-auto px-1 pb-1', className)}>
       {items.map((item, index) => {
         const selected = item.id === value;
         return (

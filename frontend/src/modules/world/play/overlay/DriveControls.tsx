@@ -139,6 +139,7 @@ export function DriveControls() {
           </PressButton>
           <PressButton
             onPress={() => gameEvents.emit('exit-car', {})}
+            data-tour="car-exit"
             className="pointer-events-auto flex h-14 items-center gap-1.5 rounded-full bg-ink/70 px-4 text-sm font-bold text-on-ink shadow-[var(--shadow-glass)] backdrop-blur transition-transform duration-75 data-[pressed=true]:scale-95"
           >
             <DoorOpen size={18} aria-hidden />

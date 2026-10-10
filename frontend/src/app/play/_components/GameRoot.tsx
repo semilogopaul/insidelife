@@ -30,6 +30,7 @@ import { NotificationBell, NotificationCenter } from '@/modules/notifications';
 import { Phone } from '@/modules/phone';
 import { TalkButton, TalkFeed, TalkLayer } from '@/modules/talk';
 import { VenueSheet } from '@/modules/venue';
+import { Tour } from '@/modules/tour';
 import { VisitCards } from '@/modules/visits';
 import { WelcomeFlow } from '@/modules/welcome';
 import { LoadingScreen } from './LoadingScreen';
@@ -142,6 +143,7 @@ export function GameRoot() {
       <NotificationCenter />
       <AwayReport />
       <WelcomeFlow />
+      <Tour />
       <CelebrationLayer />
       <MomentLayer />
       <EpitaphLayer />
