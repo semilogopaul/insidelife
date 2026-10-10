@@ -11,6 +11,7 @@ import { useWorld, type Interactable } from '@/common/game/world-store';
 import { getSocket } from '@/common/realtime/socket';
 import { handleOf } from '../players/presence-directory';
 import type { PlayRuntime } from '../runtime/play-runtime';
+import { pickContext, type ContextCandidate } from './context-priority';
 import { doorLabel, nearestDoor, type Door } from './doors';
 import { movementApi } from './movement.api';
 import { usePlayUi } from '../state/play-ui-store';
@@ -59,7 +60,7 @@ function isTouchDevice(): boolean {
 }
 
 const sameNearby = (a: Interactable | null, b: Interactable | null): boolean =>
-  a?.id === b?.id && a?.label === b?.label && a?.disabled === b?.disabled && a?.more?.map((option) => `${option.id}|${option.label}|${option.disabled ?? ''}`).join() === b?.more?.map((option) => `${option.id}|${option.label}|${option.disabled ?? ''}`).join();
+  a?.id === b?.id && a?.choices === b?.choices && a?.label === b?.label && a?.disabled === b?.disabled && a?.more?.map((option) => `${option.id}|${option.label}|${option.disabled ?? ''}`).join() === b?.more?.map((option) => `${option.id}|${option.label}|${option.disabled ?? ''}`).join();
 
 /** "Get out" next to "Park & enter …" (a mouse has no other way to get out where every kerb is near a door). */
 const GET_OUT_OPTION = { id: CAR_EXIT_ID, label: 'Get out', emoji: '🚪' } as const;
@@ -151,6 +152,7 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
     let lastX = Number.POSITIVE_INFINITY;
     let lastZ = Number.POSITIVE_INFINITY;
     let lastSent = 0;
+    let choiceKey = '';
 
     // ≈5 Hz: pose for the HUD, the context button, the speedometer.
     const pose = window.setInterval(() => {
@@ -171,33 +173,52 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
       let driveOffer: Interactable | null = null;
       const prices = { fuelPrice: optionsRef.current.fuelPrice, priceIndex: optionsRef.current.priceIndex };
       // A filling station or mechanic you've pulled up at (on foot too: a jerrycan from the pump for a dead car).
-      const atService = (x: number, z: number): Interactable | null => {
+      const atService = (x: number, z: number): { readonly offer: Interactable; readonly distance: number } | null => {
         if (!c.car) return null;
         const point = servicePointAt('fuel', { x, z }) ?? servicePointAt('mechanic', { x, z });
         if (!point) return null;
         const dry = point.kind === 'fuel' && fuelStationDry(gameClock.worldSeed, point.id, Math.floor(gameClock.now() / MINUTES_PER_DAY), optionsRef.current.scarcity);
-        return serviceOffer(point, c.car, { ...prices, dry });
+        return { offer: serviceOffer(point, c.car, { ...prices, dry }), distance: Math.hypot(point.entrance.position.x - x, point.entrance.position.z - z) };
       };
       if (runtime.mode === 'walk') {
         const destinationId = useNavigation.getState().destinationId;
         const door = nearestDoor({ x: c.walker.x, z: c.walker.z }, ENTRY_RADIUS, privateDoors(optionsRef.current));
-        const doorClose = door && (Math.hypot(door.x - c.walker.x, door.z - c.walker.z) <= DOOR_PROMPT_RADIUS || door.locationId === destinationId);
+        const doorDistance = door ? Math.hypot(door.x - c.walker.x, door.z - c.walker.z) : Number.POSITIVE_INFINITY;
+        const doorClose = door && (doorDistance <= DOOR_PROMPT_RADIUS || door.locationId === destinationId);
         const selected = runtime.selectedPlayer && performance.now() - runtime.selectedAt < PLAYER_PROMPT_SECONDS * 1000 ? runtime.selectedPlayer : null;
         const service = atService(c.walker.x, c.walker.z);
-        // A player you just tapped wins for a few seconds (explicit intent), then the pump or mechanic, your car, the
-        // nearest door.
+        const canCar = c.canEnterCar();
+        // A player you just tapped wins for a few seconds (explicit intent). Otherwise the most useful thing in reach:
+        // something you can do beats something you can't, a door (or your car) beats a pump or mechanic, then the
+        // nearest. Two things you can do: the player switches between them.
         if (selected) next = { id: playerTargetId(selected), kind: 'player', label: `@${handleOf(selected)}` };
-        else if (service) next = c.canEnterCar() ? { ...service, more: [...(service.more ?? []), { id: CAR_ENTER_ID, label: 'Get in car', emoji: '🚗' }] } : service;
-        else if (c.canEnterCar()) next = { id: CAR_ENTER_ID, kind: 'car', label: 'Get in car' };
-        else if (door && doorClose) next = { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, false, door === optionsRef.current.homeDoor), locationId: door.locationId };
+        else {
+          const candidates: ContextCandidate[] = [];
+          if (service) {
+            const offer = service.offer;
+            candidates.push({ item: canCar ? { ...offer, more: [...(offer.more ?? []), { id: CAR_ENTER_ID, label: 'Get in car', emoji: '🚗' }] } : offer, distance: service.distance, entrance: false });
+          }
+          if (canCar && (!service || service.offer.disabled)) candidates.push({ item: { id: CAR_ENTER_ID, kind: 'car', label: 'Get in car' }, distance: c.distanceToCar(), entrance: true });
+          if (door && doorClose) {
+            candidates.push({ item: { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, false, door === optionsRef.current.homeDoor), locationId: door.locationId }, distance: doorDistance, entrance: true });
+          }
+          // A new set of choices starts from the best again.
+          const key = candidates.map((candidate) => candidate.item.id).join('|');
+          if (key !== choiceKey) {
+            choiceKey = key;
+            if (world().choice !== 0) world().setChoice(0);
+          }
+          next = pickContext(candidates, key === choiceKey ? world().choice : 0);
+        }
       } else if (runtime.mode === 'drive') {
         // Shown once you've (nearly) stopped, and kept while you creep or the brake starts reversing you, so it never
         // vanishes under the thumb going for it.
         const offered = (touchUi ? usePlayUi.getState().driveOffer : world().nearby) !== null && world().nearby?.id !== CAR_EXIT_ID;
         const slow = Math.abs(c.speed) < (offered ? OFFER_KEEP_SPEED : SERVICE_STOP_SPEED);
         const door = slow ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, privateDoors(optionsRef.current)) : null;
+        const driveService: Interactable | null = slow ? (atService(c.x, c.z)?.offer ?? null) : null;
         const offer: Interactable | null =
-          (slow ? atService(c.x, c.z) : null) ??
+          driveService ??
           (door ? { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, true, door === optionsRef.current.homeDoor), locationId: door.locationId } : null);
         // Touch screens: the drive controls show the offer next to their own "Get out" (HUD hidden or not). With a
         // mouse, the context button offers it with "Get out" as a second choice (keys E, 1–2; F gets out too).

@@ -29,6 +29,8 @@ export interface Interactable {
   readonly disabled?: string;
   /** Other things to do right here; each emits `interact` with its own id. */
   readonly more?: readonly InteractableOption[];
+  /** More than one enabled option is in range (this many): the HUD offers a "next" chevron (`cycleChoice`). */
+  readonly choices?: number;
 }
 
 export interface DriveTelemetry {
@@ -54,11 +56,16 @@ interface WorldState {
   readonly districtName: string | null;
   readonly streetName: string | null;
   readonly nearby: Interactable | null;
+  /** Which of the enabled options in range is showing (the player's "next" taps). */
+  readonly choice: number;
   readonly drive: DriveTelemetry | null;
   setMode(mode: PlayerMode): void;
   /** Written by the world at a low rate (≈5 Hz) — never per frame. */
   setPose(position: WorldPoint, heading: number, districtName: string | null, streetName: string | null): void;
   setNearby(nearby: Interactable | null): void;
+  setChoice(choice: number): void;
+  /** Switch to the next enabled option in range. */
+  cycleChoice(): void;
   setDrive(drive: DriveTelemetry | null): void;
 }
 
@@ -73,9 +80,12 @@ export const useWorld = create<WorldState>()((set) => ({
   districtName: null,
   streetName: null,
   nearby: null,
+  choice: 0,
   drive: null,
   setMode: (mode) => set({ mode }),
   setPose: (position, heading, districtName, streetName) => set({ position, heading, districtName, streetName }),
   setNearby: (nearby) => set({ nearby }),
+  setChoice: (choice) => set({ choice }),
+  cycleChoice: () => set((state) => ({ choice: state.choice + 1 })),
   setDrive: (drive) => set({ drive }),
 }));

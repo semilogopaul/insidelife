@@ -269,6 +269,41 @@ describe('walking runtime', () => {
     expect(onPortal).toHaveBeenCalledWith(door);
   });
 
+  it('leaves by the front door only after a short push into it, never straight after coming in', () => {
+    const runtime = new HomeWalkRuntime();
+    const onPortal = vi.fn(() => true);
+    runtime.setEvents({ onPortal, onStep: () => undefined });
+    runtime.setCameraMode('overview');
+    const living = load('living');
+    const front = living.portals.find((portal) => portal.to === null);
+    if (!front) throw new Error('front door');
+    runtime.loadRoom(living, { kind: 'enter' }, 1);
+    const camera = new PerspectiveCamera(50, 1, 0.1, 100);
+    camera.position.set(front.arrival.x - front.inward[0] * 5, 5, front.arrival.z - front.inward[1] * 5);
+    camera.lookAt(front.arrival.x, 0, front.arrival.z);
+    const push = (from: number, frames: number): void => {
+      controls.forward = true;
+      for (let i = 0; i < frames; i++) {
+        runtime.walker.vx = front.inward[0] * 1.5;
+        runtime.walker.vz = front.inward[1] * 1.5;
+        runtime.frame(camera, 1 / 30, from + i * 33, 800, 600);
+      }
+      controls.forward = false;
+    };
+    // Arrived beside the door and pushing at it: inert until you step away from it first.
+    runtime.placeWalker(front.arrival.x, front.arrival.z, Math.atan2(front.inward[1], front.inward[0]));
+    push(1000, 40);
+    expect(onPortal).not.toHaveBeenCalled();
+    // Step away (into the room), then walk back into the door: not on the first frames, but within about half a second.
+    runtime.placeWalker(front.arrival.x - front.inward[0] * 3, front.arrival.z - front.inward[1] * 3, 0);
+    run(runtime, 0.3);
+    runtime.placeWalker(front.arrival.x, front.arrival.z, Math.atan2(front.inward[1], front.inward[0]));
+    push(4000, 5);
+    expect(onPortal).not.toHaveBeenCalled();
+    push(4200, 30);
+    expect(onPortal).toHaveBeenCalledWith(front);
+  });
+
   it('stays out of the furniture while walking freely', () => {
     const runtime = new HomeWalkRuntime();
     const living = load('living');

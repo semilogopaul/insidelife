@@ -207,10 +207,12 @@ export function HomeWalk({
 
   useEffect(() => {
     runtime.setEvents({
-      onPortal: (portal) =>
-        portal.to
-          ? useHomeView.getState().go(portal.to.room, { kind: 'portal', portal: portal.to.portal })
-          : false,
+      onPortal: (portal) => {
+        if (portal.to) return useHomeView.getState().go(portal.to.room, { kind: 'portal', portal: portal.to.portal });
+        // The front door: the same as "Step outside" (it shows its own message if you can't leave yet).
+        gameEvents.emit('exit-building', {});
+        return true;
+      },
       onStep: () => gameEvents.emit('sfx', { id: 'footstep', volume: 0.25 }),
       onPick: (id) => {
         gameEvents.emit('sfx', { id: 'ui-click' });

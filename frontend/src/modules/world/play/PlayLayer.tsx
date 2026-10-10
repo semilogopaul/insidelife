@@ -22,6 +22,7 @@ import type { Door } from './flow/doors';
 import { primaryCar } from './flow/movement.api';
 import { loadPose, spawnHandoff } from './flow/spawn-handoff';
 import { resolveStart, stepOut, type SandboxStart } from './flow/start-pose';
+import { useDoorWalkIn } from './flow/use-door-walk-in';
 import { useWorldActions } from './flow/use-world-actions';
 import { useWorldSync } from './flow/use-world-sync';
 import { resetControls } from './input/controls';
@@ -245,6 +246,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
 
   const heartbeats = useWorldSync(runtime, { online, characterId, homeDoor, visitDoors, fuelPrice, priceIndex, scarcity });
   useWorldActions(runtime, { online, heartbeats });
+  useDoorWalkIn(runtime, { homeDoor, visitDoors });
 
   const look: PlayerLook = character ? { appearance: character.appearance, outfit: character.outfit, gender: character.gender, mood: character.mood } : sandboxLook;
   const shadows = quality.shadows;
