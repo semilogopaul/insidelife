@@ -68,6 +68,7 @@ export function SuggestionChips({ suggestions, max }: { readonly suggestions: re
           type="button"
           onClick={() => setOpenId((current) => (current === suggestion.id ? null : suggestion.id))}
           aria-expanded={openId === suggestion.id}
+          data-tour={suggestion.kind === 'goal' ? 'goals-pill' : undefined}
           className={cn('glass flex h-10 max-w-full items-center gap-2 rounded-full py-1 pl-1 pr-3 text-left text-sm text-on-ink hover:brightness-110', openId === suggestion.id && 'ring-2 ring-danfo')}
         >
           <span className={cn('grid size-8 shrink-0 place-items-center rounded-full', KIND_TINT[suggestion.kind])}>

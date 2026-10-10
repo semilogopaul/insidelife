@@ -115,7 +115,7 @@ export function PromoteApp() {
         <p className="mt-1 max-w-[30ch] text-sm">Your ad on 560+ spots: billboards, bus shelters, Lagos TV and every player’s phone. Your song in the clubs. Real money, reviewed by a person, refunded if not approved.</p>
         <span aria-hidden className="mt-3 block h-[9px] w-24 danfo-stripes" />
       </div>
-      <Tabs items={TABS} value={tab} onChange={setTab} label="Promote" />
+      <Tabs items={TABS} value={tab} onChange={setTab} label="Promote" tour="promote-tabs" />
       <div role="tabpanel" aria-label={tab === 'billboards' ? 'Billboards' : 'Club DJ'}>
         {tab === 'billboards' ? (
           <BillboardsTab view={view} onView={setView} onBook={(slotId) => setFocus({ kind: 'book', slotId })} onOpenCampaign={(id) => setFocus({ kind: 'campaign', id })} />

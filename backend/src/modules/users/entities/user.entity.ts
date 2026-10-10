@@ -72,6 +72,14 @@ export class UserEntity {
   @Column({ type: 'timestamptz', nullable: true })
   featuredSeenAt: Date | null;
 
+  /** When the guided walkthrough ended (existing accounts were marked completed when it launched). */
+  @Column({ type: 'timestamptz', nullable: true })
+  tourCompletedAt: Date | null;
+
+  /** Whether the walkthrough ended by skipping it rather than finishing. */
+  @Column({ type: 'boolean', default: false })
+  tourSkipped: boolean;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 

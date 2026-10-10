@@ -12,6 +12,7 @@ import { GameSettings } from './GameSettings';
 import { HabitsPanel } from './HabitsPanel';
 import { LeaderboardsPanel } from './LeaderboardsPanel';
 import { LifestylePicker } from './LifestylePicker';
+import { ReplayTour } from './ReplayTour';
 import { PrivacySettings } from './PrivacySettings';
 import { ProfileCard } from './ProfileCard';
 
@@ -56,6 +57,9 @@ export function MeApp() {
           </Section>
           <Section title="Game settings">
             <GameSettings />
+          </Section>
+          <Section title="Walkthrough">
+            <ReplayTour />
           </Section>
           <Section title="App">
             <InstallAppPanel />

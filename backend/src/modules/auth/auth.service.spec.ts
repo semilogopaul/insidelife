@@ -66,6 +66,8 @@ const USER: UserEntity = {
   welcomeSeenAt: null,
   welcomeReaction: null,
   featuredSeenAt: null,
+  tourCompletedAt: null,
+  tourSkipped: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

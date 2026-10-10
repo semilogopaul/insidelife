@@ -19,7 +19,7 @@ import { WelcomeFlow } from '../components/WelcomeFlow';
 import { WelcomeNote } from '../components/WelcomeNote';
 import { pickPrompt } from '../services/pick-prompt';
 
-const NEW_PLAYER: OnboardingDto = { welcomeSeen: false, welcomeReaction: null, featuredSeen: false };
+const NEW_PLAYER: OnboardingDto = { welcomeSeen: false, welcomeReaction: null, featuredSeen: false, tourOutcome: null };
 const PLACES: readonly FeaturedPlace[] = [{ venueId: 'iya-basira', name: 'Iya Basira' }];
 
 function wrap(children: ReactNode) {
@@ -34,7 +34,7 @@ describe('pickPrompt (once-only order)', () => {
   });
 
   it('never shows a prompt again once it was seen', () => {
-    expect(pickPrompt({ welcomeSeen: true, welcomeReaction: 'na-you-sabi', featuredSeen: true }, true, PLACES)).toBeNull();
+    expect(pickPrompt({ welcomeSeen: true, welcomeReaction: 'na-you-sabi', featuredSeen: true, tourOutcome: null }, true, PLACES)).toBeNull();
   });
 
   it('waits for the character and the server', () => {
@@ -81,7 +81,7 @@ describe('WelcomeFlow', () => {
   beforeEach(() => {
     useSession.setState({ status: 'authenticated' } as never);
     vi.mocked(onboardingApi.get).mockResolvedValue(NEW_PLAYER);
-    vi.mocked(onboardingApi.answerWelcome).mockResolvedValue({ welcomeSeen: true, welcomeReaction: 'na-you-sabi', featuredSeen: false });
+    vi.mocked(onboardingApi.answerWelcome).mockResolvedValue({ welcomeSeen: true, welcomeReaction: 'na-you-sabi', featuredSeen: false, tourOutcome: null });
   });
 
   it('shows the note once, records the answer on the server, and stays closed', async () => {

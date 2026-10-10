@@ -66,7 +66,7 @@ const SHEET_LIFT_PX = 76;
  */
 function ContextActions({ nearby, alignStart }: { readonly nearby: Interactable; readonly alignStart: boolean }) {
   return (
-    <div className={cn('flex flex-col gap-1.5', alignStart ? 'items-start' : 'items-end')} data-testid="context-actions">
+    <div className={cn('flex flex-col gap-1.5', alignStart ? 'items-start' : 'items-end')} data-testid="context-actions" data-tour="context-action">
       {nearby.more?.map((option, index) => (
         <PressButton
           key={option.id}
@@ -197,6 +197,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
               onClick={toggleHud}
               aria-label="Hide the HUD (clean screen)"
               aria-keyshortcuts="H"
+              data-tour="hud-hide"
               title="Clean screen (H)"
               className="glass grid size-11 place-items-center rounded-full text-on-ink-soft hover:text-on-ink"
             >
@@ -244,6 +245,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
                 gameEvents.emit('sfx', { id: 'ui-open' });
                 openPhone('home');
               }}
+              data-tour="phone-button"
               className="relative grid size-16 place-items-center rounded-[20px] bg-danfo text-ink shadow-[0_4px_0_var(--color-danfo-deep)] active:translate-y-0.5"
               aria-label={unreadDms > 0 ? `Open phone (${unreadDms} unread messages)` : 'Open phone'}
             >
@@ -273,6 +275,7 @@ function CleanScreen() {
         onClick={toggleHud}
         aria-label="Show the HUD"
         aria-keyshortcuts="H"
+        data-tour="hud-show"
         title="Show the HUD (H)"
         className="glass pointer-events-auto flex h-11 items-center gap-1.5 rounded-full px-3.5 text-xs font-bold text-on-ink opacity-70 hover:opacity-100 focus-visible:opacity-100"
       >

@@ -90,6 +90,7 @@ export function Phone({ apps }: PhoneProps) {
                     <li key={item.id}>
                       <button
                         type="button"
+                        data-tour={`app-${item.id}`}
                         onClick={() => {
                           gameEvents.emit('sfx', { id: 'ui-click' });
                           openPhone(item.id);

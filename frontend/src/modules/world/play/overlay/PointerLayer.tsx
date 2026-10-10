@@ -217,6 +217,7 @@ export function PointerLayer({ walking, touchUi, reserveBottom = 0, hintClassNam
         <div
           ref={rest}
           data-testid="stick-hint"
+          data-tour="stick-ring"
           data-side={side}
           data-fresh={fresh ? 'true' : undefined}
           className={cn(

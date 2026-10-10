@@ -68,6 +68,9 @@ interface UiState {
   /** Deep link payload for the opened app (e.g. a job id, a venue id). */
   readonly phoneParam: string | null;
   readonly settings: PlayerSettings;
+  /** Bumped by "Replay the walkthrough" (Me → Settings); the walkthrough feature starts when it changes. Never persisted. */
+  readonly tourRequest: number;
+  requestTour(): void;
   openPhone(app?: PhoneApp, param?: string | null): void;
   closePhone(): void;
   updateSettings(patch: Partial<PlayerSettings>): void;
@@ -81,6 +84,8 @@ export const useUi = create<UiState>()(
       phoneApp: 'home',
       phoneParam: null,
       settings: DEFAULT_SETTINGS,
+      tourRequest: 0,
+      requestTour: () => set((state) => ({ tourRequest: state.tourRequest + 1, phoneOpen: false })),
       openPhone: (app = 'home', param = null) => set({ phoneOpen: true, phoneApp: app, phoneParam: param }),
       closePhone: () => set({ phoneOpen: false }),
       updateSettings: (patch) => set((state) => ({ settings: { ...state.settings, ...patch } })),

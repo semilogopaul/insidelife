@@ -39,6 +39,7 @@ export function HomesApp() {
       <div className="sticky top-0 z-10 -mx-5 bg-paper px-5 pb-2">
         <Tabs
           label="Homes"
+          tour="homes-tabs"
           value={tab}
           onChange={setTab}
           items={TABS.map((id) => ({ id, label: LABELS[id], badge: id === 'property' ? owned : undefined }))}

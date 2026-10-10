@@ -29,6 +29,7 @@ export function MotorsApp() {
       <div className="sticky top-0 z-10 -mx-5 bg-paper px-5 pb-2">
         <Tabs
           label="Motors"
+          tour="motors-tabs"
           value={tab}
           onChange={setChosen}
           items={TABS.map((id) => ({
