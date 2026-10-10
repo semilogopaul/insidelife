@@ -14,6 +14,7 @@ import { useCityPlan } from '../city/layout/use-city-plan';
 import { setProps } from '../city/lib/mutate';
 import type { QualityProfile } from '../city/lib/quality';
 import { BillboardTracker } from './billboards/BillboardTracker';
+import { restoreStreetLens } from './camera-defaults';
 import { BlobShadows } from './effects/blob-shadows';
 import { useMoneyBurst } from './effects/MoneyBurst';
 import { SprayListener } from './effects/SprayListener';
@@ -71,6 +72,11 @@ function prefersReducedMotion(): boolean {
 function Director({ runtime }: { readonly runtime: PlayRuntime }) {
   const get = useThree((state) => state.get);
   useEffect(() => exposeDevHook(runtime, () => get().camera, () => get().size), [runtime, get]);
+  // Out of an interior (walked out or put on a bus by the server): the street lens, not the room's short far plane.
+  useEffect(() => {
+    const camera = get().camera;
+    if (camera instanceof PerspectiveCamera) restoreStreetLens(camera);
+  }, [get]);
   useFrame((state, delta) => {
     if (state.camera instanceof PerspectiveCamera) runtime.frame(state.camera, Math.min(delta, 0.05), performance.now());
   }, -4);

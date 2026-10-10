@@ -15,7 +15,7 @@ export class WorldController {
   @Get('clock')
   @Header('Cache-Control', 'no-store')
   clock(): WorldClockDto {
-    return { ...this.world.clock, serverNowMs: Date.now(), worldSeed: this.world.seed };
+    return { ...this.world.clock, serverNowMs: Date.now(), worldSeed: this.world.seed, nextRescale: this.world.nextRescale };
   }
 
   @Public()

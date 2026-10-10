@@ -12,7 +12,7 @@ export interface GameClockConfig {
   readonly epochRealMs: number;
   /** Game minute at {@link epochRealMs}. */
   readonly epochGameMinute: GameMinute;
-  /** Game minutes that elapse per real minute (e.g. 120 => 2 game minutes per real second). */
+  /** Game minutes that elapse per real minute (e.g. 60 => 1 game minute per real second). */
   readonly scale: number;
 }
 
@@ -36,4 +36,55 @@ export function realMsAt(config: GameClockConfig, t: GameMinute): number {
 /** Real milliseconds a span of game minutes takes. */
 export function gameMinutesToRealMs(config: GameClockConfig, minutes: number): number {
   return (minutes / config.scale) * MS_PER_REAL_MINUTE;
+}
+
+/**
+ * A change of game speed at a real moment. The clock stays continuous: at `atRealMs` it re-anchors to the game minute
+ * the previous speed had reached and runs at `scale` from there, so no instance, settle or client sees time jump.
+ */
+export interface ClockRescale {
+  readonly atRealMs: number;
+  readonly scale: number;
+}
+
+/**
+ * The clock running at `realMs`: `base` (the speed since the epoch), re-anchored at every rescale that has happened by
+ * then. Rescales must be in time order (see `parseClockRescales`).
+ */
+export function clockAt(base: GameClockConfig, rescales: readonly ClockRescale[], realMs: number): GameClockConfig {
+  let clock = base;
+  for (const rescale of rescales) {
+    if (rescale.atRealMs > realMs) break;
+    clock = { epochRealMs: rescale.atRealMs, epochGameMinute: gameMinuteAt(clock, rescale.atRealMs), scale: rescale.scale };
+  }
+  return clock;
+}
+
+/** The next speed change after `realMs`, or null. */
+export function nextRescaleAfter(rescales: readonly ClockRescale[], realMs: number): ClockRescale | null {
+  return rescales.find((rescale) => rescale.atRealMs > realMs) ?? null;
+}
+
+/**
+ * Parse `GAME_TIME_RESCALES`: comma-separated `<ISO-8601 real time>@<game minutes per real minute>`, e.g.
+ * `2026-10-12T09:00:00Z@60`. Throws on a malformed entry, a scale outside 1–10,000, or entries out of order.
+ */
+export function parseClockRescales(text: string | undefined): ClockRescale[] {
+  const entries = (text ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  const rescales: ClockRescale[] = [];
+  for (const entry of entries) {
+    const at = entry.lastIndexOf('@');
+    const atRealMs = Date.parse(entry.slice(0, at));
+    const scale = Number(entry.slice(at + 1));
+    if (at <= 0 || !Number.isFinite(atRealMs) || !Number.isFinite(scale) || scale < 1 || scale > 10_000) {
+      throw new RangeError(`Bad clock rescale "${entry}" (expected <ISO time>@<scale>)`);
+    }
+    const previous = rescales[rescales.length - 1];
+    if (previous && atRealMs <= previous.atRealMs) throw new RangeError(`Clock rescales must be in time order ("${entry}")`);
+    rescales.push({ atRealMs, scale });
+  }
+  return rescales;
 }

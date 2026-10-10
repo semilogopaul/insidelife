@@ -2,9 +2,9 @@ import { MINUTES_PER_HOUR } from '../time/calendar.js';
 import { findAction } from './actions.js';
 
 /**
- * Daily habits: a player schedules a free home activity ("learn to code, 2h at 8pm on weekdays") and the autopilot
+ * Daily habits: a player schedules a free home activity ("learn to code, 1h at 8pm on weekdays") and the autopilot
  * does it while they're away — at home, awake and with energy to spare. Most game days pass offline (a real hour is
- * five game days), so habits are how steady self-improvement happens without grinding.
+ * 2½ game days at ×60), so habits are how steady self-improvement happens without grinding.
  */
 export const HABIT_ACTIONS = ['study', 'learn-code', 'home-workout', 'freelance', 'watch-tv', 'play-games'] as const;
 export type HabitActionId = (typeof HABIT_ACTIONS)[number];

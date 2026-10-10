@@ -47,7 +47,7 @@ export default function LandingPage() {
 
       <section className="px-5 py-16 sm:px-10">
         <h2 className="type-title max-w-2xl text-3xl sm:text-4xl">One life, start to finish</h2>
-        <p className="mt-2 max-w-xl text-on-ink-soft">Time runs on Lagos time, sped up: a day passes in 12 minutes, a year in three days. The city keeps living when you log off.</p>
+        <p className="mt-2 max-w-xl text-on-ink-soft">Time runs on Lagos time, sped up: a day passes in 24 minutes, a year in six days. The city keeps living when you log off.</p>
         <div className="mt-8">
           <LifePath />
         </div>

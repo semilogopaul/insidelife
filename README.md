@@ -59,7 +59,8 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 
 | Variable | Purpose |
 |---|---|
-| `GAME_TIME_SCALE` | Game minutes per real minute (default `120`: a game day is 12 real minutes, a year 3 real days). |
+| `GAME_TIME_SCALE` | Game minutes per real minute since `GAME_EPOCH` (default `60`: a game day is 24 real minutes, a year 6 real days). |
+| `GAME_TIME_RESCALES` | Later speed changes, `<ISO time>@<scale>,…`, each continuous with the clock before it (see `docs/DEPLOY.md` → Game speed). |
 | `GAME_EPOCH`, `WORLD_SEED` | Anchor of the shared world clock and the seed for weather, economy and world events. |
 | `FLUTTERWAVE_SECRET_KEY` | `FLWSECK_TEST-…` / `FLWSECK-…` (live). Empty in development → sandbox checkout. Required in production; the live site refuses test keys. |
 | `FLUTTERWAVE_PUBLIC_KEY` | Optional (hosted checkout doesn't need it); checked so the live site never ships a test key. |

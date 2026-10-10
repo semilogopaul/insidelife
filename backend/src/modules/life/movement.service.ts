@@ -34,7 +34,7 @@ import { TimelinePlanner } from '../simulation/timeline-planner.service.js';
 import { MovementTracker } from './movement-tracker.service.js';
 
 /** How long one heartbeat keeps the "exploring" state alive (game minutes ≈ 30 real seconds). */
-const EXPLORE_WINDOW = 60;
+const EXPLORE_WINDOW = 30;
 /** Fallback fuel economy (map km per litre) if the car's own figure is unknown. */
 const DEFAULT_KM_PER_LITRE = 10;
 /** Diesel costs more than petrol at the pump (≈ ₦1,750 vs ₦1,350). */

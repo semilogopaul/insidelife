@@ -20,7 +20,7 @@ import { SimulationRegistry } from '../simulation/simulation-registry.service.js
 import { TimelinePlanner } from '../simulation/timeline-planner.service.js';
 import { MovementTracker } from './movement-tracker.service.js';
 
-/** How far ahead the client gets a timeline (one game day ≈ 12 real minutes). */
+/** How far ahead the client gets a timeline (one game day ≈ 24 real minutes at ×60). */
 const TIMELINE_HORIZON = MINUTES_PER_DAY;
 
 @Injectable()

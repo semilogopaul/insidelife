@@ -1,6 +1,6 @@
 import type { BlueprintId } from '../catalog/housing.js';
 import type { HomeDecor, HouseExterior } from '../catalog/home-style.js';
-import type { GameClockConfig } from '../time/clock.js';
+import type { ClockRescale, GameClockConfig } from '../time/clock.js';
 import type { GameMinute } from '../time/calendar.js';
 import type { NeedProfile, Needs } from '../needs/needs.js';
 import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
@@ -102,6 +102,8 @@ export interface WorldClockDto extends GameClockConfig {
   /** Server wall clock (ms) when the response was produced — clients use it to estimate offset. */
   readonly serverNowMs: number;
   readonly worldSeed: string;
+  /** The next scheduled speed change (the clock re-anchors there and runs at the new scale), or null. */
+  readonly nextRescale: ClockRescale | null;
 }
 
 export interface WorldStateDto {

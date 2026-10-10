@@ -14,6 +14,7 @@ import {
   type VenueDefinition,
   type VenueType,
 } from '@insidelife/shared';
+import { COLLAPSE_AFTER_MINUTES, daysWithoutSleep } from '../../simulation/rest.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
 import { TimelinePlanner } from '../../simulation/timeline-planner.service.js';
 import { GoalsService } from './goals.service.js';
@@ -23,6 +24,8 @@ const MAX_SUGGESTIONS = 3;
 const SCHEDULE_LOOKAHEAD = 3 * 60;
 /** Leave-by margin that makes a schedule suggestion urgent. */
 const URGENT_LEAVE_MINUTES = 30;
+/** Nag about sleep from this many days without a real sleep (the collapse comes at ten). */
+const SLEEP_DEBT_NUDGE_DAYS = 7;
 
 interface NeedRule {
   readonly need: NeedKey;
@@ -40,9 +43,9 @@ const NEED_RULES: readonly NeedRule[] = [
   {
     need: 'hunger',
     below: 30,
-    title: 'You’re hungry',
+    title: 'You’re hungry: grab food',
     icon: 'utensils',
-    homeAction: 'cook',
+    homeAction: 'home-meal',
     venues: [
       { type: 'buka', action: 'eat-buka' },
       { type: 'market', action: 'street-food' },
@@ -52,11 +55,11 @@ const NEED_RULES: readonly NeedRule[] = [
   {
     need: 'energy',
     below: 25,
-    title: 'You’re exhausted',
+    title: 'You’re exhausted: sleep at home',
     icon: 'bed',
-    homeAction: 'nap',
+    homeAction: 'sleep',
     venues: [],
-    flavour: 'Your body is begging for rest. A nap at home will sort you out.',
+    flavour: 'Your body is begging for rest. A proper sleep at home puts you right.',
   },
   {
     need: 'hygiene',
@@ -120,8 +123,10 @@ export class SuggestionsService {
     const suggestions: SuggestionDto[] = [];
     const schedule = await this.scheduleSuggestion(ctx);
     if (schedule) suggestions.push(schedule);
+    const sleepDebt = await this.sleepDebtSuggestion(ctx);
+    if (sleepDebt) suggestions.push(sleepDebt);
     const need = await this.needSuggestion(ctx);
-    if (need) suggestions.push(need);
+    if (need && !(sleepDebt && need.id === 'need:energy')) suggestions.push(need);
     const goal = await this.goalSuggestion(ctx);
     if (goal) suggestions.push(goal);
     return suggestions.toSorted((a, b) => b.priority - a.priority || a.id.localeCompare(b.id)).slice(0, MAX_SUGGESTIONS);
@@ -183,6 +188,30 @@ export class SuggestionsService {
     const { target } = nearest;
     const where = target.etaMinutes === 0 ? `You’re at ${target.name} already.` : `${target.name} is ${target.etaMinutes} min away ${travelPhrase(target.mode)}.`;
     return { ...base, body: `${where} ${urgent.flavour}${target.openNow ? '' : ' (It may be closed when you arrive.)'}`, actionId: action, target };
+  }
+
+  /** A week without a real sleep: say so before the body collapses on its own (the autopilot won't put you to bed). */
+  private async sleepDebtSuggestion(ctx: SimulationContext): Promise<SuggestionDto | null> {
+    const character = ctx.character;
+    const lastSleptAt = character.lastSleptAt ?? character.settledAt;
+    const days = daysWithoutSleep(lastSleptAt, ctx.time);
+    if (days < SLEEP_DEBT_NUDGE_DAYS) return null;
+    const left = Math.max(0, Math.ceil((lastSleptAt + COLLAPSE_AFTER_MINUTES - ctx.time) / 1440));
+    const residence = await this.planner.residence(ctx, ctx.time);
+    const atHome = character.locationId === residence.locationId;
+    const home = atHome ? null : await this.targetFor(ctx, residence.locationId, 'home', residence.label);
+    const warning = left <= 1 ? 'You’ll collapse within a day' : `You’ll collapse wherever you are in ${left} days`;
+    return {
+      id: 'need:sleep-debt',
+      kind: 'need',
+      priority: 97,
+      title: `No proper sleep in ${days} days`,
+      body: `${warning} unless you sleep at home.${home ? ` Home is ${home.target.etaMinutes} min away.` : ''}`,
+      icon: 'bed',
+      actionId: 'sleep',
+      target: home?.target ?? null,
+      goalId: null,
+    };
   }
 
   private async goalSuggestion(ctx: SimulationContext): Promise<SuggestionDto | null> {

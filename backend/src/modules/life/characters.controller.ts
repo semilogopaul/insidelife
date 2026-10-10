@@ -1,6 +1,6 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post, Put } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { yearsBetween, type CharacterSnapshotDto, type LastLifeDto, type PublicCharacterDto } from '@insidelife/shared';
+import { yearsBetween, type CharacterSnapshotDto, type LastLifeDto, type PlayStateDto, type PublicCharacterDto } from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
@@ -10,7 +10,9 @@ import { CharacterSession } from '../simulation/character-session.service.js';
 import { WorldService } from '../world/world.service.js';
 import { CharacterCreationService } from './character-creation.service.js';
 import { CreateCharacterDto } from './dto/create-character.dto.js';
+import { UpdatePlayStateDto } from './dto/play-state.dto.js';
 import { UpdateSettingsDto } from './dto/settings.dto.js';
+import { PlayStateService } from './play-state.service.js';
 import { SettingsService } from './settings.service.js';
 import { SnapshotService } from './snapshot.service.js';
 
@@ -21,6 +23,7 @@ export class CharactersController {
     private readonly session: CharacterSession,
     private readonly snapshots: SnapshotService,
     private readonly settings: SettingsService,
+    private readonly playState: PlayStateService,
     private readonly directory: CharacterDirectory,
     private readonly presence: PresenceService,
     private readonly world: WorldService,
@@ -33,9 +36,23 @@ export class CharactersController {
     return this.session.run({ userId: user.userId }, (ctx) => this.snapshots.build(ctx), { touch: true });
   }
 
+  /**
+   * Reading isn't playing: a refetch from a background tab mustn't hold off the autopilot. The client reports the
+   * player at the controls through `PUT me/play-state`.
+   */
   @Get('me')
   me(@CurrentUser() user: AuthUser): Promise<CharacterSnapshotDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.snapshots.build(ctx), { touch: true });
+    return this.session.run({ userId: user.userId }, (ctx) => this.snapshots.build(ctx));
+  }
+
+  /**
+   * `playing` while the tab is visible and in use (sent every ~45 s), `away` when the player leaves. While playing the
+   * autopilot leaves the character alone; `resumed` tells the client to refetch a timeline planned for the autopilot.
+   */
+  @Throttle({ default: { limit: 12, ttl: 60_000 } })
+  @Put('me/play-state')
+  updatePlayState(@CurrentUser() user: AuthUser, @Body() body: UpdatePlayStateDto): Promise<PlayStateDto> {
+    return this.session.run({ userId: user.userId }, async (ctx) => this.playState.update(ctx, body.state));
   }
 
   @Patch('me/settings')

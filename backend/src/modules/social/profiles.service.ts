@@ -38,7 +38,7 @@ import { SocialGuard } from './social-guard.service.js';
 import { playerNotFound } from './social-errors.js';
 
 /** Refresh-on-settle runs at most once per this many game minutes (≈ 30 real seconds). */
-export const PROFILE_REFRESH_INTERVAL = 60;
+export const PROFILE_REFRESH_INTERVAL = 30;
 const SEARCH_LIMIT = 20;
 const VENUE_LIST_LIMIT = 40;
 /** A party with at least this many guests earns the "Owambe host" badge. */

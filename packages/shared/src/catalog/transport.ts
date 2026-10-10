@@ -1,3 +1,4 @@
+import { pacedTripMinutes } from '../rules/pacing.js';
 import { crossesLagoon, districtDistance, type DistrictId } from './geography.js';
 
 export const TRANSPORT_MODES = ['walk', 'okada', 'keke', 'danfo', 'brt', 'bolt', 'car'] as const;
@@ -140,8 +141,8 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
 const ROAD_FACTOR = 1.35;
 /** Extra minutes for a lagoon crossing (Third Mainland, Carter or Eko bridge). */
 const BRIDGE_PENALTY_MINUTES = 15;
-/** Minimum trip (finding a ride, walking to the bus stop). */
-const MIN_TRIP_MINUTES = 10;
+/** Minimum trip (finding a ride, walking to the bus stop), in game minutes after pacing. */
+const MIN_TRIP_MINUTES = 5;
 
 /** Lagos go-slow multiplier by hour of day (weekday). */
 export function trafficMultiplier(hour: number, weekend: boolean, raining: boolean): number {
@@ -196,7 +197,8 @@ export function quoteTrip(
 
   const traffic = 1 + (trafficMultiplier(conditions.hour, conditions.weekend, conditions.raining) - 1) * def.trafficExposure;
   const bridge = lagoon ? BRIDGE_PENALTY_MINUTES * traffic : 0;
-  const minutes = Math.max(MIN_TRIP_MINUTES, Math.round((distance / def.speed) * 60 * traffic + bridge));
+  // Speeds are the city's at ×120; a ride keeps its real-time length, so it takes half the game minutes (pacing.ts).
+  const minutes = Math.max(MIN_TRIP_MINUTES, Math.round(pacedTripMinutes((distance / def.speed) * 60 * traffic + bridge)));
 
   const surge = mode === 'bolt' && conditions.raining ? 1.8 : 1;
   const rawFare = (def.baseFare + def.farePerKm * distance) * conditions.priceIndex * surge * (conditions.fareMultiplier ?? 1);

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { EXAM_PREP_DAYS, type EducationOverviewDto, type ExamKind } from '@insidelife/shared';
+import { EXAM_DURATION_MINUTES, EXAM_PREP_DAYS, formatGameDuration, type EducationOverviewDto, type ExamKind } from '@insidelife/shared';
 import { Button, Money } from '@/common/components';
 import { useEducationCommands } from '../../hooks/use-education';
 import { announce, complain } from '@/common/game/feedback';
@@ -87,7 +87,7 @@ export function RegisterExamForm({
       <Receipt
         lines={[{ label: `${label} registration`, amount: fee }]}
         total={{ label: 'You pay now', amount: fee }}
-        caption={`The paper can be written from ${EXAM_PREP_DAYS} days after registering, 7am–3pm at the same centre. It takes 3 hours.`}
+        caption={`The paper can be written from ${EXAM_PREP_DAYS} days after registering, 7am–3pm at the same centre. It takes ${formatGameDuration(EXAM_DURATION_MINUTES)}.`}
       />
       <ExamCentreGate>
         <Button

@@ -1,6 +1,6 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import {
-  AUTOPILOT_TARGET,
+  isAutopilotActivity,
   LIFE_CHAPTERS,
   crossesLagoon,
   seasonOf,
@@ -95,7 +95,7 @@ export class ProgressionSystem implements SimulationSystem, OnModuleInit {
   }
 
   async onActionComplete(ctx: SimulationContext, action: ActionDefinition, activity: ActivityState): Promise<void> {
-    if (IGNORED_ACTIONS.has(action.id) || activity.targetId === AUTOPILOT_TARGET) return;
+    if (IGNORED_ACTIONS.has(action.id) || isAutopilotActivity(activity)) return;
     const deltas = new Map<string, number>([
       [`action:${action.id}`, 1],
       [`category:${action.category}`, 1],

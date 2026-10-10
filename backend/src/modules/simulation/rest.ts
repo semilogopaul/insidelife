@@ -4,17 +4,18 @@ import type { Segment } from './interfaces/simulation-system.interface.js';
 
 /**
  * The sleep clock. The autopilot never puts a player at the controls to bed, so the body has the last word: after ten
- * game days (two real hours) without a real sleep the character collapses wherever they are indoors and sleeps it off.
+ * game days (four real hours at ×60) without a real sleep the character collapses wherever they are indoors and sleeps
+ * it off.
  * Everything here is a pure function of persisted state (`lastSleptAt`, the running activity) and segment bounds, so
  * the outcome is the same however a settle is chunked.
  */
 
 /** Ten game days without a real sleep and the body takes over. */
 export const COLLAPSE_AFTER_MINUTES = 10 * MINUTES_PER_DAY;
-/** A sleep counts once it has lasted this long (the shortest Sleep you can choose; naps don't count). */
-export const RESTFUL_SLEEP_MINUTES = 4 * MINUTES_PER_HOUR;
-/** How long a collapse keeps you down (5 real minutes at ×120). */
-export const COLLAPSE_SLEEP_MINUTES = 10 * MINUTES_PER_HOUR;
+/** A sleep counts once it has lasted this long (a full Sleep is 3 game hours; naps of up to an hour don't count). */
+export const RESTFUL_SLEEP_MINUTES = 2 * MINUTES_PER_HOUR;
+/** How long a collapse keeps you down (4 real minutes at ×60): longer than a chosen sleep. */
+export const COLLAPSE_SLEEP_MINUTES = 4 * MINUTES_PER_HOUR;
 /** The day-end warning goes out once, when the collapse is this close. */
 export const SLEEP_DEBT_WARNING_MINUTES = 2 * MINUTES_PER_DAY;
 
