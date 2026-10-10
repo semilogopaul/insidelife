@@ -16,6 +16,9 @@ ARG BACKEND_INTERNAL_URL=http://backend:4000
 ENV BACKEND_INTERNAL_URL=${BACKEND_INTERNAL_URL}
 # Same-origin realtime socket behind nginx.
 ENV NEXT_PUBLIC_REALTIME_URL=
+# The build's id (the git commit): installed games compare it with /version.json and refresh to the latest.
+ARG BUILD_ID=dev
+ENV NEXT_PUBLIC_BUILD_ID=${BUILD_ID}
 COPY packages/shared packages/shared
 COPY frontend frontend
 RUN npm run build -w @insidelife/shared && npm run build -w @insidelife/frontend
