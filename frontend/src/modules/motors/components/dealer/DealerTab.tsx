@@ -38,10 +38,11 @@ export function DealerTab({ data }: { readonly data: VehiclesDto }) {
   const [budgetOnly, setBudgetOnly] = useState(false);
   const [buying, setBuying] = useState<BuyChoice | null>(null);
   const balance = snapshot?.wallet.balance ?? null;
-  const cars = useMemo(
-    () => filterCatalogue(data.catalogue, segment, budgetOnly ? balance : null),
-    [data.catalogue, segment, budgetOnly, balance],
-  );
+  // At a dealer, the cars on this lot come first; the rest can only be delivered from here.
+  const cars = useMemo(() => {
+    const list = filterCatalogue(data.catalogue, segment, budgetOnly ? balance : null);
+    return data.atDealer ? [...list.filter((entry) => entry.buyHere), ...list.filter((entry) => !entry.buyHere)] : list;
+  }, [data.catalogue, data.atDealer, segment, budgetOnly, balance]);
   const dealer = data.atDealer ? findVenue(data.atDealer) : undefined;
 
   return (
@@ -76,7 +77,7 @@ export function DealerTab({ data }: { readonly data: VehiclesDto }) {
       ) : (
         <ul className="flex flex-col gap-3">
           {cars.map((entry) => (
-            <CarCard key={entry.vehicle.id} entry={entry} onBuy={(paint) => setBuying({ entry, paint })} />
+            <CarCard key={entry.vehicle.id} entry={entry} atDealer={dealer !== undefined} onBuy={(paint) => setBuying({ entry, paint })} />
           ))}
         </ul>
       )}
@@ -87,9 +88,12 @@ export function DealerTab({ data }: { readonly data: VehiclesDto }) {
 
 function CarCard({
   entry,
+  atDealer,
   onBuy,
 }: {
   readonly entry: VehicleCatalogEntryDto;
+  /** Standing in a dealer: a car that isn't on this lot can only be delivered. */
+  readonly atDealer: boolean;
   readonly onBuy: (paint: VehiclePaintId) => void;
 }) {
   const { vehicle } = entry;
@@ -107,6 +111,7 @@ function CarCard({
         <p className="shrink-0 text-right leading-tight">
           <Money amount={entry.price} compact className="type-figure text-xl" />
           {entry.buyHere && <span className="block text-2xs font-bold text-naira">On this lot</span>}
+          {!entry.buyHere && atDealer && <span className="block text-2xs font-bold text-text-soft">Delivery only here</span>}
         </p>
       </div>
       <div className="px-4">
@@ -138,8 +143,13 @@ function CarCard({
         fees={entry.paintFees}
       />
       <Button variant={entry.buyHere ? 'danfo' : 'ink'} onClick={() => onBuy(paint)}>
-        {entry.buyHere ? 'Buy and drive off' : 'Buy or order delivery'}
+        {entry.buyHere ? 'Buy and drive off' : atDealer ? 'Order delivery' : 'Buy or order delivery'}
       </Button>
+      {!entry.buyHere && atDealer && entry.dealerIds.length > 0 && (
+        <p className="-mt-1.5 text-center text-xs text-text-soft">
+          To drive it off today, buy it at {entry.dealerIds.map((id) => findVenue(id)?.name ?? id).join(' or ')}.
+        </p>
+      )}
     </li>
   );
 }
