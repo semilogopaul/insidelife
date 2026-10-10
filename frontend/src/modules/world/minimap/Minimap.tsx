@@ -4,6 +4,7 @@ import { CITY_MAP, DISTRICTS, districtAt, homeKey, homeLotOf, streetNameAt, type
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { drawPlaceMarker } from '@/common/brand/place-icons';
 import { gameEvents } from '@/common/game/game-events';
+import { useGoalMarker } from '@/common/game/goal-marker-store';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
@@ -124,6 +125,31 @@ function drawMinimap(ctx: CanvasRenderingContext2D, size: number, pose: Pose, ic
     ctx.fill();
   }
 
+  // Life Goal place: a green star pin (rim-clamped when far) so there is always somewhere to head for.
+  const goal = useGoalMarker.getState().point;
+  if (goal) {
+    let [x, y] = project(goal);
+    const distance = Math.hypot(x - radius, y - radius);
+    const edge = radius - 11;
+    if (distance > edge) {
+      x = radius + ((x - radius) / distance) * edge;
+      y = radius + ((y - radius) / distance) * edge;
+    }
+    ctx.fillStyle = '#0e2733';
+    ctx.beginPath();
+    ctx.arc(x, y, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2fbf71';
+    ctx.beginPath();
+    for (let i = 0; i < 10; i++) {
+      const r = i % 2 === 0 ? 6.5 : 2.8;
+      const a = -Math.PI / 2 + (i * Math.PI) / 5;
+      ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+    }
+    ctx.closePath();
+    ctx.fill();
+  }
+
   // Player arrow.
   ctx.translate(radius, radius);
   ctx.beginPath();
@@ -216,7 +242,8 @@ export function Minimap({ className }: { readonly className?: string }) {
         canvas.height = Math.round(size * dpr);
       }
       const pose = currentPose() ?? { x: 0, z: 0, heading: -Math.PI / 2 };
-      const key = `${pose.x.toFixed(1)}|${pose.z.toFixed(1)}|${pose.heading.toFixed(3)}|${activeRoute.version}|${activeRoute.along.toFixed(0)}|${size}`;
+      const goalPoint = useGoalMarker.getState().point;
+      const key = `${goalPoint ? `${goalPoint.x.toFixed(0)},${goalPoint.z.toFixed(0)}` : '-'}|${pose.x.toFixed(1)}|${pose.z.toFixed(1)}|${pose.heading.toFixed(3)}|${activeRoute.version}|${activeRoute.along.toFixed(0)}|${size}`;
       if (key === lastKey) return;
       lastKey = key;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
