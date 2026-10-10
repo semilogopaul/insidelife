@@ -16,6 +16,7 @@ import type {
   PlayerReportReason,
   ProfileLocationVisibility,
   SocialBadgeId,
+  WealthClass,
   VenueMomentKind,
 } from '../catalog/social.js';
 import type { DistrictId } from '../catalog/geography.js';
@@ -50,6 +51,8 @@ export interface PlayerCardDto {
   /** Job title, "Student at University of Lagos", "Corps member (NYSC)"… */
   readonly title: string | null;
   readonly online: boolean;
+  /** Nepo (gold name, over ₦20M in the bank) or lapo (blue). Computed by the server; the amount is never exposed. */
+  readonly wealthClass: WealthClass;
 }
 
 // ----- Players & profiles ------------------------------------------------------------------------------------------
@@ -65,6 +68,8 @@ export interface PlayerProfileDto extends Omit<PublicCharacterDto, 'locationId'>
   readonly locationId: string | null;
   readonly locationLabel: string | null;
   readonly statusTier: StatusTierDto;
+  /** Nepo (over ₦20M in the bank) or lapo. Shown even when exact wealth is hidden; the amount never is. */
+  readonly wealthClass: WealthClass;
   readonly badges: readonly SocialBadgeDto[];
   readonly education: { readonly label: string | null; readonly cgpa: number | null };
   readonly family: { readonly married: boolean; readonly children: number };

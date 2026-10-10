@@ -1,5 +1,5 @@
 import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
-import type { NightOutItemId, VenueMomentEffect, VenueMomentKind } from '../catalog/social.js';
+import type { NightOutItemId, VenueMomentEffect, VenueMomentKind, WealthClass } from '../catalog/social.js';
 import type { NotificationDto } from './core.js';
 import type { SocialMomentDto } from './family.js';
 import type { MilestoneMomentDto } from './progression.js';
@@ -22,6 +22,8 @@ export interface PresencePlayerDto {
   readonly locationId: string;
   readonly activity: string | null;
   readonly status: number;
+  /** Gold (nepo) or blue (lapo) name; server-computed. */
+  readonly wealthClass?: WealthClass;
 }
 
 export const CHAT_CHANNEL_KINDS = ['global', 'venue', 'dm'] as const;
@@ -72,7 +74,7 @@ export interface ChatMessageDto {
   readonly id: string;
   /** `global`, `venue:<venueId>` or `dm:<characterIdA>:<characterIdB>` (ids sorted). */
   readonly channel: string;
-  readonly sender: { readonly characterId: string; readonly handle: string; readonly firstName: string; readonly status: number };
+  readonly sender: { readonly characterId: string; readonly handle: string; readonly firstName: string; readonly status: number; readonly wealthClass?: WealthClass };
   readonly kind: ChatMessageKind;
   /** Empty for voice notes and photos. */
   readonly body: string;
@@ -90,7 +92,7 @@ export type DmRequestState = 'none' | 'incoming' | 'outgoing';
 export interface DmThreadDto {
   /** `dm:<characterIdA>:<characterIdB>` (ids sorted). */
   readonly channel: string;
-  readonly counterpart: { readonly characterId: string; readonly handle: string; readonly firstName: string; readonly lastName: string };
+  readonly counterpart: { readonly characterId: string; readonly handle: string; readonly firstName: string; readonly lastName: string; readonly wealthClass?: WealthClass };
   readonly lastMessageAt: string;
   /** First 120 characters of the latest message (or "Voice note 0:12" / "Photo"). */
   readonly preview: string;
@@ -141,6 +143,7 @@ export interface ChatSaidDto {
   readonly characterId: string;
   readonly handle: string;
   readonly firstName: string;
+  readonly wealthClass?: WealthClass;
   /** Already cleaned by the server (≤ SPEECH_MAX_LENGTH, swear words masked). */
   readonly text: string;
   /** Epoch ms on the server clock. */

@@ -512,3 +512,17 @@ export interface AwayReportDto {
   readonly toGameMinute: GameMinute;
   readonly lines: ReadonlyArray<{ readonly label: string; readonly amount?: number; readonly tone: 'good' | 'bad' | 'neutral' }>;
 }
+
+// ----- Onboarding prompts (shown once per account) -------------------------------------------------------------------
+
+export interface OnboardingDto {
+  /** The welcome note has been answered (new accounts only; accounts that existed before it launched count as seen). */
+  readonly welcomeSeen: boolean;
+  readonly welcomeReaction: 'i-dey-for-you' | 'na-you-sabi' | null;
+  /** The "featured places are live" prompt has been dismissed. */
+  readonly featuredSeen: boolean;
+}
+
+export interface WelcomeReactionRequest {
+  readonly reaction: 'i-dey-for-you' | 'na-you-sabi';
+}

@@ -32,6 +32,7 @@ import { WorldService } from '../world/world.service.js';
 import { PartyEntity } from './entities/party.entity.js';
 import { SocialProfileEntity } from './entities/social-profile.entity.js';
 import { FriendsService } from './friends.service.js';
+import { WealthClassService } from './wealth-class.service.js';
 import { CARD_COLUMNS, PlayerCardsService, type CardRow } from './player-cards.service.js';
 import { computeBadges, degreeSummary, friendlyLocationLabel, headlineBadges, profileTitle, statusTierDto } from './rules/profile.rules.js';
 import { SocialGuard } from './social-guard.service.js';
@@ -85,6 +86,7 @@ export class ProfilesService {
     private readonly directory: CharacterDirectory,
     private readonly presence: PresenceService,
     private readonly world: WorldService,
+    private readonly wealth: WealthClassService,
     private readonly cards: PlayerCardsService,
     private readonly friends: FriendsService,
     private readonly guard: SocialGuard,
@@ -199,12 +201,13 @@ export class ProfilesService {
     // Someone who blocked you simply doesn't exist for you.
     if (blockedYou) throw playerNotFound();
 
-    const [cached, pair, mutual, friendCount, online] = await Promise.all([
+    const [cached, pair, mutual, friendCount, online, wealthClass] = await Promise.all([
       this.dataSource.getRepository(SocialProfileEntity).findOne({ where: { characterId: target.id } }),
       isSelf ? Promise.resolve(null) : this.friends.pair(viewer.id, target.id),
       isSelf ? Promise.resolve({ count: 0, sample: [] as PlayerCardDto[] }) : this.friends.mutualFriends(viewer.id, target.id),
       this.friends.friendCount(target.id),
       this.presence.isOnline(target.id),
+      this.wealth.classOf(target.id),
     ]);
 
     let relationship: PlayerRelationship = isSelf ? 'self' : 'none';
@@ -231,6 +234,7 @@ export class ProfilesService {
       locationId: locationVisible ? target.locationId : null,
       locationLabel: locationVisible ? friendlyLocationLabel(target.locationId, target.id) : null,
       statusTier: statusTierDto(target.status),
+      wealthClass,
       badges: headlineBadges(cached?.badges ?? []),
       education: { label: cached?.degreeLabel ?? null, cgpa: cached?.bestCgpa ?? null },
       family: { married: cached?.married ?? false, children: cached?.childrenCount ?? 0 },

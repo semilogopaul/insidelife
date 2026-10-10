@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMediaKind, ChatMessageDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, EmptyState, Spinner } from '@/common/components';
+import { PlayerName } from '@/common/social';
 import { gameEvents } from '@/common/game/game-events';
 import { cn } from '@/common/utils/cn';
 import { ChatSendError, useChatHistory, useDmState, useMarkDmRead, useSendMedia, useSendMessage } from '../../hooks/use-chat';
@@ -261,7 +262,7 @@ function MessageRow({
     <li className={cn('flex flex-col', mine ? 'items-end' : 'items-start', !grouped && 'mt-2')}>
       {!mine && !grouped && (
         <button type="button" onClick={() => onOpenProfile(message.sender.handle)} className="mb-0.5 px-1 text-xs font-bold text-text-soft hover:text-text">
-          {message.sender.firstName} <span className="font-normal text-text-faint">@{message.sender.handle}</span>
+          <PlayerName wealthClass={message.sender.wealthClass}>{message.sender.firstName}</PlayerName> <span className="font-normal text-text-faint">@{message.sender.handle}</span>
         </button>
       )}
       <div

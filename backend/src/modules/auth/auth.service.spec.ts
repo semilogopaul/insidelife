@@ -63,6 +63,9 @@ const USER: UserEntity = {
   deletedBy: null,
   purgeAfter: null,
   purgedAt: null,
+  welcomeSeenAt: null,
+  welcomeReaction: null,
+  featuredSeenAt: null,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

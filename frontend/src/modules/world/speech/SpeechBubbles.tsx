@@ -3,6 +3,7 @@
 import { motion } from 'motion/react';
 import { useCallback } from 'react';
 import { useSpeech, type Bubble } from '@/common/speech';
+import { PlayerName } from '@/common/social';
 import { cn } from '@/common/utils/cn';
 import { bubbleElements } from './speech-anchors';
 
@@ -33,7 +34,9 @@ function SpeechBubble({ bubble, labelled, clearTag }: { readonly bubble: Bubble;
             bubble.mine ? 'bg-danfo text-ink' : 'bg-paper text-ink',
           )}
         >
-          {labelled && !bubble.mine && <span className="block text-2xs font-bold text-text-soft">@{bubble.handle}</span>}
+          {labelled && !bubble.mine && <span className="block text-2xs font-bold text-text-soft">
+              <PlayerName wealthClass={bubble.wealthClass}>@{bubble.handle}</PlayerName>
+            </span>}
           {bubble.text}
         </p>
         <span aria-hidden className={cn('-mt-1.5 size-3 rotate-45 rounded-[2px]', bubble.mine ? 'bg-danfo' : 'bg-paper')} />

@@ -28,6 +28,7 @@ import { sanitiseChat } from './chat-moderation.js';
 import { ChatDmThreadEntity } from './entities/chat-dm-thread.entity.js';
 import { ChatMessageEntity } from './entities/chat-message.entity.js';
 import { MEDIA_DAILY_LIMIT, mediaPreview } from './media/chat-media.rules.js';
+import { WealthClassService } from '../social/wealth-class.service.js';
 import { ChatMediaService, type PreparedMedia, type UploadedChatFile } from './media/chat-media.service.js';
 
 /** 6 messages per 10 seconds per character. */
@@ -88,6 +89,7 @@ export class ChatService {
     private readonly directory: CharacterDirectory,
     private readonly social: SocialGuard,
     private readonly media: ChatMediaService,
+    private readonly wealth: WealthClassService,
   ) {}
 
   /** Can this character read/write this channel right now? */
@@ -125,7 +127,7 @@ export class ChatService {
       if (gate) await this.touchDmThreads(manager, channel, sender.id, message, body, gate);
       return message;
     });
-    return this.toDto(saved);
+    return this.toDtoWithWealth(saved);
   }
 
   /**
@@ -142,7 +144,7 @@ export class ChatService {
         body: sanitiseChat(body),
       }),
     );
-    return this.toDto(saved);
+    return this.toDtoWithWealth(saved, manager);
   }
 
   /** A voice note or photo in a DM (uploaded over HTTP; the caller pushes the result to both participants). */
@@ -181,7 +183,7 @@ export class ChatService {
         );
         return message;
       });
-      return this.toDto(saved);
+      return await this.toDtoWithWealth(saved);
     } catch (error) {
       await this.media.discard(prepared.key);
       throw error;
@@ -252,6 +254,7 @@ export class ChatService {
         LIMIT ${DM_THREAD_LIMIT}`,
       [characterId, CHAT_RETENTION_DAYS],
     )) as DmThreadRow[];
+    const classes = await this.wealth.classes(rows.map((row) => row.counterpart_id));
     return rows.map((row) => {
       const request: DmRequestState = row.friends
         ? 'none'
@@ -267,6 +270,7 @@ export class ChatService {
           handle: row.handle,
           firstName: row.first_name,
           lastName: row.last_name,
+          wealthClass: classes.get(row.counterpart_id) ?? 'lapo',
         },
         lastMessageAt: row.last_message_at.toISOString(),
         preview: row.last_preview,
@@ -302,7 +306,7 @@ export class ChatService {
     });
     const page = rows.slice(0, limit);
     return {
-      items: page.map((row) => this.toDto(row)).toReversed(),
+      items: (await this.withWealth(page.map((row) => this.toDto(row)))).toReversed(),
       nextCursor: rows.length > limit ? (page[page.length - 1]?.createdAt.toISOString() ?? null) : null,
     };
   }
@@ -453,6 +457,16 @@ export class ChatService {
       width: prepared.width,
       height: prepared.height,
     };
+  }
+
+  private async toDtoWithWealth(entity: ChatMessageEntity, manager?: EntityManager): Promise<ChatMessageDto> {
+    return (await this.withWealth([this.toDto(entity)], manager))[0]!;
+  }
+
+  /** Adds each sender's nepo/lapo class (one query for the batch). */
+  private async withWealth(messages: ChatMessageDto[], manager?: EntityManager): Promise<ChatMessageDto[]> {
+    const classes = await this.wealth.classes(messages.map((message) => message.sender.characterId), manager);
+    return messages.map((message) => ({ ...message, sender: { ...message.sender, wealthClass: classes.get(message.sender.characterId) ?? 'lapo' } }));
   }
 
   private toDto(entity: ChatMessageEntity): ChatMessageDto {
