@@ -61,7 +61,7 @@ export const TOUR_STEPS: readonly TourStep[] = [
     id: 'map-go',
     targets: ['map-gps'],
     title: 'Go with GPS',
-    body: () => 'Go with GPS to walk or drive there yourself; a route guides you. Nothing is charged.',
+    body: () => 'Walk or drive there yourself with GPS: a route on your minimap guides you. Nothing is charged.',
     phone: { app: 'map', param: 'ikeja-city-mall' },
   },
   {
