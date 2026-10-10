@@ -7,6 +7,7 @@ import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { cn } from '@/common/utils/cn';
 import { controls } from '../input/controls';
+import { usePlayUi } from '../state/play-ui-store';
 
 type Axis = 'left' | 'right' | 'gas' | 'brake';
 
@@ -62,14 +63,21 @@ function Pedal({ axis, held, label, className, children }: { readonly axis: Axis
  * Thumb controls while driving on touch screens: steer left/right with the walking thumb (the `walkStick` side, right
  * by default), gas and brake/reverse with the other one (above the HUD's phone button, which sits on that side),
  * plus the horn and "Get out" over the steering. The horn and "Get out" act on pointer events, so they work while
- * the other thumb is on a pedal (a second finger never produces a `click`). "Park & enter …" at a door is the HUD's
- * context button.
+ * the other thumb is on a pedal (a second finger never produces a `click`). Stopped at a door (or a filling station or
+ * mechanic) the offer ("Park & enter …") sits above them, so it works with the HUD hidden (clean screen) too.
  */
 export function DriveControls() {
   const [held] = useState(() => new Map<number, Axis>());
   const side = useUi((state) => state.settings.walkStick);
+  const phoneOpen = useUi((state) => state.phoneOpen);
+  const offer = usePlayUi((state) => state.driveOffer);
   const steerLeft = side === 'left';
-  // Nothing stays held when the controls go away (phone opened, got out, went inside).
+  // Nothing stays held when the phone covers the controls or they go away (got out, went inside).
+  useEffect(() => {
+    if (!phoneOpen) return;
+    held.clear();
+    applyHeld(held);
+  }, [held, phoneOpen]);
   useEffect(
     () => () => {
       held.clear();
@@ -88,6 +96,20 @@ export function DriveControls() {
           steerLeft ? 'left-[max(env(safe-area-inset-left),0.75rem)] items-start' : 'right-[max(env(safe-area-inset-right),0.75rem)] items-end',
         )}
       >
+        {offer && (
+          <PressButton
+            data-testid="drive-offer"
+            aria-disabled={offer.disabled ? true : undefined}
+            onPress={() => gameEvents.emit('interact', { interactableId: offer.id })}
+            className="pointer-events-auto flex min-h-14 max-w-[min(17rem,calc(100vw-7.5rem))] items-center gap-2 rounded-card bg-paper px-4 py-1.5 text-left text-sm font-bold text-ink shadow-[var(--shadow-lift)] transition-transform duration-75 data-[pressed=true]:scale-95"
+          >
+            {offer.emoji && <span aria-hidden>{offer.emoji}</span>}
+            <span className="min-w-0">
+              <span className="block truncate">{offer.label}</span>
+              {offer.disabled && <span className="block truncate text-xs text-text-soft">{offer.disabled}</span>}
+            </span>
+          </PressButton>
+        )}
         <div className="flex gap-2.5">
           <PressButton
             pressOn="down"

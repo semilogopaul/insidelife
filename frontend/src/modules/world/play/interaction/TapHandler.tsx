@@ -3,7 +3,7 @@
 import { findAdSlot, type BillboardSlotId } from '@insidelife/shared';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useEffect, useRef } from 'react';
-import { Raycaster, Vector2, type Object3D } from 'three';
+import { Box3, Matrix4, Ray, Raycaster, Vector2, Vector3, type Object3D } from 'three';
 import { errorMessage } from '@/common/api/api-error';
 import { toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
@@ -13,14 +13,34 @@ import { useLiveBillboards } from '../../city/billboards/use-billboards';
 import { safeExternalUrl } from '@/common/promotions/ad-tracking';
 import { promotionsApi } from '../flow/movement.api';
 import { controls } from '../input/controls';
+import { yawFromHeading } from '../physics/math';
+import type { OwnCar } from '../player/player-controller';
 import type { RemotePlayers } from '../players/remote-players';
 import type { PlayRuntime } from '../runtime/play-runtime';
 import { usePlayUi } from '../state/play-ui-store';
 
 const BILLBOARD_REACH = 90;
 const PLAYER_REACH = 45;
+/** Tapping your own car from up to this far walks you to its door and gets you in. */
+export const CAR_TAP_REACH = 12;
+/** The car's tap box is this much bigger than the body all round (fingers are fat). */
+const CAR_TAP_MARGIN = 0.6;
 const raycaster = new Raycaster();
 const ndc = new Vector2();
+const carInverse = new Matrix4();
+const carRay = new Ray();
+const carBox = new Box3();
+const carHit = new Vector3();
+
+/** Distance along `ray` to the player's own car (a generous box round its body), or null when it misses. */
+export function carTapDistance(ray: Ray, car: Pick<OwnCar, 'state' | 'spec' | 'y'>): number | null {
+  const { state, spec } = car;
+  carInverse.makeRotationY(yawFromHeading(state.heading)).setPosition(state.x, car.y, state.z).invert();
+  carRay.copy(ray).applyMatrix4(carInverse);
+  carBox.min.set(-spec.halfWidth - CAR_TAP_MARGIN, 0, -spec.halfLength - CAR_TAP_MARGIN);
+  carBox.max.set(spec.halfWidth + CAR_TAP_MARGIN, 2.2, spec.halfLength + CAR_TAP_MARGIN);
+  return carRay.intersectBox(carBox, carHit) ? carHit.distanceTo(carRay.origin) : null;
+}
 
 
 function tagged(object: Object3D | null, key: 'billboardSlotId' | 'playerId'): string | null {
@@ -92,6 +112,14 @@ export function TapHandler({ runtime, remotes, online }: { readonly runtime: Pla
       raycaster.setFromCamera(ndc, camera);
       raycaster.far = BILLBOARD_REACH;
       const hit = raycaster.intersectObjects(list, true)[0];
+      // Your own parked car: tap it to get in (walking up to the door when it's a few steps away).
+      const car = runtime.mode === 'walk' ? runtime.controller.car : null;
+      const carDistance = car ? carTapDistance(raycaster.ray, car) : null;
+      if (carDistance !== null && (!hit || carDistance <= hit.distance)) {
+        if (runtime.controller.stepBesideCar(CAR_TAP_REACH)) gameEvents.emit('enter-car', {});
+        else toast({ title: 'Walk up to your car first', tone: 'neutral' });
+        continue;
+      }
       if (!hit) continue;
       // Not through buildings.
       const ray = raycaster.ray;

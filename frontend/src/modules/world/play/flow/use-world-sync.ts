@@ -12,6 +12,7 @@ import { handleOf } from '../players/presence-directory';
 import type { PlayRuntime } from '../runtime/play-runtime';
 import { doorLabel, nearestDoor, type Door } from './doors';
 import { movementApi } from './movement.api';
+import { usePlayUi } from '../state/play-ui-store';
 import { savePose } from './spawn-handoff';
 
 export const CAR_ENTER_ID = 'play:car:enter';
@@ -49,7 +50,11 @@ function isTouchDevice(): boolean {
   }
 }
 
-const sameNearby = (a: Interactable | null, b: Interactable | null): boolean => a?.id === b?.id && a?.label === b?.label;
+const sameNearby = (a: Interactable | null, b: Interactable | null): boolean =>
+  a?.id === b?.id && a?.label === b?.label && a?.disabled === b?.disabled && a?.more?.map((option) => `${option.id}|${option.label}|${option.disabled ?? ''}`).join() === b?.more?.map((option) => `${option.id}|${option.label}|${option.disabled ?? ''}`).join();
+
+/** "Get out" next to "Park & enter …" (a mouse has no other way to get out where every kerb is near a door). */
+const GET_OUT_OPTION = { id: CAR_EXIT_ID, label: 'Get out', emoji: '🚪' } as const;
 
 /**
  * `POST /characters/me/heartbeats`: every 15 s while outside and on walking ↔ driving switches, never closer than 4 s
@@ -151,6 +156,7 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
 
       // Context button.
       let next: Interactable | null = null;
+      let driveOffer: Interactable | null = null;
       if (runtime.mode === 'walk') {
         const destinationId = useNavigation.getState().destinationId;
         const door = nearestDoor({ x: c.walker.x, z: c.walker.z }, ENTRY_RADIUS, privateDoors(optionsRef.current));
@@ -162,14 +168,16 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
         else if (door && doorClose) next = { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, false, door === optionsRef.current.homeDoor), locationId: door.locationId };
       } else if (runtime.mode === 'drive') {
         const door = Math.abs(c.speed) < 2.5 ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, privateDoors(optionsRef.current)) : null;
-        // Touch screens have their own "Get out" next to the pedals; the HUD button is kept for doors there.
-        next = door
+        const offer: Interactable | null = door
           ? { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, true, door === optionsRef.current.homeDoor), locationId: door.locationId }
-          : touchUi
-            ? null
-            : { id: CAR_EXIT_ID, kind: 'car', label: 'Get out' };
+          : null;
+        // Touch screens: the drive controls show the offer next to their own "Get out" (HUD hidden or not). With a
+        // mouse, the context button offers it with "Get out" as a second choice (keys E, 1; F gets out too).
+        if (touchUi) driveOffer = offer;
+        else next = offer ? { ...offer, more: [GET_OUT_OPTION] } : { id: CAR_EXIT_ID, kind: 'car', label: 'Get out' };
       }
       if (!sameNearby(world().nearby, next)) world().setNearby(next);
+      if (!sameNearby(usePlayUi.getState().driveOffer, driveOffer)) usePlayUi.getState().setDriveOffer(driveOffer);
 
       // Speedometer and fuel so far.
       if (runtime.mode === 'drive' && c.car) {
@@ -232,6 +240,7 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
       window.clearInterval(heartbeat);
       const current = world().nearby;
       if (current?.id.startsWith('play:')) world().setNearby(null);
+      usePlayUi.getState().setDriveOffer(null);
       world().setDrive(null);
     };
   }, [runtime, heartbeats]);

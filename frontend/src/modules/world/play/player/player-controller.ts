@@ -169,6 +169,26 @@ export class PlayerController {
     return Math.hypot(this.car.state.x - this.walker.x, this.car.state.z - this.walker.z);
   }
 
+  /**
+   * Walk up to the car's nearer side (a tap on your car from a few metres away): the walker is put beside the door,
+   * within reach. Returns false without a car or when it's further than `maxDistance`.
+   */
+  stepBesideCar(maxDistance: number): boolean {
+    const car = this.car;
+    if (this.locomotion !== 'walk' || !car || this.distanceToCar() > maxDistance) return false;
+    if (this.distanceToCar() <= CAR_REACH) return true;
+    const s = car.state;
+    // Right of travel is (-sin, cos); pick the side the walker is on.
+    const rx = -Math.sin(s.heading);
+    const rz = Math.cos(s.heading);
+    const side = (this.walker.x - s.x) * rx + (this.walker.z - s.z) * rz >= 0 ? 1 : -1;
+    const offset = car.spec.halfWidth + 0.8;
+    const x = s.x + rx * offset * side;
+    const z = s.z + rz * offset * side;
+    this.placeWalker(x, z, Math.atan2(s.z - z, s.x - x));
+    return true;
+  }
+
   canEnterCar(): boolean {
     return this.locomotion === 'walk' && this.car !== null && this.distanceToCar() <= CAR_REACH;
   }

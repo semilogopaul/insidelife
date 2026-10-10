@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { gameEvents, type GameEventMap } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { installPointerEvents } from '@/common/testing/pointer-events';
 import { controls, resetControls } from '../input/controls';
 import { DriveControls } from '../overlay/DriveControls';
+import { usePlayUi } from '../state/play-ui-store';
 
 installPointerEvents();
 
@@ -94,6 +95,31 @@ describe('DriveControls', () => {
     fireEvent.pointerDown(screen.getByRole('button', { name: 'Steer left' }), touch(2));
     unmount();
     expect([controls.touchGas, controls.touchSteer, controls.touchBrake]).toEqual([0, 0, 0]);
+  });
+
+  it('offers "Park & enter" from the controls themselves (works with the HUD hidden), while braking', () => {
+    const interact = vi.fn();
+    offs.push(gameEvents.on('interact', interact));
+    usePlayUi.getState().setDriveOffer({ id: 'play:door:ajah-market', kind: 'door', label: 'Park & enter Ajah Market', locationId: 'ajah-market' });
+    render(<DriveControls />);
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Brake / reverse' }), touch(1));
+    const park = screen.getByRole('button', { name: /Park & enter Ajah Market/ });
+    fireEvent.pointerDown(park, touch(2));
+    fireEvent.pointerUp(park, touch(2));
+    expect(interact).toHaveBeenCalledWith({ interactableId: 'play:door:ajah-market' });
+    expect(screen.getByRole('button', { name: /Get out/ })).toBeTruthy();
+    usePlayUi.getState().setDriveOffer(null);
+  });
+
+  it('lets go of the pedals when the phone opens over them', () => {
+    render(<DriveControls />);
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Accelerate' }), touch(1));
+    act(() => useUi.setState({ phoneOpen: true }));
+    expect(controls.touchGas).toBe(0);
+    act(() => useUi.setState({ phoneOpen: false }));
+    // Another control pressed later doesn't bring the stale gas back.
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Steer left' }), touch(2));
+    expect([controls.touchGas, controls.touchSteer]).toEqual([0, -1]);
   });
 
   it.each([
