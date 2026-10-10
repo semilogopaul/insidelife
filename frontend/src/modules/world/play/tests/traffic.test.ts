@@ -1,6 +1,6 @@
 import { CITY_MAP } from '@insidelife/shared';
 import { describe, expect, it } from 'vitest';
-import { LANE_OFFSET, surfaceAt } from '../physics/surface';
+import { LANE_OFFSETS, surfaceAt } from '../physics/surface';
 import { buildLaneGraph, type Lane } from '../traffic/lane-graph';
 import { TrafficSim, type TrafficObstacle } from '../traffic/traffic-sim';
 
@@ -14,12 +14,14 @@ function sideOf(lane: Lane, x: number, z: number): number {
 }
 
 describe('traffic lanes', () => {
-  it('builds two opposite lanes per road edge, each offset into the right-hand lane', () => {
-    expect(graph.lanes.length).toBe(CITY_MAP.edges.length * 2);
-    for (const lane of graph.lanes.slice(0, 60)) {
-      expect(sideOf(lane, lane.x0, lane.z0)).toBeCloseTo(LANE_OFFSET, 5);
+  it('builds four lanes per road edge, two each way, offset into the right-hand carriageway', () => {
+    expect(graph.lanes.length).toBe(CITY_MAP.edges.length * 4);
+    for (const lane of graph.lanes) {
+      expect(sideOf(lane, lane.x0, lane.z0)).toBeCloseTo(LANE_OFFSETS[lane.slot], 5);
       expect(surfaceAt(lane.x0, lane.z0)).toBe('asphalt');
+      expect(surfaceAt(lane.x1, lane.z1)).toBe('asphalt');
     }
+    expect(graph.lanes.filter((lane) => lane.slot === 0)).toHaveLength(CITY_MAP.edges.length * 2);
     // Eastbound traffic keeps to the south (+z) side.
     const east = graph.lanes.find((lane) => lane.dx === 1)!;
     expect(east.z0).toBeGreaterThan(CITY_MAP.nodes[east.from]!.z);
@@ -36,7 +38,7 @@ describe('traffic lanes', () => {
       sim.update(1 / 60, car.x, car.z, []);
       if (!car.turning && car.swerve < 0.01) {
         const current = graph.lanes[car.lane]!;
-        worst = Math.max(worst, Math.abs(sideOf(current, car.x, car.z) - LANE_OFFSET));
+        worst = Math.max(worst, Math.abs(sideOf(current, car.x, car.z) - LANE_OFFSETS[current.slot]));
       }
       expect(['asphalt', 'pavement']).toContain(surfaceAt(car.x, car.z));
     }
@@ -84,6 +86,23 @@ describe('traffic lanes', () => {
     const ahead = (car.x - parkedPlayer.x) * lane.dx + (car.z - parkedPlayer.z) * lane.dz;
     expect(ahead > 5 || car.lane !== lane.id).toBe(true);
     expect(closest).toBeGreaterThan(2.4);
+  });
+
+  it('passes a slow car in the next lane: traffic in the kerbside lane never blocks the overtaking lane', () => {
+    const outer = graph.lanes.filter((lane) => lane.slot === 1 && lane.length > 60).sort((a, b) => b.length - a.length)[0]!;
+    const inner = graph.lanes.find((lane) => lane.edge === outer.edge && lane.from === outer.from && lane.slot === 0)!;
+    const sim = new TrafficSim(graph, 2, 'overtake');
+    sim.setTarget(2);
+    const [slow, fast] = sim.cars as [NonNullable<(typeof sim.cars)[0]>, NonNullable<(typeof sim.cars)[0]>];
+    sim.place(slow, outer.id, 20, 'keke', 0);
+    sim.place(fast, inner.id, 2, 'car', 0);
+    let passed = false;
+    for (let i = 0; i < 60 * 8 && !passed; i++) {
+      sim.update(1 / 60, fast.x, fast.z, []);
+      if (fast.lane !== inner.id || slow.lane !== outer.id) break;
+      passed = (fast.x - slow.x) * outer.dx + (fast.z - slow.z) * outer.dz > 3;
+    }
+    expect(passed).toBe(true);
   });
 
   it('respawns cars near the focus and recycles distant ones', () => {

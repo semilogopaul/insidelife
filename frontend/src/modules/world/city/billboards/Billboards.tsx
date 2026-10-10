@@ -1,6 +1,6 @@
 'use client';
 
-import { CITY_MAP, cellKindAt, type BillboardWorldPlacement } from '@insidelife/shared';
+import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, cellKindAt, type BillboardWorldPlacement } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import { BoxGeometry, CanvasTexture, Color, Matrix4, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace, TextureLoader, type BufferGeometry, type Texture } from 'three';
@@ -48,11 +48,14 @@ function frameGeometry(placements: readonly BillboardWorldPlacement[]): BufferGe
         box(w * 0.6, 0.3, 0.3, 0, e - 0.6, -0.45, STEEL, m);
         box(w, 0.08, 0.9, 0, e - 0.35, 0.2, CATWALK, m);
         break;
-      case 'gantry':
-        for (const side of [-1, 1]) box(0.45, e + h + 0.3, 0.45, side * (w / 2 + 0.7), 0.2, -0.2, STEEL, m);
-        box(w + 1.9, 0.4, 0.4, 0, e + h + 0.1, -0.2, STEEL, m);
-        box(w + 1.9, 0.35, 0.35, 0, e - 0.6, -0.2, STEEL, m);
+      case 'gantry': {
+        // Over a road the legs stand on the pavements, clear of all four lanes.
+        const span = cellKindAt(placement.position) === 'road' ? Math.max(w / 2 + 0.7, CARRIAGEWAY_HALF_WIDTH + 0.6) : w / 2 + 0.7;
+        for (const side of [-1, 1]) box(0.45, e + h + 0.3, 0.45, side * span, 0.2, -0.2, STEEL, m);
+        box(span * 2 + 0.5, 0.4, 0.4, 0, e + h + 0.1, -0.2, STEEL, m);
+        box(span * 2 + 0.5, 0.35, 0.35, 0, e - 0.6, -0.2, STEEL, m);
         break;
+      }
       case 'roof':
         for (const side of [-1, 1]) box(0.3, 3.2, 0.3, side * w * 0.33, e - 3, -0.5, STEEL, m);
         break;

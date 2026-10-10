@@ -21,7 +21,8 @@ import { gameEvents } from '@/common/game/game-events';
 import { Avatar, npcLook } from '@/common/three/avatar';
 import { ROAD_Y } from '../../city/layout/placements';
 import { damp, dampAngle, yawFromHeading } from '../physics/math';
-import { groundHeightAt } from '../physics/surface';
+import { LANE_OFFSET, groundHeightAt } from '../physics/surface';
+import { PED_OFFSET } from '../pedestrians/pedestrian-sim';
 import { PLAYER_SCALE, type PlayRuntime } from '../runtime/play-runtime';
 import { isDrivableModel, vehicleScale, type RenderVehicleModel } from '../vehicles/vehicle-kit';
 import { DanfoConductor, useDanfoDoor } from '../vehicles/DanfoConductor';
@@ -82,7 +83,8 @@ export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runt
     const origin = entranceOf(travel.fromLocationId, snapshot) ?? { x: runtime.controller.walker.x, z: runtime.controller.walker.z };
     const destination = entranceOf(travel.toLocationId, snapshot) ?? { x: CITY_BOUNDS.minX + 6, z: origin.z };
     const route = findRoute(origin, destination);
-    if (route) return buildRidePath(route, travel.mode === 'walk' ? 4.55 : 1.8);
+    // Walkers on the pavement, vehicles in the kerbside lane (danfos, keke and BRT stop there).
+    if (route) return buildRidePath(route, travel.mode === 'walk' ? PED_OFFSET : LANE_OFFSET);
     const xs = new Float32Array([origin.x, destination.x]);
     const zs = new Float32Array([origin.z, destination.z]);
     const length = Math.hypot(destination.x - origin.x, destination.z - origin.z);

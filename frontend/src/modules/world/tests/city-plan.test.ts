@@ -1,4 +1,4 @@
-import { CITY_MAP, cellKindAt, type Weather } from '@insidelife/shared';
+import { cellKindAt, type Weather } from '@insidelife/shared';
 import { describe, expect, it } from 'vitest';
 import { KIT_MANIFEST } from '../city/assets/kit-manifest';
 import { computeAtmosphere } from '../city/lib/atmosphere';
@@ -26,8 +26,8 @@ describe('city plan', () => {
     }
   });
 
-  it('keeps one road tile per road cell and buildings off roads and water', () => {
-    expect(plan.placements.roads.filter((p) => p.model.startsWith('road-') && p.model !== 'road-straight-barrier')).toHaveLength(CITY_MAP.roadTiles.length);
+  it('draws roads procedurally (no kit road tiles) and keeps buildings off roads and water', () => {
+    expect(plan.placements.roads.filter((p) => p.model.startsWith('road-'))).toHaveLength(0);
     for (const placement of [...plan.placements.commercial, ...plan.placements.suburban]) {
       if (placement.model.startsWith('detail-')) continue;
       const kind = cellKindAt(placement);

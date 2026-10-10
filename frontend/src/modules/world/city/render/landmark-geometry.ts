@@ -1,4 +1,4 @@
-import { CITY_MAP, venueLot } from '@insidelife/shared';
+import { CITY_MAP, ROAD_LINE_WIDTH, cellCentreZ, rowDepth, venueLot } from '@insidelife/shared';
 import { BoxGeometry, ConeGeometry, CylinderGeometry, Matrix4, Quaternion, SphereGeometry, Vector3, type BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { APRON, frameOf, PAVEMENT_Y, type LotFrame } from '../layout/placements';
@@ -143,28 +143,33 @@ function linkBridge(): void {
   const alongX = Math.abs(bridge.to.x - bridge.from.x) > Math.abs(bridge.to.z - bridge.from.z);
   const m = new Matrix4().makeRotationY(alongX ? 0 : Math.PI / 2).setPosition(cx, 0, cz);
   const top = 34;
+  // The pylon legs stand just outside the four-lane deck.
+  const leg = ROAD_LINE_WIDTH / 2 + 1.4;
   for (const side of [-1, 1]) {
-    add(box(1.4, top - WATER_Y, 1.4, 0, WATER_Y, side * 6.4), 0xf3f3f0, m);
+    add(box(1.4, top - WATER_Y, 1.4, 0, WATER_Y, side * leg), 0xf3f3f0, m);
     for (const offset of [-14, -10, -6, 6, 10, 14]) {
-      parts.push(paint(rod(new Vector3(0, top - 3 - Math.abs(offset) * 0.25, side * 6.4), new Vector3(offset, 0.9, side * 5.1), 0.08), 0xe8e8e2).applyMatrix4(m));
+      parts.push(paint(rod(new Vector3(0, top - 3 - Math.abs(offset) * 0.25, side * leg), new Vector3(offset, 0.9, side * (leg - 1.3)), 0.08), 0xe8e8e2).applyMatrix4(m));
     }
   }
-  add(box(1.2, 1.6, 14.2, 0, top - 2, 0), 0xf3f3f0, m);
-  add(box(1.2, 1.2, 14.2, 0, 9, 0), 0xf3f3f0, m);
+  add(box(1.2, 1.6, leg * 2 + 1.4, 0, top - 2, 0), 0xf3f3f0, m);
+  add(box(1.2, 1.2, leg * 2 + 1.4, 0, 9, 0), 0xf3f3f0, m);
 }
 
 function tollPlaza(): void {
   const plaza = CITY_MAP.lots.find((entry) => entry.id === 'landmark:lekki-toll-plaza');
   if (!plaza) return;
   const x = (plaza.footprint.minX + plaza.footprint.maxX) / 2;
-  const roadZ = plaza.footprint.minZ - CITY_MAP.cellSize / 2;
+  // The canopy spans the four-lane expressway in front of the plaza; pillars and booths stand beyond its pavements.
+  const roadRow = plaza.cells[1] - 1;
+  const roadZ = cellCentreZ(roadRow);
+  const half = rowDepth(roadRow) / 2;
   const m = new Matrix4().setPosition(x, 0, roadZ);
-  add(box(12, 1, 15.5, 0, 6.2, 0), 0xf1f0ea, m);
-  add(box(12.2, 0.5, 0.3, 0, 6.4, 7.8), 0xf6b90b, m);
-  add(box(12.2, 0.5, 0.3, 0, 6.4, -7.8), 0xf6b90b, m);
-  for (const z of [-7.2, 7.2]) for (const dx of [-5, 5]) add(box(0.7, 6.2, 0.7, dx, z < 0 ? WATER_Y : 0, z), 0xd9d6cf, m);
-  add(box(2.4, 2.8, 1.8, -2.5, PAVEMENT_Y, 6.6), 0xe9e4d8, m);
-  add(box(2.4, 2.8, 1.8, 2.5, PAVEMENT_Y, 6.6), 0xe9e4d8, m);
+  add(box(12, 1, half * 2 + 5.5, 0, 6.2, 0), 0xf1f0ea, m);
+  add(box(12.2, 0.5, 0.3, 0, 6.4, half + 2.8), 0xf6b90b, m);
+  add(box(12.2, 0.5, 0.3, 0, 6.4, -half - 2.8), 0xf6b90b, m);
+  for (const z of [-half - 2.2, half + 2.2]) for (const dx of [-5, 5]) add(box(0.7, 6.2, 0.7, dx, z < 0 ? WATER_Y : 0, z), 0xd9d6cf, m);
+  add(box(2.4, 2.8, 1.8, -2.5, PAVEMENT_Y, half + 1.6), 0xe9e4d8, m);
+  add(box(2.4, 2.8, 1.8, 2.5, PAVEMENT_Y, half + 1.6), 0xe9e4d8, m);
 }
 
 function campusGates(): void {

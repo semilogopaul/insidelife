@@ -49,7 +49,8 @@ describe('fuel', () => {
   it('lasts a session: ~13 cross-town drives, or about ten game days of autopilot commuting', () => {
     const corolla = car('toyota-corolla-2003-taxi');
     const tank = fuelTankLitres(corolla);
-    const crossTown = litresForKm(corolla, 800 * MAP_KM_PER_WORLD_METRE);
+    // A cross-town drive is ~1 km of four-lane road.
+    const crossTown = litresForKm(corolla, 1_000 * MAP_KM_PER_WORLD_METRE);
     expect(tank / crossTown).toBeGreaterThan(10);
     expect(tank / crossTown).toBeLessThan(16);
     const commute = quoteTrip('yaba', 'ikoyi', 'car', { hour: 8, weekend: false, raining: false, priceIndex: 1 }).distance;

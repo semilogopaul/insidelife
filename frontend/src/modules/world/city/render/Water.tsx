@@ -1,6 +1,6 @@
 'use client';
 
-import { CITY_MAP } from '@insidelife/shared';
+import { CITY_MAP, colAt, rowAt } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
 import { Color, DataTexture, LinearFilter, RedFormat, ShaderMaterial, UniformsLib, UniformsUtils, UnsignedByteType, Vector2, Vector3 } from 'three';
@@ -14,17 +14,21 @@ import { setUniform } from '../lib/mutate';
  * towards the ocean in the south. Rain flattens the glint.
  */
 
-const TEXELS_PER_CELL = 4;
+/** Metres per texel of the shore field (sampled in world space: cells differ in size since the roads widened). */
+const TEXEL_METRES = 2.5;
 const MAX_DISTANCE = 40;
 
 function buildShoreDistance(): DataTexture {
-  const cols = CITY_MAP.cols * TEXELS_PER_CELL;
-  const rows = CITY_MAP.rows * TEXELS_PER_CELL;
-  const texel = CITY_MAP.cellSize / TEXELS_PER_CELL;
+  const { minX, minZ, maxX, maxZ } = CITY_MAP.bounds;
+  const cols = Math.round((maxX - minX) / TEXEL_METRES);
+  const rows = Math.round((maxZ - minZ) / TEXEL_METRES);
+  const texel = (maxX - minX) / cols;
+  const texelZ = (maxZ - minZ) / rows;
   const distance = new Float32Array(cols * rows);
   for (let y = 0; y < rows; y++) {
+    const row = rowAt(minZ + (y + 0.5) * texelZ);
     for (let x = 0; x < cols; x++) {
-      const kind = CITY_MAP.cells[Math.floor(y / TEXELS_PER_CELL) * CITY_MAP.cols + Math.floor(x / TEXELS_PER_CELL)] as number;
+      const kind = CITY_MAP.cells[row * CITY_MAP.cols + colAt(minX + (x + 0.5) * texel)] as number;
       // Water and bridges (water under the deck) are "sea"; everything else is shore.
       distance[y * cols + x] = kind === 1 || kind === 4 ? 1e6 : 0;
     }

@@ -21,11 +21,9 @@ export function CityMiniMap({ spot, standAt, label }: CityMiniMapProps) {
   const { x, z } = spot.position;
   const view = useMemo(() => {
     const inView = (minX: number, minZ: number, maxX: number, maxZ: number): boolean => maxX >= x - RADIUS && minX <= x + RADIUS && maxZ >= z - RADIUS && minZ <= z + RADIUS;
-    const half = CITY_MAP.cellSize / 2;
     return {
-      roads: CITY_MAP.roadTiles.filter((tile) => inView(tile.x - half, tile.z - half, tile.x + half, tile.z + half)),
+      roads: CITY_MAP.roadTiles.filter((tile) => inView(tile.x - tile.width / 2, tile.z - tile.depth / 2, tile.x + tile.width / 2, tile.z + tile.depth / 2)),
       lots: CITY_MAP.lots.filter((lot) => inView(lot.footprint.minX, lot.footprint.minZ, lot.footprint.maxX, lot.footprint.maxZ)),
-      half,
     };
   }, [x, z]);
   const face = { x: Math.cos(spot.facing), z: Math.sin(spot.facing) };
@@ -49,10 +47,10 @@ export function CityMiniMap({ spot, standAt, label }: CityMiniMapProps) {
       {view.roads.map((tile) => (
         <rect
           key={`${tile.col}:${tile.row}`}
-          x={tile.x - view.half}
-          y={tile.z - view.half}
-          width={view.half * 2 + 0.2}
-          height={view.half * 2 + 0.2}
+          x={tile.x - tile.width / 2}
+          y={tile.z - tile.depth / 2}
+          width={tile.width + 0.2}
+          height={tile.depth + 0.2}
           fill={tile.roadClass === 'expressway' ? '#5b6067' : tile.roadClass === 'arterial' ? '#767b83' : '#8d9299'}
         />
       ))}

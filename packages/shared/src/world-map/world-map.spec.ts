@@ -7,6 +7,7 @@ import {
   CITY_BOUNDS,
   CITY_MAP,
   MAP_KM_PER_WORLD_METRE,
+  ROAD_LINE_WIDTH,
   cellKindAt,
   districtAt,
   districtBounds,
@@ -34,8 +35,9 @@ const entranceOf = (venueId: string): WorldPoint => {
 
 describe('city layout', () => {
   it('fits the compact footprint', () => {
-    expect(CITY_BOUNDS.maxX - CITY_BOUNDS.minX).toBeLessThanOrEqual(640);
-    expect(CITY_BOUNDS.maxZ - CITY_BOUNDS.minZ).toBeLessThanOrEqual(420);
+    // The 640 × 420 m layout with every road line widened to four lanes.
+    expect(CITY_BOUNDS.maxX - CITY_BOUNDS.minX).toBeLessThanOrEqual(760);
+    expect(CITY_BOUNDS.maxZ - CITY_BOUNDS.minZ).toBeLessThanOrEqual(520);
   });
 
   it('gives every in-city venue an authored lot whose door is on the pavement of a road in its own district', () => {
@@ -45,7 +47,7 @@ describe('city layout', () => {
       const entrance = venueEntrance(venue.id);
       expect(entrance, venue.id).not.toBeNull();
       const snap = nearestRoadPoint(entrance!.position);
-      expect(snap!.distance, venue.id).toBeLessThanOrEqual(6);
+      expect(snap!.distance, venue.id).toBeLessThanOrEqual(ROAD_LINE_WIDTH / 2 + 1);
       expect(districtAt(entrance!.position), venue.id).toBe(venue.districtId);
       // The parking spot is on the road surface, next to the door.
       const parkingKind = cellKindAt(entrance!.parking);
@@ -81,7 +83,7 @@ describe('city layout', () => {
       expect(bounds.maxX).toBeGreaterThan(bounds.minX);
       const home = homeEntrance('character-1', id);
       expect(districtAt(home.position), id).toBe(id);
-      expect(nearestRoadPoint(home.position)!.distance).toBeLessThanOrEqual(6);
+      expect(nearestRoadPoint(home.position)!.distance).toBeLessThanOrEqual(ROAD_LINE_WIDTH / 2 + 1);
     }
   });
 
@@ -141,7 +143,7 @@ describe('routing', () => {
     }
     expect(unroutable).toEqual([]);
     expect(wet).toEqual([]);
-    expect(longest, longestPair).toBeLessThanOrEqual(900);
+    expect(longest, longestPair).toBeLessThanOrEqual(1100);
     // Crossing the city costs fuel like a 35-45 km Lagos drive.
     expect(longest * MAP_KM_PER_WORLD_METRE).toBeGreaterThan(30);
     expect(longest * MAP_KM_PER_WORLD_METRE).toBeLessThan(48);

@@ -4,13 +4,18 @@ import { VENUES, type VenueDefinition, type VenueType } from '../catalog/venues.
 import { hashString } from '../random/rng.js';
 import {
   BILLBOARD_SPECS,
+  CARRIAGEWAY_HALF_WIDTH,
   CITY_CELL_SIZE,
   CITY_COLS,
   CITY_ROWS,
   DISTRICT_RECTS,
   HOME_SHARE,
   LANDMARKS,
+  LAYOUT_CARRIAGEWAY_HALF_WIDTH,
+  ROAD_LINE_WIDTH,
   ROADS,
+  ROUNDABOUT_ISLAND_RADIUS,
+  ROUNDABOUT_OUTER_RADIUS,
   ROUNDABOUTS,
   TERRAIN_RECTS,
   VENUE_LOTS,
@@ -33,8 +38,6 @@ import type { Entrance, WorldPoint } from './types.js';
 // ---------------------------------------------------------------------------------------------------------------
 
 const S = CITY_CELL_SIZE;
-const ORIGIN_X = (-CITY_COLS * S) / 2;
-const ORIGIN_Z = (-CITY_ROWS * S) / 2;
 const CELL_COUNT = CITY_COLS * CITY_ROWS;
 
 export interface CityBounds {
@@ -44,13 +47,6 @@ export interface CityBounds {
   readonly maxZ: number;
 }
 
-/** Playable extent of the city in world metres. */
-export const CITY_BOUNDS: CityBounds = { minX: ORIGIN_X, minZ: ORIGIN_Z, maxX: -ORIGIN_X, maxZ: -ORIGIN_Z };
-
-export const cellCentreX = (col: number): number => ORIGIN_X + (col + 0.5) * S;
-export const cellCentreZ = (row: number): number => ORIGIN_Z + (row + 0.5) * S;
-export const colAt = (x: number): number => Math.floor((x - ORIGIN_X) / S);
-export const rowAt = (z: number): number => Math.floor((z - ORIGIN_Z) / S);
 const clampCol = (col: number): number => (col < 0 ? 0 : col >= CITY_COLS ? CITY_COLS - 1 : col);
 const clampRow = (row: number): number => (row < 0 ? 0 : row >= CITY_ROWS ? CITY_ROWS - 1 : row);
 export const cellIndex = (col: number, row: number): number => row * CITY_COLS + col;
@@ -90,6 +86,9 @@ export interface CityRoadTile {
   /** Cell centre (world). */
   readonly x: number;
   readonly z: number;
+  /** World extent along x and z: `ROAD_LINE_WIDTH` across the road, 10 m or `ROAD_LINE_WIDTH` along it. */
+  readonly width: number;
+  readonly depth: number;
   readonly kind: CityRoadTileKind;
   /** Connection bits (DIR_N | DIR_E | DIR_S | DIR_W). */
   readonly mask: number;
@@ -113,7 +112,10 @@ export interface CityRoadEdge {
   readonly id: number;
   readonly a: number;
   readonly b: number;
+  /** World metres between the two nodes. */
   readonly length: number;
+  /** Grid steps between the two nodes. */
+  readonly cells: number;
   readonly name: string;
   readonly roadClass: RoadClass;
   /** True when the edge crosses water (any of its cells is a bridge). */
@@ -171,8 +173,11 @@ export interface CityRoundabout {
   readonly name: string;
   readonly centre: WorldPoint;
   readonly nodeId: number;
-  /** Radius of the driving ring (metres). */
+  /** Radius of the middle of the two-lane driving ring (metres). */
   readonly ringRadius: number;
+  /** The raised island and the ring's outer kerb (metres from the centre). */
+  readonly islandRadius: number;
+  readonly outerRadius: number;
 }
 
 export interface CityMap {
@@ -301,6 +306,164 @@ function rasterizeRoads(): RoadRaster {
   return { mask, connName, connClass };
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// Layout → world: every grid line that carries a road is ROAD_LINE_WIDTH wide (four lanes), the rest stay 10 m
+// ---------------------------------------------------------------------------------------------------------------
+
+/** The road raster, needed before anything has a world position (it decides which lines widen). */
+const RASTER: RoadRaster = rasterizeRoads();
+
+/** Columns with a north–south road and rows with an east–west road anywhere along them. */
+const ROAD_COLS = new Uint8Array(CITY_COLS);
+const ROAD_ROWS = new Uint8Array(CITY_ROWS);
+for (let i = 0; i < CELL_COUNT; i++) {
+  const m = RASTER.mask[i] as number;
+  const col = i % CITY_COLS;
+  const row = (i - col) / CITY_COLS;
+  if (m & (DIR_N | DIR_S)) ROAD_COLS[col] = 1;
+  if (m & (DIR_E | DIR_W)) ROAD_ROWS[row] = 1;
+}
+for (const spec of ROUNDABOUTS) {
+  ROAD_COLS[spec.centre[0]] = 1;
+  ROAD_ROWS[spec.centre[1]] = 1;
+}
+
+/** World edges of the grid lines (count + 1 values), centred on the origin. */
+function lineEdges(wide: Uint8Array): Float64Array {
+  const edges = new Float64Array(wide.length + 1);
+  for (let i = 0; i < wide.length; i++) edges[i + 1] = (edges[i] as number) + (wide[i] ? ROAD_LINE_WIDTH : S);
+  const half = (edges[wide.length] as number) / 2;
+  for (let i = 0; i <= wide.length; i++) edges[i] = (edges[i] as number) - half;
+  return edges;
+}
+
+const COL_EDGES = lineEdges(ROAD_COLS);
+const ROW_EDGES = lineEdges(ROAD_ROWS);
+const ORIGIN_X = COL_EDGES[0] as number;
+const ORIGIN_Z = ROW_EDGES[0] as number;
+
+/** Playable extent of the city in world metres. */
+export const CITY_BOUNDS: CityBounds = { minX: ORIGIN_X, minZ: ORIGIN_Z, maxX: COL_EDGES[CITY_COLS] as number, maxZ: ROW_EDGES[CITY_ROWS] as number };
+
+/** Index of the line containing `value` (outside the grid: continues in 10 m steps, like the layout). */
+function lineAt(value: number, edges: Float64Array, count: number): number {
+  const first = edges[0] as number;
+  const last = edges[count] as number;
+  if (value < first) return Math.floor((value - first) / S);
+  if (value >= last) return count + Math.floor((value - last) / S);
+  let lo = 0;
+  let hi = count - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if ((edges[mid] as number) <= value) lo = mid;
+    else hi = mid - 1;
+  }
+  return lo;
+}
+
+/** World start and width of a line (outside the grid: 10 m lines continuing outwards). */
+function lineSpan(index: number, edges: Float64Array, count: number): readonly [start: number, width: number] {
+  if (index < 0) return [(edges[0] as number) + index * S, S];
+  if (index >= count) return [(edges[count] as number) + (index - count) * S, S];
+  const start = edges[index] as number;
+  return [start, (edges[index + 1] as number) - start];
+}
+
+export const cellCentreX = (col: number): number => {
+  const [start, width] = lineSpan(col, COL_EDGES, CITY_COLS);
+  return start + width / 2;
+};
+export const cellCentreZ = (row: number): number => {
+  const [start, width] = lineSpan(row, ROW_EDGES, CITY_ROWS);
+  return start + width / 2;
+};
+export const colAt = (x: number): number => lineAt(x, COL_EDGES, CITY_COLS);
+export const rowAt = (z: number): number => lineAt(z, ROW_EDGES, CITY_ROWS);
+/** World width of a grid column / depth of a grid row (10 m, or `ROAD_LINE_WIDTH` where a road runs along it). */
+export const colWidth = (col: number): number => lineSpan(col, COL_EDGES, CITY_COLS)[1];
+export const rowDepth = (row: number): number => lineSpan(row, ROW_EDGES, CITY_ROWS)[1];
+/** True when a north–south road runs along the column / an east–west road along the row (a four-lane line). */
+export const isRoadCol = (col: number): boolean => ROAD_COLS[col] === 1;
+export const isRoadRow = (row: number): boolean => ROAD_ROWS[row] === 1;
+
+/** World rectangle of one cell. */
+export function cellBounds(col: number, row: number): CityBounds {
+  const [x0, w] = lineSpan(col, COL_EDGES, CITY_COLS);
+  const [z0, d] = lineSpan(row, ROW_EDGES, CITY_ROWS);
+  return { minX: x0, minZ: z0, maxX: x0 + w, maxZ: z0 + d };
+}
+
+// The layout: the uniform 10 m grid the first city was built on. Ids are chosen there (never in the world), and the
+// first city's world coordinates *are* layout coordinates, which is what `layoutToWorld` migrates.
+const LAYOUT_ORIGIN_X = (-CITY_COLS * S) / 2;
+const LAYOUT_ORIGIN_Z = (-CITY_ROWS * S) / 2;
+const layoutCentreX = (col: number): number => LAYOUT_ORIGIN_X + (col + 0.5) * S;
+const layoutCentreZ = (row: number): number => LAYOUT_ORIGIN_Z + (row + 0.5) * S;
+
+/** Across a road line the layout's two-lane carriageway stretches to four lanes; pavements keep their width. */
+const HALF = S / 2;
+const LAYOUT_A = LAYOUT_CARRIAGEWAY_HALF_WIDTH;
+const WORLD_A = CARRIAGEWAY_HALF_WIDTH;
+const ROAD_HALF = ROAD_LINE_WIDTH / 2;
+
+function warp(value: number, layoutOrigin: number, edges: Float64Array, wide: Uint8Array, count: number): number {
+  const index = Math.floor((value - layoutOrigin) / S);
+  if (index < 0) return (edges[0] as number) + (value - layoutOrigin);
+  if (index >= count) return (edges[count] as number) + (value - (layoutOrigin + count * S));
+  const local = value - (layoutOrigin + index * S);
+  const start = edges[index] as number;
+  if (!wide[index]) return start + local;
+  const u = local - HALF;
+  const a = Math.abs(u);
+  const w = a <= LAYOUT_A ? (a * WORLD_A) / LAYOUT_A : WORLD_A + (a - LAYOUT_A);
+  return start + ROAD_HALF + (u < 0 ? -w : w);
+}
+
+function unwarp(value: number, layoutOrigin: number, edges: Float64Array, wide: Uint8Array, count: number): number {
+  const index = lineAt(value, edges, count);
+  if (index < 0) return layoutOrigin + (value - (edges[0] as number));
+  if (index >= count) return layoutOrigin + count * S + (value - (edges[count] as number));
+  const local = value - (edges[index] as number);
+  const start = layoutOrigin + index * S;
+  if (!wide[index]) return start + local;
+  const u = local - ROAD_HALF;
+  const a = Math.abs(u);
+  const w = a <= WORLD_A ? (a * LAYOUT_A) / WORLD_A : LAYOUT_A + (a - WORLD_A);
+  return start + HALF + (u < 0 ? -w : w);
+}
+
+/**
+ * Layout point (which is also a first-city world point) → world point. Monotonic per axis: lot cells keep their size,
+ * and across a road line the two-lane carriageway stretches to four lanes while pavements and lot edges move outwards
+ * unchanged, so a door, a parked car or a billboard stays the same thing, only further from the road's centre.
+ */
+export function layoutToWorld(point: WorldPoint): WorldPoint {
+  return {
+    x: warp(point.x, LAYOUT_ORIGIN_X, COL_EDGES, ROAD_COLS, CITY_COLS),
+    z: warp(point.z, LAYOUT_ORIGIN_Z, ROW_EDGES, ROAD_ROWS, CITY_ROWS),
+  };
+}
+
+/** The inverse of `layoutToWorld`. */
+export function worldToLayout(point: WorldPoint): WorldPoint {
+  return {
+    x: unwarp(point.x, LAYOUT_ORIGIN_X, COL_EDGES, ROAD_COLS, CITY_COLS),
+    z: unwarp(point.z, LAYOUT_ORIGIN_Z, ROW_EDGES, ROAD_ROWS, CITY_ROWS),
+  };
+}
+
+/**
+ * Version of the world geometry (1: the first city's two-lane roads, 2: four lanes). A position saved without a
+ * version, or with an older one, is a layout point and goes through `layoutToWorld` once (`migrateWorldPoint`).
+ */
+export const CITY_GEOMETRY_VERSION = 2;
+
+/** A position saved under geometry `version` (undefined: saved before versions existed), in today's world. */
+export function migrateWorldPoint<T extends WorldPoint>(point: T, version: number | undefined): T {
+  if (version !== undefined && version >= CITY_GEOMETRY_VERSION) return point;
+  return { ...point, ...layoutToWorld(point) };
+}
+
 const popcount4 = (mask: number): number => (mask & 1) + ((mask >> 1) & 1) + ((mask >> 2) & 1) + ((mask >> 3) & 1);
 const isStraight = (mask: number): boolean => mask === (DIR_N | DIR_S) || mask === (DIR_E | DIR_W);
 
@@ -337,8 +500,8 @@ function cellRoadInfo(raster: RoadRaster, index: number): { name: string; roadCl
 const ENTRANCE_INSET = 0.9;
 /** Districts always have at least this many residential lots. */
 const MIN_HOMES_PER_DISTRICT = 6;
-/** Kerbside parking offset from the road centreline (metres). */
-const PARKING_OFFSET = 2.4;
+/** Kerbside parking: the car's centre this far in from the road cell's edge (pavement + kerb clearance + half a car). */
+const PARKING_FROM_EDGE = 2.4;
 
 const SIDE_VECTORS: Readonly<Record<CompassSide, readonly [number, number]>> = { N: [0, -1], E: [1, 0], S: [0, 1], W: [-1, 0] };
 
@@ -350,7 +513,14 @@ const normaliseAngle = (angle: number): number => {
 };
 
 function rectFootprint([c0, r0, c1, r1]: CellRect): CityBounds {
-  return { minX: ORIGIN_X + c0 * S, minZ: ORIGIN_Z + r0 * S, maxX: ORIGIN_X + (c1 + 1) * S, maxZ: ORIGIN_Z + (r1 + 1) * S };
+  const from = cellBounds(c0, r0);
+  const to = cellBounds(c1, r1);
+  return { minX: from.minX, minZ: from.minZ, maxX: to.maxX, maxZ: to.maxZ };
+}
+
+/** The first city's footprint of a cell rectangle (layout metres). */
+function layoutFootprint([c0, r0, c1, r1]: CellRect): CityBounds {
+  return { minX: LAYOUT_ORIGIN_X + c0 * S, minZ: LAYOUT_ORIGIN_Z + r0 * S, maxX: LAYOUT_ORIGIN_X + (c1 + 1) * S, maxZ: LAYOUT_ORIGIN_Z + (r1 + 1) * S };
 }
 
 /** Door cell of a lot along its front. */
@@ -369,14 +539,26 @@ function entranceFor(col: number, row: number, front: CompassSide): Entrance {
   const [dx, dz] = SIDE_VECTORS[front];
   const cx = cellCentreX(col);
   const cz = cellCentreZ(row);
+  const half = (dx !== 0 ? colWidth(col) : rowDepth(row)) / 2;
   const heading = Math.atan2(dz, dx);
-  const roadX = cx + dx * S;
-  const roadZ = cz + dz * S;
+  // Kerbside in the road cell in front, in the outer lane of that side.
+  const roadHalf = (dx !== 0 ? colWidth(col + dx) : rowDepth(row + dz)) / 2;
+  const parking = Math.max(1.6, roadHalf - PARKING_FROM_EDGE);
+  const roadX = cellCentreX(col + dx);
+  const roadZ = cellCentreZ(row + dz);
   return {
-    position: { x: cx + dx * (S / 2 - ENTRANCE_INSET), z: cz + dz * (S / 2 - ENTRANCE_INSET) },
+    position: { x: cx + dx * (half - ENTRANCE_INSET), z: cz + dz * (half - ENTRANCE_INSET) },
     heading,
-    parking: { x: roadX - dx * PARKING_OFFSET, z: roadZ - dz * PARKING_OFFSET, heading: normaliseAngle(heading + Math.PI / 2) },
+    parking: { x: dx !== 0 ? roadX - dx * parking : cx, z: dz !== 0 ? roadZ - dz * parking : cz, heading: normaliseAngle(heading + Math.PI / 2) },
   };
+}
+
+/** Where the first city put a door (layout metres): ad spots keep clear of these, exactly as they always have. */
+function layoutDoor(col: number, row: number, front: CompassSide): WorldPoint {
+  const [dx, dz] = SIDE_VECTORS[front];
+  const cx = layoutCentreX(col);
+  const cz = layoutCentreZ(row);
+  return { x: cx + dx * (S / 2 - ENTRANCE_INSET), z: cz + dz * (S / 2 - ENTRANCE_INSET) };
 }
 
 const ARCHETYPE_BY_TYPE: Readonly<Record<VenueType, LotArchetype>> = {
@@ -416,10 +598,16 @@ const ARCHETYPE_BY_TYPE: Readonly<Record<VenueType, LotArchetype>> = {
 // Build
 // ---------------------------------------------------------------------------------------------------------------
 
-function buildCityMap(): CityMap {
+/** What the first city decided per lot, kept in layout metres (index-aligned with `CityMap.lots`). */
+interface LayoutLot {
+  readonly footprint: CityBounds;
+  readonly door: WorldPoint | null;
+}
+
+function buildCityMap(): { readonly map: CityMap; readonly layoutLots: readonly LayoutLot[] } {
   const terrain = buildTerrain();
   const districts = buildDistricts();
-  const raster = rasterizeRoads();
+  const raster = RASTER;
   const { mask } = raster;
 
   // Cell kinds.
@@ -450,6 +638,8 @@ function buildCityMap(): CityMap {
       row,
       x: cellCentreX(col),
       z: cellCentreZ(row),
+      width: colWidth(col),
+      depth: rowDepth(row),
       kind: roundaboutCentres.has(i) ? 'roundabout' : tileKindOf(m),
       mask: m,
       bridge: kind === K_BRIDGE,
@@ -508,13 +698,15 @@ function buildCityMap(): CityMap {
         walked[index * 4 + at(OPPOSITE, d)] = 1;
       }
       const end = nodeOfCell[cellIndex(col, row)] as number;
-      edges.push({ id: edges.length, a: node.id, b: end, length: steps * S, name, roadClass, bridge, dx: at(DIR_DC, d), dz: at(DIR_DR, d) });
+      const length = Math.abs(cellCentreX(col) - node.x) + Math.abs(cellCentreZ(row) - node.z);
+      edges.push({ id: edges.length, a: node.id, b: end, length, cells: steps, name, roadClass, bridge, dx: at(DIR_DC, d), dz: at(DIR_DR, d) });
       edgeCells.push(visited);
     }
   }
 
   // Lots.
   const lots: CityLot[] = [];
+  const layoutLots: LayoutLot[] = [];
   const lotIndex = new Int32Array(CELL_COUNT).fill(-1);
   const districtOf = (col: number, row: number): DistrictId => at(DISTRICT_IDS, districts[cellIndex(col, row)] as number);
   const streetInFront = (col: number, row: number, front: CompassSide): string => {
@@ -547,6 +739,7 @@ function buildCityMap(): CityMap {
       street: streetInFront(dc, dr, spec.front),
       seed: hashString(`lot:${spec.venueId}`),
     });
+    layoutLots.push({ footprint: layoutFootprint(spec.rect), door: layoutDoor(dc, dr, spec.front) });
     claim(spec.rect, lots.length - 1);
   }
   for (const spec of LANDMARKS) {
@@ -560,6 +753,7 @@ function buildCityMap(): CityMap {
       front: spec.front,
       seed: hashString(`landmark:${spec.id}`),
     });
+    layoutLots.push({ footprint: layoutFootprint(spec.rect), door: null });
     claim(spec.rect, lots.length - 1);
   }
   const reserved = new Set<number>(BILLBOARD_SPECS.map((spec) => cellIndex(spec.cell[0], spec.cell[1])));
@@ -591,6 +785,7 @@ function buildCityMap(): CityMap {
       const rect: CellRect = [col, row, col, row];
       if (!front) {
         lots.push({ id: `lot:${col}:${row}`, kind: 'infill', districtId, cells: rect, footprint: rectFootprint(rect), seed });
+        layoutLots.push({ footprint: layoutFootprint(rect), door: null });
       } else {
         const straightFront = bestRank >= 10;
         const home = straightFront && (seed % 1000) / 1000 < HOME_SHARE[districtId];
@@ -605,6 +800,7 @@ function buildCityMap(): CityMap {
           street: streetInFront(col, row, front),
           seed,
         });
+        layoutLots.push({ footprint: layoutFootprint(rect), door: straightFront ? layoutDoor(col, row, front) : null });
       }
       lotIndex[i] = lots.length - 1;
     }
@@ -649,16 +845,21 @@ function buildCityMap(): CityMap {
     const run = at(edgeCells, e).filter((index) => cells[index] === K_BRIDGE);
     const first = at(run, 0);
     const last = at(run, run.length - 1);
-    const from = { x: cellCentreX(first % CITY_COLS) - edge.dx * (S / 2), z: cellCentreZ(Math.floor(first / CITY_COLS)) - edge.dz * (S / 2) };
-    const to = { x: cellCentreX(last % CITY_COLS) + edge.dx * (S / 2), z: cellCentreZ(Math.floor(last / CITY_COLS)) + edge.dz * (S / 2) };
-    bridges.push({ name: edge.name, from, to, length: run.length * S });
+    const a = cellBounds(first % CITY_COLS, Math.floor(first / CITY_COLS));
+    const b = cellBounds(last % CITY_COLS, Math.floor(last / CITY_COLS));
+    // From the near edge of the first bridge cell to the far edge of the last, along the road.
+    const from = { x: edge.dx > 0 ? a.minX : edge.dx < 0 ? a.maxX : (a.minX + a.maxX) / 2, z: edge.dz > 0 ? a.minZ : edge.dz < 0 ? a.maxZ : (a.minZ + a.maxZ) / 2 };
+    const to = { x: edge.dx > 0 ? b.maxX : edge.dx < 0 ? b.minX : (b.minX + b.maxX) / 2, z: edge.dz > 0 ? b.maxZ : edge.dz < 0 ? b.minZ : (b.minZ + b.maxZ) / 2 };
+    bridges.push({ name: edge.name, from, to, length: Math.abs(to.x - from.x) + Math.abs(to.z - from.z) });
   }
 
   const roundabouts: CityRoundabout[] = ROUNDABOUTS.map((spec) => ({
     name: spec.name,
     centre: { x: cellCentreX(spec.centre[0]), z: cellCentreZ(spec.centre[1]) },
     nodeId: nodeOfCell[cellIndex(spec.centre[0], spec.centre[1])] as number,
-    ringRadius: S * 0.95,
+    ringRadius: (ROUNDABOUT_ISLAND_RADIUS + ROUNDABOUT_OUTER_RADIUS) / 2,
+    islandRadius: ROUNDABOUT_ISLAND_RADIUS,
+    outerRadius: ROUNDABOUT_OUTER_RADIUS,
   }));
 
   const billboards: BillboardWorldPlacement[] = [];
@@ -678,7 +879,7 @@ function buildCityMap(): CityMap {
     const format = BILLBOARD_FORMAT_SPECS[slot.format];
     billboards.push({
       slotId: spec.slotId,
-      position: { x: cellCentreX(spec.cell[0]) + spec.offset[0], z: cellCentreZ(spec.cell[1]) + spec.offset[1] },
+      position: layoutToWorld({ x: layoutCentreX(spec.cell[0]) + spec.offset[0], z: layoutCentreZ(spec.cell[1]) + spec.offset[1] }),
       elevation: spec.elevation,
       facing: FACING[spec.faces] ?? 0,
       width: spec.width,
@@ -689,7 +890,7 @@ function buildCityMap(): CityMap {
     });
   }
 
-  return {
+  const map: CityMap = {
     cellSize: S,
     cols: CITY_COLS,
     rows: CITY_ROWS,
@@ -706,10 +907,13 @@ function buildCityMap(): CityMap {
     roundabouts,
     billboards,
   };
+  return { map, layoutLots };
 }
 
+const BUILT = buildCityMap();
+
 /** The city, built once per process. */
-export const CITY_MAP: CityMap = buildCityMap();
+export const CITY_MAP: CityMap = BUILT.map;
 
 // ---------------------------------------------------------------------------------------------------------------
 // Indexes & queries
@@ -730,7 +934,8 @@ export interface DistrictBounds extends CityBounds {
   readonly centre: WorldPoint;
 }
 
-const DISTRICT_BOUNDS: Readonly<Record<DistrictId, DistrictBounds>> = (() => {
+/** Bounding box and land centroid of every district, in the world and in the layout. */
+function measureDistricts(centreX: (col: number) => number, centreZ: (row: number) => number, box: (rect: CellRect) => CityBounds): Readonly<Record<DistrictId, DistrictBounds>> {
   const result = {} as Record<DistrictId, DistrictBounds>;
   DISTRICT_IDS.forEach((id, index) => {
     let minC = CITY_COLS;
@@ -748,20 +953,37 @@ const DISTRICT_BOUNDS: Readonly<Record<DistrictId, DistrictBounds>> = (() => {
       maxC = Math.max(maxC, col);
       minR = Math.min(minR, row);
       maxR = Math.max(maxR, row);
-      sumX += cellCentreX(col);
-      sumZ += cellCentreZ(row);
+      sumX += centreX(col);
+      sumZ += centreZ(row);
       count++;
     }
-    result[id] = {
-      minX: ORIGIN_X + minC * S,
-      minZ: ORIGIN_Z + minR * S,
-      maxX: ORIGIN_X + (maxC + 1) * S,
-      maxZ: ORIGIN_Z + (maxR + 1) * S,
-      centre: count > 0 ? { x: sumX / count, z: sumZ / count } : { x: 0, z: 0 },
-    };
+    result[id] = { ...box([minC, minR, maxC, maxR]), centre: count > 0 ? { x: sumX / count, z: sumZ / count } : { x: 0, z: 0 } };
   });
   return result;
-})();
+}
+
+const DISTRICT_BOUNDS = measureDistricts(cellCentreX, cellCentreZ, rectFootprint);
+const LAYOUT_DISTRICT_BOUNDS = measureDistricts(layoutCentreX, layoutCentreZ, layoutFootprint);
+
+/**
+ * The first city's layout, where ids are decided: cell centres, lot footprints, doors and district centres in layout
+ * metres (10 m cells, two-lane roads). Anything that *picks* places by distance (ad spots, filling stations) measures
+ * here, so widening the roads never changes what it picks, then puts what it picked in the world with `layoutToWorld`.
+ */
+export const CITY_LAYOUT = {
+  cellCentreX: layoutCentreX,
+  cellCentreZ: layoutCentreZ,
+  /** Layout footprint and door of `CITY_MAP.lots[index]`. */
+  lot: (index: number): LayoutLot => at(BUILT.layoutLots, index),
+  /** Centroid of a district's land in layout metres. */
+  districtCentre: (districtId: DistrictId): WorldPoint => LAYOUT_DISTRICT_BOUNDS[districtId].centre,
+  /** District of a layout point. */
+  districtAt: (point: WorldPoint): DistrictId => {
+    const col = clampCol(Math.floor((point.x - LAYOUT_ORIGIN_X) / S));
+    const row = clampRow(Math.floor((point.z - LAYOUT_ORIGIN_Z) / S));
+    return at(DISTRICT_IDS, CITY_MAP.districts[cellIndex(col, row)] as number);
+  },
+} as const;
 
 /** Kind of the cell under a world point (outside the grid counts as water). */
 export function cellKindAt(point: WorldPoint): CityCellKind {
@@ -822,8 +1044,7 @@ export const CELL_EDGES: { readonly start: Int32Array; readonly edges: Int32Arra
   for (const edge of CITY_MAP.edges) {
     const a = at(CITY_MAP.nodes, edge.a);
     const cellsOfEdge: number[] = [];
-    const steps = edge.length / S;
-    for (let s = 0; s <= steps; s++) cellsOfEdge.push(cellIndex(a.col + edge.dx * s, a.row + edge.dz * s));
+    for (let s = 0; s <= edge.cells; s++) cellsOfEdge.push(cellIndex(a.col + edge.dx * s, a.row + edge.dz * s));
     lists.push(cellsOfEdge);
     for (const index of cellsOfEdge) counts[index + 1] = (counts[index + 1] as number) + 1;
   }

@@ -9,7 +9,10 @@ import {
   type Entrance,
   type WorldPoint,
 } from '@insidelife/shared';
-import { PAVEMENT_OFFSET, surfaceAt } from '../physics/surface';
+import { LANE_OFFSET, PAVEMENT_OFFSET, surfaceAt } from '../physics/surface';
+
+/** The kerbside lane, as a share of the way from the centreline to the pavement. */
+const KERB_LANE = LANE_OFFSET / PAVEMENT_OFFSET;
 import type { SavedPose, SpawnOffer } from './spawn-handoff';
 
 /** Where the play layer starts: the door just used, the pose before a reload, or a pavement in the district. */
@@ -123,6 +126,6 @@ function streetSpotNear(point: WorldPoint): { readonly spot: ReturnType<typeof p
   const facesRight = ox * -Math.sin(spot.heading) + oz * Math.cos(spot.heading) >= 0;
   return {
     spot,
-    parking: { x: spot.road.x + ox * 0.4, z: spot.road.z + oz * 0.4, heading: facesRight ? spot.heading : spot.heading + Math.PI },
+    parking: { x: spot.road.x + ox * KERB_LANE, z: spot.road.z + oz * KERB_LANE, heading: facesRight ? spot.heading : spot.heading + Math.PI },
   };
 }

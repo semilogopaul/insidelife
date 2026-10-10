@@ -21,10 +21,11 @@ export interface PathPoint {
   heading: number;
 }
 
-const CORNER_RADIUS = 5;
+/** Corners round off this far from the junction centre: more than the kerbside lane's offset, so the inside of a turn never folds back. */
+const CORNER_RADIUS = 9;
 
 /** The drivable part of a route (without the walk from/to the doors), corners rounded, offset right by `lane`. */
-export function buildRidePath(route: CityRoute, lane = 1.6): RidePath {
+export function buildRidePath(route: CityRoute, lane = 1.75): RidePath {
   const source = route.points.length > 3 ? route.points.slice(1, route.points.length - 1) : route.points.slice();
   const rounded: WorldPoint[] = [];
   for (let i = 0; i < source.length; i++) {

@@ -8,9 +8,10 @@ import type { Entrance, WorldPoint } from './types.js';
 /**
  * Open-world geometry contract shared by the server (validation, fuel) and the client (rendering, GPS).
  *
- * World units are metres; +x is east, +z is south. The playable city is a compact, stylised Lagos of 640 × 420 m
- * (`city-layout.ts` → `city-map.ts`): a cross-town drive is ~45-60 real seconds at 15 m/s. Fuel and fares use map km:
- * one world metre is `MAP_KM_PER_WORLD_METRE` km, so crossing the city costs fuel like a 35-40 km Lagos drive.
+ * World units are metres; +x is east, +z is south. The playable city is a compact, stylised Lagos of about 750 × 510 m
+ * with four-lane roads (`city-layout.ts` → `city-map.ts`; the layout grid is 640 × 420 m and every road line widens to
+ * `ROAD_LINE_WIDTH`): a cross-town drive is ~50-70 real seconds at 15 m/s. Fuel and fares use map km: one world metre is
+ * `MAP_KM_PER_WORLD_METRE` km, so crossing the city costs fuel like a 35-40 km Lagos drive.
  *
  * Everything here is pure and deterministic; graphs are built once at module load.
  */
@@ -19,23 +20,33 @@ export type { Entrance, WorldPoint } from './types.js';
 export {
   BILLBOARD_WORLD_PLACEMENTS,
   CITY_BOUNDS,
+  CITY_GEOMETRY_VERSION,
+  CITY_LAYOUT,
   CITY_MAP,
   DIR_E,
   DIR_N,
   DIR_S,
   DIR_W,
   billboardPlacement,
+  cellBounds,
   cellCentreX,
   cellCentreZ,
   cellIndex,
   cellKindAt,
   cellKindOf,
   colAt,
+  colWidth,
   districtBounds,
   homeLots,
+  isRoadCol,
+  isRoadRow,
+  layoutToWorld,
   lotAt,
+  migrateWorldPoint,
   rowAt,
+  rowDepth,
   venueLot,
+  worldToLayout,
   type BillboardWorldPlacement,
   type CityBounds,
   type CityBridge,
@@ -51,9 +62,16 @@ export {
   type DistrictBounds,
 } from './city-map.js';
 export {
+  CARRIAGEWAY_HALF_WIDTH,
   CITY_CELL_SIZE,
   CITY_COLS,
   CITY_ROWS,
+  LANE_WIDTH,
+  LANES_PER_DIRECTION,
+  ROAD_LINE_WIDTH,
+  ROADSIDE_PAVEMENT,
+  ROUNDABOUT_ISLAND_RADIUS,
+  ROUNDABOUT_OUTER_RADIUS,
   type BillboardMount,
   type CellRect,
   type CompassSide,
@@ -74,8 +92,9 @@ export {
   type TurnByTurnOptions,
 } from './routing.js';
 
-/** World metres per map km: the ~800 m Ikeja → Ajah drive costs fuel like ~40 km of Lagos road. */
-export const WORLD_METRES_PER_MAP_KM = 20;
+/** World metres per map km: the ~1 km Ikeja → Ajah drive costs fuel like ~40 km of Lagos road (25 m since the roads
+ * widened to four lanes, which made routes ~24% longer in metres; fuel per trip stayed the same). */
+export const WORLD_METRES_PER_MAP_KM = 25;
 /** Map km represented by one world metre (fuel and fares use map km). */
 export const MAP_KM_PER_WORLD_METRE = 1 / WORLD_METRES_PER_MAP_KM;
 /** How close (metres) you must be to a door to go in. */

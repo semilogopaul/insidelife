@@ -1,23 +1,28 @@
-import { CITY_MAP, type CityRoadEdge, type CityRoadNode, type RoadClass } from '@insidelife/shared';
+import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, ROUNDABOUT_ISLAND_RADIUS, ROUNDABOUT_OUTER_RADIUS, type CityRoadEdge, type CityRoadNode, type RoadClass } from '@insidelife/shared';
 import { VEHICLE_SCALE, cityPlan } from '../../city/layout/placements';
-import { LANE_OFFSET } from '../physics/surface';
+import { LANE_OFFSETS } from '../physics/surface';
 
 /**
- * Directed driving lanes over the shared road graph. The graph follows road centrelines; every edge gives two
- * lanes offset to the right of travel (right-hand traffic). Lanes stop short of junctions so turns can be drawn as
- * curves, and short of the Ajah roundabout ring so cars can circulate anticlockwise.
+ * Directed driving lanes over the shared road graph. The graph follows road centrelines; every edge gives four lanes,
+ * two each way to the right of travel (right-hand traffic): slot 0 is the inner (overtaking) lane, slot 1 the kerbside
+ * lane. Lanes stop short of junctions so turns can be drawn as curves, and short of the Ajah roundabout ring so cars
+ * can circulate anticlockwise.
  */
+
+/** 0: inner lane (next to the centre line), 1: outer lane (kerbside). */
+export type LaneSlot = 0 | 1;
 
 export interface Lane {
   readonly id: number;
   readonly edge: number;
+  readonly slot: LaneSlot;
   /** Node the lane leaves from / arrives at. */
   readonly from: number;
   readonly to: number;
   /** Unit direction of travel. */
   readonly dx: number;
   readonly dz: number;
-  /** Start and end points (offset into the right-hand lane, inset from junctions). */
+  /** Start and end points (offset into the lane, inset from junctions). */
   readonly x0: number;
   readonly z0: number;
   readonly x1: number;
@@ -25,7 +30,7 @@ export interface Lane {
   readonly length: number;
   readonly roadClass: RoadClass;
   readonly bridge: boolean;
-  /** Distances along the lane of kerbside parked cars that block it (cars swerve round them), ascending. */
+  /** Distances along the lane of kerbside parked cars that block it (cars change lane round them), ascending. */
   readonly parked: readonly number[];
 }
 
@@ -37,10 +42,12 @@ export interface LaneGraph {
   readonly roundabouts: ReadonlyMap<number, { readonly x: number; readonly z: number }>;
 }
 
-/** Radius cars circulate the roundabout at (asphalt ring 4.2–11.6 m). */
-export const ROUNDABOUT_LANE_RADIUS = 8.6;
-const ROUNDABOUT_INSET = 13;
-const JUNCTION_INSET = 4.6;
+/** Radii cars circulate the roundabout at, per lane slot (two-lane ring between the island and the outer kerb). */
+const RING = (ROUNDABOUT_OUTER_RADIUS - ROUNDABOUT_ISLAND_RADIUS) / 4;
+export const ROUNDABOUT_LANE_RADII: readonly [number, number] = [ROUNDABOUT_ISLAND_RADIUS + RING, ROUNDABOUT_OUTER_RADIUS - RING];
+const ROUNDABOUT_INSET = ROUNDABOUT_OUTER_RADIUS + 1.5;
+/** Lanes stop at the edge of the junction box (the crossing road's carriageway) plus a little. */
+const JUNCTION_INSET = CARRIAGEWAY_HALF_WIDTH + 0.6;
 
 function insetAt(node: CityRoadNode, roundabout: boolean, straightThrough: boolean): number {
   if (roundabout) return ROUNDABOUT_INSET;
@@ -85,26 +92,29 @@ export function buildLaneGraph(parkedCars: readonly { readonly x: number; readon
         inset0 *= scale;
         inset1 *= scale;
       }
-      // Right of travel: (-dz, dx).
-      const ox = -dz * LANE_OFFSET;
-      const oz = dx * LANE_OFFSET;
-      const x0 = start.x + dx * inset0 + ox;
-      const z0 = start.z + dz * inset0 + oz;
-      const x1 = end.x - dx * inset1 + ox;
-      const z1 = end.z - dz * inset1 + oz;
       const length = Math.max(0.5, edge.length - inset0 - inset1);
-      const parked: number[] = [];
-      for (const car of parkedCars) {
-        const rx = car.x - x0;
-        const rz = car.z - z0;
-        const along = rx * dx + rz * dz;
-        const side = rx * -dz + rz * dx;
-        if (along > -3 && along < length + 3 && Math.abs(side) < 2.4) parked.push(along);
+      for (const slot of [0, 1] as const) {
+        // Right of travel: (-dz, dx).
+        const offset = LANE_OFFSETS[slot];
+        const ox = -dz * offset;
+        const oz = dx * offset;
+        const x0 = start.x + dx * inset0 + ox;
+        const z0 = start.z + dz * inset0 + oz;
+        const x1 = end.x - dx * inset1 + ox;
+        const z1 = end.z - dz * inset1 + oz;
+        const parked: number[] = [];
+        for (const car of parkedCars) {
+          const rx = car.x - x0;
+          const rz = car.z - z0;
+          const along = rx * dx + rz * dz;
+          const side = rx * -dz + rz * dx;
+          if (along > -3 && along < length + 3 && Math.abs(side) < 2.4) parked.push(along);
+        }
+        parked.sort((a, b) => a - b);
+        const id = lanes.length;
+        lanes.push({ id, edge: edge.id, slot, from, to, dx, dz, x0, z0, x1, z1, length, roadClass: edge.roadClass, bridge: edge.bridge, parked });
+        outgoing[from]?.push(id);
       }
-      parked.sort((a, b) => a - b);
-      const id = lanes.length;
-      lanes.push({ id, edge: edge.id, from, to, dx, dz, x0, z0, x1, z1, length, roadClass: edge.roadClass, bridge: edge.bridge, parked });
-      outgoing[from]?.push(id);
     }
   }
   return { lanes, outgoing, roundabouts };

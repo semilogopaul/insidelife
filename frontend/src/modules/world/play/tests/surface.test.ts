@@ -1,22 +1,24 @@
-import { CITY_MAP, cellCentreX, cellCentreZ, findRoute, venueEntrance } from '@insidelife/shared';
+import { CITY_MAP, ROAD_LINE_WIDTH, cellCentreX, cellCentreZ, findRoute, venueEntrance } from '@insidelife/shared';
 import { describe, expect, it } from 'vitest';
 import { groundHeightAt, onCarriageway, surfaceAt } from '../physics/surface';
 import { createWalker, stepWalker, type WalkWorld } from '../physics/walker';
 import { rideProgress, buildRidePath, pointAlong } from '../ride/ride-path';
 
 describe('ground surfaces', () => {
-  it('splits a road cell into carriageway and pavement by its connections', () => {
+  it('splits a road cell into a four-lane carriageway and pavement by its connections', () => {
     const eastWest = 2 | 8;
-    expect(onCarriageway(4.5, 0, eastWest)).toBe(true);
-    expect(onCarriageway(0, 4.5, eastWest)).toBe(false);
-    expect(onCarriageway(0, 3.9, eastWest)).toBe(true);
+    expect(onCarriageway(7.5, 0, eastWest)).toBe(true);
+    expect(onCarriageway(0, 7.5, eastWest)).toBe(false);
+    expect(onCarriageway(0, 6.9, eastWest)).toBe(true);
+    // A road line 10 m wide (none today) would keep the first city's ±4 m carriageway.
+    expect(onCarriageway(0, 4.5, eastWest, 4, 4)).toBe(false);
   });
 
   it('reads asphalt (y 0.1) on roads, pavement (y 0.2) at the kerb, water outside the city', () => {
     const tile = CITY_MAP.roadTiles.find((t) => t.kind === 'straight' && !t.bridge)!;
     expect(surfaceAt(tile.x, tile.z)).toBe('asphalt');
     expect(groundHeightAt(tile.x, tile.z)).toBeCloseTo(0.1);
-    const across = (tile.mask & 2) !== 0 ? { x: tile.x, z: tile.z + 4.6 } : { x: tile.x + 4.6, z: tile.z };
+    const across = (tile.mask & 2) !== 0 ? { x: tile.x, z: tile.z + ROAD_LINE_WIDTH / 2 - 0.4 } : { x: tile.x + ROAD_LINE_WIDTH / 2 - 0.4, z: tile.z };
     expect(surfaceAt(across.x, across.z)).toBe('pavement');
     expect(groundHeightAt(across.x, across.z)).toBeCloseTo(0.2);
     expect(surfaceAt(CITY_MAP.bounds.maxX + 50, 0)).toBe('water');
