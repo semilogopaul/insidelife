@@ -108,6 +108,29 @@ describe('furnish', () => {
     expect(upgraded.furniture.filter((piece) => piece.model === 'televisionModern')).toHaveLength(1);
     expect(upgraded.furniture.find((piece) => piece.model === 'televisionModern')?.scale).toBeCloseTo(1.15);
   });
+
+  it('shows the furniture you buy in the family house, in place of theirs', () => {
+    // A spring bed replaces the family's bed (one bed in the room, not two).
+    const spring = furnish(HOME_FAMILY, ['bed-spring'], { providedFurniture: true });
+    expect(models(spring)).toContain('bedSingle');
+    expect(models(spring)).not.toContain('bedDouble');
+    // The top of the range shows as itself (not as the family's double bed), without doubled bedside drawers.
+    const king = furnish(HOME_FAMILY, ['bed-super-king'], { providedFurniture: true });
+    expect(king.furniture.find((piece) => piece.model === 'bedDouble')?.scale).toBeCloseTo(1.2);
+    expect(models(king).filter((model) => model === 'cabinetBedDrawer')).toHaveLength(2);
+    // A one-tier item (the wardrobe) and a 75" TV show too.
+    const wardrobe = furnish(HOME_FAMILY, ['wardrobe-wooden', 'tv-75'], { providedFurniture: true });
+    expect(models(wardrobe)).toContain('bookcaseClosedWide');
+    expect(models(wardrobe)).not.toContain('bookcaseClosedDoors');
+    expect(wardrobe.furniture.find((piece) => piece.model === 'televisionModern')?.scale).toBeCloseTo(1.5);
+  });
+
+  it('shows your own bed in a hostel and keeps your roommate’s bunk', () => {
+    const hostel = furnish(HOME_HOSTEL, ['bed-orthopedic'], { providedFurniture: true });
+    expect(models(hostel).filter((model) => model === 'bedBunk')).toHaveLength(1);
+    expect(models(hostel)).toContain('bedDouble');
+    expect(models(furnish(HOME_HOSTEL, [], { providedFurniture: true })).filter((model) => model === 'bedBunk')).toHaveLength(2);
+  });
 });
 
 /** Every room of a layout furnished as a home you rent or own. */

@@ -129,7 +129,7 @@ export function SlipDrawer({ league, clubs, account }: SlipDrawerProps) {
             </div>
             <p id="bet-stake-hint" className="text-xs text-text-soft">
               {formatNaira(BETTING_RULES.minStake)} to {formatNaira(maxStake)} per slip
-              {account && <> · today you can still lose {formatNaira(account.today.lossLeft)}</>}
+              {account && <> · {formatNaira(account.limits.dailyLossLimit)} daily loss limit, {formatNaira(Math.min(account.today.lossLeft, account.limits.dailyLossLimit))} left today</>}
             </p>
             <div role="group" aria-label="Quick stakes" className="flex flex-wrap gap-1.5">
               {QUICK_STAKES.map((amount) => (

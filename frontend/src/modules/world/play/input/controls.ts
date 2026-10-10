@@ -1,3 +1,5 @@
+import { isShownForKeyboard } from '@/common/utils/focus';
+
 /**
  * Player input shared by the DOM overlay (touch joystick, look pad, pedals) and the keyboard, read by the in-canvas
  * director once per frame. A plain mutable singleton: writers set fields, the frame loop reads and consumes deltas.
@@ -107,9 +109,13 @@ const MOVE_KEYS: Readonly<Record<string, keyof Pick<PlayControls, 'forward' | 'b
 
 const ACTION_KEYS: Readonly<Record<string, KeyAction>> = { KeyE: 'interact', KeyF: 'car', KeyH: 'horn', KeyM: 'map' };
 
-/** True when the key event belongs to a text field or an open dialog (the phone, sheets). */
+/**
+ * True when the key event belongs to a text field or an open dialog (the phone, sheets). Focus left behind on
+ * something hidden, inert or gone (a closed sheet's Close button) doesn't count: those keys are the game's.
+ */
 export function isTypingTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  if (!isShownForKeyboard(target)) return false;
   if (target.isContentEditable) return true;
   const tag = target.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;

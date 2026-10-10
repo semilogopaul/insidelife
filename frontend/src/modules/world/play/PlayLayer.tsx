@@ -210,7 +210,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
       if (performance.now() - mountedAt > 4000 || runtime.mode !== 'walk') return;
       spawnHandoff.take();
       const { entrance, car: spawnCar } = offer.spawn;
-      const out = stepOut(entrance);
+      const out = stepOut(entrance, characterId ?? '');
       runtime.placeAtDoor(out.x, out.z, entrance.heading);
       if (spawnCar) {
         controller.setCar(spawnCar, entrance.parking.x, entrance.parking.z, entrance.parking.heading);
@@ -232,7 +232,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
       usePlayUi.getState().setActive(false);
       resetControls();
     };
-  }, [runtime, start, online]);
+  }, [runtime, start, online, characterId]);
 
   // Riding a booked trip (the ride layer moves the camera) vs. on your own feet/wheels.
   const riding = travel !== null;

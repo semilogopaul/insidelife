@@ -2,7 +2,7 @@ import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { formatClock12, type LedgerEntryDto } from '@insidelife/shared';
 import { Money } from '@/common/components';
 import { cn } from '@/common/utils/cn';
-import { LEDGER_KIND_LABELS } from '../../services/statement';
+import { entryKindLabel } from '../../services/statement';
 import { LEDGER_ICONS } from './ledger-icons';
 
 /** One statement line: kind icon (with an in/out arrow so colour is never the only cue), memo, time, signed amount. */
@@ -21,7 +21,7 @@ export function StatementEntry({ entry }: { readonly entry: LedgerEntryDto }) {
       <span className="min-w-0 flex-1">
         <span className="line-clamp-2 font-bold leading-snug [overflow-wrap:anywhere]">{entry.memo}</span>
         <span className="block truncate text-xs text-text-soft">
-          {LEDGER_KIND_LABELS[entry.kind]}
+          {entryKindLabel(entry)}
           {entry.counterparty ? ` · ${entry.counterparty}` : ''} · {formatClock12(entry.gameMinute)}
         </span>
       </span>

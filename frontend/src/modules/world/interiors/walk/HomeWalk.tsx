@@ -21,7 +21,7 @@ import { SELF_ANCHOR, trackAvatar } from '../../speech/speech-anchors';
 import { applyKey, isGameKey, isTypingTarget, resetControls } from '../../play/input/controls';
 import type { InteriorPlayer } from '../components/InteriorPeople';
 import { actionSpot, type ActionLike } from '../hotspots/action-spots';
-import { hotspotCard, hotspotInteractable, type ActionStatus, type Hotspot } from '../hotspots/hotspots';
+import { MAX_MORE, PHONE_MAX_MORE, hotspotCard, hotspotInteractable, type ActionStatus, type Hotspot } from '../hotspots/hotspots';
 import {
   isFreeAnimation,
   nextPortalTowards,
@@ -153,7 +153,7 @@ export function HomeWalk({
         .getState()
         .setOffer(
           hotspot ? hotspot.id : null,
-          hotspot ? hotspotInteractable(hotspot, offerSource.current.status) : null,
+          hotspot ? hotspotInteractable(hotspot, offerSource.current.status, window.matchMedia('(min-width: 768px)').matches ? MAX_MORE : PHONE_MAX_MORE) : null,
         );
     };
     // The thing under the mouse on the walk camera (the overview's pointer events set it themselves).

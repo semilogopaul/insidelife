@@ -22,6 +22,7 @@ import {
 } from '../hotspots/action-spots';
 import {
   MAX_MORE,
+  PHONE_MAX_MORE,
   actionOfInteractable,
   buildHotspots,
   holdsGoal,
@@ -268,6 +269,10 @@ describe('hotspots', () => {
     // Three more, then "More here" for the rest (the full list).
     expect(many?.more).toHaveLength(MAX_MORE + 1);
     expect(many?.more?.at(-1)).toMatchObject({ id: MORE_HERE_ID, label: 'More here (3)' });
+    // A phone keeps the stack three buttons high: one more, then "More here".
+    const phone = hotspotInteractable(crowded, () => ({ priceNote: '', reason: null }), PHONE_MAX_MORE);
+    expect(phone?.more).toHaveLength(PHONE_MAX_MORE + 1);
+    expect(phone?.more?.at(-1)).toMatchObject({ id: MORE_HERE_ID, label: 'More here (5)' });
   });
 
   it('puts phone-app services where they happen: a car on the showroom floor, the doctor’s desk', () => {

@@ -8,6 +8,7 @@ import {
   TRANSPORT_MODES,
   ENTRY_RADIUS,
   canDriveVehicle,
+  closedOnArrival,
   districtAt,
   findServicePoint,
   findVenue,
@@ -58,6 +59,16 @@ export interface TravelQuoteDto {
   readonly fare: number;
   readonly available: boolean;
   readonly reason?: string;
+  /** The destination will be shut when this ride gets you there: the hour it opens (booking needs `acceptClosed`). */
+  readonly closedOnArrival?: number;
+}
+
+/** "8 AM", "noon", "midnight". */
+function hourLabel(hour: number): string {
+  const h = ((hour % 24) + 24) % 24;
+  if (h === 0) return 'midnight';
+  if (h === 12) return 'noon';
+  return `${h % 12} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
 /**
@@ -208,6 +219,7 @@ export class MovementService {
       }
       const quote = await this.planner.quote(ctx, character.locationId, destinationId, mode, ctx.time);
       const available = quote.mode === mode || quote.intercity;
+      const opens = available ? await this.closedWhenYouArrive(ctx, destinationId, ctx.time + quote.minutes) : null;
       results.push({
         mode,
         label: quote.intercity ? 'Interstate bus' : definition.label,
@@ -215,14 +227,18 @@ export class MovementService {
         fare: available ? quote.fare : 0,
         available,
         reason: available ? undefined : `${definition.label} can’t make this trip`,
+        ...(opens !== null ? { closedOnArrival: opens } : {}),
       });
       if (quote.intercity) break;
     }
     return results;
   }
 
-  /** Book a timed ride (or auto-drive). The client plays it back along the GPS route. */
-  async travel(ctx: SimulationContext, destinationId: string, mode: TransportMode): Promise<void> {
+  /**
+   * Book a timed ride (or auto-drive). The client plays it back along the GPS route. A ride that would drop you at a
+   * place that's shut by then is refused unless you say you know (`acceptClosed`): fares aren't refunded at a locked gate.
+   */
+  async travel(ctx: SimulationContext, destinationId: string, mode: TransportMode, acceptClosed = false): Promise<void> {
     const character = ctx.character;
     this.assertCanMove(ctx);
     await this.assertDestination(ctx, destinationId);
@@ -236,6 +252,12 @@ export class MovementService {
       throw new GameRuleException('MODE_UNAVAILABLE', `${TRANSPORT[mode].label} can’t make this trip — try danfo or Bolt`);
     }
     const destination = findVenue(destinationId)?.name ?? (destinationId === homeLocationId(character.id) ? 'home' : 'a friend’s place');
+    if (!acceptClosed) {
+      const opens = await this.closedWhenYouArrive(ctx, destinationId, ctx.time + quote.minutes);
+      if (opens !== null) {
+        throw new GameRuleException('CLOSED_ON_ARRIVAL', `${destination} will be closed when you get there (opens ${hourLabel(opens)})`);
+      }
+    }
     if (quote.fare > 0) {
       await ctx.wallet.pay(quote.fare, 'transport', `${quote.intercity ? 'Interstate bus' : TRANSPORT[mode].label} to ${destination}`, `trip:${ctx.time}:${destinationId}`);
     }
@@ -250,6 +272,19 @@ export class MovementService {
       fare: quote.fare,
       explicit: true,
     };
+  }
+
+  /**
+   * The hour a destination opens if it'll be shut when you arrive, else null. Your own shift or lecture there counts as
+   * open: staff and students get in before the doors open to the public.
+   */
+  private async closedWhenYouArrive(ctx: SimulationContext, destinationId: string, arriveAt: number): Promise<number | null> {
+    const venue = findVenue(destinationId);
+    const opens = venue ? closedOnArrival(venue, arriveAt) : null;
+    if (opens === null) return null;
+    const blocks = await this.planner.blocksAround(ctx, arriveAt);
+    const expected = blocks.some((block) => block.locationId === destinationId && block.endsAt > arriveAt && block.startsAt - arriveAt <= 3 * MINUTES_PER_HOUR);
+    return expected ? null : opens;
   }
 
   /** A door: venues, your own home, or a host's home (to go in you need an accepted invite; leaving never does). */

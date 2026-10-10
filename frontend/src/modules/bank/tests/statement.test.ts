@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MINUTES_PER_DAY, type LedgerEntryDto, type PaymentDto } from '@insidelife/shared';
-import { dayLabel, filterEntries, groupByDay } from '../services/statement';
+import { dayLabel, entryKindLabel, filterEntries, groupByDay } from '../services/statement';
 import { isPaymentReference, outcomeCopy, paymentOutcome } from '../services/payment-status';
 
 const entry = (id: string, day: number, amount: number): LedgerEntryDto => ({
@@ -82,5 +82,14 @@ describe('payment outcome', () => {
     expect(isPaymentReference('0f78b5db-d87d-4e94-9217-4ec62df2062a')).toBe(true);
     expect(isPaymentReference('<script>')).toBe(false);
     expect(isPaymentReference(null)).toBe(false);
+  });
+});
+
+describe('entryKindLabel', () => {
+  it('names a fee by what it was for, not as a bank charge', () => {
+    expect(entryKindLabel({ kind: 'fee', memo: 'Car delivery: Toyota Corolla' })).toBe('Car delivery');
+    expect(entryKindLabel({ kind: 'fee', memo: 'Delivery: 2 items' })).toBe('Delivery');
+    expect(entryKindLabel({ kind: 'fee', memo: 'Agency fee (10%) — Yaba flat' })).toBe('Fees & charges');
+    expect(entryKindLabel({ kind: 'purchase', memo: 'Car delivery: odd memo' })).toBe('Purchase');
   });
 });

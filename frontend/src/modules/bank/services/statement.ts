@@ -51,7 +51,7 @@ export const LEDGER_KIND_LABELS: Readonly<Record<LedgerKind, string>> = {
   rent: 'Rent',
   'school-fees': 'School fees',
   tax: 'Tax',
-  fee: 'Bank charge',
+  fee: 'Fees & charges',
   purchase: 'Purchase',
   transport: 'Transport',
   health: 'Health',
@@ -71,6 +71,18 @@ export const LEDGER_KIND_LABELS: Readonly<Record<LedgerKind, string>> = {
   loan: 'Loan',
   adjustment: 'Adjustment',
 };
+
+/** Fees whose memo names what they were for ("Car delivery: Toyota Corolla"): the statement shows that instead. */
+const NAMED_FEES: readonly string[] = ['Car delivery', 'Delivery'];
+
+/** The line under an entry's memo: its kind, or for a fee named in its memo, what it was for ("Car delivery"). */
+export function entryKindLabel(entry: Pick<LedgerEntryDto, 'kind' | 'memo'>): string {
+  if (entry.kind === 'fee') {
+    const named = NAMED_FEES.find((name) => entry.memo.startsWith(`${name}:`));
+    if (named) return named;
+  }
+  return LEDGER_KIND_LABELS[entry.kind];
+}
 
 /** Statement filter: everything, money in, or money out. */
 export type StatementFilter = 'all' | 'in' | 'out';

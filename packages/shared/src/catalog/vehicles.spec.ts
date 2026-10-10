@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { findVehicle, isVehicleModel, paintSurcharge, VEHICLE_PAINTS, VEHICLES } from './vehicles.js';
+import { MINUTES_PER_DAY } from '../time/calendar.js';
+import { deliveryByLabel, findVehicle, isVehicleModel, paintSurcharge, vehicleDeliveryArrival, vehicleDeliveryPromise, VEHICLE_PAINTS, VEHICLES } from './vehicles.js';
+
+describe('car delivery promise', () => {
+  const day = 3 * MINUTES_PER_DAY;
+  it('arrives at midnight at the end of the next day, whatever the order time', () => {
+    expect(vehicleDeliveryArrival(day + 9 * 60)).toBe(day + 2 * MINUTES_PER_DAY);
+    expect(vehicleDeliveryArrival(day + 19 * 60 + 36)).toBe(day + 2 * MINUTES_PER_DAY);
+  });
+
+  it('promises what actually happens, before and after ordering', () => {
+    const ordered = day + 19 * 60 + 36;
+    expect(vehicleDeliveryPromise(ordered)).toBe('by tomorrow night, at midnight');
+    expect(deliveryByLabel(vehicleDeliveryArrival(ordered), ordered + MINUTES_PER_DAY)).toBe('by midnight tonight');
+    expect(deliveryByLabel(vehicleDeliveryArrival(ordered), ordered - 2 * MINUTES_PER_DAY)).toMatch(/^by \w+day night, at midnight$/);
+  });
+});
 
 describe('vehicle catalog', () => {
   it('gives every car a known body, its own default paint among its paints, and a unique id', () => {

@@ -42,7 +42,7 @@ const league: BettingLeagueDto = {
   ],
   live: null,
 };
-const account = { limits: { maxStake: 1_000_000 }, today: { lossLeft: 4_000_000 } } as unknown as BettingAccountDto;
+const account = { limits: { maxStake: 1_000_000, dailyLossLimit: 5_000_000 }, today: { lossLeft: 4_000_000 } } as unknown as BettingAccountDto;
 
 const quote = (overrides: Partial<BetQuoteDto> = {}): BetQuoteDto => {
   const { picks, stake } = useSlip.getState();
@@ -114,6 +114,17 @@ describe('SlipDrawer', () => {
     expect(within(dialog).getByText('Enyimba to win')).toBeTruthy();
     expect(within(dialog).getByText(/no cash value/i)).toBeTruthy();
     expect(state.quoteCalls.at(-1)).toEqual({ legs: useSlip.getState().picks, stake: 500 });
+  });
+
+  it('never says you can lose more than the daily limit (a winning day included)', () => {
+    useSlip.setState({ picks: [{ matchId: '7-0', selection: '1x2:home' }], stake: 500 });
+    state.quote = quote();
+    const winningDay = { ...account, today: { lossLeft: 5_000_100 } } as unknown as BettingAccountDto;
+    render(<SlipDrawer league={league} clubs={clubs} account={winningDay} />);
+    fireEvent.click(screen.getByRole('button', { name: /Open slip/ }));
+    const hint = document.getElementById('bet-stake-hint')?.textContent ?? '';
+    expect(hint).toContain('₦5,000,000 daily loss limit, ₦5,000,000 left today');
+    expect(hint).not.toContain('5,000,100');
   });
 
   it('asks the server again when the stake changes, and only arms the button for the current stake', () => {

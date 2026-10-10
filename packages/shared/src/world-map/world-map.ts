@@ -142,6 +142,22 @@ export function homeEntrance(key: string, districtId: DistrictId): Entrance {
   return homeLotOf(key, districtId)?.entrance ?? districtFallbackEntrance(districtId, `home:${key}`);
 }
 
+/** How far in front of a door you stand when you step out of it (metres; well within `ENTRY_RADIUS`). */
+export const DOOR_STEP_OUT = 1.5;
+
+/**
+ * Where someone stepping out of a door stands: a step in front of it, spread along the facade per person (`key`, e.g.
+ * the character id) so two players leaving the same place together don't stand on the same spot. Deterministic.
+ */
+export function doorStepFor(entrance: Entrance, key: string): WorldPoint {
+  const hash = hashString(`door-step:${key}`);
+  const side = ((hash % 7) - 3) * 0.3;
+  const out = DOOR_STEP_OUT + ((hash >>> 4) % 3) * 0.2;
+  const cos = Math.cos(entrance.heading);
+  const sin = Math.sin(entrance.heading);
+  return { x: entrance.position.x + cos * out - sin * side, z: entrance.position.z + sin * out + cos * side };
+}
+
 /** District containing a world point (points outside the city snap to the nearest edge cell). */
 export function districtAt(point: WorldPoint): DistrictId {
   return cityDistrictAt(point);

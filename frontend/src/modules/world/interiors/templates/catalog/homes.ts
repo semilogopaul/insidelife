@@ -397,7 +397,8 @@ export const HOME_HOSTEL: InteriorTemplate = {
   furniture: [
     // The hall provides it all (a hostel is never empty); tagged like any home all the same.
     place('bedBunk', [-1.9, -1.6], 0, { slot: 'bed', palette: { carpet: '#1d4e89' } }),
-    ...base('bed', place('bedBunk', [1.9, -1.6], 0, { palette: { carpet: '#7b1fa2' } })),
+    // Your roommate's bunk: the hall's, whatever you sleep on.
+    place('bedBunk', [1.9, -1.6], 0, { palette: { carpet: '#7b1fa2' } }),
     ...row('bookcaseClosedDoors', 2, [-2.6, 0.3], [0, 0.62], 90, { slot: 'storage', palette: { wood: '#78909c', woodDark: '#546e7a' } }),
     ...slotted('desk', place('table', [0.6, 0.7], 0), place('chair', [0.3, 0.15], 0), place('chair', [0.95, 0.15], 0)),
     place('books', [0.4, 0.7], 20, { y: 0.5, slot: 'books' }),

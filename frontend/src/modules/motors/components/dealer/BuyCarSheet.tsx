@@ -2,7 +2,11 @@
 
 import {
   VEHICLE_PAINTS,
+  deliveryByLabel,
   findVenue,
+  isVenueOpen,
+  toDateParts,
+  vehicleDeliveryPromise,
   type VehicleCatalogEntryDto,
   type VehiclePaintId,
 } from '@insidelife/shared';
@@ -10,9 +14,10 @@ import { HoldButton, Money, Sheet } from '@/common/components';
 import { gameClock } from '@/common/game/game-clock';
 import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot } from '@/common/game/snapshot';
+import { useGameMinute } from '@/common/game/use-game-clock';
+import { formatHour } from '@/common/places';
 import { useVehicleCommands } from '../../hooks/use-vehicles';
 import { announce, complain } from '@/common/game/feedback';
-import { gameDateTime } from '@/common/utils/game-time';
 import { purchaseLines } from '../../services/motors-rules';
 import { CarArt } from '../CarArt';
 import { MakeBadge } from '../MakeBadge';
@@ -42,6 +47,13 @@ export function BuyCarSheet({
     : { lines: [], total: 0 };
   const short = snapshot ? total - snapshot.wallet.balance : 0;
   const dealer = entry ? findVenue(entry.dealerIds[0] ?? '') : undefined;
+  const minute = useGameMinute(5000);
+  // Standing in a dealer that sells it, after hours: no directions to where you already are.
+  const here = snapshot ? findVenue(snapshot.character.locationId) : undefined;
+  const closedHere =
+    !inPerson && entry && here?.hours && entry.dealerIds.includes(here.id) && !isVenueOpen(here, toDateParts(minute).hour)
+      ? here.hours[0]
+      : null;
 
   return (
     <Sheet
@@ -65,10 +77,16 @@ export function BuyCarSheet({
             caption={
               inPerson
                 ? 'You’re at the dealer: drive it off the lot today.'
-                : 'Delivered to your gate by the next morning. Buy in person to skip the fee.'
+                : `Delivered to your gate ${vehicleDeliveryPromise(minute)}. Buy in person to skip the fee.`
             }
           />
-          {!inPerson && dealer && (
+          {closedHere !== null && (
+            <p className="rounded-card bg-paper-2 p-3 text-sm">
+              <span className="font-bold">Closed until {formatHour(closedHere)}.</span> Order it delivered now, or come back
+              then to drive it off the lot without the fee.
+            </p>
+          )}
+          {!inPerson && closedHere === null && dealer && (
             <div className="flex flex-col gap-2 text-sm">
               <p className="text-text-soft">
                 On the lot at {entry.dealerIds.map((id) => findVenue(id)?.name ?? id).join(' and ')}.
@@ -102,7 +120,7 @@ export function BuyCarSheet({
                       });
                     } else {
                       announce('Car ordered', {
-                        body: `The dealer’s driver brings it ${result.vehicle.arrivesAt !== null ? gameDateTime(result.vehicle.arrivesAt, now) : 'soon'}.`,
+                        body: `The dealer’s driver brings it ${result.vehicle.arrivesAt !== null ? deliveryByLabel(result.vehicle.arrivesAt, now) : 'soon'}.`,
                         amount: -(result.price + result.paintFee + result.deliveryFee),
                       });
                     }

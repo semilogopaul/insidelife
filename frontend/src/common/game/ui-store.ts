@@ -70,6 +70,9 @@ interface UiState {
   readonly settings: PlayerSettings;
   /** Bumped by "Replay the walkthrough" (Me → Settings); the walkthrough feature starts when it changes. Never persisted. */
   readonly tourRequest: number;
+  /** The place's "Things to do here" sheet is pulled up (the HUD clears the bottom of a phone for it). Never persisted. */
+  readonly placeSheetOpen: boolean;
+  setPlaceSheetOpen(open: boolean): void;
   requestTour(): void;
   openPhone(app?: PhoneApp, param?: string | null): void;
   closePhone(): void;
@@ -85,6 +88,8 @@ export const useUi = create<UiState>()(
       phoneParam: null,
       settings: DEFAULT_SETTINGS,
       tourRequest: 0,
+      placeSheetOpen: false,
+      setPlaceSheetOpen: (open) => set((state) => (state.placeSheetOpen === open ? state : { placeSheetOpen: open })),
       requestTour: () => set((state) => ({ tourRequest: state.tourRequest + 1, phoneOpen: false })),
       openPhone: (app = 'home', param = null) => set({ phoneOpen: true, phoneApp: app, phoneParam: param }),
       closePhone: () => set({ phoneOpen: false }),

@@ -58,6 +58,11 @@ const CONTEXT_OPTION_PX = 46;
 const TALK_PX = 48 + 8;
 /** Inside: the suggestions clear the collapsed venue sheet. */
 const SHEET_LIFT_PX = 76;
+/**
+ * Inside on a touch screen the walk stick's resting ring sits above the venue sheet in the stick's corner (sheet
+ * reserve 104 + 16 gap + the 120 px ring + 8, less the HUD's 12 px padding): pills on that side start above it.
+ */
+const STICK_CLEAR_PX = 104 + 16 + 120 + 8 - 12;
 
 /**
  * The context button (and, at a hotspot with several things to do, the others as smaller buttons above it, keys 1–4).
@@ -133,6 +138,8 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const stickSide = useStickSide();
   const flip = stickSide === 'right';
   const inside = data?.inside === true;
+  // Phones: the pulled-up place sheet owns the bottom of the screen (it has its own Step outside).
+  const sheetOpen = useUi((state) => state.placeSheetOpen) && inside && !wide && !phoneOpen;
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set());
   const cancel = useSnapshotMutation(() => api.delete<CharacterSnapshotDto>('/characters/me/actions/current'));
   useHudKeys();
@@ -144,7 +151,10 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const talkButton = talk && !phoneOpen && !(stickSide !== null && mode === 'driving') ? talk : null;
   // On phones a long context button ("🍹 Drinks at the lounge · ₦18,000", options above it) shares no row with the
   // suggestions: they lift above it.
-  const contextLift = !wide && nearby ? CONTEXT_BASE_PX + (talkButton ? TALK_PX : 0) + (nearby.disabled ? 14 : 0) + (nearby.more?.length ?? 0) * CONTEXT_OPTION_PX : 0;
+  const contextLift = !wide && nearby && !sheetOpen ? CONTEXT_BASE_PX + (talkButton ? TALK_PX : 0) + (nearby.disabled ? 14 : 0) + (nearby.more?.length ?? 0) * CONTEXT_OPTION_PX : 0;
+  // Inside on a phone the stick's ring is in its corner (where the pills go when the stick is on the right).
+  const stickLift = !wide && inside && stickSide !== null && !phoneOpen ? STICK_CLEAR_PX : 0;
+  const bottomLift = Math.max(contextLift, stickLift, inside && !phoneOpen ? SHEET_LIFT_PX : 0);
   // On phones the stick's corner is the walking/steering thumb zone: keep it clear while moving around outside.
   const thumbZoneBusy = !wide && (mode === 'walking' || mode === 'driving');
   // Out on the street the planned timeline runs ahead of you (the commute you're not taking): on phones only an
@@ -210,16 +220,18 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
         </div>
       </div>
 
-      {!wide && <div className="pointer-events-auto mt-2 flex flex-col gap-2 empty:hidden">{centre}</div>}
+      {/* Only the cards take taps: the rest of the row goes through to the world. */}
+      {!wide && <div className="pointer-events-none mt-2 flex flex-col gap-2 empty:hidden *:pointer-events-auto">{centre}</div>}
 
       <div className={cn('mt-auto flex items-end justify-between gap-3', flip && 'flex-row-reverse')}>
         <div
           className={cn('pointer-events-auto flex min-w-0 flex-col gap-2', flip ? 'items-end' : 'items-start', inside && !phoneOpen && 'mb-[4.75rem] lg:mb-0')}
-          style={contextLift > 0 ? { marginBottom: Math.max(contextLift, inside && !phoneOpen ? SHEET_LIFT_PX : 0) } : undefined}
+          style={!wide && bottomLift > 0 ? { marginBottom: bottomLift } : undefined}
         >
           {wide && !flip && outdoorMap}
-          {!drive && !thumbZoneBusy && <SuggestionChips suggestions={chips} max={wide ? 3 : 2} />}
-          {showActivity && data.segment && (
+          {/* A phone with a stack of things to do at this spot shows one pill, not two (no five-layer pile-ups). */}
+          {!drive && !thumbZoneBusy && !sheetOpen && <SuggestionChips suggestions={chips} max={wide ? 3 : (nearby?.more?.length ?? 0) > 0 ? 1 : 2} />}
+          {showActivity && !sheetOpen && data.segment && (
             <ActivityBanner
               segment={data.segment}
               action={data.action}
@@ -236,7 +248,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
         <div className={cn('pointer-events-auto flex flex-col gap-2', flip ? 'items-start' : 'items-end')}>
           {wide && flip && outdoorMap}
           {drive && <DrivePanel drive={drive} />}
-          {nearby && <ContextActions nearby={nearby} alignStart={flip} />}
+          {nearby && !sheetOpen && <ContextActions nearby={nearby} alignStart={flip} />}
           {talkButton}
           {!phoneOpen && (
             <button

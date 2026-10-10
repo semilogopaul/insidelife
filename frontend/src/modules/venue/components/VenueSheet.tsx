@@ -83,6 +83,11 @@ export function VenueSheet() {
     visits?.incoming.find((visit) => visit.home.locationId === snapshot?.character.locationId)?.host ?? null;
   const { place, actions } = usePlaceActions(snapshot, host?.firstName ?? null);
   const [expanded, setExpanded] = useState(false);
+  // The HUD keeps the bottom of a phone clear while the sheet is up (no pills or buttons under it).
+  useEffect(() => {
+    useUi.getState().setPlaceSheetOpen(expanded);
+    return () => useUi.getState().setPlaceSheetOpen(false);
+  }, [expanded]);
   const client = useQueryClient();
   const { start, pending } = useStartAction();
   const [exiting, setExiting] = useState(false);
@@ -190,7 +195,11 @@ export function VenueSheet() {
     >
       <section
         aria-label={`Things to do at ${place.name}`}
-        className="glass pointer-events-auto w-full max-w-xl rounded-sheet text-on-ink"
+        className={cn(
+          'pointer-events-auto w-full max-w-xl rounded-sheet text-on-ink',
+          // Pulled up it's a solid panel: nothing in the room or the HUD reads through it.
+          expanded ? 'bg-ink/95 shadow-[var(--shadow-glass)] ring-1 ring-white/10 backdrop-blur-md' : 'glass',
+        )}
       >
         <button
           type="button"
@@ -208,7 +217,7 @@ export function VenueSheet() {
               </span>
             ) : (
               <span className="block truncate text-xs text-on-ink-soft">
-                {expanded ? place.blurb : `${own.length + services.length} things to do here`}
+                {expanded ? place.blurb : thingsToDo(own.length + services.length)}
                 {atHome &&
                   ` · Kitchen: ${snapshot.summary.pantryMeals > 0 ? `${snapshot.summary.pantryMeals} meals` : 'empty — buy groceries in Shop'}`}
               </span>
@@ -292,4 +301,9 @@ export function VenueSheet() {
       </section>
     </div>
   );
+}
+
+/** "1 thing to do here", "4 things to do here". */
+export function thingsToDo(count: number): string {
+  return `${count} ${count === 1 ? 'thing' : 'things'} to do here`;
 }

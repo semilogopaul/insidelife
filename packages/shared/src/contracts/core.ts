@@ -327,6 +327,8 @@ export interface StartActionRequest {
 export interface TravelRequest {
   readonly destinationId: string;
   readonly mode: TransportMode;
+  /** Book it even though the destination will be closed when the ride gets there (else `CLOSED_ON_ARRIVAL`). */
+  readonly acceptClosed?: boolean;
 }
 
 export interface UpdateSettingsRequest {

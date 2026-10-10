@@ -52,6 +52,8 @@ const OBJECT_OFFER = 0.85;
 const STICKINESS = 0.3;
 /** Extra things to do at a spot shown under the main one (the card and the sheet list everything). */
 export const MAX_MORE = 3;
+/** On a phone: one more button above the context button, then "More here" (the HUD stays three buttons high). */
+export const PHONE_MAX_MORE = 1;
 
 const ID_PREFIX = 'hotspot:';
 
@@ -273,6 +275,7 @@ export interface ActionStatus {
 export function hotspotInteractable(
   hotspot: Hotspot,
   status: (action: ActionDefinition) => ActionStatus,
+  maxMore = MAX_MORE,
 ): Interactable | null {
   const option = (action: ActionDefinition): InteractableOption => {
     const { priceNote, reason } = status(action);
@@ -290,9 +293,10 @@ export function hotspotInteractable(
   });
   const [first, ...rest] = [...hotspot.actions.map(option), ...hotspot.services.map(service)];
   if (!first) return null;
-  const more = rest.slice(0, MAX_MORE);
-  if (rest.length > MAX_MORE)
-    more.push({ id: MORE_HERE_ID, label: `More here (${rest.length - MAX_MORE})`, emoji: '⋯' });
+  // "More here" takes the last place when the rest don't all fit.
+  const fits = rest.length <= maxMore + 1 ? rest.length : maxMore;
+  const more = rest.slice(0, fits);
+  if (rest.length > fits) more.push({ id: MORE_HERE_ID, label: `More here (${rest.length - fits})`, emoji: '⋯' });
   return { ...first, kind: 'activity', more };
 }
 

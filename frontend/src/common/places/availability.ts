@@ -82,7 +82,10 @@ export function actionAvailability(action: ActionDefinition, context: ActionCont
   const priceNote = actionPriceNote(action, context.priceIndex, context.pantryMeals);
   const no = (reason: string): ActionAvailability => ({ available: false, reason, price, priceNote });
   if (context.busy) return no('Finish what you’re doing first');
-  const venue = context.venue;
+  // Do-anywhere actions (scrolling, calling family) don't care where you are: a closed venue's hours and door
+  // policy are not theirs (the server skips the place checks for them too).
+  const anywhere = action.where.anywhere === true;
+  const venue = anywhere ? null : context.venue;
   if (venue?.hours && !isVenueOpen(venue, context.hour))
     return no(`Closed now · opens ${formatHour(venue.hours[0])}`);
   const status = minStatusOf(action, venue);

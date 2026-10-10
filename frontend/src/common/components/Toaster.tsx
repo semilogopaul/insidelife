@@ -24,7 +24,7 @@ export function Toaster() {
               t.onOpen?.();
               dismiss(t.id);
             }}
-            className="glass pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-card px-4 py-3 text-left text-on-ink"
+            className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-card bg-ink/95 px-4 py-3 text-left text-on-ink shadow-[var(--shadow-glass)] ring-1 ring-white/10 backdrop-blur-md"
           >
             <span
               aria-hidden

@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { X } from 'lucide-react';
 import { useEffect, useId, useRef, type ReactNode } from 'react';
 import { useEscapeLayer } from '@/common/hooks/use-escape-layer';
+import { restoreFocus } from '@/common/utils/focus';
 import { cn } from '@/common/utils/cn';
 
 export interface SheetProps {
@@ -57,7 +58,8 @@ export function Sheet({ open, onClose, title, description, children, tone = 'pap
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
-      previous?.focus();
+      // Back to the trigger if it's still there, else to the page (where W A S D drive the game again).
+      restoreFocus(previous, panel);
     };
   }, [open]);
 
