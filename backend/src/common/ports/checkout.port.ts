@@ -1,5 +1,7 @@
+import type { PaymentCurrency, PaymentMethod } from '@insidelife/shared';
+
 /**
- * Generic real-money checkout (Flutterwave). The payments module owns the gateway; other domains (top-ups, billboard
+ * Generic real-money checkout (Flutterwave), in naira or US dollars. The payments module owns the gateway; other domains (top-ups, billboard
  * ads, club plays) start checkouts and register a fulfiller for their purpose. The payments module guarantees a
  * fulfiller is invoked once per successful payment; fulfillers must still be idempotent by `reference`.
  */
@@ -13,8 +15,14 @@ export interface CheckoutRequest {
   readonly customerName?: string;
   readonly characterId: string | null;
   readonly purpose: CheckoutPurpose;
-  /** Real money in kobo. */
-  readonly amountKobo: number;
+  /** What the checkout charges in (default NGN). */
+  readonly currency?: PaymentCurrency;
+  /** The price in minor units of `currency`: kobo for NGN, cents for USD. */
+  readonly amountMinor: number;
+  /** Dollar checkouts: the ₦ per $1 the price was converted at (required for USD, refused for NGN). */
+  readonly ngnPerUsd?: number;
+  /** `card` (hosted checkout, the default) or `applepay` / `googlepay` (USD only). */
+  readonly method?: PaymentMethod;
   /** Shown on the hosted checkout. */
   readonly description: string;
   /** Id of the thing being bought (package id or `custom`, ad campaign id, club-play order id). */
@@ -42,10 +50,16 @@ export interface PaidCheckout {
   readonly characterId: string | null;
   readonly purpose: CheckoutPurpose;
   readonly subjectId: string;
+  /** The currency charged; `amountMinor` / `paidMinor` are in its minor units (kobo, cents). */
+  readonly currency: PaymentCurrency;
   /** The price quoted at checkout. */
+  readonly amountMinor: number;
+  /** What the gateway verified as paid (never less than `amountMinor`). Deliver from this, not from anything the client said. */
+  readonly paidMinor: number;
+  /** Naira value of the price, in kobo (= `amountMinor` for NGN; cents × `ngnPerUsd` for USD). */
   readonly amountKobo: number;
-  /** What the gateway verified as paid (never less than `amountKobo`). Deliver from this, not from anything the client said. */
-  readonly paidKobo: number;
+  /** Dollar payments: the ₦ per $1 fixed at checkout (null for naira). */
+  readonly ngnPerUsd: number | null;
   /** Top-ups: the rate quoted at checkout (null for other purposes, and for top-ups made before custom amounts). */
   readonly topupRate: number | null;
   readonly paidAt: Date;
@@ -61,7 +75,9 @@ export type FulfilmentResult = { readonly kind: 'delivered' } | { readonly kind:
 /** A refund that reached the gateway: sent by us, or made by ops in the gateway dashboard (reported by webhook). */
 export interface CheckoutRefund {
   readonly refundId: string;
-  readonly amountKobo: number;
+  /** In minor units of `currency`, the payment's currency. */
+  readonly currency: PaymentCurrency;
+  readonly amountMinor: number;
   readonly source: 'api' | 'dashboard';
   readonly reason: string | null;
   /** The purchase had been delivered when the refund was recorded (a refund before delivery cancels the delivery). */

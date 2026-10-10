@@ -92,6 +92,12 @@ export const validationSchema = Joi.object({
   TOPUP_DAILY_LIMIT_NGN: Joi.number().integer().min(0).max(1_000_000_000).default(0),
   /** Largest single top-up in real naira (pack or custom amount). */
   TOPUP_MAX_PER_PAYMENT_NGN: Joi.number().integer().min(500).max(100_000_000).default(10_000_000),
+  /** Take US dollars too (top-ups, ads, club songs) through Flutterwave; the game stays in naira. Off by default. */
+  PAYMENTS_USD_ENABLED: Joi.boolean().default(false),
+  /** Largest single dollar top-up, whole dollars. */
+  TOPUP_MAX_PER_PAYMENT_USD: Joi.number().integer().min(1).max(100_000).default(5_000),
+  /** Offer Apple Pay and Google Pay for dollar payments (needs PAYMENTS_USD_ENABLED). Off by default. */
+  PAYMENTS_WALLETS_ENABLED: Joi.boolean().default(false),
   /** Object storage (SeaweedFS locally, any S3-compatible store in production) for ad creatives and club tracks. */
   S3_ENDPOINT: Joi.string().uri().required(),
   S3_REGION: Joi.string().default('us-east-1'),
@@ -146,6 +152,9 @@ interface EnvForChecks {
   readonly ADMIN_ORIGINS?: string;
   readonly ADMIN_MFA_KEY?: string;
   readonly ALLOW_PAYMENT_SANDBOX: boolean;
+  readonly PAYMENTS_USD_ENABLED?: boolean;
+  readonly PAYMENTS_WALLETS_ENABLED?: boolean;
+  readonly TOPUP_MAX_PER_PAYMENT_USD?: number;
   readonly COOKIE_SECURE: boolean;
   readonly MARKET_SEED?: string;
   readonly BETTING_SECRET?: string;
@@ -179,6 +188,8 @@ const TEST_KEY = /^FLW(SECK|PUBK)_TEST-/;
 export function productionProblem(value: EnvForChecks): string | null {
   const smtp = value.SMTP_URL || value.SMTP_HOST || '';
   const webhookHash = value.FLUTTERWAVE_WEBHOOK_SECRET_HASH ?? '';
+  // Apple Pay and Google Pay are dollar checkouts: switched on alone they would never be offered, which hides a typo.
+  if (value.PAYMENTS_WALLETS_ENABLED && !value.PAYMENTS_USD_ENABLED) return 'PAYMENTS_WALLETS_ENABLED needs PAYMENTS_USD_ENABLED=true (Apple Pay and Google Pay are dollar payments)';
   if (value.NODE_ENV === 'production') {
     if (!value.FLUTTERWAVE_SECRET_KEY && !value.ALLOW_PAYMENT_SANDBOX) return 'FLUTTERWAVE_SECRET_KEY is required in production';
     if (!value.PAYMENT_CALLBACK_URL) return 'PAYMENT_CALLBACK_URL is required in production';
@@ -211,6 +222,8 @@ export function productionProblem(value: EnvForChecks): string | null {
     if (adminOrigins.some((origin) => !origin.startsWith('https://'))) return 'ADMIN_ORIGINS must be https:// origins on the live site';
     if (!value.ADMIN_MFA_KEY || value.ADMIN_MFA_KEY.length < 32 || PLACEHOLDER.test(value.ADMIN_MFA_KEY)) return 'ADMIN_MFA_KEY must be a long random secret (32+ characters) on the live site';
     if (!value.PAYMENT_CALLBACK_URL.startsWith('https://')) return 'PAYMENT_CALLBACK_URL must be https:// on the live site';
+    // A dollar top-up is worth up to max × ₦5,000 (the highest rate the owner can set): keep it within the naira sanity bound.
+    if (value.PAYMENTS_USD_ENABLED && (value.TOPUP_MAX_PER_PAYMENT_USD ?? 0) > 20_000) return 'TOPUP_MAX_PER_PAYMENT_USD can be at most 20000 on the live site';
     if (smtp && MAIL_CATCHER.test(smtp)) return 'SMTP_URL must be a real mail server on the live site (not a local mail catcher)';
   }
   return null;

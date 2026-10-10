@@ -52,6 +52,9 @@ describe('payment outcome', () => {
     purpose: 'topup',
     subjectId: 'owambe-pack',
     description: 'Owambe',
+    currency: 'NGN',
+    amountMinor: 250_000,
+    ngnPerUsd: null,
     amountNgn: 2_500,
     amountKobo: 250_000,
     status: 'success',
@@ -59,6 +62,7 @@ describe('payment outcome', () => {
     channel: 'sandbox',
     createdAt: '',
     verifiedAt: null,
+    refundedMinor: 0,
     refundedNgn: 0,
     topup: { packageId: 'owambe-pack', label: 'Owambe pack', ratePerNaira: 400, virtualAmount: 1_000_000 },
   };
@@ -68,7 +72,7 @@ describe('payment outcome', () => {
   });
 
   it('says when a payment was refunded', () => {
-    expect(outcomeCopy({ ...topup, purpose: 'billboard', topup: null, amountNgn: 300_000, refundedNgn: 300_000 })).toEqual({
+    expect(outcomeCopy({ ...topup, purpose: 'billboard', topup: null, amountMinor: 30_000_000, amountNgn: 300_000, amountKobo: 30_000_000, refundedMinor: 30_000_000, refundedNgn: 300_000 })).toEqual({
       title: 'Payment refunded',
       body: '₦300,000 went back to your card or bank. It can take a few working days to show.',
     });

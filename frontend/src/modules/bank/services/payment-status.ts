@@ -1,4 +1,4 @@
-import { formatNaira, type PaymentDto, type PaymentPurpose } from '@insidelife/shared';
+import { formatNaira, formatPaymentAmount, type PaymentDto, type PaymentPurpose } from '@insidelife/shared';
 import { deliveredAlert, type PaymentAlert } from '@/common/payments';
 
 /**
@@ -25,14 +25,17 @@ export interface OutcomeCopy {
 }
 
 /** Money went back to the payer (an ad or song that wasn't approved, a sold-out slot, or a refund by support). */
-export const isRefunded = (payment: Pick<PaymentDto, 'refundedNgn'>): boolean => payment.refundedNgn > 0;
+export const isRefunded = (payment: Pick<PaymentDto, 'refundedMinor'>): boolean => payment.refundedMinor > 0;
+
+/** What went back, in the currency it was paid in: "₦300,000" or "$200". */
+const refundedLabel = (payment: Pick<PaymentDto, 'currency' | 'refundedMinor'>): string => formatPaymentAmount(payment.currency, payment.refundedMinor);
 
 /** Headline + one line for the callback screen, in the voice of the game. */
 export function outcomeCopy(payment: PaymentDto): OutcomeCopy {
   const outcome = paymentOutcome(payment);
   const credited = payment.topup ? formatNaira(payment.topup.virtualAmount) : null;
   if (isRefunded(payment)) {
-    return { title: 'Payment refunded', body: `${formatNaira(payment.refundedNgn)} went back to your card or bank. It can take a few working days to show.` };
+    return { title: 'Payment refunded', body: `${refundedLabel(payment)} went back to your card or bank. It can take a few working days to show.` };
   }
   switch (outcome) {
     case 'delivered':
@@ -67,7 +70,7 @@ export function offersPaidCheck(payment: Pick<PaymentDto, 'status' | 'createdAt'
 
 /** The alert after "I've paid: check now": what Flutterwave says now, and never a dead end for a payment that may be paid. */
 export function checkResultAlert(payment: PaymentDto): PaymentAlert {
-  if (isRefunded(payment)) return { title: 'Payment refunded', body: `${formatNaira(payment.refundedNgn)} went back to your card or bank.`, tone: 'neutral' };
+  if (isRefunded(payment)) return { title: 'Payment refunded', body: `${refundedLabel(payment)} went back to your card or bank.`, tone: 'neutral' };
   const safe = 'If you paid, it’s safe: we keep checking with Flutterwave and credit it the moment it’s confirmed.';
   switch (paymentOutcome(payment)) {
     case 'delivered':

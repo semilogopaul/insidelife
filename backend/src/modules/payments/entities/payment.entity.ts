@@ -1,5 +1,5 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import type { PaymentStatus } from '@insidelife/shared';
+import { Check, Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
+import type { PaymentCurrency, PaymentStatus } from '@insidelife/shared';
 import type { CheckoutPurpose } from '../../../common/ports/checkout.port.js';
 import { bigintNumber } from '../../../database/transformers.js';
 import type { GatewayDetails, GatewayProvider } from '../gateways/payment-gateway.interface.js';
@@ -17,6 +17,9 @@ export type PaymentRefundStatus = 'due' | 'sending' | 'pending' | 'refunded' | '
  * Flutterwave's `tx_ref`, the ledger credit (`topup:<reference>`), the fulfilment and the refund.
  */
 @Entity('payments')
+@Check('payments_currency', `"currency" IN ('NGN', 'USD')`)
+// A naira payment charges exactly its naira value; a dollar payment has a sane rate and its naira value is cents × rate.
+@Check('payments_charge_matches_value', `("currency" = 'NGN' AND "ngn_per_usd" IS NULL AND "amount_minor" = "amount_kobo") OR ("currency" = 'USD' AND "ngn_per_usd" BETWEEN 500 AND 5000 AND "amount_kobo" = "amount_minor" * "ngn_per_usd")`)
 @Index('payments_user_created', ['userId', 'createdAt'])
 @Index('payments_status_created', ['status', 'createdAt'])
 export class PaymentEntity {
@@ -44,20 +47,32 @@ export class PaymentEntity {
   @Column({ type: 'varchar', length: 120 })
   description: string;
 
-  /** Real money in kobo: the price quoted at checkout. */
+  /**
+   * Naira value of the charge, in kobo: what reports, revenue and daily caps count. For NGN it is the charge itself
+   * (`amountMinor`); for USD it is cents × `ngnPerUsd` (a database check enforces both).
+   */
   @Column({ type: 'bigint', transformer: bigintNumber })
   amountKobo: number;
 
-  /** Real money the gateway verified as paid (≥ `amountKobo`); null until a charge is confirmed. */
+  /** The currency the checkout charges in; Flutterwave must report this exact currency or nothing is delivered. */
+  @Column({ type: 'varchar', length: 3, default: 'NGN' })
+  currency: PaymentCurrency;
+
+  /** The price quoted at checkout, in `currency`'s minor units (kobo or cents): what the gateway must verify. */
+  @Column({ type: 'bigint', transformer: bigintNumber })
+  amountMinor: number;
+
+  /** Real money the gateway verified as paid, in `currency`'s minor units (≥ `amountMinor`); null until confirmed. */
   @Column({ type: 'bigint', transformer: bigintNumber, nullable: true })
-  paidKobo: number | null;
+  paidMinor: number | null;
+
+  /** Dollar payments: ₦ per $1 the price was converted at, fixed at checkout (null for naira). */
+  @Column({ type: 'integer', nullable: true })
+  ngnPerUsd: number | null;
 
   /** Top-ups: game naira per real ₦1 quoted at checkout (null for other purposes and older top-ups). */
   @Column({ type: 'integer', nullable: true })
   topupRate: number | null;
-
-  @Column({ type: 'varchar', length: 3, default: 'NGN' })
-  currency: 'NGN';
 
   @Column({ type: 'varchar', length: 16 })
   provider: GatewayProvider;
@@ -120,9 +135,9 @@ export class PaymentEntity {
   @Column({ type: 'varchar', length: 200, nullable: true })
   refundReason: string | null;
 
-  /** Real money refunded, in kobo. */
+  /** Real money refunded, in `currency`'s minor units. */
   @Column({ type: 'bigint', transformer: bigintNumber, default: 0 })
-  refundedKobo: number;
+  refundedMinor: number;
 
   /** The gateway's refund id. */
   @Column({ type: 'varchar', length: 40, nullable: true })

@@ -38,6 +38,9 @@ class FakePromotions {
     endDate: '2099-01-08',
     days: 7,
     amountKobo: 30_000_000,
+    currency: 'NGN',
+    chargeMinor: 30_000_000,
+    ngnPerUsd: null,
     status: 'in-review',
     rejectionReason: null,
     paymentReference: REF,
@@ -77,8 +80,8 @@ class FakePromotions {
   } as unknown as Repository<AdCampaignEntity>;
 }
 
-const paid: PaidCheckout = { reference: REF, userId: 'owner-1', characterId: null, purpose: 'billboard', subjectId: CAMPAIGN, amountKobo: 30_000_000, paidKobo: 30_000_000, topupRate: null, paidAt: new Date() };
-const refund: CheckoutRefund = { refundId: '75923', amountKobo: 30_000_000, source: 'api', reason: 'Not approved', delivered: true };
+const paid: PaidCheckout = { reference: REF, userId: 'owner-1', characterId: null, purpose: 'billboard', subjectId: CAMPAIGN, currency: 'NGN', amountMinor: 30_000_000, paidMinor: 30_000_000, amountKobo: 30_000_000, ngnPerUsd: null, topupRate: null, paidAt: new Date() };
+const refund: CheckoutRefund = { refundId: '75923', currency: 'NGN', amountMinor: 30_000_000, source: 'api', reason: 'Not approved', delivered: true };
 
 function moderation(store: FakePromotions, outcome: (reference: string) => Promise<RefundOutcome>) {
   const notices: PromotionNotice[] = [];

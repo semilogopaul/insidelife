@@ -84,6 +84,9 @@ services:
       PAYMENT_CALLBACK_URL: http://localhost:8080/payments/callback
       TOPUP_DAILY_LIMIT_NGN: ${TOPUP_DAILY_LIMIT_NGN:-0}
       TOPUP_MAX_PER_PAYMENT_NGN: ${TOPUP_MAX_PER_PAYMENT_NGN:-10000000}
+      PAYMENTS_USD_ENABLED: ${PAYMENTS_USD_ENABLED:-false}
+      TOPUP_MAX_PER_PAYMENT_USD: ${TOPUP_MAX_PER_PAYMENT_USD:-5000}
+      PAYMENTS_WALLETS_ENABLED: ${PAYMENTS_WALLETS_ENABLED:-false}
       # Production mode demands a Flutterwave key; locally we allow the sandbox checkout instead.
       ALLOW_PAYMENT_SANDBOX: "true"
       S3_ENDPOINT: http://storage:8333

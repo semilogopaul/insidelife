@@ -1,3 +1,5 @@
+import type { PaymentCurrency, PaymentMethod } from '@insidelife/shared';
+
 export type GatewayProvider = 'flutterwave' | 'sandbox';
 
 /** Normalised charge status. Flutterwave's `pending`/`processing`/anything unknown map to `pending`. */
@@ -13,10 +15,11 @@ export interface GatewayCharge {
   /** The gateway's own transaction id (Flutterwave `data.id`); needed for refunds. */
   readonly transactionId: string | null;
   readonly status: GatewayChargeStatus;
-  /** The transaction amount (Flutterwave `amount`). */
-  readonly amountKobo: number;
-  /** What the customer was actually charged (Flutterwave `charged_amount`, fees included); null when missing. */
-  readonly chargedAmountKobo: number | null;
+  /** The transaction amount (Flutterwave `amount`), in minor units of `currency` (kobo, cents). */
+  readonly amountMinor: number;
+  /** What the customer was actually charged (Flutterwave `charged_amount`, fees included), minor units; null when missing. */
+  readonly chargedAmountMinor: number | null;
+  /** As the gateway reports it, upper-cased (`NGN`, `USD`…); '' when missing. Never assumed. */
   readonly currency: string;
   readonly channel: string | null;
   readonly paidAt: Date | null;
@@ -29,7 +32,11 @@ export interface GatewayInitializeInput {
   readonly paymentId: string;
   readonly email: string;
   readonly customerName: string;
-  readonly amountKobo: number;
+  readonly currency: PaymentCurrency;
+  /** The price in minor units of `currency` (kobo, cents). */
+  readonly amountMinor: number;
+  /** `card`: the hosted checkout. `applepay` / `googlepay`: a wallet checkout (USD only). */
+  readonly method: PaymentMethod;
   readonly description: string;
   /**
    * Where the hosted checkout sends the browser back: the callback page on the player's own origin when it is one of
@@ -43,8 +50,8 @@ export interface GatewayRefundInput {
   readonly reference: string;
   /** Gateway transaction id of the charge to refund (null for the sandbox). */
   readonly transactionId: string | null;
-  /** Partial refunds only; omit to refund in full. */
-  readonly amountKobo?: number;
+  /** Partial refunds only, in minor units of the payment's currency; omit to refund in full. */
+  readonly amountMinor?: number;
   /** Shown in the gateway dashboard. */
   readonly comments: string;
 }
@@ -52,7 +59,8 @@ export interface GatewayRefundInput {
 /** A refund the gateway accepted (Flutterwave refunds take 3-15 working days to reach the payer after this). */
 export interface GatewayRefund {
   readonly refundId: string;
-  readonly amountKobo: number;
+  /** In minor units of the refunded transaction's currency. */
+  readonly amountMinor: number;
   /** Gateway wording (`completed`, `processing`, `completed-mpgs`, `failed`…), kept for audit. See `refundStateOf`. */
   readonly status: string;
 }

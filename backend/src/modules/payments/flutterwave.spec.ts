@@ -1,6 +1,6 @@
 import { isValidWebhookHash } from './flutterwave-webhook-hash.js';
 import { FlutterwaveClient } from './gateways/flutterwave.client.js';
-import { nairaToKoboAmount, parseRefund, parseTransaction, parseWebhook } from './gateways/flutterwave.parsers.js';
+import { majorToMinorAmount, parseRefund, parseTransaction, parseWebhook } from './gateways/flutterwave.parsers.js';
 
 const SECRET_HASH = '3f9c2a7be1d04c58a6f2e9b17d3c5a80f4e6b2d19a7c3e5f8b0d2a4c6e8f1a3b';
 const SECRET_KEY = 'FLWSECK_TEST-0a1b2c3d4e5f60718293a4b5c6d7e8f9-X';
@@ -51,16 +51,16 @@ describe('Flutterwave webhook hash (verif-hash)', () => {
 
 describe('Flutterwave parsers', () => {
   it('turns naira into kobo and refuses nonsense', () => {
-    expect(nairaToKoboAmount(2_500)).toBe(250_000);
-    expect(nairaToKoboAmount(100.5)).toBe(10_050);
-    expect(nairaToKoboAmount(-1)).toBeNull();
-    expect(nairaToKoboAmount('2500')).toBeNull();
-    expect(nairaToKoboAmount(Number.NaN)).toBeNull();
+    expect(majorToMinorAmount(2_500)).toBe(250_000);
+    expect(majorToMinorAmount(100.5)).toBe(10_050);
+    expect(majorToMinorAmount(-1)).toBeNull();
+    expect(majorToMinorAmount('2500')).toBeNull();
+    expect(majorToMinorAmount(Number.NaN)).toBeNull();
   });
 
   it('reads a verified transaction, keeping no card digits, tokens or customer contact', () => {
     const charge = parseTransaction(verified.data);
-    expect(charge).toMatchObject({ reference: verified.data.tx_ref, transactionId: '9231836', status: 'success', amountKobo: 250_000, currency: 'NGN', channel: 'card' });
+    expect(charge).toMatchObject({ reference: verified.data.tx_ref, transactionId: '9231836', status: 'success', amountMinor: 250_000, currency: 'NGN', channel: 'card' });
     const audit = JSON.stringify(charge?.details);
     for (const secret of ['553188', '2950', 'flw-t1nf-secret', 'ada@example.com', '08012345678']) expect(audit).not.toContain(secret);
   });
@@ -76,7 +76,7 @@ describe('Flutterwave parsers', () => {
   it('reads charge.completed, refund webhooks (wrapped or bare) and ignores the rest', () => {
     expect(parseWebhook({ event: 'charge.completed', data: verified.data })).toEqual({ kind: 'charge', transactionId: '9231836', reference: verified.data.tx_ref });
     const bare = { id: 99_025, AmountRefunded: 100, status: 'completed', FlwRef: '4687213286', destination: 'payment_source', TransactionId: 9_231_836 };
-    expect(parseWebhook(bare)).toEqual({ kind: 'refund', refund: { refundId: '99025', amountKobo: 10_000, status: 'completed', transactionId: '9231836' } });
+    expect(parseWebhook(bare)).toEqual({ kind: 'refund', refund: { refundId: '99025', amountMinor: 10_000, status: 'completed', transactionId: '9231836' } });
     expect(parseWebhook({ event: 'refund.completed', data: bare })).toMatchObject({ kind: 'refund', refund: { refundId: '99025' } });
     expect(parseWebhook({ event: 'transfer.completed', data: {} })).toEqual({ kind: 'ignored', event: 'transfer.completed' });
     expect(parseWebhook({ event: 'charge.completed', data: { tx_ref: 'x' } })).toBeNull();
@@ -86,7 +86,7 @@ describe('Flutterwave parsers', () => {
   it('reads the refund API response', () => {
     expect(parseRefund({ id: 75_923, tx_id: 908_790, amount_refunded: 6_900, status: 'completed', flw_ref: 'URF_1' })).toEqual({
       refundId: '75923',
-      amountKobo: 690_000,
+      amountMinor: 690_000,
       status: 'completed',
       transactionId: '908790',
     });
@@ -119,7 +119,9 @@ describe('FlutterwaveClient', () => {
       paymentId: 'p-1',
       email: 'ada@example.com',
       customerName: '@ada',
-      amountKobo: 30_000_000,
+      currency: 'NGN',
+      amountMinor: 30_000_000,
+      method: 'card',
       description: 'Inside Life billboard: Lekki Toll Gate, 7 days',
       redirectUrl: 'https://insidelife.online/payments/callback',
       metadata: { purpose: 'billboard', subjectId: 'c-1', characterId: null },
@@ -142,7 +144,7 @@ describe('FlutterwaveClient', () => {
   it('returns the player to the redirect it is given (their own origin), with the logo from that site when it is https', async () => {
     const link = { status: 200, body: { status: 'success', message: 'Hosted Link', data: { link: 'https://checkout.flutterwave.com/v3/hosted/pay/abc' } } };
     responses.push(link, link);
-    const input = { reference: 'r', paymentId: 'p', email: 'a@b.c', customerName: 'x', amountKobo: 50_000, description: 'd', metadata: {} };
+    const input = { reference: 'r', paymentId: 'p', email: 'a@b.c', customerName: 'x', currency: 'NGN' as const, amountMinor: 50_000, method: 'card' as const, description: 'd', metadata: {} };
     await client().initialize({ ...input, redirectUrl: 'https://x7k2p9-3100.uks1.devtunnels.ms/payments/callback' });
     expect(sentBody(0)).toMatchObject({
       redirect_url: 'https://x7k2p9-3100.uks1.devtunnels.ms/payments/callback',
@@ -156,7 +158,7 @@ describe('FlutterwaveClient', () => {
   it('fails cleanly (502) when Flutterwave refuses the checkout', async () => {
     responses.push({ status: 400, body: { status: 'error', message: 'Invalid currency', data: null } });
     await expect(
-      client().initialize({ reference: 'r', paymentId: 'p', email: 'a@b.c', customerName: 'x', amountKobo: 50_000, description: 'd', redirectUrl: 'https://insidelife.online/payments/callback', metadata: {} }),
+      client().initialize({ reference: 'r', paymentId: 'p', email: 'a@b.c', customerName: 'x', currency: 'NGN' as const, amountMinor: 50_000, method: 'card' as const, description: 'd', redirectUrl: 'https://insidelife.online/payments/callback', metadata: {} }),
     ).rejects.toMatchObject({
       errorCode: 'EXTERNAL_SERVICE_ERROR',
     });
@@ -174,10 +176,63 @@ describe('FlutterwaveClient', () => {
 
   it('refunds by transaction id and refuses an unaccepted refund', async () => {
     responses.push({ status: 200, body: { status: 'success', message: 'Transaction refund initiated', data: { id: 75_923, tx_id: 9_231_836, amount_refunded: 2_500, status: 'completed' } } });
-    expect(await client().refund({ reference: 'r', transactionId: '9231836', comments: 'Not approved' })).toEqual({ refundId: '75923', amountKobo: 250_000, status: 'completed' });
+    expect(await client().refund({ reference: 'r', transactionId: '9231836', comments: 'Not approved' })).toEqual({ refundId: '75923', amountMinor: 250_000, status: 'completed' });
     expect(calls[0]?.url).toBe('https://api.flutterwave.com/v3/transactions/9231836/refund');
     expect(sentBody()).toEqual({ comments: 'Not approved' });
     responses.push({ status: 400, body: { status: 'error', message: 'Transaction already refunded', data: null } });
     await expect(client().refund({ reference: 'r', transactionId: '9231836', comments: 'again' })).rejects.toMatchObject({ errorCode: 'EXTERNAL_SERVICE_ERROR' });
+  });
+
+  /** A `POST /charges?type=…` answer with the wallet page in `meta.authorization`, at the top level or inside `data`. */
+  const walletCharge = (redirect: unknown, where: 'top' | 'data' = 'top') => {
+    const authorization = { mode: 'redirect', redirect };
+    const data = { id: 1, tx_ref: 'r-usd', status: 'pending', auth_model: 'APPLEPAY', ...(where === 'data' ? { meta: { authorization } } : {}) };
+    return { status: 200, body: { status: 'success', message: 'Charge initiated', data, ...(where === 'top' ? { meta: { authorization } } : {}) } };
+  };
+
+  const usdInput = {
+    reference: 'r-usd',
+    paymentId: 'p-usd',
+    email: 'ada@example.com',
+    customerName: '@ada',
+    currency: 'USD' as const,
+    amountMinor: 667,
+    description: 'Inside Life ad',
+    redirectUrl: 'https://insidelife.online/payments/callback',
+    metadata: { purpose: 'billboard' },
+  };
+
+  it('creates a dollar Standard checkout: currency USD, the amount in dollars', async () => {
+    responses.push({ status: 200, body: { status: 'success', message: 'Hosted Link', data: { link: 'https://checkout.flutterwave.com/v3/hosted/pay/usd' } } });
+    expect(await client().initialize({ ...usdInput, method: 'card' })).toEqual({ authorizationUrl: 'https://checkout.flutterwave.com/v3/hosted/pay/usd' });
+    expect(calls[0]?.url).toBe('https://api.flutterwave.com/v3/payments');
+    expect(sentBody()).toMatchObject({ tx_ref: 'r-usd', amount: 6.67, currency: 'USD' });
+  });
+
+  it('starts Apple Pay and Google Pay as wallet charges and sends the player to the page Flutterwave returns', async () => {
+    responses.push(walletCharge('https://applepay.aq2-flutterwave.com?reference=TK1'), walletCharge('https://googlepay.flutterwave.com?reference=TK2', 'data'));
+    expect(await client().initialize({ ...usdInput, method: 'applepay' })).toEqual({ authorizationUrl: 'https://applepay.aq2-flutterwave.com?reference=TK1' });
+    expect(calls[0]?.url).toBe('https://api.flutterwave.com/v3/charges?type=applepay');
+    expect(sentBody(0)).toMatchObject({ tx_ref: 'r-usd', amount: 6.67, currency: 'USD', email: 'ada@example.com', fullname: '@ada', redirect_url: usdInput.redirectUrl });
+    expect(await client().initialize({ ...usdInput, method: 'googlepay' })).toEqual({ authorizationUrl: 'https://googlepay.flutterwave.com?reference=TK2' });
+    expect(calls[1]?.url).toBe('https://api.flutterwave.com/v3/charges?type=googlepay');
+  });
+
+  it('refuses a wallet charge without an https page to send the player to, or in naira', async () => {
+    responses.push(
+      { status: 200, body: { status: 'success', message: 'Charge initiated', data: { id: 1, status: 'pending' }, meta: { authorization: { mode: 'redirect', redirect: 'http://insecure.example' } } } },
+      { status: 200, body: { status: 'success', message: 'Charge initiated', data: { id: 1, status: 'pending' } } },
+      { status: 400, body: { status: 'error', message: 'Apple Pay is not enabled for this merchant', data: null } },
+    );
+    for (let i = 0; i < 3; i++) await expect(client().initialize({ ...usdInput, method: 'applepay' })).rejects.toMatchObject({ errorCode: 'EXTERNAL_SERVICE_ERROR' });
+    const sent = calls.length;
+    await expect(client().initialize({ ...usdInput, currency: 'NGN', amountMinor: 50_000, method: 'googlepay' })).rejects.toMatchObject({ errorCode: 'EXTERNAL_SERVICE_ERROR' });
+    expect(calls).toHaveLength(sent);
+  });
+
+  it('reads dollar transactions and refunds in cents', () => {
+    const usd = parseTransaction({ ...verified.data, amount: 6.67, charged_amount: 6.67, currency: 'usd', payment_type: 'applepay' });
+    expect(usd).toMatchObject({ amountMinor: 667, chargedAmountMinor: 667, currency: 'USD', channel: 'applepay' });
+    expect(parseRefund({ id: 9, amount_refunded: 3.5, status: 'completed', tx_id: 1 })).toMatchObject({ amountMinor: 350 });
   });
 });

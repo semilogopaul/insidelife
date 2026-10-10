@@ -67,15 +67,22 @@ export function matchPayment(target: PaymentTarget, reference: string): PaymentM
 
 export type Admission = { readonly kind: 'review' } | { readonly kind: 'refund'; readonly reason: string };
 
-/** After an accepted payment: go to review, or flag a refund when the run can no longer happen. */
+/**
+ * After an accepted payment: go to review, or flag a refund when the run can no longer happen. The payment must be in
+ * the booking's currency and for at least its charge (minor units of that currency: kobo or cents).
+ */
 export function admitAfterPayment(input: {
   readonly range: DateRange;
   readonly today: IsoDate;
-  readonly amountKobo: number;
-  readonly paidKobo: number;
+  readonly currency: string;
+  readonly chargeMinor: number;
+  readonly paidCurrency: string;
+  readonly paidMinor: number;
   readonly hasRoom: boolean;
 }): Admission {
-  if (input.paidKobo < input.amountKobo) return { kind: 'refund', reason: 'The payment didn’t match the price. You’ll get a full refund.' };
+  if (input.paidCurrency !== input.currency || input.paidMinor < input.chargeMinor) {
+    return { kind: 'refund', reason: 'The payment didn’t match the price. You’ll get a full refund.' };
+  }
   if (input.today >= input.range.endDate) return { kind: 'refund', reason: 'Your booked dates passed before the payment landed. You’ll get a full refund.' };
   if (!input.hasRoom) return { kind: 'refund', reason: 'The space filled up before your payment landed. You’ll get a full refund.' };
   return { kind: 'review' };

@@ -100,6 +100,14 @@ export interface AppConfig {
     readonly dailyLimitNgn: number;
     /** Largest single top-up (real naira). */
     readonly maxTopupNgn: number;
+    /** Paying in US dollars (PAYMENTS_USD_ENABLED). The game stays in naira; prices convert at the owner's usd-rate. */
+    readonly usd: {
+      readonly enabled: boolean;
+      /** Largest single dollar top-up (whole dollars). */
+      readonly maxTopupUsd: number;
+      /** Apple Pay and Google Pay for dollar payments (PAYMENTS_WALLETS_ENABLED; validation requires `enabled`). */
+      readonly wallets: boolean;
+    };
     /** Sandbox checkout is used when there is no secret key and this is allowed (always in development). */
     readonly sandbox: boolean;
   };
@@ -192,9 +200,12 @@ export const configuration = (): AppConfig => {
       callbackUrl: env.PAYMENT_CALLBACK_URL || 'http://localhost:3100/payments/callback',
       dailyLimitNgn: Number(env.TOPUP_DAILY_LIMIT_NGN ?? 0),
       maxTopupNgn: Number(env.TOPUP_MAX_PER_PAYMENT_NGN ?? 10_000_000),
-      sandbox:
-        !env.FLUTTERWAVE_SECRET_KEY &&
-        (env.NODE_ENV !== 'production' || bool(env.ALLOW_PAYMENT_SANDBOX, false)),
+      usd: {
+        enabled: bool(env.PAYMENTS_USD_ENABLED, false),
+        maxTopupUsd: Number(env.TOPUP_MAX_PER_PAYMENT_USD ?? 5_000),
+        wallets: bool(env.PAYMENTS_USD_ENABLED, false) && bool(env.PAYMENTS_WALLETS_ENABLED, false),
+      },
+      sandbox: !env.FLUTTERWAVE_SECRET_KEY && (env.NODE_ENV !== 'production' || bool(env.ALLOW_PAYMENT_SANDBOX, false)),
     },
   };
 };

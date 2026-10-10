@@ -1,4 +1,4 @@
-import { formatNaira, koboToNaira, type PromotionStatus } from '@insidelife/shared';
+import { formatPaymentAmount, type PromotionStatus } from '@insidelife/shared';
 import type { DataSource, EntityTarget, FindOptionsWhere } from 'typeorm';
 import type { CheckoutRefund, PaidCheckout } from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
@@ -20,7 +20,7 @@ export interface AppliedRefund<T extends RefundableItem> {
 }
 
 const refundLine = (refund: CheckoutRefund): string =>
-  `${formatNaira(koboToNaira(refund.amountKobo))} refunded ${refund.source === 'api' ? 'automatically' : 'in the Flutterwave dashboard'} (refund ${refund.refundId})`;
+  `${formatPaymentAmount(refund.currency, refund.amountMinor)} refunded ${refund.source === 'api' ? 'automatically' : 'in the Flutterwave dashboard'} (refund ${refund.refundId})`;
 
 /**
  * A refund of an item's payment failed at the gateway (the `onRefundFailed` hook). If it had been settled the item

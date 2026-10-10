@@ -1,5 +1,6 @@
 import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { AD_MAX_WEEKS, CLUB_PLAY_PRODUCT_IDS, type ClubPlayProductId, type CreateClubOrderRequest, type UploadTrackFields } from '@insidelife/shared';
+import { PaymentChoiceDto } from '../../../common/http/payment-choice.dto.js';
 
 /** Multipart text fields of `POST /promotions/tracks` (cleaned and bounded again in TracksService). */
 export class UploadTrackDto implements UploadTrackFields {
@@ -12,7 +13,7 @@ export class UploadTrackDto implements UploadTrackFields {
   readonly title: string;
 }
 
-export class CreateClubOrderDto implements CreateClubOrderRequest {
+export class CreateClubOrderDto extends PaymentChoiceDto implements CreateClubOrderRequest {
   @IsIn(CLUB_PLAY_PRODUCT_IDS)
   readonly productId: ClubPlayProductId;
 

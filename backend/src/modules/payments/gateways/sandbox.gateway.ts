@@ -17,7 +17,8 @@ export const sandboxCheckoutUrl = (reference: string): string => `/payments/sand
 /**
  * Local stand-in for Flutterwave (development without a secret key). The "customer" decides on the fake checkout page
  * via `POST /v1/payments/sandbox/:reference/{succeed|fail}`; verify then reports what was decided, and refunds are
- * accepted instantly. Never enabled in production unless ALLOW_PAYMENT_SANDBOX is set (config validation).
+ * accepted instantly. Pays in whatever currency the checkout charges (naira or dollars; wallets show the same fake
+ * page). Never enabled in production unless ALLOW_PAYMENT_SANDBOX is set (config validation).
  */
 @Injectable()
 export class SandboxGateway implements PaymentGateway {
@@ -43,7 +44,7 @@ export class SandboxGateway implements PaymentGateway {
 
   async refund(input: GatewayRefundInput): Promise<GatewayRefund> {
     const payment = await this.payments.findOne({ where: { reference: input.reference } });
-    return { refundId: `sandbox-${input.reference.slice(0, 8)}`, amountKobo: input.amountKobo ?? payment?.amountKobo ?? 0, status: 'completed' };
+    return { refundId: `sandbox-${input.reference.slice(0, 8)}`, amountMinor: input.amountMinor ?? payment?.amountMinor ?? 0, status: 'completed' };
   }
 
   /** The charge the fake checkout produces when the player taps Pay / Decline. */
@@ -56,8 +57,8 @@ export class SandboxGateway implements PaymentGateway {
       reference: payment.reference,
       transactionId: null,
       status,
-      amountKobo: payment.amountKobo,
-      chargedAmountKobo: payment.amountKobo,
+      amountMinor: payment.amountMinor,
+      chargedAmountMinor: payment.amountMinor,
       currency: payment.currency,
       channel: 'sandbox',
       paidAt: payment.verifiedAt,

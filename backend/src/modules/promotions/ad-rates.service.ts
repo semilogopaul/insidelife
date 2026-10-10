@@ -8,21 +8,28 @@ import {
   AD_MAX_PRICE_KOBO,
   AD_MIN_PRICE_KOBO,
   AD_WEEK_DAYS,
+  USD_RATE_DEFINITION,
+  USD_RATE_KEY,
+  USD_RATE_MAX_KOBO,
+  RATE_CARD_MIN_KOBO,
   adBlockDays,
   adBlockPriceKobo,
   adRateKeyOf,
   adRateSummary,
   adWeekPriceKobo,
   formatNaira,
-  isAdRateKey,
+  isRateCardKey,
   isValidAdPriceKobo,
+  isValidUsdRateKobo,
   koboToNaira,
   type AdRateDto,
   type AdRateKey,
   type AdSlot,
+  type RateCardKey,
 } from '@insidelife/shared';
 import { ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import { REDIS } from '../../common/redis/redis.module.js';
+import { UsdRateService } from '../payments/usd-rate.service.js';
 import { AdRateEntity } from './entities/ad-rate.entity.js';
 import { PromotionRuleException } from './promotions.errors.js';
 import { CachedValue } from './util/cached-value.js';
@@ -33,7 +40,10 @@ export const AD_RATES_CHANNEL = 'promotions:ad-rates';
 const RATES_TTL_MS = 30_000;
 const REASON_MAX = 300;
 
-type Overrides = ReadonlyMap<AdRateKey, AdRateEntity>;
+type Overrides = ReadonlyMap<RateCardKey, AdRateEntity>;
+
+/** Is `kobo` a value the rate-card entry `key` can take (ad prices ₦2,000–₦100m, the exchange rate ₦500–₦5,000 per $1)? */
+const isValidRateKobo = (key: RateCardKey, kobo: number): boolean => (key === USD_RATE_KEY ? isValidUsdRateKobo(kobo) : isValidAdPriceKobo(kobo));
 
 /** A slot's current price as sold: its weekly rate, the block length that rate implies, and one block's price. */
 export interface SlotBlockPrice {
@@ -65,8 +75,10 @@ export function blockPriceOf(weekPriceKobo: number): SlotBlockPrice {
 }
 
 /**
- * The ad price list. Defaults come from the shared catalog (`AD_RATE_DEFINITIONS`); a row in `ad_rates` overrides
- * one rate. Every quote and checkout reads prices here, and each order stores the amount it was quoted, so changing a
+ * The ad price list, which is also the owner's rate card: it carries the exchange rate dollar payments use
+ * (`usd-rate`, ₦ per $1, read by the payments module's `UsdRateService`, which this service tells on every node when it
+ * changes). Defaults come from the shared catalog (`AD_RATE_DEFINITIONS`, `USD_RATE_DEFINITION`); a row in `ad_rates`
+ * overrides one rate. Every quote and checkout reads prices here, and each order stores the amount it was quoted, so changing a
  * rate never touches a paid or pending order. Cached per node with a short TTL and invalidated on every node through
  * Redis pub/sub, so all nodes quote the new price within a second of a change.
  */
@@ -80,6 +92,7 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
   constructor(
     @InjectRepository(AdRateEntity) private readonly rates: Repository<AdRateEntity>,
     @Inject(REDIS) private readonly redis: Redis,
+    private readonly usdRate: UsdRateService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -105,13 +118,13 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
     this.listeners.add(listener);
   }
 
-  /** Every rate with its default and current value (for the admin price list). */
+  /** Every rate with its default and current value (for the admin price list), the exchange rate last. */
   async list(): Promise<AdRateDto[]> {
     const overrides = await this.overrides.get();
-    return AD_RATE_KEYS.map((key) => this.toDto(key, overrides.get(key)));
+    return [...AD_RATE_KEYS.map((key) => this.toDto(key, overrides.get(key))), this.toDto(USD_RATE_KEY, overrides.get(USD_RATE_KEY))];
   }
 
-  /** Current price for a rate key, in kobo. */
+  /** Current price for an ad rate key, in kobo. */
   async rateKobo(key: AdRateKey): Promise<number> {
     return (await this.overrides.get()).get(key)?.priceKobo ?? AD_RATE_DEFINITIONS[key].defaultKobo;
   }
@@ -128,16 +141,16 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Set a rate (whole naira, ₦2,000 – ₦100m). Applies to new quotes on every node within a second; existing orders
-   * keep their price. Knows nothing about who may call it: the admin route checks roles and writes the audit log.
+   * Set a rate (whole naira, ₦2,000 – ₦100m; the exchange rate ₦500 – ₦5,000 per $1). Applies to new quotes and
+   * checkouts on every node within a second; existing orders and payments keep theirs. Knows nothing about who may
+   * call it: the admin route checks roles and writes the audit log.
    */
   async setRate(key: string, priceKobo: number, actorUserId: string | null, reason?: string, inTransaction?: AdRateHook): Promise<AdRateDto> {
     const rateKey = this.requireKey(key);
-    if (!isValidAdPriceKobo(priceKobo)) {
-      throw new PromotionRuleException(
-        'INVALID_RATE',
-        `Rates are whole naira from ${formatNaira(koboToNaira(AD_MIN_PRICE_KOBO))} to ${formatNaira(koboToNaira(AD_MAX_PRICE_KOBO))}`,
-      );
+    if (!isValidRateKobo(rateKey, priceKobo)) {
+      const [min, max] = rateKey === USD_RATE_KEY ? [RATE_CARD_MIN_KOBO, USD_RATE_MAX_KOBO] : [AD_MIN_PRICE_KOBO, AD_MAX_PRICE_KOBO];
+      const unit = rateKey === USD_RATE_KEY ? ' per $1' : '';
+      throw new PromotionRuleException('INVALID_RATE', `Rates are whole naira from ${formatNaira(koboToNaira(min))} to ${formatNaira(koboToNaira(max))}${unit}`);
     }
     const dto = await this.rates.manager.transaction(async (manager) => {
       const saved = await manager.save(
@@ -168,14 +181,14 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
 
   // ----- Internals --------------------------------------------------------------------------------------------------
 
-  private requireKey(key: string): AdRateKey {
-    if (!isAdRateKey(key)) throw new ResourceNotFoundException('Ad rate');
+  private requireKey(key: string): RateCardKey {
+    if (!isRateCardKey(key)) throw new ResourceNotFoundException('Ad rate');
     return key;
   }
 
   private async load(): Promise<Overrides> {
     const rows = await this.rates.find();
-    return new Map(rows.filter((row) => isAdRateKey(row.key) && isValidAdPriceKobo(row.priceKobo)).map((row) => [row.key, row]));
+    return new Map(rows.filter((row) => isRateCardKey(row.key) && isValidRateKobo(row.key, row.priceKobo)).map((row) => [row.key, row]));
   }
 
   /** This node at once; every other node through pub/sub (a failed publish still reaches them within the TTL). */
@@ -190,10 +203,27 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
 
   private changed(): void {
     this.overrides.invalidate();
+    this.usdRate.invalidate();
     for (const listener of this.listeners) listener();
   }
 
-  private toDto(key: AdRateKey, override: AdRateEntity | undefined): AdRateDto {
+  private toDto(key: RateCardKey, override: AdRateEntity | undefined): AdRateDto {
+    if (key === USD_RATE_KEY) {
+      const currentKobo = override?.priceKobo ?? USD_RATE_DEFINITION.defaultKobo;
+      return {
+        key,
+        label: USD_RATE_DEFINITION.label,
+        unit: USD_RATE_DEFINITION.unit,
+        byDistrict: false,
+        defaultKobo: USD_RATE_DEFINITION.defaultKobo,
+        currentKobo,
+        blockDays: 0,
+        blockPriceKobo: null,
+        summary: `${formatNaira(koboToNaira(currentKobo))} per $1 · converts naira prices to dollar prices and dollar top-ups to naira`,
+        updatedAt: override?.updatedAt?.toISOString() ?? null,
+        updatedBy: override?.updatedBy ?? null,
+      };
+    }
     const definition = AD_RATE_DEFINITIONS[key];
     const currentKobo = override?.priceKobo ?? definition.defaultKobo;
     // Club songs are always sold by the week; ads by the block their (base) weekly rate implies.

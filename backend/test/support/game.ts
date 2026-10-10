@@ -27,6 +27,17 @@ export async function fund(e2e: E2eApp, player: Player, amount: number, income: 
   });
 }
 
+/**
+ * Test setup: spend all of a character's cash through the real wallet (one posting to `system:burn`), so a test that
+ * depends on the exact balance starts from ₦0 whatever the birth lottery gave the character (a nepo baby starts with
+ * ₦8m, a sapa pikin with ₦3m: enough to blow the $5,000 FX allowance in one test and not in another).
+ */
+export async function drainCash(e2e: E2eApp, player: Player): Promise<void> {
+  await e2e.get(CharacterSession).run({ characterId: player.characterId }, async (ctx) => {
+    await ctx.wallet.pay(ctx.wallet.cash, 'adjustment', 'E2E setup: start from ₦0', `e2e-drain:${key()}`);
+  });
+}
+
 /** Poll until `check` returns a value (not undefined/false), or fail after `timeoutMs`. */
 export async function waitFor<T>(check: () => Promise<T | undefined | false | null>, what: string, timeoutMs = 15_000): Promise<T> {
   const deadline = Date.now() + timeoutMs;

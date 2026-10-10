@@ -2,9 +2,10 @@
 
 import { CalendarDays, Lock, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
-import { PROMOTION_TITLE_MAX, formatNaira, type BillboardSlotDto, type CreativeDto } from '@insidelife/shared';
+import { PROMOTION_TITLE_MAX, formatNaira, formatUsdCents, type BillboardSlotDto, type CreativeDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, Money, TextField } from '@/common/components';
+import { dollarPriceFor, dollarUnavailableReason, PAYMENT_METHOD_LABELS, PayInPicker, paymentChoiceBody, usePaymentChoice } from '@/common/payments';
 import { cn } from '@/common/utils/cn';
 import { useCreateCampaign } from '../../hooks/use-promote';
 import { blocksLabel, quoteBlocks, runSummary, validateDisplayText, validateLink, validateTitle } from '../../services/rules';
@@ -47,6 +48,9 @@ export function DetailsStep({ slot, catalog, creative, prefill }: DetailsStepPro
   const taglineCheck = isApp ? validateDisplayText(tagline, 'Tagline', 3, TAGLINE_MAX) : null;
   const linkCheck = validateLink(link);
   const quote = quoteBlocks(slot.weekPriceKobo, blocks, slot.blockDays);
+  const dollarPrice = quote ? dollarPriceFor(quote.totalKobo, catalog.usd) : null;
+  const payment = usePaymentChoice(catalog.usd, dollarPrice !== null && !dollarPrice.belowMinimum);
+  const inDollars = payment.currency === 'USD' && dollarPrice !== null;
   const start = slot.nextStarts[blocks - 1] ?? null;
   const ready = titleCheck.ok && (taglineCheck?.ok ?? true) && linkCheck.ok && quote !== null && start !== null && accepted;
   const leaving = create.isPending || create.isSuccess;
@@ -62,6 +66,7 @@ export function DetailsStep({ slot, catalog, creative, prefill }: DetailsStepPro
       blocks,
       expectedStartDate: start,
       ...(quote ? { expectedPriceKobo: quote.totalKobo } : {}),
+      ...paymentChoiceBody(payment, catalog.usd),
     });
   };
 
@@ -150,7 +155,23 @@ export function DetailsStep({ slot, catalog, creative, prefill }: DetailsStepPro
           <dd className="type-figure text-right text-2xl">
             <Money amount={quote.totalNaira} />
           </dd>
+          {inDollars && (
+            <>
+              <dt className="font-bold">You pay in dollars</dt>
+              <dd className="type-figure text-right text-lg">{formatUsdCents(dollarPrice.cents)}</dd>
+            </>
+          )}
         </dl>
+      )}
+
+      {quote && (
+        <PayInPicker
+          usd={catalog.usd}
+          payment={payment}
+          nairaPrice={formatNaira(quote.totalNaira)}
+          dollarPrice={dollarPrice ? formatUsdCents(dollarPrice.cents) : null}
+          dollarNote={dollarUnavailableReason(dollarPrice, catalog.usd)}
+        />
       )}
 
       <ContentRules rules={catalog.rules} scope="billboard" accepted={accepted} onAccept={setAccepted} />
@@ -162,7 +183,11 @@ export function DetailsStep({ slot, catalog, creative, prefill }: DetailsStepPro
       )}
       <div className="sticky bottom-0 -mx-1 bg-paper px-1 pb-1 pt-2">
         <Button size="lg" block icon={<Lock size={18} aria-hidden />} disabled={!ready} loading={leaving} onClick={pay}>
-          {leaving ? 'Opening checkout…' : quote ? `Pay ${formatNaira(quote.totalNaira)}` : 'Pay'}
+          {leaving
+            ? 'Opening checkout…'
+            : quote
+              ? `Pay ${inDollars ? formatUsdCents(dollarPrice.cents) : formatNaira(quote.totalNaira)}${inDollars && payment.method !== 'card' ? ` with ${PAYMENT_METHOD_LABELS[payment.method]}` : ''}`
+              : 'Pay'}
         </Button>
         <p className="mt-1.5 text-center text-xs text-text-soft">
           {!titleCheck.ok || !linkCheck.ok ? 'Add a title and an https link to continue.' : !accepted ? 'Tick the rules box to continue.' : 'Your spot is held for 30 minutes while you pay. Full refund if it isn’t approved.'}
