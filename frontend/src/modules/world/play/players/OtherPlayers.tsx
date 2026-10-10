@@ -3,6 +3,7 @@
 import { useFrame, useThree } from '@react-three/fiber';
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Vector3 } from 'three';
+import { decodeWorldBatch } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { useRealtimeEvent } from '@/common/realtime/use-realtime';
 import { Avatar, npcLook, type AvatarHandle } from '@/common/three/avatar';
@@ -39,7 +40,7 @@ function paintTint(hex: string): number {
 
 /** Feeds `world:players` into the remote registry (online sessions only). */
 export function RemoteFeed({ remotes }: { readonly remotes: RemotePlayers }) {
-  useRealtimeEvent('world:players', (positions) => remotes.ingest(positions, performance.now()));
+  useRealtimeEvent('world:players', (batch) => remotes.ingest(decodeWorldBatch(batch), performance.now()));
   return null;
 }
 

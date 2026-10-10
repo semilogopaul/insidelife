@@ -1,4 +1,5 @@
 import { Logger, type OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   WebSocketGateway,
   WebSocketServer,
@@ -20,9 +21,11 @@ import {
   type RealtimeAck,
   type ServerToClientEvents,
   type WorldMovePayload,
-  type WorldPlayerPositionDto,
+  encodeWorldBatch,
+  type OutgoingPosition,
   type WorldVehicleLook,
 } from '@insidelife/shared';
+import type { AppConfig } from '../../config/configuration.js';
 import { DomainException } from '../../common/exceptions/domain.exception.js';
 import { deferred } from '../../common/utils/deferred.js';
 import { MetricsService } from '../../metrics/metrics.service.js';
@@ -44,6 +47,10 @@ interface SocketData {
   characterId: string;
   handle: string;
   lastMoveAt: number;
+  /** When this player's handle and car look last went out with a position (they repeat every META_EVERY_MS). */
+  metaSentAt: number;
+  /** Last reported mode: getting into a car sends the car look straight away. */
+  lastMode: 'walk' | 'car';
   /** District room (district-wide events such as street parties). */
   districtRoom: string | null;
   /** Interest cell the player stands in (positions are published here; the 3×3 block around it is joined). */
@@ -59,6 +66,10 @@ interface SocketData {
 const POSITION_TICK_MS = 250;
 /** Clients may report at most this often. */
 const MIN_MOVE_INTERVAL_MS = 150;
+/** A position carries the handle and car look this often (the rest of the time the compact format omits them). */
+const META_EVERY_MS = 5_000;
+/** Suggested wait before a turned-away player retries (the client adds jitter). */
+const FULL_RETRY_SECONDS = 30;
 
 const districtRoom = (districtId: string): string => `district:${districtId}`;
 /** Everyone in one Lagos instance (arrivals, departures, Lagos chat). */
@@ -101,10 +112,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   @WebSocketServer() private server: Server<ClientToServerEvents, ServerToClientEvents>;
 
   private readonly logger = new Logger(RealtimeGateway.name);
-  private readonly pendingPositions = new Map<string, Map<string, WorldPlayerPositionDto>>();
+  private readonly pendingPositions = new Map<string, Map<string, OutgoingPosition>>();
   private flushTimer: NodeJS.Timeout | null = null;
   private countTimer: NodeJS.Timeout | null = null;
   private heartbeatTimer: NodeJS.Timeout | null = null;
+  /** MAX_ONLINE_PLAYERS (0 = unlimited). */
+  private readonly maxOnlinePlayers: number;
 
   constructor(
     private readonly auth: JwtAuthGuard,
@@ -117,7 +130,10 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly social: SocialGuard,
     private readonly speech: SpeechService,
     private readonly wealth: WealthClassService,
-  ) {}
+    config: ConfigService<AppConfig, true>,
+  ) {
+    this.maxOnlinePlayers = config.get('realtime', { infer: true }).maxOnlinePlayers;
+  }
 
   afterInit(server: Server<ClientToServerEvents, ServerToClientEvents>): void {
     this.bus.attach(server);
@@ -156,6 +172,8 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       characterId: '',
       handle: '',
       lastMoveAt: 0,
+      metaSentAt: 0,
+      lastMode: 'walk',
       districtRoom: null,
       cell: null,
       cellRooms: new Set(),
@@ -180,6 +198,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       const user = await this.auth.verifyPlayer(token);
       const character = await this.directory.findLivingByUser(user.userId);
       if (!character) throw new DomainException('NO_CHARACTER', 'No character');
+
+      // At the cap, new arrivals wait outside; anyone already online (a reconnect) always gets back in.
+      // (Checked before the socket is tied to the character, so the refusal can't touch a live session.)
+      if (this.maxOnlinePlayers > 0 && !(await this.presence.isOnline(character.id)) && (await this.presence.onlineCount()) >= this.maxOnlinePlayers) {
+        socket.emit('world:full', { retryAfterSeconds: FULL_RETRY_SECONDS });
+        ready.resolve(false);
+        socket.disconnect(true);
+        return;
+      }
 
       socket.data.characterId = character.id;
       socket.data.handle = character.handle;
@@ -293,16 +320,22 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       this.pendingPositions.set(cell, batch);
     }
     const vehicle = vehicleLook(payload);
+    const withMeta = batch.get(socket.data.characterId)?.withMeta === true || payload.mode !== socket.data.lastMode || now - socket.data.metaSentAt >= META_EVERY_MS;
+    socket.data.lastMode = payload.mode;
+    if (withMeta) socket.data.metaSentAt = now;
     batch.set(socket.data.characterId, {
-      characterId: socket.data.characterId,
-      handle: socket.data.handle,
-      x: payload.x,
-      z: payload.z,
-      heading: payload.heading,
-      mode: payload.mode,
-      speed: Math.min(60, Math.max(0, payload.speed)),
-      ...(vehicle ? { vehicle } : {}),
-      t: now,
+      withMeta,
+      position: {
+        characterId: socket.data.characterId,
+        handle: socket.data.handle,
+        x: payload.x,
+        z: payload.z,
+        heading: payload.heading,
+        mode: payload.mode,
+        speed: Math.min(60, Math.max(0, payload.speed)),
+        ...(vehicle ? { vehicle } : {}),
+        t: now,
+      },
     });
   }
 
@@ -315,8 +348,9 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   private flushPositions(): void {
+    const now = Date.now();
     for (const [room, batch] of this.pendingPositions) {
-      if (batch.size > 0) this.server.to(room).emit('world:players', [...batch.values()]);
+      if (batch.size > 0) this.server.to(room).emit('world:players', encodeWorldBatch([...batch.values()], now));
     }
     this.pendingPositions.clear();
   }

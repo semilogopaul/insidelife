@@ -16,6 +16,11 @@ export interface AppConfig {
   /** Reverse proxies in front of the API (Express `trust proxy`). */
   readonly trustProxyHops: number;
   readonly logLevel: string;
+  /** Realtime limits. */
+  readonly realtime: {
+    /** MAX_ONLINE_PLAYERS: players allowed online at once; a newcomer past it gets `world:full`. 0 = unlimited. */
+    readonly maxOnlinePlayers: number;
+  };
   readonly database: {
     readonly url: string;
     readonly poolSize: number;
@@ -133,6 +138,7 @@ export const configuration = (): AppConfig => {
     deployment: env.DEPLOYMENT === 'public' ? 'public' : 'local',
     trustProxyHops: Number(env.TRUST_PROXY_HOPS ?? 1),
     logLevel: env.LOG_LEVEL ?? 'info',
+    realtime: { maxOnlinePlayers: Number(env.MAX_ONLINE_PLAYERS ?? 0) },
     database: {
       url: env.DATABASE_URL ?? '',
       poolSize: Number(env.DATABASE_POOL_SIZE ?? 20),

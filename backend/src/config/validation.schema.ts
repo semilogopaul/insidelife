@@ -29,6 +29,8 @@ export const validationSchema = Joi.object({
    * backend). Empty = the admin API answers on every host the API does.
    */
   ADMIN_API_HOST: Joi.string().hostname().allow('').default(''),
+  /** Players allowed online at once (0 = unlimited). Past it, newcomers see "Lagos is full" and retry; reconnects always get in. */
+  MAX_ONLINE_PLAYERS: Joi.number().integer().min(0).max(1_000_000).default(0),
   LOG_LEVEL: Joi.string().valid('fatal', 'error', 'warn', 'info', 'debug', 'trace').default('info'),
   /** Reverse proxies in front of the API: 1 behind nginx, 2 with an edge (Caddy) in front of nginx. */
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),
