@@ -23,15 +23,8 @@ export function usePlayerSearch(query: string) {
   return useQuery({ queryKey: gistKeys.search(trimmed), queryFn: () => gistApi.search(trimmed), enabled: trimmed.length >= 2, staleTime: 30_000 });
 }
 
-export function useVenuePlayers(venueId: string | null) {
-  return useQuery({
-    queryKey: gistKeys.venuePlayers(venueId ?? ''),
-    queryFn: () => gistApi.venuePlayers(venueId ?? ''),
-    enabled: venueId !== null,
-    staleTime: 15_000,
-    refetchInterval: 30_000,
-  });
-}
+/** Who's at a venue: shared with the interior, which draws them in the room (same cache). */
+export { useVenuePlayers } from '@/common/places';
 
 /** Spray someone at a club or bar (or the DJ). Refreshes your cash. */
 export function useVenueSpray(venueId: string) {

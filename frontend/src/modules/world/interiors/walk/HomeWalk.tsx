@@ -17,6 +17,7 @@ import type { GoalHere } from '@/common/places';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { Avatar, type AvatarHandle } from '@/common/three/avatar';
+import { SELF_ANCHOR, trackAvatar } from '../../speech/speech-anchors';
 import { applyKey, isGameKey, isTypingTarget, resetControls } from '../../play/input/controls';
 import type { InteriorPlayer } from '../components/InteriorPeople';
 import { actionSpot, type ActionLike } from '../hotspots/action-spots';
@@ -291,7 +292,19 @@ export function HomeWalk({
       );
   }, -1);
 
-  const register = useCallback((handle: AvatarHandle | null) => runtime.registerAvatar(handle), [runtime]);
+  const register = useCallback(
+    (handle: AvatarHandle | null) => {
+      runtime.registerAvatar(handle);
+      if (!handle) return undefined;
+      // Your speech bubble follows your head. (Returning a cleanup means React won't call this with null.)
+      const untrack = trackAvatar(SELF_ANCHOR, handle);
+      return () => {
+        untrack();
+        runtime.registerAvatar(null);
+      };
+    },
+    [runtime],
+  );
   return (
     <>
       <Avatar

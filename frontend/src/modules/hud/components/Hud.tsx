@@ -1,6 +1,6 @@
 'use client';
 
-import { Smartphone } from 'lucide-react';
+import { Eye, EyeOff, Smartphone } from 'lucide-react';
 import { useUnreadDms } from '@/common/chat';
 import { useState, type ReactNode } from 'react';
 import type { CharacterSnapshotDto } from '@insidelife/shared';
@@ -15,6 +15,7 @@ import { useWorld, type Interactable } from '@/common/game/world-store';
 import { useMediaQuery } from '@/common/hooks/use-media-query';
 import { useStickSide } from '@/common/hooks/use-touch-ui';
 import { cn } from '@/common/utils/cn';
+import { toggleHud, useAutoShowHud, useHudKeys } from '../hooks/use-clean-screen';
 import { useHudData } from '../hooks/use-hud-data';
 import { useSuggestions } from '../hooks/use-suggestions';
 import { isRoutineDue } from '../services/suggestions';
@@ -40,11 +41,20 @@ export interface HudProps {
   readonly map?: ReactNode;
   /** Cards from other features under the GPS banner (e.g. home visit invites); render nothing when idle. */
   readonly notices?: ReactNode;
+  /**
+   * The Talk button (say something out loud to people nearby), from the talk feature. It sits just above the phone
+   * button; hidden while steering on a touch screen (both thumbs are on the car's controls there).
+   */
+  readonly talk?: ReactNode;
+  /** What people nearby just said (the talk feature's brief feed), under the needs panel. */
+  readonly feed?: ReactNode;
 }
 
 /** Phones: the context button's bottom edge sits this high (phone button + gaps) and is this tall; options add more. */
 const CONTEXT_BASE_PX = 64 + 8 + 48 + 8;
 const CONTEXT_OPTION_PX = 46;
+/** The Talk button above the phone button (height + gap). */
+const TALK_PX = 48 + 8;
 /** Inside: the suggestions clear the collapsed venue sheet. */
 const SHEET_LIFT_PX = 76;
 
@@ -106,8 +116,9 @@ function ContextActions({ nearby, alignStart }: { readonly nearby: Interactable;
  * the stick's side is kept clear while moving. Inside a building the suggestions stack lifts above the venue sheet so
  * they never overlap.
  */
-export function Hud({ tray, map, notices }: HudProps) {
+export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const data = useHudData();
+  const hidden = useUi((state) => state.settings.hudHidden);
   const openPhone = useUi((state) => state.openPhone);
   const phoneOpen = useUi((state) => state.phoneOpen);
   const unreadDms = useUnreadDms();
@@ -118,15 +129,21 @@ export function Hud({ tray, map, notices }: HudProps) {
   const suggestions = useSuggestions();
   const wide = useMediaQuery('(min-width: 768px)');
   // Stick on the right: the buttons go bottom-left and the bottom-right is the thumb zone.
-  const flip = useStickSide() === 'right';
+  const stickSide = useStickSide();
+  const flip = stickSide === 'right';
   const inside = data?.inside === true;
   const [skipped, setSkipped] = useState<ReadonlySet<string>>(new Set());
   const cancel = useSnapshotMutation(() => api.delete<CharacterSnapshotDto>('/characters/me/actions/current'));
+  useHudKeys();
+  useAutoShowHud();
 
+  if (hidden) return <CleanScreen />;
   if (!data) return null;
+  // Touch screens at the wheel: the drive controls own both thumbs, so Talk waits until you stop and get out.
+  const talkButton = talk && !phoneOpen && !(stickSide !== null && mode === 'driving') ? talk : null;
   // On phones a long context button ("🍹 Drinks at the lounge · ₦18,000", options above it) shares no row with the
   // suggestions: they lift above it.
-  const contextLift = !wide && nearby ? CONTEXT_BASE_PX + (nearby.disabled ? 14 : 0) + (nearby.more?.length ?? 0) * CONTEXT_OPTION_PX : 0;
+  const contextLift = !wide && nearby ? CONTEXT_BASE_PX + (talkButton ? TALK_PX : 0) + (nearby.disabled ? 14 : 0) + (nearby.more?.length ?? 0) * CONTEXT_OPTION_PX : 0;
   // On phones the stick's corner is the walking/steering thumb zone: keep it clear while moving around outside.
   const thumbZoneBusy = !wide && (mode === 'walking' || mode === 'driving');
   // Out on the street the planned timeline runs ahead of you (the commute you're not taking): on phones only an
@@ -161,13 +178,29 @@ export function Hud({ tray, map, notices }: HudProps) {
   return (
     <div className="safe-pad pointer-events-none absolute inset-0 flex flex-col">
       <div className="flex items-start justify-between gap-3">
-        <div className="pointer-events-auto flex min-w-0 flex-col items-start gap-2">
-          <ClockCard clock={data.clock} date={data.date} hour={data.hour} weather={data.weather} place={data.place} />
-          <VitalsPanel needs={data.needs} mood={data.mood} health={data.health} />
+        <div className="flex min-w-0 flex-col items-start gap-2">
+          <div className="pointer-events-auto flex flex-col items-start gap-2">
+            <ClockCard clock={data.clock} date={data.date} hour={data.hour} weather={data.weather} place={data.place} />
+            <VitalsPanel needs={data.needs} mood={data.mood} health={data.health} />
+          </div>
+          {/* Read-only: taps go through to the world. */}
+          {feed && !phoneOpen ? feed : null}
         </div>
         {wide && <div className="pointer-events-auto flex max-w-md flex-1 flex-col gap-2 empty:hidden">{centre}</div>}
         <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-2">
-          <WalletChip balance={data.snapshot.wallet.balance} />
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={toggleHud}
+              aria-label="Hide the HUD (clean screen)"
+              aria-keyshortcuts="H"
+              title="Clean screen (H)"
+              className="glass grid size-11 place-items-center rounded-full text-on-ink-soft hover:text-on-ink"
+            >
+              <EyeOff size={18} aria-hidden />
+            </button>
+            <WalletChip balance={data.snapshot.wallet.balance} />
+          </div>
           {tray && <div className="flex flex-col items-end gap-2">{tray}</div>}
           {!wide && outdoorMap}
         </div>
@@ -200,6 +233,7 @@ export function Hud({ tray, map, notices }: HudProps) {
           {wide && flip && outdoorMap}
           {drive && <DrivePanel drive={drive} />}
           {nearby && <ContextActions nearby={nearby} alignStart={flip} />}
+          {talkButton}
           {!phoneOpen && (
             <button
               type="button"
@@ -220,6 +254,28 @@ export function Hud({ tray, map, notices }: HudProps) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The HUD hidden for an unobstructed view: only a small Show button stays (top-right, where the hide button was).
+ * Movement controls, name tags, speech bubbles, toasts and alerts are other layers and keep showing.
+ */
+function CleanScreen() {
+  return (
+    <div className="safe-pad pointer-events-none absolute inset-0 flex items-start justify-end">
+      <button
+        type="button"
+        onClick={toggleHud}
+        aria-label="Show the HUD"
+        aria-keyshortcuts="H"
+        title="Show the HUD (H)"
+        className="glass pointer-events-auto flex h-11 items-center gap-1.5 rounded-full px-3.5 text-xs font-bold text-on-ink opacity-70 hover:opacity-100 focus-visible:opacity-100"
+      >
+        <Eye size={16} aria-hidden />
+        Show
+      </button>
     </div>
   );
 }

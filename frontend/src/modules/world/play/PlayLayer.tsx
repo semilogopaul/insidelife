@@ -31,6 +31,8 @@ import { PlayerAvatar, type PlayerLook } from './player/PlayerAvatar';
 import { PlayerCar } from './player/PlayerCar';
 import { OtherPlayers, RemoteFeed } from './players/OtherPlayers';
 import { RemotePlayers } from './players/remote-players';
+import { outdoorAnchors } from './players/speech-anchors-outdoor';
+import { addAnchorResolver } from '../speech/speech-anchors';
 import { RideLayer } from './ride/RideLayer';
 import { PlayRuntime } from './runtime/play-runtime';
 import { usePlayUi } from './state/play-ui-store';
@@ -166,6 +168,8 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
   useEffect(() => {
     remotes.setSelf(characterId);
   }, [remotes, characterId]);
+  // Speech bubbles hang over you and the players around you.
+  useEffect(() => addAnchorResolver(outdoorAnchors(runtime, remotes)), [runtime, remotes]);
   useEffect(() => {
     runtime.setInvertSteering(invertSteering);
   }, [runtime, invertSteering]);

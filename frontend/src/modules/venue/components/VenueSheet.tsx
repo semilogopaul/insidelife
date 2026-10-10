@@ -71,6 +71,8 @@ const placeKind = (place: Place): PlaceKind =>
 export function VenueSheet() {
   const { data: snapshot } = useSnapshot();
   const phoneOpen = useUi((state) => state.phoneOpen);
+  // Clean screen: the bar goes with the rest of the HUD.
+  const hudHidden = useUi((state) => state.settings.hudHidden);
   const { data: world } = useWorldState();
   const visiting =
     snapshot !== undefined &&
@@ -103,7 +105,7 @@ export function VenueSheet() {
     [],
   );
 
-  if (!snapshot || !place || phoneOpen) return null;
+  if (!snapshot || !place || phoneOpen || hudHidden) return null;
   // Hanging around after arriving (or exploring) never blocks a new choice.
   const busy = isBusy(snapshot);
   const atHome = snapshot.character.locationId === homeLocationId(snapshot.character.id);
