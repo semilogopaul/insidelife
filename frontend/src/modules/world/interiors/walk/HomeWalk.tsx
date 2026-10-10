@@ -21,6 +21,7 @@ import { SELF_ANCHOR, trackAvatar } from '../../speech/speech-anchors';
 import { applyKey, isGameKey, isTypingTarget, resetControls } from '../../play/input/controls';
 import type { InteriorPlayer } from '../components/InteriorPeople';
 import { actionSpot, type ActionLike } from '../hotspots/action-spots';
+import type { PlaceService } from '@/common/places';
 import { MAX_MORE, PHONE_MAX_MORE, hotspotCard, hotspotInteractable, type ActionStatus, type Hotspot } from '../hotspots/hotspots';
 import {
   isFreeAnimation,
@@ -49,7 +50,7 @@ export interface HomeWalkProps {
   readonly hotspots: readonly Hotspot[];
   readonly busy: boolean;
   /** An action's price note ("₦18,000", "" when free) and why it can't be done now, if it can't. */
-  readonly status: (action: ActionDefinition) => ActionStatus;
+  readonly status: (entry: ActionDefinition | PlaceService) => ActionStatus;
   /** The life goal that brought you here and what advances it (its hotspot is highlighted). */
   readonly goal: GoalHere | null;
 }
@@ -435,7 +436,7 @@ export function HomeWalkLayer({
   readonly guests: number;
   readonly hotspots: readonly Hotspot[];
   readonly busy: boolean;
-  readonly status: (action: ActionDefinition) => ActionStatus;
+  readonly status: (entry: ActionDefinition | PlaceService) => ActionStatus;
   readonly goal: GoalHere | null;
 }) {
   const people = useMemo<readonly At[]>(

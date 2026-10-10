@@ -235,7 +235,9 @@ export function VenueSheet() {
             >
               <ul className="grid max-h-[40dvh] gap-1.5 overflow-y-auto px-3 pb-2 sm:grid-cols-2">
                 {own.map(actionItem)}
-                {orderedServices.map((service) => (
+                {orderedServices.map((service) => {
+                  const closedReason = availability(service).reason;
+                  return (
                   <li key={service.id}>
                     <div
                       className={cn(
@@ -257,21 +259,24 @@ export function VenueSheet() {
                           <span className="mt-0.5 block text-xs text-on-ink-soft">{service.blurb}</span>
                         </span>
                       </div>
-                      <div className="mt-auto flex">
+                      <div className="mt-auto flex items-center gap-2">
                         <button
                           type="button"
+                          disabled={closedReason !== null}
                           onClick={() => {
                             setExpanded(false);
                             openService(service, snapshot.character.locationId);
                           }}
-                          className="h-8 rounded-chip bg-white/12 px-2.5 text-xs font-bold text-on-ink"
+                          className="h-8 rounded-chip bg-white/12 px-2.5 text-xs font-bold text-on-ink disabled:opacity-50"
                         >
                           {serviceOpensLabel(service)}
                         </button>
+                        {closedReason && <span className="text-xs text-on-ink-soft">{closedReason}</span>}
                       </div>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
                 {anywhere.length > 0 && (
                   <li className="px-1 pt-2 text-2xs font-bold uppercase tracking-wide text-on-ink-soft sm:col-span-2">
                     Anywhere · also on your phone

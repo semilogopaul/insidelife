@@ -44,6 +44,12 @@ export function useHotspotDo({
   const run = useCallback((entryId: string, minutes?: number): boolean => {
     const service = serviceOfInteractable(entryId);
     if (service) {
+      const closed = disabledReason(entryId);
+      if (closed) {
+        gameEvents.emit('sfx', { id: 'ui-error' });
+        toast({ title: `${service.label} isn’t open`, body: closed, tone: 'neutral' });
+        return false;
+      }
       const locationId = useHomeView.getState().house?.split('|')[0] ?? null;
       const open =
         latest.current.onOpenService ?? ((chosen: PlaceService) => openService(chosen, locationId));

@@ -134,8 +134,8 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const busy = busyOverride ?? (here && isBusy(snapshot));
   // Same rules and reasons as the venue sheet (open hours, age, money…); previews without a session allow everything.
   const availability = useActionAvailability(here ? snapshot : undefined);
-  const status = useCallback((action: ActionDefinition): ActionStatus => {
-    const { priceNote, reason } = availability(action);
+  const status = useCallback((entry: ActionDefinition | PlaceService): ActionStatus => {
+    const { priceNote, reason } = availability(entry);
     return { priceNote, reason };
   }, [availability]);
   const houseLayout = house?.layout;

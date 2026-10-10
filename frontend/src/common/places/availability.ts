@@ -16,6 +16,7 @@ import {
 } from '@insidelife/shared';
 import { useGameMinute, useWorldState } from '@/common/game/use-game-clock';
 import { actionPrice, actionPriceNote, isBusy } from './place-actions';
+import type { PlaceService } from './services';
 
 /**
  * Can the player do an action here, right now — and if not, why not? The same rules the server applies when an action
@@ -103,6 +104,21 @@ export function actionAvailability(action: ActionDefinition, context: ActionCont
   return { available: true, reason: null, price, priceNote };
 }
 
+/**
+ * Can the player use a place service (browse cars, see a doctor…) now? Services follow the venue's opening hours like
+ * actions do: shown, but greyed out with "Closed now · opens 8 AM" rather than hidden. Nothing is charged by a service
+ * itself (the app it opens handles money), so hours are the only rule.
+ */
+export function serviceAvailability(
+  _service: PlaceService,
+  context: Pick<ActionContext, 'venue' | 'hour'>,
+): ActionAvailability {
+  const { venue, hour } = context;
+  if (venue?.hours && !isVenueOpen(venue, hour))
+    return { available: false, reason: `Closed now · opens ${formatHour(venue.hours[0])}`, price: 0, priceNote: '' };
+  return { available: true, reason: null, price: 0, priceNote: '' };
+}
+
 /** The context for the player's snapshot (or the open preview context without one). */
 export function actionContextOf(
   snapshot: CharacterSnapshotDto | undefined,
@@ -127,13 +143,15 @@ export function actionContextOf(
 /** `actionAvailability` for the player where they are now (re-evaluated as the game clock moves). */
 export function useActionAvailability(
   snapshot: CharacterSnapshotDto | undefined,
-): (action: ActionDefinition) => ActionAvailability {
+): (entry: ActionDefinition | PlaceService) => ActionAvailability {
   const minute = useGameMinute(5000);
   const priceIndex = useWorldState().data?.economy.priceIndex ?? 1;
   const hour = toDateParts(minute).hour;
   return useCallback(
-    (action: ActionDefinition) =>
-      actionAvailability(action, actionContextOf(snapshot, hour * 60, priceIndex)),
+    (entry: ActionDefinition | PlaceService) => {
+      const context = actionContextOf(snapshot, hour * 60, priceIndex);
+      return 'opens' in entry ? serviceAvailability(entry, context) : actionAvailability(entry, context);
+    },
     [snapshot, hour, priceIndex],
   );
 }

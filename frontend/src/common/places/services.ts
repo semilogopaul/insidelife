@@ -139,7 +139,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
   'car-dealer': [
     {
       id: 'browse-cars',
-      label: 'Browse cars',
+      label: 'Browse cars for sale',
       emoji: '🚗',
       blurb: 'Prices, specs and paint — buy in the Motors app.',
       opens: { app: 'motors', param: 'dealer' },
@@ -149,7 +149,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
   'estate-agency': [
     {
       id: 'listings',
-      label: 'See listings',
+      label: 'See homes to rent or buy',
       emoji: '🏠',
       blurb: 'Flats to rent and houses to buy — in the Homes app.',
       opens: { app: 'homes', param: 'rent' },
