@@ -9,7 +9,8 @@ export function createQueryClient(): QueryClient {
         gcTime: 5 * 60_000,
         refetchOnWindowFocus: false,
         retry: (failures, error) => {
-          if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+          // A busy server (429) is worth another go; any other 4xx is a definite answer.
+          if (error instanceof ApiError && error.status >= 400 && error.status < 500 && !error.isBusy) return false;
           return failures < 2;
         },
       },

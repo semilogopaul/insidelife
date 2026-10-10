@@ -26,10 +26,12 @@ import { ResourceNotFoundException } from '../../common/exceptions/domain.except
 import { CharacterDirectory } from '../characters/character-directory.service.js';
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
 import { PresenceService } from '../presence/presence.service.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { TimelinePlanner } from '../simulation/timeline-planner.service.js';
 import { WorldService } from '../world/world.service.js';
 import { PartyEntity } from './entities/party.entity.js';
+import { HOSTED_PARTY_ROWS } from './parties.service.js';
 import { SocialProfileEntity } from './entities/social-profile.entity.js';
 import { FriendsService } from './friends.service.js';
 import { WealthClassService } from './wealth-class.service.js';
@@ -44,6 +46,12 @@ const SEARCH_LIMIT = 20;
 const VENUE_LIST_LIMIT = 40;
 /** A party with at least this many guests earns the "Owambe host" badge. */
 const HOSTED_PARTY_MIN_GUESTS = 5;
+/** Accepted friendships either way round: none for most new players, so the count is skipped (see `RowProbe`). */
+export const FRIENDSHIP_ROWS: RowProbe = {
+  key: 'social:friendships',
+  table: 'social_friendships',
+  where: "(requester_id = $1 OR addressee_id = $1) AND status = 'accepted'",
+};
 
 /** Columns a refresh may overwrite. Privacy settings are deliberately absent. */
 const REFRESHED_COLUMNS = [
@@ -112,8 +120,13 @@ export class ProfilesService {
     const family = await this.family.snapshot(ctx);
     const campusName = credentials.enrolled ? await this.currentCampus(ctx) : null;
     // One at a time: these share the session's transaction connection (pg runs one query at a time).
-    const friendCount = await this.friends.friendCount(character.id, ctx.manager);
-    const partiesHosted = await ctx.manager .createQueryBuilder(PartyEntity, 'party') .where('party.host_id = :id AND party.status = :status AND party.guest_count >= :min', { id: character.id, status: 'ended', min: HOSTED_PARTY_MIN_GUESTS }) .getCount();
+    const friendCount = (await ctx.mayHaveRows(FRIENDSHIP_ROWS)) ? await this.friends.friendCount(character.id, ctx.manager) : 0;
+    const partiesHosted = (await ctx.mayHaveRows(HOSTED_PARTY_ROWS))
+      ? await ctx.manager
+          .createQueryBuilder(PartyEntity, 'party')
+          .where('party.host_id = :id AND party.status = :status AND party.guest_count >= :min', { id: character.id, status: 'ended', min: HOSTED_PARTY_MIN_GUESTS })
+          .getCount()
+      : 0;
     const selfMadeNetWorth = selfMadeNetWorthOf(character.netWorth, character.unearnedTotal);
     const degree = degreeSummary(credentials.degrees);
     const badges = computeBadges({ job, credentials, family, campusName, selfMadeNetWorth, generation: character.generation, friendCount, partiesHosted });

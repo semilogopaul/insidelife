@@ -51,6 +51,8 @@ const wsMovesSent = new Counter('ws_moves_sent');
 const wsWorldFull = new Counter('ws_world_full');
 const signupOk = new Rate('signup_ok');
 const actionsStarted = new Counter('actions_started');
+const snapshotFetches = new Counter('snapshot_fetches');
+const serverBusy = new Counter('server_busy');
 
 http.setResponseCallback(http.expectedStatuses({ min: 200, max: 299 }));
 
@@ -85,6 +87,9 @@ class Player {
     this.heading = 0;
     this.outside = false;
     this.connected = false;
+    this.asOf = null;
+    this.msPerGameMinute = 1000;
+    this.onInvalidate = () => {};
   }
 
   headers(json) {
@@ -98,8 +103,9 @@ class Player {
   call(method, path, name, kind, body) {
     const params = { headers: this.headers(body !== undefined), tags: { kind, name } };
     const url = `${API}${path}`;
-    if (method === 'GET') return http.get(url, params);
-    return http.request(method, url, body === undefined ? null : JSON.stringify(body), params);
+    const res = method === 'GET' ? http.get(url, params) : http.request(method, url, body === undefined ? null : JSON.stringify(body), params);
+    if (res.status === 503) serverBusy.add(1); // shed by the API (OVERLOAD_LAG_MS): past this node's capacity
+    return res;
   }
 
   json(res) {
@@ -169,6 +175,7 @@ class Player {
 
   snapshot() { return this.call('GET', '/characters/me', 'GET /characters/me', 'read'); }
 
+  /** Returns the exit's answer (`{ spawn, snapshot }`) or null. */
   stepOutside() {
     const res = this.call('POST', '/characters/me/exits', 'POST /characters/me/exits', 'command');
     const body = this.json(res);
@@ -179,7 +186,7 @@ class Player {
       this.heading = entrance.heading;
       this.outside = true;
     }
-    return this.outside;
+    return entrance ? body : null;
   }
 }
 
@@ -200,10 +207,6 @@ export default function () {
     return;
   }
   player.signedUp = true;
-  player.snapshot();
-  // The client fetches these once when entering the play screen.
-  player.call('GET', '/world/clock', 'GET /world/clock', 'read');
-  player.stepOutside();
 
   const timers = [];
   let ws = null;
@@ -228,25 +231,71 @@ export default function () {
     }, Math.random() * ms));
   };
 
-  // What the play screen polls (frontend: snapshot.ts, use-game-clock.ts, play-state.ts, use-world-sync.ts, hud, visits).
-  every(15000, guarded(() => player.snapshot()));
+  // The snapshot is never polled (common/game/snapshot.ts: staleTime 60 s, no refetchInterval). It is fetched on entering
+  // the game, on `character:invalidate`, when play-state reports `resumed`, after a rejected heartbeat, and 30 game
+  // minutes before its timeline (≈ 1 game day) runs out. Commands (actions, exits) answer with one, which counts as new.
+  let refetchTimer = null;
+  const suggestions = () => player.call('GET', '/progression/suggestions', 'GET /progression/suggestions', 'read');
+  const visits = () => player.call('GET', '/visits', 'GET /visits', 'read');
+  const onSnapshot = (body) => {
+    if (!body || !Array.isArray(body.timeline)) return;
+    const changed = body.asOf !== player.asOf;
+    player.asOf = body.asOf;
+    const last = body.timeline[body.timeline.length - 1];
+    if (refetchTimer !== null) clearTimeout(refetchTimer);
+    refetchTimer = null;
+    if (last && !stopped) {
+      refetchTimer = setTimeout(guarded(() => loadSnapshot()), Math.max(5000, (last.endsAt - 30 - body.asOf) * player.msPerGameMinute));
+      timers.push(refetchTimer);
+    }
+    // hud/use-suggestions.ts keys the query by the snapshot's asOf: every new snapshot fetches suggestions.
+    if (changed) suggestions();
+  };
+  const loadSnapshot = () => {
+    snapshotFetches.add(1);
+    onSnapshot(player.json(player.snapshot()));
+  };
+  player.onInvalidate = guarded(() => {
+    // GameRoot: snapshot, life events (only with pending events) and visits.
+    loadSnapshot();
+    visits();
+  });
+
+  // Entering the play screen: clock, snapshot, step outside (the exit answers with a snapshot too).
+  const clock = player.json(player.call('GET', '/world/clock', 'GET /world/clock', 'read'));
+  if (clock && clock.scale > 0) player.msPerGameMinute = 60000 / clock.scale;
+  loadSnapshot();
+  const exit = player.stepOutside();
+  if (exit) onSnapshot(exit.snapshot);
+
+  // What the play screen polls (frontend: use-game-clock.ts, play-state.ts, use-world-sync.ts, use-suggestions.ts,
+  // use-visits.ts, use-live-ads.ts).
   every(60000, guarded(() => player.call('GET', '/world/state', 'GET /world/state', 'read')));
-  every(60000, guarded(() => player.call('GET', '/progression/suggestions', 'GET /progression/suggestions', 'read')));
-  every(60000, guarded(() => player.call('GET', '/visits', 'GET /visits', 'read')));
+  every(60000, guarded(suggestions));
+  every(60000, guarded(visits));
   every(300000, guarded(() => player.call('GET', '/promotions/billboards/live', 'GET /promotions/billboards/live', 'read')));
-  every(45000, guarded(() => player.call('PUT', '/characters/me/play-state', 'PUT /characters/me/play-state', 'command', { state: 'playing' })));
+  every(45000, guarded(() => {
+    const res = player.call('PUT', '/characters/me/play-state', 'PUT /characters/me/play-state', 'command', { state: 'playing' });
+    const body = player.json(res);
+    if (body && body.resumed) loadSnapshot();
+  }));
   every(15000, guarded(() => {
     if (!player.outside) return;
-    player.call('POST', '/characters/me/heartbeats', 'POST /characters/me/heartbeats', 'command', {
+    const res = player.call('POST', '/characters/me/heartbeats', 'POST /characters/me/heartbeats', 'command', {
       position: { x: Math.round(player.pos.x * 100) / 100, z: Math.round(player.pos.z * 100) / 100 },
       mode: 'walk',
       heading: Math.round(player.heading * 1000) / 1000,
     });
+    const body = player.json(res);
+    if (body && body.accepted === false) loadSnapshot(); // the server sees things differently
   }));
-  // Now and then something cheap: scroll the phone (free, 15 game minutes).
+  // Now and then something cheap: scroll the phone (free, 15 game minutes). The answer is a fresh snapshot.
   every(90000, guarded(() => {
     const res = player.call('POST', '/characters/me/actions', 'POST /characters/me/actions', 'command', { actionId: 'scroll', durationMinutes: 15 });
-    if (is2xx(res)) actionsStarted.add(1);
+    if (is2xx(res)) {
+      actionsStarted.add(1);
+      onSnapshot(player.json(res));
+    }
   }));
 
   // Walking: world:move at 4 Hz while moving, once per 2 s when standing still (use-world-sync.ts).
@@ -328,7 +377,7 @@ export default function () {
         const name = body.slice(1, body.indexOf('"', 1));
         if (name === 'world:players') { wsWorldPlayersMsgs.add(1); wsWorldPlayersBytes.add(bytes); }
         else if (name === 'world:full') wsWorldFull.add(1);
-        else if (name === 'character:invalidate') player.snapshot(); // the client refetches the snapshot on this
+        else if (name === 'character:invalidate') player.onInvalidate(); // the client refetches the snapshot and visits
       }
     };
     ws.onerror = () => settle(false);

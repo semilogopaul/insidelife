@@ -8,7 +8,7 @@ import { SimulationRegistry } from '../simulation/simulation-registry.service.js
 import { ApplicationsService } from './applications.service.js';
 import { AttendanceService } from './attendance.service.js';
 import { employerOf, titleOf } from './career.presenter.js';
-import { CareerStore } from './career.store.js';
+import { CareerStore, EMPLOYMENT_ROWS } from './career.store.js';
 import { EmploymentService } from './employment.service.js';
 import { FreelanceService } from './freelance.service.js';
 import { PayrollService } from './payroll.service.js';
@@ -26,6 +26,7 @@ const STRESS_PER_LEVEL = 0.03;
 export class CareersSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'careers';
   readonly order = 200;
+  readonly rowProbes = [EMPLOYMENT_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

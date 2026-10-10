@@ -48,6 +48,7 @@ import {
   type VehiclesDto,
 } from '@insidelife/shared';
 import { GameRuleException, InsufficientFundsException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { OwnedVehicleEntity } from './entities/owned-vehicle.entity.js';
 import {
@@ -65,6 +66,8 @@ import {
 
 /** Memo key for the character's cars (invalidate after every change). */
 export const GARAGE_MEMO = 'vehicles-garage';
+/** Most characters own no car: the garage read is skipped when there's no row (see `RowProbe`). */
+export const GARAGE_ROWS: RowProbe = { key: 'vehicles:garage', table: 'owned_vehicles', where: 'character_id = $1' };
 const ITEM_TAGS_MEMO = 'item-tags';
 
 /** An owned car resolved against the catalog. */
@@ -87,6 +90,7 @@ export class VehiclesService {
 
   async garage(ctx: SimulationContext): Promise<readonly GarageCar[]> {
     return ctx.memo(GARAGE_MEMO, async () => {
+      if (!(await ctx.mayHaveRows(GARAGE_ROWS))) return [];
       const rows = await ctx.manager.find(OwnedVehicleEntity, { where: { characterId: ctx.character.id }, order: { acquiredAt: 'ASC' } });
       const cars: GarageCar[] = [];
       for (const row of rows) {

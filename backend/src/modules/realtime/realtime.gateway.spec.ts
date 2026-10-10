@@ -4,6 +4,7 @@ import type { AppConfig } from '../../config/configuration.js';
 import { describe, expect, it, vi } from 'vitest';
 import { decodeWorldBatch, type ChatSaidDto, type RealtimeAck } from '@insidelife/shared';
 import { RateLimitedException } from '../../common/exceptions/domain.exception.js';
+import type { OverloadMonitor } from '../../common/overload/overload-monitor.service.js';
 import type { MetricsService } from '../../metrics/metrics.service.js';
 import type { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import type { CharacterDirectory } from '../characters/character-directory.service.js';
@@ -25,6 +26,7 @@ interface ConnectOptions {
   readonly online?: number;
   readonly alreadyOnline?: boolean;
   readonly characterId?: string;
+  readonly overloaded?: boolean;
 }
 
 async function connect(say: SpeechService['say'], options: ConnectOptions = {}) {
@@ -60,6 +62,7 @@ async function connect(say: SpeechService['say'], options: ConnectOptions = {}) 
     { friendIds: async () => [] } as unknown as SocialGuard,
     speech,
     { classOf: async () => 'lapo' } as unknown as WealthClassService,
+    { overloaded: options.overloaded ?? false } as OverloadMonitor,
     { get: () => ({ maxOnlinePlayers: options.maxOnline ?? 0 }) } as unknown as ConfigService<AppConfig, true>,
   );
   (gateway as unknown as { server: unknown }).server = server;
@@ -132,6 +135,15 @@ describe('RealtimeGateway players-online cap', () => {
     expect(socket.emit).not.toHaveBeenCalledWith('world:full', expect.anything());
     expect(socket.disconnect).not.toHaveBeenCalled();
     expect(socket.emit).toHaveBeenCalledWith('presence:snapshot', []);
+  });
+
+  it('turns everyone away while the node is overloaded, reconnects too, without checking the token', async () => {
+    const { socket, gateway } = await connect(idle, { overloaded: true, alreadyOnline: true });
+    expect(socket.emit).toHaveBeenCalledWith('world:full', { retryAfterSeconds: expect.any(Number) });
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+    expect(socket.emit).not.toHaveBeenCalledWith('presence:snapshot', expect.anything());
+    expect((socket.data as { characterId: string }).characterId).toBe('');
+    expect(gateway).toBeDefined();
   });
 
   it('admits newcomers below the cap, and everyone when the cap is 0 (unlimited)', async () => {

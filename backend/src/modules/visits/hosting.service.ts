@@ -31,6 +31,7 @@ import { CharacterEntity } from '../characters/entities/character.entity.js';
 import { NotificationsService, type NotificationDraft } from '../notifications/notifications.service.js';
 import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { HomeTreatEntity } from './entities/home-treat.entity.js';
 import { HomeVisitEntity } from './entities/home-visit.entity.js';
@@ -38,6 +39,8 @@ import { closenessGain, dayStart, hostReward, treatProblem } from './hosting.rul
 import { PERSON_COLUMNS, toPersonDto, type Person } from './visit-people.js';
 
 const ADULT_AGE = 18;
+/** Treats served to this character and not applied yet: almost always none, so the settle skips the read (see `RowProbe`). */
+export const PENDING_TREAT_ROWS: RowProbe = { key: 'visits:pending-treats', table: 'home_treats', where: 'guest_id = $1 AND applied_at IS NULL' };
 
 interface GuestInside {
   readonly visitId: string;
@@ -196,6 +199,7 @@ export class HostingService {
   /** Apply treats served to this character (their own session; every settle). Each row exactly once. */
   async applyPending(ctx: SimulationContext): Promise<void> {
     const me = ctx.character;
+    if (!(await ctx.mayHaveRows(PENDING_TREAT_ROWS))) return;
     const pending = await ctx.manager.find(HomeTreatEntity, {
       where: { guestId: me.id, appliedAt: IsNull() },
       order: { servedAt: 'ASC' },

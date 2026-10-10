@@ -40,6 +40,7 @@ import { CharacterEntity } from '../characters/entities/character.entity.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
 import { PeerMoneyGuard } from '../wallet/peer-money.guard.js';
+import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { PartyGuestEntity } from './entities/party-guest.entity.js';
 import { PartyEntity } from './entities/party.entity.js';
@@ -63,6 +64,9 @@ import { addMood, adjustConnections, adjustStatus, boostNeeds } from './social-e
 import { assertRule, normaliseHandle, playerNotFound, ruleException } from './social-errors.js';
 import { SocialGuard } from './social-guard.service.js';
 import { SocialNotifier } from './social-notifier.service.js';
+
+/** Parties this character ever hosted: most never threw one, so the hosted-party reads are skipped (see `RowProbe`). */
+export const HOSTED_PARTY_ROWS: RowProbe = { key: 'social:hosted-parties', table: 'social_parties', where: 'host_id = $1' };
 
 const LIST_LIMIT = 30;
 const GUEST_LIST_LIMIT = 60;
@@ -420,6 +424,7 @@ export class PartiesService {
   /** Close the host's parties that have ended: award clout for turnout and money rain. */
   async finalizeHosted(ctx: SimulationContext): Promise<void> {
     const host = ctx.character;
+    if (!(await ctx.mayHaveRows(HOSTED_PARTY_ROWS))) return;
     const ended = await ctx.manager
       .createQueryBuilder(PartyEntity, 'party')
       .setLock('pessimistic_write')

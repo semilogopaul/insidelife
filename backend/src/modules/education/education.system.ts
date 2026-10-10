@@ -16,7 +16,7 @@ import { SimulationRegistry } from '../simulation/simulation-registry.service.js
 import { educationEvents } from './education.events.js';
 import { AdmissionsService } from './services/admissions.service.js';
 import { CertificationsService } from './services/certifications.service.js';
-import { EducationStore } from './services/education-store.service.js';
+import { EDUCATION_ROWS, EducationStore } from './services/education-store.service.js';
 import { EnrolmentService } from './services/enrolment.service.js';
 import { NyscService } from './services/nysc.service.js';
 import { EducationOverviewService } from './services/overview.service.js';
@@ -46,6 +46,7 @@ const CERTIFICATION_STATUS: Readonly<Record<string, number>> = { bar: 40, mdcn: 
 export class EducationSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'education';
   readonly order = 100;
+  readonly rowProbes = Object.values(EDUCATION_ROWS);
 
   constructor(
     private readonly registry: SimulationRegistry,

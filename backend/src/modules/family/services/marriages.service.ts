@@ -1,10 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { IsNull, Not, type EntityManager } from 'typeorm';
 import type { WeddingTier } from '@insidelife/shared';
+import type { RowProbe } from '../../simulation/row-presence.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
 import { MarriageEntity, type MarriageStatus } from '../entities/marriage.entity.js';
 
 const MARRIAGE_KEY = 'family:marriage';
+/** Most characters have never married: the marriage reads are skipped when there's no row either side (see `RowProbe`). */
+export const MARRIAGE_ROWS: RowProbe = { key: 'family:marriages', table: 'family_marriages', where: 'character_id = $1 OR spouse_character_id = $1' };
 
 export type SpouseRef = { readonly personId: string } | { readonly characterId: string };
 
@@ -13,7 +16,7 @@ export type SpouseRef = { readonly personId: string } | { readonly characterId: 
 export class MarriagesService {
   /** The character's active marriage (either side of a player couple). */
   active(ctx: SimulationContext): Promise<MarriageEntity | null> {
-    return ctx.memo(MARRIAGE_KEY, () => MarriagesService.activeFor(ctx.manager, ctx.character.id));
+    return ctx.memo(MARRIAGE_KEY, async () => ((await ctx.mayHaveRows(MARRIAGE_ROWS)) ? MarriagesService.activeFor(ctx.manager, ctx.character.id) : null));
   }
 
   static activeFor(manager: EntityManager, characterId: string): Promise<MarriageEntity | null> {
@@ -26,8 +29,9 @@ export class MarriagesService {
   }
 
   /** Most recent marriage, active or not (widowed / divorced status). */
-  latest(ctx: SimulationContext): Promise<MarriageEntity | null> {
+  async latest(ctx: SimulationContext): Promise<MarriageEntity | null> {
     const characterId = ctx.character.id;
+    if (!(await ctx.mayHaveRows(MARRIAGE_ROWS))) return null;
     return ctx.manager.findOne(MarriageEntity, {
       where: [{ characterId }, { spouseCharacterId: characterId }],
       order: { marriedAt: 'DESC' },
@@ -35,8 +39,9 @@ export class MarriagesService {
   }
 
   /** Player-to-player marriages involving this character (for reconciliation). */
-  playerMarriages(ctx: SimulationContext): Promise<MarriageEntity[]> {
+  async playerMarriages(ctx: SimulationContext): Promise<MarriageEntity[]> {
     const characterId = ctx.character.id;
+    if (!(await ctx.mayHaveRows(MARRIAGE_ROWS))) return [];
     return ctx.manager.find(MarriageEntity, {
       where: [
         { characterId, spouseCharacterId: Not(IsNull()) },

@@ -12,6 +12,8 @@ import { ChildrenService } from './services/children.service.js';
 import { FamilyTriggersService } from './services/family-triggers.service.js';
 import { HouseholdService } from './services/household.service.js';
 import { InteractionsService } from './services/interactions.service.js';
+import { MARRIAGE_ROWS } from './services/marriages.service.js';
+import { UNSYNCED_ANSWER_ROWS } from './services/player-links.service.js';
 import { PeopleService } from './services/people.service.js';
 import { PlayerLinksService } from './services/player-links.service.js';
 import { RelationshipsService } from './services/relationships.service.js';
@@ -28,6 +30,7 @@ const IGNORED_PENALTY = -4;
 export class FamilySystem implements SimulationSystem, OnModuleInit {
   readonly key = 'family';
   readonly order = 300;
+  readonly rowProbes = [MARRIAGE_ROWS, UNSYNCED_ANSWER_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

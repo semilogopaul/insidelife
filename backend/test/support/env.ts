@@ -46,6 +46,8 @@ export const E2E_ENV: Readonly<Record<string, string>> = {
   REFRESH_TOKEN_TTL_DAYS: '30',
   COOKIE_SECURE: 'false',
   REQUIRE_EMAIL_VERIFICATION: 'false',
+  // No load shedding: a slow CI machine must not turn the suite's requests into 503s.
+  OVERLOAD_LAG_MS: '0',
   GAME_EPOCH: '2026-10-01T00:00:00.000Z',
   GAME_TIME_SCALE: '120',
   // Pinned like everything else so a developer's .env can't slow (or speed up) the suite's clock mid-run.

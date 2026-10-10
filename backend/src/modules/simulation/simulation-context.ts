@@ -15,6 +15,7 @@ import type { CharacterAccounts, SystemAccount } from '../ledger/interfaces/ledg
 import type { LedgerMetadata } from '../ledger/entities/ledger-transaction.entity.js';
 import type { NotificationDraft } from '../notifications/notifications.service.js';
 import type { WorldService } from '../world/world.service.js';
+import type { RowPresence, RowProbe } from './row-presence.js';
 
 type AccountKind = keyof CharacterAccounts;
 
@@ -300,6 +301,7 @@ export class SimulationContext {
   private readonly afterCommitHooks: Array<() => void | Promise<void>> = [];
   private readonly cache = new Map<string, Promise<unknown>>();
   wallet!: CharacterWallet;
+  private rowPresence: RowPresence | null = null;
 
   constructor(
     readonly character: CharacterEntity,
@@ -312,6 +314,19 @@ export class SimulationContext {
 
   bindWallet(wallet: CharacterWallet): void {
     this.wallet = wallet;
+  }
+
+  /** Inside a `CharacterSession`: which probed tables have rows for this character (see `RowPresence`). */
+  bindRowPresence(presence: RowPresence): void {
+    this.rowPresence = presence;
+  }
+
+  /**
+   * False only when `probe` proves the guarded load would find no rows for this character, so it can be skipped.
+   * Outside a session (character creation, an heir's context, tests) it is always true: every load runs.
+   */
+  mayHaveRows(probe: RowProbe): Promise<boolean> {
+    return this.rowPresence ? this.rowPresence.mayHave(probe) : Promise.resolve(true);
   }
 
   /** Deterministic RNG keyed by this character's seed plus the given parts. */

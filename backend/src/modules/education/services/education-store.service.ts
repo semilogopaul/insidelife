@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { In } from 'typeorm';
+import type { RowProbe } from '../../simulation/row-presence.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
 import { AdmissionApplicationEntity } from '../entities/admission-application.entity.js';
 import { CertificationEntity } from '../entities/certification.entity.js';
@@ -23,6 +24,17 @@ export const EDUCATION_MEMO = {
 
 type MemoKey = (typeof EDUCATION_MEMO)[keyof typeof EDUCATION_MEMO];
 
+/** Most characters never sat JAMB, applied, enrolled, served or certified: those reads are skipped when there's no row. */
+const rows = (key: string, table: string): RowProbe => ({ key: `education:${key}`, table, where: 'character_id = $1' });
+export const EDUCATION_ROWS = {
+  exams: rows('exams', 'education_exam_registrations'),
+  applications: rows('applications', 'education_admission_applications'),
+  enrolments: rows('enrolments', 'education_enrolments'),
+  nysc: rows('nysc', 'education_nysc_services'),
+  certifications: rows('certifications', 'education_certifications'),
+  programmes: rows('programmes', 'education_programme_enrolments'),
+} as const;
+
 /** Statuses of a degree enrolment that still belongs to the student (not finished, not abandoned). */
 export const CURRENT_ENROLMENT_STATUSES = ['admitted', 'active', 'suspended'] as const;
 
@@ -40,20 +52,26 @@ export class EducationStore {
   }
 
   exams(ctx: SimulationContext): Promise<ExamRegistrationEntity[]> {
-    return ctx.memo(EDUCATION_MEMO.exams, () =>
-      ctx.manager.find(ExamRegistrationEntity, { where: { characterId: ctx.character.id }, order: { registeredAt: 'ASC' } }),
+    return ctx.memo(EDUCATION_MEMO.exams, async () =>
+      (await ctx.mayHaveRows(EDUCATION_ROWS.exams))
+        ? ctx.manager.find(ExamRegistrationEntity, { where: { characterId: ctx.character.id }, order: { registeredAt: 'ASC' } })
+        : [],
     );
   }
 
   applications(ctx: SimulationContext): Promise<AdmissionApplicationEntity[]> {
-    return ctx.memo(EDUCATION_MEMO.applications, () =>
-      ctx.manager.find(AdmissionApplicationEntity, { where: { characterId: ctx.character.id }, order: { appliedAt: 'ASC' } }),
+    return ctx.memo(EDUCATION_MEMO.applications, async () =>
+      (await ctx.mayHaveRows(EDUCATION_ROWS.applications))
+        ? ctx.manager.find(AdmissionApplicationEntity, { where: { characterId: ctx.character.id }, order: { appliedAt: 'ASC' } })
+        : [],
     );
   }
 
   enrolments(ctx: SimulationContext): Promise<EnrolmentEntity[]> {
-    return ctx.memo(EDUCATION_MEMO.enrolments, () =>
-      ctx.manager.find(EnrolmentEntity, { where: { characterId: ctx.character.id }, order: { startsAt: 'ASC' } }),
+    return ctx.memo(EDUCATION_MEMO.enrolments, async () =>
+      (await ctx.mayHaveRows(EDUCATION_ROWS.enrolments))
+        ? ctx.manager.find(EnrolmentEntity, { where: { characterId: ctx.character.id }, order: { startsAt: 'ASC' } })
+        : [],
     );
   }
 
@@ -69,18 +87,24 @@ export class EducationStore {
   }
 
   nysc(ctx: SimulationContext): Promise<NyscServiceEntity | null> {
-    return ctx.memo(EDUCATION_MEMO.nysc, () => ctx.manager.findOne(NyscServiceEntity, { where: { characterId: ctx.character.id } }));
+    return ctx.memo(EDUCATION_MEMO.nysc, async () =>
+      (await ctx.mayHaveRows(EDUCATION_ROWS.nysc)) ? ctx.manager.findOne(NyscServiceEntity, { where: { characterId: ctx.character.id } }) : null,
+    );
   }
 
   certifications(ctx: SimulationContext): Promise<CertificationEntity[]> {
-    return ctx.memo(EDUCATION_MEMO.certifications, () =>
-      ctx.manager.find(CertificationEntity, { where: { characterId: ctx.character.id }, order: { grantedAt: 'ASC' } }),
+    return ctx.memo(EDUCATION_MEMO.certifications, async () =>
+      (await ctx.mayHaveRows(EDUCATION_ROWS.certifications))
+        ? ctx.manager.find(CertificationEntity, { where: { characterId: ctx.character.id }, order: { grantedAt: 'ASC' } })
+        : [],
     );
   }
 
   programmes(ctx: SimulationContext): Promise<ProgrammeEnrolmentEntity[]> {
-    return ctx.memo(EDUCATION_MEMO.programmes, () =>
-      ctx.manager.find(ProgrammeEnrolmentEntity, { where: { characterId: ctx.character.id }, order: { startedAt: 'ASC' } }),
+    return ctx.memo(EDUCATION_MEMO.programmes, async () =>
+      (await ctx.mayHaveRows(EDUCATION_ROWS.programmes))
+        ? ctx.manager.find(ProgrammeEnrolmentEntity, { where: { characterId: ctx.character.id }, order: { startedAt: 'ASC' } })
+        : [],
     );
   }
 

@@ -140,6 +140,7 @@ function world() {
         },
       },
       afterCommit: (hook: () => void) => void hooks.push(hook),
+      mayHaveRows: async () => true,
     } as unknown as SimulationContext;
     return { ctx, commit: () => hooks.splice(0).forEach((hook) => hook()) };
   };

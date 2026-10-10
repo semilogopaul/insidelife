@@ -9,6 +9,7 @@ import type {
 } from '@insidelife/shared';
 import type { ActivityState, TravelState } from '../../characters/entities/character.entity.js';
 import type { SimulationContext } from '../simulation-context.js';
+import type { RowProbe } from '../row-presence.js';
 
 /**
  * A block a domain system puts on the character's daily routine (work shift, lectures, hospital stay, trip).
@@ -62,6 +63,12 @@ export interface SimulationSystem {
   readonly key: string;
   /** Lower runs first. Core systems use 0-99, domains 100+. */
   readonly order: number;
+
+  /**
+   * Existence checks for this system's per-character loads that usually find nothing (see `RowProbe`). Guard each load
+   * with `ctx.mayHaveRows(probe)`; one query per session answers every probe.
+   */
+  readonly rowProbes?: readonly RowProbe[];
 
   /** Initialise domain state for a brand-new character (family, WAEC result, starting home…). */
   onCharacterCreated?(ctx: SimulationContext): Promise<void>;

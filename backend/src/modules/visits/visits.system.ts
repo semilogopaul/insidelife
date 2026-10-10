@@ -5,7 +5,7 @@ import type { SimulationSystem, SummaryContribution } from '../simulation/interf
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationEngine } from '../simulation/simulation-engine.service.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
-import { HostingService } from './hosting.service.js';
+import { HostingService, PENDING_TREAT_ROWS } from './hosting.service.js';
 import { VisitsService } from './visits.service.js';
 
 /**
@@ -22,6 +22,7 @@ const STAY_MIN_NEED = 25;
 export class VisitsSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'visits';
   readonly order = 810;
+  readonly rowProbes = [PENDING_TREAT_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

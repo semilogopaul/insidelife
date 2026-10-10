@@ -16,7 +16,8 @@ import { api } from '@/common/api/http';
 /** Server calls of the open world (all under `/api/v1`). */
 export const movementApi = {
   exit: () => api.post<ExitResultDto>('/characters/me/exits'),
-  heartbeat: (body: MovementHeartbeatRequest) => api.post<MovementHeartbeatResultDto>('/characters/me/heartbeats', body),
+  // Sending a beat twice does no harm (same position, nothing more to burn): retried when the server is busy.
+  heartbeat: (body: MovementHeartbeatRequest) => api.post<MovementHeartbeatResultDto>('/characters/me/heartbeats', body, { idempotent: true }),
   enter: (body: EnterLocationRequest) => api.post<CharacterSnapshotDto>('/characters/me/entries', body),
   /** Fill up (or buy `litres`) at a filling station you've pulled up at. */
   buyFuel: (body: FuelPurchaseRequest) => api.post<FuelPurchaseResultDto>('/characters/me/fuel-purchases', body),

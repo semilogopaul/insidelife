@@ -2,6 +2,7 @@ import type { AuthSessionDto } from '@insidelife/shared';
 import { env } from '@/config/env';
 import { useSession } from '@/common/auth/session-store';
 import { ApiError } from './api-error';
+import { BUSY_MAX_RETRIES, busyDelayMs, isBusyAnswer, noteBusy, pause, retryAfterMs } from './busy';
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
@@ -13,6 +14,11 @@ interface RequestOptions {
   readonly anonymous?: boolean;
   /** Let the request outlive the page (a last word on `pagehide`). */
   readonly keepalive?: boolean;
+  /**
+   * Sending it twice does no harm (a heartbeat, a command with an idempotency key), so a "server busy" answer is
+   * retried like a read. GET, PUT and DELETE are idempotent already; a body with an `idempotencyKey` counts too.
+   */
+  readonly idempotent?: boolean;
 }
 
 /**
@@ -110,13 +116,16 @@ async function send(method: Method, path: string, options: RequestOptions): Prom
   });
 }
 
-/**
- * Typed JSON request against the game API. Refreshes the access token once on 401 (or ahead of expiry) and retries.
- */
-export async function request<T>(method: Method, path: string, options: RequestOptions = {}): Promise<T> {
-  const session = useSession.getState();
-  if (!options.anonymous && session.accessToken && session.expiresAt - Date.now() < 30_000) await refreshSession();
+/** May a "server busy" answer to this request be retried? Reads and idempotent commands; never a last word on unload. */
+function retriesWhenBusy(method: Method, options: RequestOptions): boolean {
+  if (options.keepalive) return false;
+  if (method === 'GET' || method === 'PUT' || method === 'DELETE' || options.idempotent) return true;
+  const body = options.body;
+  return typeof body === 'object' && body !== null && 'idempotencyKey' in body && typeof body.idempotencyKey === 'string';
+}
 
+/** One round trip, refreshing the access token once on 401. Network trouble becomes ApiError(0). */
+async function exchange(method: Method, path: string, options: RequestOptions): Promise<{ response: Response; payload: unknown }> {
   let response: Response;
   try {
     response = await send(method, path, options);
@@ -127,9 +136,28 @@ export async function request<T>(method: Method, path: string, options: RequestO
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError(0, null);
   }
+  const payload: unknown = response.status === 204 ? undefined : await response.json().catch(() => null);
+  return { response, payload };
+}
+
+/**
+ * Typed JSON request against the game API. Refreshes the access token once on 401 (or ahead of expiry) and retries.
+ * When the server is busy (503 SERVER_BUSY while it sheds load, or 429) a read or idempotent command waits — honouring
+ * `Retry-After`, with jittered backoff — and goes again, a few times, with one quiet "Lagos is busy" toast; the caller
+ * only sees the error if it never gets through.
+ */
+export async function request<T>(method: Method, path: string, options: RequestOptions = {}): Promise<T> {
+  const session = useSession.getState();
+  if (!options.anonymous && session.accessToken && session.expiresAt - Date.now() < 30_000) await refreshSession();
+
+  let { response, payload } = await exchange(method, path, options);
+  for (let attempt = 0; attempt < BUSY_MAX_RETRIES && isBusyAnswer(response.status, payload) && retriesWhenBusy(method, options); attempt++) {
+    noteBusy();
+    await pause(busyDelayMs(attempt, retryAfterMs(response.headers.get('Retry-After'))), options.signal);
+    ({ response, payload } = await exchange(method, path, options));
+  }
 
   if (response.status === 204) return undefined as T;
-  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new ApiError(response.status, payload as ConstructorParameters<typeof ApiError>[1]);
   return payload as T;
 }

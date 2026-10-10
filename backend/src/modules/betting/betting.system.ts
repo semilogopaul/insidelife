@@ -5,7 +5,7 @@ import type {
 } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
-import { BettingService } from './betting.service.js';
+import { BettingService, OPEN_SLIP_ROWS } from './betting.service.js';
 
 /**
  * Betting over time: slips whose matches are over settle in the bettor's own session (every settle, after the other
@@ -15,6 +15,7 @@ import { BettingService } from './betting.service.js';
 export class BettingSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'betting';
   readonly order = 850;
+  readonly rowProbes = [OPEN_SLIP_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

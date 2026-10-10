@@ -30,8 +30,8 @@ import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationEngine } from '../simulation/simulation-engine.service.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
 import { TimelinePlanner } from '../simulation/timeline-planner.service.js';
-import { AdmissionsService } from './admissions.service.js';
-import { ConditionsService } from './conditions.service.js';
+import { ADMITTED_ROWS, AdmissionsService } from './admissions.service.js';
+import { ConditionsService, CURRENT_CONDITION_ROWS } from './conditions.service.js';
 import type { HealthProfileEntity } from './entities/health-profile.entity.js';
 import { HealthProfileService } from './health-profile.service.js';
 import { InsuranceService } from './insurance.service.js';
@@ -57,6 +57,7 @@ const JOG_INJURY_CHANCE = 0.002;
 export class HealthSystem implements SimulationSystem, OnModuleInit {
   readonly key = 'health';
   readonly order = 120;
+  readonly rowProbes = [ADMITTED_ROWS, CURRENT_CONDITION_ROWS];
 
   constructor(
     private readonly registry: SimulationRegistry,

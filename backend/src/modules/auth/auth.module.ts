@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
+import { createSecretKey } from 'node:crypto';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import type { AppConfig } from '../../config/configuration.js';
@@ -23,11 +24,16 @@ import { SessionRevocationService } from './session-revocation.service.js';
     JwtModule.registerAsync({
       global: true,
       inject: [ConfigService],
-      useFactory: (config: ConfigService<AppConfig, true>) => ({
-        secret: config.get('auth', { infer: true }).accessSecret,
-        signOptions: { algorithm: 'HS256', issuer: 'insidelife' },
-        verifyOptions: { algorithms: ['HS256'], issuer: 'insidelife' },
-      }),
+      useFactory: (config: ConfigService<AppConfig, true>) => {
+        // The HMAC key as a KeyObject, made once: given the plain string, jsonwebtoken first tries (and fails) to parse
+        // it as a public key on every verify, an exception per request. Same key bytes, so the same tokens.
+        const key = createSecretKey(Buffer.from(config.get('auth', { infer: true }).accessSecret));
+        return {
+          secretOrKeyProvider: () => key,
+          signOptions: { algorithm: 'HS256', issuer: 'insidelife' },
+          verifyOptions: { algorithms: ['HS256'], issuer: 'insidelife' },
+        };
+      },
     }),
   ],
   controllers: [AuthController],

@@ -3,6 +3,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { NotificationDto } from '@insidelife/shared';
 import { NoCharacterException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import { RowSnapshot, updateChanged } from '../../database/row-snapshot.js';
 import { withTransaction } from '../../database/transaction.js';
 import { MetricsService } from '../../metrics/metrics.service.js';
 import { CharacterEntity } from '../characters/entities/character.entity.js';
@@ -13,6 +14,8 @@ import { RealtimeBus } from '../realtime-bus/realtime-bus.service.js';
 import { WorldService } from '../world/world.service.js';
 import { CharacterWallet, SimulationContext } from './simulation-context.js';
 import { hookProfiler } from './hook-profiler.js';
+import { ROW_PRESENCE, RowPresence } from './row-presence.js';
+import { SimulationRegistry } from './simulation-registry.service.js';
 import { SimulationEngine } from './simulation-engine.service.js';
 
 export type CharacterRef = { readonly userId: string } | { readonly characterId: string };
@@ -57,6 +60,7 @@ export class CharacterSession {
     private readonly bus: RealtimeBus,
     private readonly metrics: MetricsService,
     private readonly presence: PresenceService,
+    private readonly registry: SimulationRegistry,
   ) {}
 
   async run<T>(ref: CharacterRef, command: (ctx: SimulationContext) => Promise<T>, options: SessionOptions = {}): Promise<T> {
@@ -66,12 +70,19 @@ export class CharacterSession {
 
     const result = await withTransaction(this.dataSource, async (manager) => {
       const character = await this.lock(manager, ref, options.skipLocked ?? false);
+      // Written back column by column at the end (no re-read of the row we hold locked, unlike `save()`).
+      const loaded = new RowSnapshot(manager.connection.getMetadata(CharacterEntity), character);
       const startedAt = character.locationId;
       const startedLook = JSON.stringify(character.outfit);
       const now = this.world.now();
       const ctx = new SimulationContext(character, manager, this.world, now);
-      const balances = await this.ledger.balances(manager, character.id, true);
-      ctx.bindWallet(new CharacterWallet(ctx, this.ledger, await this.ledger.characterAccounts(manager, character.id), balances.cash));
+      if (manager.queryRunner) {
+        const presence = new RowPresence(manager, character.id, this.registry.rowProbes);
+        manager.queryRunner.data[ROW_PRESENCE] = presence;
+        ctx.bindRowPresence(presence);
+      }
+      const { accounts, balances } = await this.ledger.lockCharacterAccounts(manager, character.id);
+      ctx.bindWallet(new CharacterWallet(ctx, this.ledger, accounts, balances.cash));
 
       if (options.settle ?? true) {
         const stop = this.metrics.settleDuration.startTimer();
@@ -93,7 +104,7 @@ export class CharacterSession {
       const value = await command(ctx);
       await ctx.wallet.flush();
 
-      await manager.save(character);
+      await updateChanged(manager, CharacterEntity, character, loaded);
       pushes.characterId = character.id;
       pushes.notifications = await this.notifications.create(manager, character.id, ctx.notifications);
       hooks = ctx.pendingAfterCommit;

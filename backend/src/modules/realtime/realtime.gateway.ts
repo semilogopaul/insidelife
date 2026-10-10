@@ -27,6 +27,7 @@ import {
 } from '@insidelife/shared';
 import type { AppConfig } from '../../config/configuration.js';
 import { DomainException } from '../../common/exceptions/domain.exception.js';
+import { OVERLOAD_SOCKET_RETRY_SECONDS, OverloadMonitor } from '../../common/overload/overload-monitor.service.js';
 import { deferred } from '../../common/utils/deferred.js';
 import { MetricsService } from '../../metrics/metrics.service.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
@@ -130,6 +131,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly social: SocialGuard,
     private readonly speech: SpeechService,
     private readonly wealth: WealthClassService,
+    private readonly overload: OverloadMonitor,
     config: ConfigService<AppConfig, true>,
   ) {
     this.maxOnlinePlayers = config.get('realtime', { infer: true }).maxOnlinePlayers;
@@ -190,6 +192,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     });
     socket.on('chat:say', (body: unknown, ack: unknown) => void this.whenReady(socket, () => this.onSay(socket, body, replyTo(ack))));
     socket.on('world:move', (body: unknown) => void this.whenReady(socket, async () => this.onMove(socket, body as WorldMovePayload)));
+
+    // An overloaded node takes nobody new (it would accept them and then starve everyone): the same "Lagos is full"
+    // path as the players cap, before any token check or Redis work. Sockets already connected carry on.
+    if (this.overload.overloaded) {
+      socket.emit('world:full', { retryAfterSeconds: OVERLOAD_SOCKET_RETRY_SECONDS });
+      ready.resolve(false);
+      socket.disconnect(true);
+      return;
+    }
 
     try {
       const token = typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;

@@ -37,6 +37,26 @@ const SYSTEM_CURRENCY: Readonly<Record<SystemAccount, LedgerCurrency>> = {
 const FAUCET_SYSTEMS = new Set<string>([SYSTEM_ACCOUNTS.mint, SYSTEM_ACCOUNTS.topup]);
 const SINK_SYSTEMS = new Set<string>([SYSTEM_ACCOUNTS.burn, SYSTEM_ACCOUNTS.tax, SYSTEM_ACCOUNTS.fees]);
 
+export type CharacterBalances = Readonly<Record<Exclude<LedgerAccountKind, 'system'>, number>>;
+
+/** Bound on the remembered account currencies (four per character; cleared and refilled when exceeded). */
+const MAX_REMEMBERED_ACCOUNTS = 100_000;
+
+function accountIds(accounts: readonly LedgerAccountEntity[]): CharacterAccounts {
+  const byKind = new Map(accounts.map((account) => [account.kind, account.id]));
+  const pick = (kind: Exclude<LedgerAccountKind, 'system'>): string => {
+    const id = byKind.get(kind);
+    if (!id) throw new DomainException('LEDGER_ACCOUNT_MISSING', 'Wallet is not set up yet');
+    return id;
+  };
+  return { cash: pick('cash'), savings: pick('savings'), pension: pick('pension'), usd: pick('usd') };
+}
+
+function balancesOf(accounts: readonly LedgerAccountEntity[]): CharacterBalances {
+  const balanceOf = (kind: LedgerAccountKind): number => accounts.find((a) => a.kind === kind)?.balance ?? 0;
+  return { cash: balanceOf('cash'), savings: balanceOf('savings'), pension: balanceOf('pension'), usd: balanceOf('usd') };
+}
+
 class UnbalancedPostingException extends DomainException {
   constructor() {
     super('LEDGER_UNBALANCED', 'Ledger posting does not balance');
@@ -58,6 +78,10 @@ class UnbalancedPostingException extends DomainException {
 export class LedgerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(LedgerService.name);
   private readonly systemIds = new Map<SystemAccount, string>();
+  /** Accounts whose rows this transaction locked, with their balances (null = re-read: a posting may have moved them). */
+  private readonly locked = new WeakMap<EntityManager, Map<string, CharacterBalances | null>>();
+  /** Currency of every account seen so far (an account's currency never changes), so postings needn't look it up. */
+  private readonly currencies = new Map<string, LedgerCurrency>();
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -75,6 +99,7 @@ export class LedgerService implements OnApplicationBootstrap {
         .execute();
       const account = await this.dataSource.getRepository(LedgerAccountEntity).findOneByOrFail({ code });
       this.systemIds.set(key, account.id);
+      this.rememberCurrencies([account]);
     }
     this.logger.log('System ledger accounts ready');
   }
@@ -107,21 +132,44 @@ export class LedgerService implements OnApplicationBootstrap {
 
   async characterAccounts(manager: EntityManager, characterId: string): Promise<CharacterAccounts> {
     const accounts = await manager.find(LedgerAccountEntity, { where: { ownerId: characterId } });
-    const byKind = new Map(accounts.map((account) => [account.kind, account.id]));
-    const pick = (kind: Exclude<LedgerAccountKind, 'system'>): string => {
-      const id = byKind.get(kind);
-      if (!id) throw new DomainException('LEDGER_ACCOUNT_MISSING', 'Wallet is not set up yet');
-      return id;
-    };
-    return { cash: pick('cash'), savings: pick('savings'), pension: pick('pension'), usd: pick('usd') };
+    this.rememberCurrencies(accounts);
+    return accountIds(accounts);
+  }
+
+  /**
+   * The character's accounts locked `FOR UPDATE` for the rest of the transaction (in id order, like before): their ids
+   * and balances from one read. While the lock is held, a balance can only change through `post` on this same
+   * transaction, so later `balances` calls in it are answered from this read until the next posting.
+   */
+  async lockCharacterAccounts(manager: EntityManager, characterId: string): Promise<{ readonly accounts: CharacterAccounts; readonly balances: CharacterBalances }> {
+    const rows = await this.loadAccounts(manager, characterId, true);
+    const accounts = accountIds(rows);
+    const balances = balancesOf(rows);
+    this.heldBalances(manager).set(characterId, balances);
+    return { accounts, balances };
   }
 
   /** Balances by account kind, optionally locking the rows for the rest of the transaction. */
-  async balances(
-    manager: EntityManager,
-    characterId: string,
-    lock = false,
-  ): Promise<Readonly<Record<Exclude<LedgerAccountKind, 'system'>, number>>> {
+  async balances(manager: EntityManager, characterId: string, lock = false): Promise<CharacterBalances> {
+    const held = this.locked.get(manager);
+    const known = held?.get(characterId);
+    if (known) return known;
+    const balances = balancesOf(await this.loadAccounts(manager, characterId, lock));
+    // Rows this transaction has locked can't change under it: keep the answer until its next posting.
+    if (lock || held?.has(characterId)) this.heldBalances(manager).set(characterId, balances);
+    return balances;
+  }
+
+  private heldBalances(manager: EntityManager): Map<string, CharacterBalances | null> {
+    let held = this.locked.get(manager);
+    if (!held) {
+      held = new Map();
+      this.locked.set(manager, held);
+    }
+    return held;
+  }
+
+  private async loadAccounts(manager: EntityManager, characterId: string, lock: boolean): Promise<LedgerAccountEntity[]> {
     const query = manager
       .getRepository(LedgerAccountEntity)
       .createQueryBuilder('account')
@@ -129,17 +177,29 @@ export class LedgerService implements OnApplicationBootstrap {
       .orderBy('account.id', 'ASC');
     if (lock) query.setLock('pessimistic_write');
     const accounts = await query.getMany();
-    const balanceOf = (kind: LedgerAccountKind): number => accounts.find((a) => a.kind === kind)?.balance ?? 0;
-    return { cash: balanceOf('cash'), savings: balanceOf('savings'), pension: balanceOf('pension'), usd: balanceOf('usd') };
+    this.rememberCurrencies(accounts);
+    return accounts;
+  }
+
+  private rememberCurrencies(accounts: readonly LedgerAccountEntity[]): void {
+    if (this.currencies.size > MAX_REMEMBERED_ACCOUNTS) this.currencies.clear();
+    for (const account of accounts) this.currencies.set(account.id, account.currency);
   }
 
   async post(manager: EntityManager, input: PostingInput): Promise<PostingResult> {
     const legs = input.legs.filter((leg) => leg.amount !== 0);
     for (const leg of legs) assertSafeNaira(leg.amount);
     if (legs.length < 2) throw new UnbalancedPostingException();
+    // Balances read earlier in this transaction may be about to change.
+    const held = this.locked.get(manager);
+    if (held) for (const characterId of held.keys()) held.set(characterId, null);
 
-    const accounts = await manager.find(LedgerAccountEntity, { where: { id: In(legs.map((leg) => leg.accountId)) } });
-    const currencyOf = new Map(accounts.map((account) => [account.id, account.currency]));
+    let currencyOf: ReadonlyMap<string, LedgerCurrency> = this.currencies;
+    if (legs.some((leg) => !this.currencies.has(leg.accountId))) {
+      const accounts = await manager.find(LedgerAccountEntity, { where: { id: In(legs.map((leg) => leg.accountId)) } });
+      this.rememberCurrencies(accounts);
+      currencyOf = new Map(accounts.map((account) => [account.id, account.currency]));
+    }
     const sums = new Map<LedgerCurrency, number>();
     for (const leg of legs) {
       const currency = currencyOf.get(leg.accountId);

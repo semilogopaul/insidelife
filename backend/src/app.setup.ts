@@ -5,6 +5,9 @@ import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
 import { clientIpMiddleware } from './common/http/client-ip.js';
 import { configureHttpBoundary } from './common/http/http-boundary.js';
+import { loadShedding } from './common/overload/load-shedding.js';
+import { OverloadMonitor } from './common/overload/overload-monitor.service.js';
+import { MetricsService } from './metrics/metrics.service.js';
 import type { AppConfig } from './config/configuration.js';
 
 /**
@@ -31,6 +34,10 @@ export function configureApp(app: NestExpressApplication): void {
     requireAdminOrigin: config.get('env', { infer: true }) === 'production',
     adminApiHost: config.get('adminApiHost', { infer: true }),
   });
+  // An overloaded node answers new requests at once (503 SERVER_BUSY, Retry-After) instead of queueing them: before
+  // body parsing, guards and handlers, after CORS (so the browser can read the 503).
+  const metrics = app.get(MetricsService);
+  app.use(loadShedding(app.get(OverloadMonitor), () => metrics.shedRequests.inc()));
   app.useBodyParser('json', { limit: '64kb' });
 
   // Everything lives under /api (probes at /api/health and /api/metrics); nginx maps the public /health probe.
