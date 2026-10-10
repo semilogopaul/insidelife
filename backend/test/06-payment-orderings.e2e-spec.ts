@@ -6,7 +6,7 @@ import { FAKE_FLUTTERWAVE_KEY, FakeFlutterwave, type FakeTransaction } from './s
 import { ledgerViolations, NO_VIOLATIONS, postingsWithKey } from './support/ledger.js';
 import { synthMp3, uploadCreative, uploadTrack } from './support/media.js';
 import { forgetJob, jobResult, paymentRow, sendWebhook, sweepAfterExpiry, sweepWhenDue } from './support/payments.js';
-import { createPlayer, ok, type Player } from './support/players.js';
+import { createPlayer, ok, refused, type Player } from './support/players.js';
 
 /**
  * Live-mode payments (real Flutterwave client, fake Flutterwave API) for the three things players buy with real
@@ -196,6 +196,99 @@ describe.each<Kind>(['topup', 'ad', 'song'])('every order of redirect, webhook, 
     }
     // Flutterwave was never asked to refund anything (the refund was the dashboard's), and nothing is left owed.
     expect(fw.callsTo('POST', `/transactions/${transaction.id}/refund`)).toBe(0);
+  });
+});
+
+describe('two players racing for the last space (a phone-app slot holds one ad a day)', () => {
+  const book = async (player: Player, slotId: string, expectedStartDate?: string) => {
+    const creative = await uploadCreative(player, slotId);
+    return player.post('/promotions/campaigns', {
+      slotId,
+      creativeKey: creative.creativeKey,
+      title: `Racer ${player.handle.slice(0, 8)}`,
+      tagline: 'First come, first served',
+      linkUrl: 'https://racer.ng',
+      weeks: 1,
+      ...(expectedStartDate ? { expectedStartDate } : {}),
+    });
+  };
+  const statusOf = async (id: string): Promise<string | undefined> =>
+    (await e2e.dataSource.query<Array<{ status: string }>>(`SELECT status FROM promotion_campaigns WHERE id = $1`, [id]))[0]?.status;
+  /** Bookings that hold the slot on a day (paid and not refused): never more than its capacity (1). */
+  const maxPaidPerDay = async (slotId: string): Promise<number> => {
+    const [row] = await e2e.dataSource.query<Array<{ n: number | null }>>(
+      `SELECT MAX(n)::int AS n FROM (
+         SELECT d, COUNT(*) AS n FROM promotion_campaigns c, generate_series(c.start_date::date, c.end_date::date - 1, interval '1 day') AS d
+          WHERE c.slot_id = $1 AND c.status IN ('in-review', 'approved', 'live') GROUP BY d) days`,
+      [slotId],
+    );
+    return row?.n ?? 0;
+  };
+
+  it('both book at once: one gets today, the other is told the next free day; nobody is double-booked', async () => {
+    const [ada, femi] = [await createPlayer(e2e), await createPlayer(e2e)];
+    const today = lagosToday();
+    const [first, second] = await Promise.all([book(ada, 'app-8', today), book(femi, 'app-8', today)]);
+    expect([first.status, second.status].toSorted()).toEqual([201, 422]);
+    const loser = first.status === 422 ? first : second;
+    expect(loser.body.errorCode).toBe('DATES_CHANGED');
+    expect(loser.body.message).toMatch(/next free start is now/);
+    // The slot's quote for everyone else now starts after the winner's week (the hold counts while they pay).
+    const view = ok<BillboardSlotsDto>(await femi.get('/promotions/slots'));
+    expect(view.slots.find((slot) => slot.id === 'app-8')?.nextStarts[0]).not.toBe(today);
+  });
+
+  it('while one player is paying, the other can only book after them; a late payer after the hold lapsed is refunded automatically', async () => {
+    const [slow, fast, third] = [await createPlayer(e2e), await createPlayer(e2e), await createPlayer(e2e)];
+    const today = lagosToday();
+    const slowBooking = ok<CampaignCheckoutDto>(await book(slow, 'app-9', today));
+
+    // Hold active: the second buyer's quote and booking start the day after the first buyer's week.
+    const quote = ok<BillboardSlotsDto>(await fast.get('/promotions/slots')).slots.find((slot) => slot.id === 'app-9')!;
+    expect(quote.nextStarts[0]).toBe(slowBooking.campaign.endDate);
+    refused(await book(fast, 'app-9', today), 422, 'DATES_CHANGED');
+
+    // The slow buyer's checkout (and hold) expires before they pay; someone else takes the slot and pays at once.
+    await e2e.dataSource.query(`UPDATE promotion_campaigns SET hold_expires_at = now() - interval '1 minute' WHERE id = $1`, [slowBooking.campaignId]);
+    const thirdBooking = ok<CampaignCheckoutDto>(await book(third, 'app-9', today));
+    const thirdPaid = fw.pay(thirdBooking.reference);
+    ok(await third.post(`/payments/${thirdBooking.reference}/verification`, { transactionId: String(thirdPaid.id) }));
+    expect(await statusOf(thirdBooking.campaignId)).toBe('in-review');
+
+    // Now the slow buyer pays (phone, redirect lost): whichever way it's confirmed, it's refunded once, automatically.
+    const slowPaid = fw.pay(slowBooking.reference);
+    ok(await sendWebhook(e2e, fw.chargeWebhook(slowPaid)));
+    await jobResult(e2e, `charge-${slowPaid.id}`);
+    await sweepWhenDue(e2e, slowBooking.reference);
+    ok(await slow.post(`/payments/${slowBooking.reference}/verification`, { transactionId: String(slowPaid.id) }));
+    expect(await statusOf(slowBooking.campaignId)).toBe('refunded');
+    expect(await paymentRow(e2e, slowBooking.reference)).toMatchObject({ status: 'success', refund_status: 'refunded', refunded_kobo: String(slowBooking.quote.totalKobo) });
+    expect(fw.callsTo('POST', `/transactions/${slowPaid.id}/refund`)).toBe(1);
+
+    // The paying buyer keeps the slot; at no point do two paid ads share it.
+    expect(await statusOf(thirdBooking.campaignId)).toBe('in-review');
+    expect((await paymentRow(e2e, thirdBooking.reference)).refund_status).toBeNull();
+    expect(await maxPaidPerDay('app-9')).toBe(1);
+    expect(await maxPaidPerDay('app-8')).toBeLessThanOrEqual(1);
+  });
+
+  it('both pay for the last space at once after a lapsed hold: exactly one keeps it, the other is refunded', async () => {
+    const [first, second] = [await createPlayer(e2e), await createPlayer(e2e)];
+    const today = lagosToday();
+    const one = ok<CampaignCheckoutDto>(await book(first, 'app-10', today));
+    // The first hold lapses, so a second booking for the same days is accepted; both then pay at the same moment.
+    await e2e.dataSource.query(`UPDATE promotion_campaigns SET hold_expires_at = now() - interval '1 minute' WHERE id = $1`, [one.campaignId]);
+    const two = ok<CampaignCheckoutDto>(await book(second, 'app-10', today));
+    const [paidOne, paidTwo] = [fw.pay(one.reference), fw.pay(two.reference)];
+    await Promise.all([
+      first.post(`/payments/${one.reference}/verification`, { transactionId: String(paidOne.id) }),
+      second.post(`/payments/${two.reference}/verification`, { transactionId: String(paidTwo.id) }),
+    ]);
+    const statuses = [await statusOf(one.campaignId), await statusOf(two.campaignId)].toSorted();
+    expect(statuses).toEqual(['in-review', 'refunded']);
+    expect(await maxPaidPerDay('app-10')).toBe(1);
+    const refunds = fw.callsTo('POST', `/transactions/${paidOne.id}/refund`) + fw.callsTo('POST', `/transactions/${paidTwo.id}/refund`);
+    expect(refunds).toBe(1);
   });
 });
 

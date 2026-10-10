@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
 import request from 'supertest';
 import type { Response, Test } from 'supertest';
 import { MINUTES_PER_YEAR, type CharacterSnapshotDto, type RegisterResponseDto } from '@insidelife/shared';
@@ -7,7 +7,8 @@ import { E2E } from './env.js';
 
 type Method = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
-let ipCounter = 0;
+/** Spec files share Redis (rate-limit counters live there for a minute): each file starts somewhere else in 10.0.0.0/8. */
+let ipCounter = randomInt(0, 15_000_000);
 let nameCounter = 0;
 
 /**

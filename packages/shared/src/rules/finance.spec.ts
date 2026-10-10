@@ -95,3 +95,81 @@ describe('Lagos rent upfront', () => {
     expect(rentUpfront(1_000_000)).toEqual({ rent: 1_000_000, agency: 100_000, legal: 100_000, caution: 100_000, total: 1_300_000 });
   });
 });
+
+/**
+ * Exact boundaries of every money rule (added after mutation testing: off-by-one changes to these comparisons
+ * survived the tests above). A player one naira or one day either side must get the right answer.
+ */
+describe('money rules at their exact boundaries', () => {
+  it('PAYE: rent relief is 20% of rent, capped at ₦500k, taken off annual pay after pension', () => {
+    // ₦500k a month, 8% pension → ₦460k × 12 = ₦5.52m; rent ₦1m → relief ₦200k → taxable ₦5.32m.
+    // 2.2m × 15% = 330k; 2.32m × 18% = 417.6k → 747.6k a year → 62,300 a month.
+    expect(computePayslip({ gross: 500_000, pension: true, paye: true, annualRent: 1_000_000 })).toEqual({
+      gross: 500_000,
+      pensionEmployee: 40_000,
+      pensionEmployer: 50_000,
+      tax: 62_300,
+      net: 500_000 - 40_000 - 62_300,
+    });
+    // Rent of ₦5m would be ₦1m relief: capped at ₦500k → taxable ₦5.02m → 330k + 2.02m × 18% = 693.6k → 57,800.
+    expect(computePayslip({ gross: 500_000, pension: true, paye: true, annualRent: 5_000_000 }).tax).toBe(57_800);
+    // No rent: taxable ₦5.52m → 330k + 2.52m × 18% = 783.6k → 65,300.
+    expect(computePayslip({ gross: 500_000, pension: true, paye: true }).tax).toBe(65_300);
+    expect(computePayslip({ gross: 500_000, pension: false, paye: true }).tax).toBe(Math.round(annualIncomeTax(6_000_000) / 12));
+  });
+
+  it('PAYE bands meet exactly at their edges', () => {
+    expect(annualIncomeTax(800_001)).toBe(0);
+    expect(annualIncomeTax(3_000_000)).toBe(330_000);
+    expect(annualIncomeTax(-5)).toBe(0);
+  });
+
+  it('transfer fees switch at exactly ₦5,000, ₦50,000 and (stamp duty) ₦10,000', () => {
+    expect(transferFee(4_999).fee).toBe(0);
+    expect(transferFee(5_000).fee).toBe(10);
+    expect(transferFee(50_000).fee).toBe(10);
+    expect(transferFee(50_001).fee).toBe(50);
+    expect(transferFee(9_999).stampDuty).toBe(0);
+    expect(transferFee(10_000).stampDuty).toBe(50);
+  });
+
+  it('tiers unlock on exactly day 7 and day 30 (with a verified email)', () => {
+    expect(transferTierFor(6, true)).toBe(1);
+    expect(transferTierFor(7, false)).toBe(2);
+    expect(transferTierFor(29, true)).toBe(2);
+    expect(transferTierFor(30, true)).toBe(3);
+    expect(transferTierFor(30, false)).toBe(2);
+  });
+
+  const peer = (overrides: Partial<PeerMoneyCheckInput> = {}) =>
+    checkPeerMoney({ amount: 100_000, sentToday: 0, dailyLimit: 4_000_000, sendable: 1_000_000, receivedToday: 0, recipientHandle: 'femi', ...overrides });
+  const messageOf = (result: ReturnType<typeof checkPeerMoney>): string => (result.ok ? '' : result.message);
+
+  it('daily send limit: exactly the limit is allowed; the refusal says what is left', () => {
+    expect(peer({ amount: 4_000_000, sendable: 4_000_000 }).ok).toBe(true);
+    expect(peer({ sentToday: 3_900_000 }).ok).toBe(true);
+    const partial = peer({ sentToday: 3_950_000 });
+    expect(partial).toMatchObject({ ok: false, code: 'DAILY_LIMIT_EXCEEDED' });
+    expect(messageOf(partial)).toBe('Daily limit: you can still send ₦50,000 to players today.');
+    expect(messageOf(peer({ sentToday: 4_000_000 }))).toMatch(/^You’ve used today’s limit/);
+    expect(messageOf(peer({ sentToday: 4_500_000 }))).toMatch(/^You’ve used today’s limit/);
+  });
+
+  it('starting money: exactly the sendable amount is allowed; the refusal says how much can go', () => {
+    expect(peer({ amount: 99_999, sendable: 99_999 }).ok).toBe(true);
+    expect(messageOf(peer({ sendable: 99_999 }))).toBe('You can send ₦99,999 to players: your starting money can’t be passed on.');
+    expect(messageOf(peer({ sendable: 0 }))).toMatch(/^Your starting money is for you to spend in Lagos/);
+  });
+
+  it('receive cap: exactly ₦4m a day is allowed; the refusal says how much room is left', () => {
+    expect(peer({ amount: 100_000, receivedToday: DAILY_PEER_RECEIVE_LIMIT - 100_000 }).ok).toBe(true);
+    expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT - 60_000 }))).toBe('@femi can only receive ₦60,000 more from players today.');
+    expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT }))).toBe('@femi has received all they can from players today (₦4,000,000 a day).');
+    expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT + 1 }))).toMatch(/has received all they can/);
+  });
+
+  it('checks the sender’s limit before starting money, and starting money before the recipient’s cap', () => {
+    expect(peer({ sentToday: 4_000_000, sendable: 0, receivedToday: DAILY_PEER_RECEIVE_LIMIT })).toMatchObject({ code: 'DAILY_LIMIT_EXCEEDED' });
+    expect(peer({ sendable: 0, receivedToday: DAILY_PEER_RECEIVE_LIMIT })).toMatchObject({ code: 'STARTER_MONEY_LOCKED' });
+  });
+});

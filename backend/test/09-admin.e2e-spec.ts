@@ -95,6 +95,41 @@ function connect(player: Player): Promise<Socket> {
   });
 }
 
+/** The next event of this name on the socket (or fail after a few seconds). */
+function next<T>(socket: Socket, event: string, matches: (payload: T) => boolean = () => true): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(`no ${event} event`)), 5_000);
+    const listener = (payload: T): void => {
+      if (!matches(payload)) return;
+      clearTimeout(timer);
+      socket.off(event, listener);
+      resolve(payload);
+    };
+    socket.on(event, listener);
+  });
+}
+
+describe('the open game hears about money at once (realtime)', () => {
+  it('a transfer and a top-up push a notification and a refetch to the player’s sockets', async () => {
+    const recipient = await createPlayer(e2e);
+    const payer = await createPlayer(e2e);
+    await fund(e2e, payer, 500_000);
+    const socket = await connect(recipient);
+
+    const notified = next<{ kind: string; amount?: number }>(socket, 'notification', (payload) => payload.kind === 'money-received');
+    const invalidated = next<{ reason: string }>(socket, 'character:invalidate', (payload) => payload.reason === 'transfer-received');
+    ok(await payer.post('/transfers', { toHandle: recipient.handle, amount: 25_000, idempotencyKey: key() }));
+    expect(await notified).toMatchObject({ kind: 'money-received', amount: 25_000 });
+    await invalidated;
+
+    const credited = next<{ title: string; amount?: number }>(socket, 'notification', (payload) => payload.title === 'Payment confirmed ✓');
+    const started = ok<{ reference: string }>(await recipient.post('/payments/topups', { packageId: 'small-chops' }));
+    ok(await recipient.post(`/payments/sandbox/${started.reference}/succeed`));
+    expect(await credited).toMatchObject({ amount: 150_000 });
+    socket.disconnect();
+  });
+});
+
 describe('suspending and deleting accounts', () => {
   it('suspension ends sessions at once: tokens, refresh, sign-in and open sockets', async () => {
     const player = await createPlayer(e2e);

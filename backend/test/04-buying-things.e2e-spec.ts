@@ -117,6 +117,8 @@ describe('a car', () => {
   it('buying at the dealer charges the price and puts the car in the garage, ready to drive', async () => {
     e2e.clock.at(10);
     const player = await createPlayer(e2e);
+    // The ₦3m starter fund alone doesn't cover this car for the poorest families.
+    await fund(e2e, player, 1_000_000);
     await moveTo(player, 'berger-car-market');
     const view = ok<VehiclesDto>(await player.get('/vehicles'));
     expect(view.atDealer).toBe('berger-car-market');
@@ -132,7 +134,8 @@ describe('a car', () => {
     expect(garage).toHaveLength(mineBefore + 1);
     expect(garage.find((car) => car.id === bought.vehicle.id)).toMatchObject({ status: 'owned', vehicleId: 'toyota-corolla-2003-taxi' });
 
-    // The snapshot counts it: net worth is the cash left plus what the car is worth today.
+    // The snapshot counts it: net worth (refreshed when the character next settles) is the cash left plus the car.
+    e2e.clock.advance(1);
     const snapshot = await player.snapshot();
     expect(snapshot.wallet.balance).toBe(before - offer.price);
     expect(snapshot.summary.netWorth).toBeGreaterThan(snapshot.wallet.balance + 0.95 * offer.price);
