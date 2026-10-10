@@ -29,17 +29,18 @@ export const TOUR_STEPS: readonly TourStep[] = [
     title: 'How to move',
     body: (context) =>
       context.touch
-        ? `Put your ${thumb(context)} thumb on the ring and drag to walk; push to the edge to jog. Tap a place in the city to walk there. Your ${otherThumb(context)} thumb looks around.`
-        : 'Walk with W A S D or the arrow keys, and hold Shift to run. Click a place in the city to walk there. Drag the mouse to look around.',
+        ? `Put your ${thumb(context)} thumb on the ring and drag to walk; push to the edge to jog. Inside a place, tap a spot to walk there. Your ${otherThumb(context)} thumb looks around.`
+        : 'Walk with W A S D or the arrow keys, and hold Shift to run. Inside a place, click a spot to walk there. Drag the mouse to look around.',
   },
   {
     id: 'car',
-    targets: ['car-exit', 'context-action'],
+    // Only the car's own button: the context button may be offering something else (e.g. Bath) to players without a car.
+    targets: ['car-exit'],
     title: 'Cars: in and out',
     body: (context) =>
       context.touch
-        ? 'Walk up to your car and tap "Get in car" on the button by your thumb. At the wheel, "Get out" parks it.'
-        : 'Walk up to your car and press E (or click "Get in car"). At the wheel, press F to get out.',
+        ? 'Tap your car (or walk up to it and tap "Get in car"). At the wheel, "Get out" parks it.'
+        : 'Click your car, or walk up to it and press E. At the wheel, press F (or click Get out) to park and step out.',
   },
   {
     id: 'goals-pill',

@@ -26,6 +26,8 @@ import { cn } from '@/common/utils/cn';
 import { travelApi } from '../services/travel.api';
 
 const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readonly VenueType[] }> = [
+  // The landmarks first: they're what the "now live" announcement points players to.
+  { label: 'Must see', types: ['mansion', 'private-jet', 'refinery'] },
   { label: 'Food', types: ['buka', 'restaurant'] },
   { label: 'School', types: ['campus', 'cbt-centre', 'school'] },
   { label: 'Work', types: ['office', 'government'] },

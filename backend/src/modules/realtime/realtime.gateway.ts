@@ -67,6 +67,8 @@ const shardRoom = (shard: string): string => `shard:${shard}`;
 const PRESENCE_SAMPLE = 80;
 /** The online count is pushed on this beat (not on every connect: that's O(n²) at scale). */
 const ONLINE_COUNT_MS = 20_000;
+/** Renew connected players' presence well inside its 90 s expiry, so nobody drifts "offline" while connected. */
+const PRESENCE_HEARTBEAT_MS = 30_000;
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
 /** A string field of a client payload ('' when missing or not a string: payloads are never trusted). */
@@ -102,6 +104,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   private readonly pendingPositions = new Map<string, Map<string, WorldPlayerPositionDto>>();
   private flushTimer: NodeJS.Timeout | null = null;
   private countTimer: NodeJS.Timeout | null = null;
+  private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(
     private readonly auth: JwtAuthGuard,
@@ -123,11 +126,28 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     // Each node tells its own sockets (with the Redis adapter a plain emit would repeat once per node).
     this.countTimer = setInterval(() => void this.presence.onlineCount().then((count) => this.server.local.emit('world:online-count', { count })), ONLINE_COUNT_MS);
     this.countTimer.unref();
+    this.heartbeatTimer = setInterval(() => void this.heartbeat(), PRESENCE_HEARTBEAT_MS);
+    this.heartbeatTimer.unref();
   }
 
   onModuleDestroy(): void {
     if (this.flushTimer) clearInterval(this.flushTimer);
     if (this.countTimer) clearInterval(this.countTimer);
+    if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
+  }
+
+  /** Each node keeps its own connected players present (an expired entry is rebuilt from the character). */
+  private async heartbeat(): Promise<void> {
+    try {
+      const ids = new Set((await this.server.local.fetchSockets()).map((socket) => (socket.data as { characterId?: string }).characterId).filter((id): id is string => Boolean(id)));
+      for (const id of ids) {
+        if (await this.presence.touch(id)) continue;
+        const character = await this.directory.findById(id);
+        if (character?.alive) await this.presence.markOnline(this.toPresence(character, await this.wealth.classOf(character.id)));
+      }
+    } catch (error) {
+      this.logger.warn({ err: error }, 'Presence heartbeat failed');
+    }
   }
 
   async handleConnection(socket: RealtimeSocket): Promise<void> {

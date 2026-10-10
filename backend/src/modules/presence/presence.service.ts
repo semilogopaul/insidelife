@@ -29,6 +29,18 @@ export class PresenceService {
     await pipeline.exec();
   }
 
+  /**
+   * Heartbeat for a connected player: renew their online mark and their entry's expiry. Resolves false when the entry
+   * has already expired (the caller re-creates it from the character).
+   */
+  async touch(characterId: string): Promise<boolean> {
+    const pipeline = this.redis.multi();
+    pipeline.zadd(ONLINE_KEY, Date.now(), characterId);
+    pipeline.expire(PLAYER_KEY(characterId), PRESENCE_TTL_SECONDS);
+    const results = await pipeline.exec();
+    return Number(results?.[1]?.[1] ?? 0) === 1;
+  }
+
   async markOffline(characterId: string): Promise<void> {
     const previous = await this.get(characterId);
     const pipeline = this.redis.multi();

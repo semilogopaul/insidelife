@@ -4,6 +4,7 @@ import { ChevronDown, ChevronLeft, MailQuestion, MessageCirclePlus, UserRound } 
 import { useEffect, useMemo, useState } from 'react';
 import type { DmThreadDto } from '@insidelife/shared';
 import { useDmFocus } from '@/common/chat';
+import { useUi } from '@/common/game/ui-store';
 import { EmptyState, LoadingRows } from '@/common/components';
 import { PlayerName } from '@/common/social';
 import { cn } from '@/common/utils/cn';
@@ -79,7 +80,6 @@ function Conversations() {
   const friends = useFriends();
   const threads = useDmThreads();
   const partners = useGistNav((state) => state.partners);
-  const setTab = useGistNav((state) => state.setTab);
   const [showRequests, setShowRequests] = useState(false);
   // Conversations from the server (newest first, including people who messaged you first), then friends and people
   // you just opened a chat with who have no messages yet.
@@ -140,7 +140,7 @@ function Conversations() {
         title="No conversations yet"
         body="Add friends, or tap anyone’s name in Lagos chat to message them."
         action={
-          <button type="button" onClick={() => setTab('friends')} className="h-11 rounded-card bg-danfo px-4 font-bold text-ink">
+          <button type="button" onClick={() => useUi.getState().openPhone('gist', 'friends')} className="h-11 rounded-card bg-danfo px-4 font-bold text-ink">
             Find friends
           </button>
         }

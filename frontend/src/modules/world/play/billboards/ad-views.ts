@@ -68,7 +68,7 @@ export class AdViewTracker {
     entry.dwell += dtMs;
     if (entry.counted || entry.dwell < this.options.dwellMs) return false;
     entry.counted = true;
-    return this.record({ slotId, campaignId, seenAt: clock.serverNow }, clock.gameMinute);
+    return this.record({ slotId, campaignId, seenAt: Math.round(clock.serverNow) }, clock.gameMinute);
   }
 
   /** Record a view directly (surfaces with their own "seen" rule). False when the campaign was already counted this game hour. */

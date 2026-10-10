@@ -20,7 +20,8 @@ class GameClock {
 
   sync(dto: WorldClockDto, requestStartedAt: number, responseReceivedAt: number): void {
     const midpoint = (requestStartedAt + responseReceivedAt) / 2;
-    this.offsetMs = dto.serverNowMs - midpoint;
+    // Whole milliseconds: server-clock timestamps the client sends (e.g. ad views) must be integers.
+    this.offsetMs = Math.round(dto.serverNowMs - midpoint);
     this.base = { epochRealMs: dto.epochRealMs, epochGameMinute: dto.epochGameMinute, scale: dto.scale };
     this.rescales = dto.nextRescale ? [dto.nextRescale] : [];
     this.seed = dto.worldSeed;
