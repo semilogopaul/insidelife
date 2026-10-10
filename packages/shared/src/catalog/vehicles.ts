@@ -7,7 +7,7 @@
  * price index. Grades follow the Lagos market: Naija-used (already driven in Nigeria), tokunbo (foreign-used,
  * imported) and brand-new.
  */
-import { DAYS_PER_YEAR } from '../time/calendar.js';
+import { DAYS_PER_YEAR, MINUTES_PER_DAY, WEEKDAYS, startOfDay, toDateParts, type GameMinute } from '../time/calendar.js';
 import type { DistrictId } from './geography.js';
 import { findVenue } from './venues.js';
 
@@ -284,6 +284,27 @@ export function dealerStocks(venueId: string, vehicle: VehicleDefinition): boole
 
 /** Remote purchase: the dealer's driver brings it to your gate (₦, before the price index). */
 export const VEHICLE_DELIVERY_FEE = 50_000;
+
+/**
+ * When a car ordered for delivery reaches your gate: midnight at the end of the next day, whatever time you order
+ * (handed over at day end). The one source for the server's `arrivesAt`, the dealer sheet's promise and the toasts.
+ */
+export function vehicleDeliveryArrival(orderedAt: GameMinute): GameMinute {
+  return startOfDay(orderedAt) + 2 * MINUTES_PER_DAY;
+}
+
+/** "by midnight tonight", "by tomorrow night, at midnight", "by Friday night, at midnight": a delivery at midnight `arrivesAt`, seen from `now`. */
+export function deliveryByLabel(arrivesAt: GameMinute, now: GameMinute): string {
+  const days = Math.round((arrivesAt - startOfDay(now)) / MINUTES_PER_DAY);
+  if (days <= 1) return 'by midnight tonight';
+  if (days === 2) return 'by tomorrow night, at midnight';
+  return `by ${WEEKDAYS[toDateParts(arrivesAt - 1).weekday]} night, at midnight`;
+}
+
+/** What the dealer promises when you order now ("by tomorrow night, at midnight"). */
+export function vehicleDeliveryPromise(orderedAt: GameMinute): string {
+  return deliveryByLabel(vehicleDeliveryArrival(orderedAt), orderedAt);
+}
 /** Dealers buy cars back at this share of the depreciated value. */
 export const DEALER_OFFER_RANGE = [0.65, 0.85] as const;
 /** Garage limit. */

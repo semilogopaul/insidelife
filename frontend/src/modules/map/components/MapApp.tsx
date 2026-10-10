@@ -1,29 +1,29 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
 import { Bike, Bus, Car, CarTaxiFront, Footprints, Navigation } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   DISTRICTS,
   VENUES,
-  findVenue,
   formatGameDuration,
   homeLocationId,
   type OwnedPropertyMarkerDto,
   type TransportMode,
-  type VenueDefinition,
   type VenueType,
 } from '@insidelife/shared';
-import { errorMessage } from '@/common/api/api-error';
+import { ApiError, errorMessage } from '@/common/api/api-error';
 import { PlaceIcon, propertyPlaceKind, venuePlaceKind } from '@/common/brand/place-icons';
-import { queryKeys } from '@/common/api/query-keys';
 import { Button, Money, Spinner, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
+import { formatHour } from '@/common/places';
+import { useTravelQuotes, type TravelQuote } from '@/common/travel/travel-quotes';
 import { cn } from '@/common/utils/cn';
+import { useVisits } from '@/common/visits';
 import { travelApi } from '../services/travel.api';
+import { expectedVisits, targetFromParam, targetLocationId, targetName, type MapTarget } from '../services/targets';
 
 const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readonly VenueType[] }> = [
   // The landmarks first: they're what the "now live" announcement points players to.
@@ -45,34 +45,32 @@ const STAGE_LABEL: Readonly<Record<OwnedPropertyMarkerDto['stage'], string>> = {
 
 const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: Bike, keke: CarTaxiFront, danfo: Bus, brt: Bus, bolt: CarTaxiFront, car: Car };
 
-type Target = VenueDefinition | 'home';
-
-/** A deep link (`openPhone('map', param)`): a venue id, `home` or `home:<id>` opens that destination directly. */
-function targetFromParam(param: string | null): Target | null {
-  if (!param) return null;
-  if (param === 'home' || param.startsWith('home:')) return 'home';
-  return findVenue(param) ?? null;
-}
-
-/** Pick a destination: start GPS (drive/walk yourself) or book a ride. */
+/** Pick a destination: walk or drive there with the GPS, or book a ride. */
 export function MapApp() {
   const phoneParam = useUi((state) => state.phoneParam);
   const [category, setCategory] = useState(0);
-  const [selected, setSelected] = useState<Target | null>(() => targetFromParam(phoneParam));
+  // What's open: a venue id, `home`, or `home:<id>` (resolved on render, so a host's name shows once visits load).
+  const [selected, setSelected] = useState<string | null>(phoneParam);
   // A new deep link while the Map is already open jumps to that place (adjusting state during render, not an effect).
   const [linkedParam, setLinkedParam] = useState(phoneParam);
   if (phoneParam !== linkedParam) {
     setLinkedParam(phoneParam);
-    setSelected(targetFromParam(phoneParam));
+    setSelected(phoneParam);
   }
   const { data: snapshot } = useSnapshot();
+  const visits = useVisits(snapshot !== undefined);
   const venues = useMemo(() => VENUES.filter((venue) => !venue.regionId && CATEGORIES[category]!.types.includes(venue.type)), [category]);
   const setDestination = useNavigation((state) => state.setDestination);
   const closePhone = useUi((state) => state.closePhone);
   // Land and houses you own but don't live in (where you live is Home): GPS only, rides go to venues and home.
   const properties = (snapshot?.summary.properties ?? []).filter((property) => !property.livedIn);
+  const homeId = snapshot ? homeLocationId(snapshot.character.id) : null;
+  // Someone is expecting you: their place is a destination like any other while the invite stands.
+  const expected = expectedVisits(visits.data?.incoming, snapshot?.character.locationId ?? null);
+  const target = targetFromParam(selected, homeId, visits.data?.incoming);
+  const targetId = target ? targetLocationId(target, homeId) : null;
 
-  if (selected) return <Destination target={selected} onBack={() => setSelected(null)} homeId={snapshot ? homeLocationId(snapshot.character.id) : null} />;
+  if (target && targetId) return <Destination target={target} destinationId={targetId} onBack={() => setSelected(null)} />;
 
   return (
     <div className="flex flex-col gap-4">
@@ -83,6 +81,30 @@ export function MapApp() {
           <span className="text-sm text-text-soft">{snapshot ? DISTRICTS[snapshot.character.homeDistrictId].name : ''}</span>
         </span>
       </button>
+      {expected.length > 0 && (
+        <ul className="flex flex-col gap-2" aria-label="Expected at">
+          {expected.map((visit) =>
+            visit.kind === 'visit' ? (
+              <li key={visit.locationId}>
+                <button
+                  type="button"
+                  onClick={() => setSelected(visit.locationId)}
+                  className="flex w-full items-center gap-3 rounded-card bg-danfo-soft p-3 text-left ring-1 ring-danfo hover:bg-paper-3"
+                >
+                  <PlaceIcon kind="home" size={40} decorative />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-bold">{visit.name}</span>
+                    <span className="block truncate text-sm text-text-soft">
+                      Expecting you{visit.districtId ? ` · ${DISTRICTS[visit.districtId].name}` : ''}
+                    </span>
+                  </span>
+                  <Navigation size={18} aria-hidden className="shrink-0 text-text-faint" />
+                </button>
+              </li>
+            ) : null,
+          )}
+        </ul>
+      )}
       {properties.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label="Your properties">
           {properties.map((property) => (
@@ -128,7 +150,7 @@ export function MapApp() {
       <ul className="flex flex-col divide-y divide-line">
         {venues.map((venue) => (
           <li key={venue.id}>
-            <button type="button" onClick={() => setSelected(venue)} className="flex w-full items-center gap-3 py-3 text-left">
+            <button type="button" onClick={() => setSelected(venue.id)} className="flex w-full items-center gap-3 py-3 text-left">
               <PlaceIcon kind={venuePlaceKind(venue)} size={36} decorative />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-bold">{venue.name}</span>
@@ -145,20 +167,54 @@ export function MapApp() {
   );
 }
 
-function Destination({ target, onBack, homeId }: { target: Target; onBack: () => void; homeId: string | null }) {
-  const destinationId = target === 'home' ? homeId : target.id;
-  const name = target === 'home' ? 'Home' : target.name;
+/** "Berger Car Mart will be closed when you get there (opens 8 AM)". */
+const closedCopy = (name: string, opens: number): string => `${name} will be closed when you get there (opens ${formatHour(opens)})`;
+
+function Destination({ target, destinationId, onBack }: { readonly target: MapTarget; readonly destinationId: string; readonly onBack: () => void }) {
+  const name = targetName(target);
   const setDestination = useNavigation((state) => state.setDestination);
   const closePhone = useUi((state) => state.closePhone);
-  const quotes = useQuery({ queryKey: queryKeys.domain('map', 'quotes', destinationId ?? ''), queryFn: () => travelApi.quotes(destinationId ?? ''), enabled: destinationId !== null, staleTime: 10_000 });
-  const book = useSnapshotMutation((mode: TransportMode) => travelApi.book(destinationId ?? '', mode));
+  const quotes = useTravelQuotes(destinationId);
+  const book = useSnapshotMutation(({ mode, acceptClosed }: { readonly mode: TransportMode; readonly acceptClosed: boolean }) => travelApi.book(destinationId, mode, acceptClosed));
+  // A ride that lands after closing time asks first ("Book anyway").
+  const [confirming, setConfirming] = useState<{ readonly mode: TransportMode; readonly message: string } | null>(null);
+  const car = quotes.data?.find((quote) => quote.mode === 'car');
+  const walk = quotes.data?.find((quote) => quote.mode === 'walk' && quote.available);
+  const hasCar = car ? car.available || car.reason !== 'You don’t own a car yet' : false;
+  const detail = target.kind === 'venue' ? target.venue.blurb : target.kind === 'visit' ? target.detail : null;
 
-  const startGps = (): void => {
-    if (!destinationId) return;
+  const guide = (how: 'walk' | 'drive'): void => {
     setDestination(destinationId, name);
     gameEvents.emit('sfx', { id: 'ui-success' });
+    toast({
+      title: `GPS set: ${name}`,
+      body: how === 'drive' ? 'Get in your car and follow the route on your minimap.' : 'Follow the route on your minimap.',
+      tone: 'neutral',
+    });
     closePhone();
   };
+
+  const ride = (quote: TravelQuote, acceptClosed: boolean): void =>
+    book.mutate(
+      { mode: quote.mode, acceptClosed },
+      {
+        onSuccess: () => {
+          setConfirming(null);
+          gameEvents.emit('sfx', { id: quote.mode === 'danfo' ? 'danfo-conductor' : 'car-door' });
+          toast({ title: `${quote.label} booked`, body: `On your way to ${name}.`, tone: 'neutral', amount: -quote.fare });
+          closePhone();
+        },
+        onError: (error) => {
+          // The clock moved on since the quote: the server is the judge, so ask now.
+          if (error instanceof ApiError && error.code === 'CLOSED_ON_ARRIVAL') {
+            setConfirming({ mode: quote.mode, message: errorMessage(error) });
+            void quotes.refetch();
+            return;
+          }
+          toast({ title: 'Couldn’t book that ride', body: errorMessage(error), tone: 'bad' });
+        },
+      },
+    );
 
   return (
     <div className="flex flex-col gap-4">
@@ -166,15 +222,33 @@ function Destination({ target, onBack, homeId }: { target: Target; onBack: () =>
         Back to places
       </button>
       <div className="flex items-center gap-3">
-        <PlaceIcon kind={target === 'home' ? 'home' : venuePlaceKind(target)} size={52} />
+        <PlaceIcon kind={target.kind === 'venue' ? venuePlaceKind(target.venue) : 'home'} size={52} />
         <div className="min-w-0">
           <h3 className="type-title text-2xl leading-tight">{name}</h3>
-          {target !== 'home' && <p className="text-sm text-text-soft">{target.blurb}</p>}
+          {detail && <p className="text-sm text-text-soft">{detail}</p>}
         </div>
       </div>
-      <Button icon={<Navigation size={18} aria-hidden />} onClick={startGps} block>
-        Start GPS — drive or walk there
-      </Button>
+      <div className="grid gap-2" role="group" aria-label={`Go to ${name} yourself`}>
+        <Button icon={<Footprints size={18} aria-hidden />} onClick={() => guide('walk')} block className="justify-start">
+          Walk there with GPS{walk ? ` · ${formatGameDuration(walk.minutes)}` : ''}
+        </Button>
+        <Button
+          variant="paper"
+          icon={<Car size={18} aria-hidden />}
+          onClick={() => guide('drive')}
+          disabled={!hasCar}
+          block
+          className="justify-start"
+          aria-describedby={hasCar ? undefined : 'map-no-car'}
+        >
+          Drive my car with GPS{hasCar && car?.available ? ` · ${formatGameDuration(car.minutes)}` : ''}
+        </Button>
+        {!hasCar && !quotes.isPending && (
+          <p id="map-no-car" className="-mt-1 px-1 text-xs text-text-soft">
+            You don’t have a car yet. Motors on your phone sells them.
+          </p>
+        )}
+      </div>
       <div>
         <h4 className="mb-2 font-bold">Or book a ride</h4>
         {quotes.isPending && <Spinner className="text-text-soft" />}
@@ -184,20 +258,16 @@ function Destination({ target, onBack, homeId }: { target: Target; onBack: () =>
             ?.filter((quote) => quote.mode !== 'walk' && quote.mode !== 'car')
             .map((quote) => {
               const Icon = MODE_ICON[quote.mode];
+              const closed = quote.available ? quote.closedOnArrival : undefined;
+              const asking = confirming?.mode === quote.mode ? confirming : null;
               return (
                 <li key={quote.mode}>
                   <button
                     type="button"
                     disabled={!quote.available || book.isPending}
+                    aria-expanded={closed !== undefined ? asking !== null : undefined}
                     onClick={() =>
-                      book.mutate(quote.mode, {
-                        onSuccess: () => {
-                          gameEvents.emit('sfx', { id: quote.mode === 'danfo' ? 'danfo-conductor' : 'car-door' });
-                          toast({ title: `${quote.label} booked`, body: `On your way to ${name}.`, tone: 'neutral', amount: -quote.fare });
-                          closePhone();
-                        },
-                        onError: (error) => toast({ title: 'Couldn’t book that ride', body: errorMessage(error), tone: 'bad' }),
-                      })
+                      closed !== undefined ? setConfirming({ mode: quote.mode, message: closedCopy(name, closed) }) : ride(quote, false)
                     }
                     className="flex w-full items-center gap-3 rounded-card bg-paper-2 p-3 text-left hover:bg-paper-3 disabled:opacity-50"
                   >
@@ -205,9 +275,27 @@ function Destination({ target, onBack, homeId }: { target: Target; onBack: () =>
                     <span className="min-w-0 flex-1">
                       <span className="block font-bold">{quote.label}</span>
                       <span className="block text-sm text-text-soft">{quote.available ? formatGameDuration(quote.minutes) : quote.reason}</span>
+                      {closed !== undefined && (
+                        <span className="block text-sm font-bold text-okada">Closed when you arrive (opens {formatHour(closed)})</span>
+                      )}
                     </span>
                     {quote.available && <Money amount={quote.fare} className="font-bold" />}
                   </button>
+                  {asking && (
+                    <div role="alert" className="mt-1.5 rounded-card bg-okada-soft p-3 text-sm text-ink">
+                      <p>
+                        <span className="font-bold">{asking.message}.</span> The fare isn’t refunded at a locked gate.
+                      </p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <Button size="sm" variant="ink" loading={book.isPending} onClick={() => ride(quote, true)}>
+                          Book anyway · <Money amount={quote.fare} compact />
+                        </Button>
+                        <Button size="sm" variant="paper" onClick={() => setConfirming(null)}>
+                          Not now
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </li>
               );
             })}

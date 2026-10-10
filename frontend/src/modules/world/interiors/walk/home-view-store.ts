@@ -12,6 +12,12 @@ import type { Arrival, HomeLayout, PortalGeometry } from '../layouts/types';
  * dark between rooms, the hotspots' markers and what's on offer where you stand. Never written per frame.
  */
 
+/**
+ * The right-edge column of in-room controls (rooms menu, camera switch), centred vertically: door and stairs labels
+ * stay out of it so they never stack under the buttons (px).
+ */
+export const CONTROLS_COLUMN = { width: 176, halfHeight: 96 } as const;
+
 export type HomeCamera = 'walk' | 'overview';
 
 export interface RoomTab {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { hashString } from '../random/rng.js';
-import { AD_FACE_GAP, AD_PLACEMENTS, adFaceEnds, adFaceGap, type AdFaceExtent } from './ad-placements.js';
+import { AD_DOOR_CLEARANCE, AD_FACE_GAP, AD_PLACEMENTS, adFaceEnds, adFaceGap, adFootprint, type AdFaceExtent } from './ad-placements.js';
 import { CARRIAGEWAY_HALF_WIDTH } from './city-layout.js';
 import { CITY_MAP } from './city-map.js';
 import { nearestRoadPoint } from './routing.js';
@@ -60,6 +60,29 @@ describe('ad placements (bigger faces that still fit the city)', () => {
         for (const door of doors) expect(Math.hypot(point.x - door.x, point.z - door.z), spot.id).toBeGreaterThan(2.5);
       }
     }
+  });
+
+  it('keeps every board, pole and shelter ~3 m from every door, homes and offices too (nobody is wedged at their gate)', () => {
+    const allDoors = CITY_MAP.lots.flatMap((lot) => (lot.entrance ? [lot.entrance.position] : []));
+    for (const spot of AD_PLACEMENTS) {
+      for (const point of adFootprint(spot)) {
+        for (const door of allDoors) expect(Math.hypot(point.x - door.x, point.z - door.z), spot.id).toBeGreaterThanOrEqual(AD_DOOR_CLEARANCE - 1e-6);
+      }
+    }
+  });
+
+  it('moves a board only within its spot: along the kerb from its pinned anchor, a few metres at most', () => {
+    let moved = 0;
+    for (const spot of AD_PLACEMENTS) {
+      const slide = Math.hypot(spot.position.x - spot.anchor.x, spot.position.z - spot.anchor.z);
+      if (slide < 1e-9) continue;
+      moved++;
+      expect(slide, spot.id).toBeLessThanOrEqual(9.5);
+      // Along one axis only (roads are axis-aligned): the board stays the same distance from the kerb.
+      expect(Math.min(Math.abs(spot.position.x - spot.anchor.x), Math.abs(spot.position.z - spot.anchor.z)), spot.id).toBeLessThan(1e-9);
+      expect(['street-billboard', 'bus-shelter', 'totem']).toContain(spot.kind);
+    }
+    expect(moved).toBeGreaterThan(0);
   });
 
   it('keeps pole and gantry premium boards out of the buildings around them (no deeper than the first city)', () => {

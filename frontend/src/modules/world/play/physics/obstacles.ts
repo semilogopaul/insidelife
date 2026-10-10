@@ -1,10 +1,11 @@
-import { venueLot } from '@insidelife/shared';
+import { AD_PLACEMENTS, venueLot, type AdPlacementSpot } from '@insidelife/shared';
 import { APRON, VEHICLE_SCALE, cityPlan, frameOf, type CityPlan, type LotFrame } from '../../city/layout/placements';
 import { ColliderGrid, type Aabb } from './collision';
 
 /**
  * Everything solid in the city for the play layer: building footprints from the city plan, compound walls, kerbside
- * parked cars and the procedural landmarks (airport terminal, stadium bowl, central mosque). Built once per page.
+ * parked cars, the procedural landmarks (airport terminal, stadium bowl, central mosque) and the street ads you could
+ * otherwise walk (and the camera see) through: lightbox totems, bus-shelter panels and billboard poles. Built once per page.
  */
 
 /** Kenney car-kit footprint (model units) and height at the city's vehicle scale. */
@@ -59,6 +60,31 @@ function landmarkBoxes(): Aabb[] {
   return boxes;
 }
 
+/** World AABB of a box in an ad spot's frame: `across` along its face, `back` behind it (away from viewers). */
+function spotBox(spot: AdPlacementSpot, back: number, halfAcross: number, halfDepth: number, height: number): Aabb {
+  const ux = -Math.sin(spot.facing);
+  const uz = Math.cos(spot.facing);
+  const bx = -Math.cos(spot.facing);
+  const bz = -Math.sin(spot.facing);
+  const cx = spot.position.x + bx * back;
+  const cz = spot.position.z + bz * back;
+  const ex = Math.abs(ux) * halfAcross + Math.abs(bx) * halfDepth;
+  const ez = Math.abs(uz) * halfAcross + Math.abs(bz) * halfDepth;
+  return { minX: cx - ex, minZ: cz - ez, maxX: cx + ex, maxZ: cz + ez, height };
+}
+
+/** The solid parts of the street ads (as `StreetAds` draws them): a totem's lightbox, a shelter's end panel, a billboard's pole. */
+export function adStructureBoxes(spots: readonly AdPlacementSpot[] = AD_PLACEMENTS): Aabb[] {
+  const boxes: Aabb[] = [];
+  for (const spot of spots) {
+    const top = spot.elevation + spot.height + 0.07;
+    if (spot.kind === 'totem') boxes.push(spotBox(spot, 0, (spot.width + 0.14) / 2, 0.18, top));
+    else if (spot.kind === 'bus-shelter') boxes.push(spotBox(spot, 0.07, (spot.width + 0.14) / 2, 0.07, top));
+    else if (spot.kind === 'street-billboard') boxes.push(spotBox(spot, 0.4, 0.18, 0.18, spot.elevation));
+  }
+  return boxes;
+}
+
 function parkedCarBox(x: number, z: number, yaw: number): Aabb {
   // The model's +z front points along (sin yaw, cos yaw).
   const s = Math.abs(Math.sin(yaw));
@@ -86,6 +112,7 @@ export function buildObstacles(plan: CityPlan): Aabb[] {
   }
   for (const car of plan.placements.vehicles) boxes.push(parkedCarBox(car.x, car.z, car.yaw));
   boxes.push(...landmarkBoxes());
+  boxes.push(...adStructureBoxes());
   return boxes;
 }
 

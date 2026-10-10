@@ -13,6 +13,7 @@ import { levelLabel } from '../layouts/geometry';
 import { HotspotCardPanel } from './HotspotCardPanel';
 import { useHotspotDo, type HotspotHandlers } from './use-hotspot-do';
 import {
+  CONTROLS_COLUMN,
   hotspotLabelElements,
   portalLabelElements,
   useHomeView,
@@ -281,7 +282,10 @@ function HomeControls() {
 
   const walk = camera === 'walk';
   return (
-    <div className="pointer-events-none absolute right-[max(env(safe-area-inset-right),0.75rem)] top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-2">
+    <div
+      className="pointer-events-none absolute right-[max(env(safe-area-inset-right),0.75rem)] top-1/2 z-10 flex -translate-y-1/2 flex-col items-end gap-2"
+      style={{ maxWidth: CONTROLS_COLUMN.width }}
+    >
       {rooms.length > 1 && current && (
         <div ref={menu} className="relative">
           <button
@@ -305,7 +309,8 @@ function HomeControls() {
             <div
               role="menu"
               aria-label="Go to a room"
-              className="glass pointer-events-auto absolute right-full top-0 mr-2 w-52 rounded-card p-1.5 text-on-ink"
+              // Centred on the button and scrolling when long: it never reaches down over Step outside and Talk.
+              className="pointer-events-auto absolute right-full top-1/2 mr-2 max-h-[min(22rem,calc(100dvh-16rem))] w-52 -translate-y-1/2 overflow-y-auto overscroll-contain rounded-card bg-ink/95 p-1.5 text-on-ink shadow-[var(--shadow-glass)] ring-1 ring-white/10"
             >
               {rooms.map((room) => (
                 <button

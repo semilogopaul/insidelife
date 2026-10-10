@@ -71,9 +71,14 @@ export function useMarkDmRead() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (channel: string) => gistApi.markDmRead(channel),
-    onMutate: (channel) => {
+    onMutate: async (channel) => {
+      // A refetch already on its way (the new message's alert asked for one) was read before this: drop it, or it
+      // would bring the unread dot back while you're looking at the thread.
+      await client.cancelQueries({ queryKey: gistKeys.dmThreads });
       client.setQueryData<DmThreadDto[]>(gistKeys.dmThreads, (threads) => threads?.map((thread) => (thread.channel === channel ? { ...thread, unread: false } : thread)));
     },
+    // Then trust the server, which has the read marker now.
+    onSettled: () => void client.invalidateQueries({ queryKey: gistKeys.dmThreads }),
   });
 }
 

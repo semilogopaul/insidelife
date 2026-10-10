@@ -32,8 +32,9 @@ import {
   formatNaira,
   isVehiclePaintId,
   paintSurcharge,
-  startOfDay,
   toDateParts,
+  vehicleDeliveryArrival,
+  vehicleDeliveryPromise,
   vehiclePaint,
   type DriverLicenceDto,
   type DrivenVehicleDto,
@@ -211,7 +212,7 @@ export class VehiclesService {
         acquiredAt: ctx.time,
         isPrimary: dealerId !== null && !hasPrimary,
         status: dealerId ? 'owned' : 'in-transit',
-        arrivesAt: dealerId ? null : startOfDay(ctx.time) + 2 * MINUTES_PER_DAY,
+        arrivesAt: dealerId ? null : vehicleDeliveryArrival(ctx.time),
         lastDrivenAt: null,
         skippedServices: 0,
         fuelLitres: fuelTankLitres(def) * NEW_CAR_FUEL_SHARE,
@@ -233,7 +234,7 @@ export class VehiclesService {
     ctx.notify(
       dealer
         ? { kind: 'achievement', title: 'New whip! 🚗', body: `You drove a ${def.name} out of ${dealer}. Plate ${row.plate}. Get your FRSC licence before the police find you.`, tone: 'good' }
-        : { kind: 'system', title: 'Car on the way 🚚', body: `The dealer's driver will bring your ${def.name} (${row.plate}) by tomorrow night.`, tone: 'neutral' },
+        : { kind: 'system', title: 'Car on the way 🚚', body: `The dealer's driver will bring your ${def.name} (${row.plate}) ${vehicleDeliveryPromise(ctx.time)}.`, tone: 'neutral' },
     );
     const car = (await this.garage(ctx)).find((candidate) => candidate.row.id === row.id) ?? { row, def };
     return { channel: dealer ? 'in-person' : 'delivery', vehicle: this.toDto(ctx, car), price, paintFee, deliveryFee, balance: ctx.wallet.cash };

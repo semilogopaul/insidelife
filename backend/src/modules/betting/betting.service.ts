@@ -115,7 +115,8 @@ export class BettingService {
             : null,
         realityCheckMinutes: profile?.realityCheckMinutes ?? BETTING_RULES.defaultRealityCheckMinutes,
       },
-      today: { staked: today.staked, won: today.won, netLoss, lossLeft: Math.max(0, limit - netLoss) },
+      // A winning day doesn't raise the limit you can see: what's left never reads more than the limit itself.
+      today: { staked: today.staked, won: today.won, netLoss, lossLeft: Math.min(limit, Math.max(0, limit - netLoss)) },
       lifetime,
       openSlips: lifetime.open,
     };

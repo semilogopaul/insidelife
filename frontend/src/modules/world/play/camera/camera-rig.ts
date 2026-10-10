@@ -38,6 +38,13 @@ const WALL_MARGIN = 0.45;
 /** Extra pitch tried when a wall crowds the camera, and the closest the camera ever gets. */
 const LIFT = 0.55;
 const MIN_CLEAR = 1.6;
+/**
+ * Squeezed closer than MIN_CLEAR (a wall or a lightbox right behind you at a gate), the camera comes in to this rather
+ * than sit inside the obstacle — looking down over your head (full lift), never through it.
+ */
+const NEAREST = 1.05;
+/** Turns tried (radians) when the view behind is cramped and you're standing still: the camera swings to the clearest. */
+const SWING_OFFSETS: readonly number[] = [0.6, -0.6, 1.2, -1.2, 1.8, -1.8];
 
 export interface CameraSubject {
   x: number;
@@ -148,9 +155,29 @@ export class CameraRig {
     // Wall pull-in. When a wall is close behind, try lifting the camera (looking down over the player) and keep
     // whichever view is less cramped; the lift eases in and out.
     const reach = this.distance + WALL_MARGIN;
-    const base = this.clearAt(colliders, this.pitch, reach);
+    let base = this.clearAt(colliders, this.pitch, reach);
+    // Standing still with something right behind (stepping out of a gate between a wall and a board): swing round to
+    // the clearest view, unless the player is turning the camera themselves.
+    if (this.mode === 'walk' && !moving && sinceLook > tuning.hold && base < this.distance * 0.55) {
+      const from = this.yaw;
+      let bestYaw = from;
+      let bestClear = base;
+      for (const offset of SWING_OFFSETS) {
+        this.yaw = wrapAngle(from + offset);
+        const clear = this.clearAt(colliders, this.pitch, reach);
+        if (clear > bestClear + 0.75) {
+          bestClear = clear;
+          bestYaw = this.yaw;
+        }
+      }
+      this.yaw = wrapAngle(from + angleDelta(from, bestYaw) * damp(2.5, dt));
+      if (this.yaw !== from) base = this.clearAt(colliders, this.pitch, reach);
+    }
     let liftGoal = 0;
-    if (base < this.distance * 0.7) {
+    if (base - WALL_MARGIN < MIN_CLEAR) {
+      // Pinned: look down over the player's head rather than through a wall or into the back of their head.
+      liftGoal = Math.min(MAX_PITCH, this.pitch + LIFT * 1.5) - this.pitch;
+    } else if (base < this.distance * 0.7) {
       const lifted = Math.min(MAX_PITCH, this.pitch + LIFT);
       if (this.clearAt(colliders, lifted, reach) > base + 1) liftGoal = lifted - this.pitch;
     }
@@ -161,7 +188,7 @@ export class CameraRig {
     const dy = Math.sin(pitch);
     const dz = -Math.sin(this.yaw) * cosPitch;
     const hit = this.lift > 0.01 ? colliders.raycast(this.target.x, this.target.y, this.target.z, dx, dy, dz, reach) : base;
-    const wanted = Math.max(MIN_CLEAR, Math.min(this.distance, hit - WALL_MARGIN));
+    const wanted = Math.max(NEAREST, Math.min(this.distance, hit - WALL_MARGIN));
     this.actual += (wanted - this.actual) * damp(wanted < this.actual ? 30 : 3.5, dt);
 
     camera.position.set(this.target.x + dx * this.actual, Math.max(0.7, this.target.y + dy * this.actual), this.target.z + dz * this.actual);

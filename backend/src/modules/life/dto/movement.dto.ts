@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import {
   MIN_FUEL_PURCHASE_LITRES,
   TRANSPORT_MODES,
@@ -31,6 +31,11 @@ export class TravelDto implements TravelRequest {
 
   @IsIn(TRANSPORT_MODES)
   readonly mode: TransportMode;
+
+  /** Book it even though the place will be closed when you get there (the client asked first). */
+  @IsOptional()
+  @IsBoolean()
+  readonly acceptClosed?: boolean;
 }
 
 export class EnterLocationDto implements EnterLocationRequest {

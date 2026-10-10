@@ -27,6 +27,8 @@ describe('action availability (venue sheet and hotspots)', () => {
       'Finish what you’re doing first',
     );
     expect(actionAvailability(action('lounge'), at({ hour: 9 })).reason).toBe('Closed now · opens 2 PM');
+    // Things you can do anywhere (on your phone) don't keep the venue's hours.
+    expect(actionAvailability(action('scroll'), at({ hour: 9 })).available).toBe(true);
     // Late-night hours run past midnight: still open at 1 AM.
     expect(actionAvailability(action('lounge'), at({ hour: 1 })).available).toBe(true);
     expect(actionAvailability(action('lounge'), at({ balance: 5_000 })).reason).toBe(

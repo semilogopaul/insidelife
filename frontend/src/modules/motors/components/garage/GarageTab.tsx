@@ -2,14 +2,13 @@
 
 import { Fuel, Gauge, Navigation, Star, Truck, Wrench } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { FUEL_LOW_SHARE, MAX_VEHICLES, nearestServicePoint, serviceLocationId, type GameMinute, type OwnedVehicleDto, type ServicePointKind, type VehiclesDto } from '@insidelife/shared';
+import { FUEL_LOW_SHARE, MAX_VEHICLES, deliveryByLabel, nearestServicePoint, serviceLocationId, type GameMinute, type OwnedVehicleDto, type ServicePointKind, type VehiclesDto } from '@insidelife/shared';
 import { Badge, Button, Money, ProgressBar } from '@/common/components';
 import { useVehicleCommands } from '../../hooks/use-vehicles';
 import { announce, complain } from '@/common/game/feedback';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
-import { gameDateTime } from '@/common/utils/game-time';
 import { conditionWord } from '../../services/motors-rules';
 import { CarArt, Plate } from '../CarArt';
 import { ConfirmSheet } from '@/common/components';
@@ -112,7 +111,7 @@ export function GarageTab({
             </div>
             {car.status === 'in-transit' ? (
               <p className="rounded-card bg-cobalt-soft p-3 text-sm font-bold text-cobalt">
-                On its way — arrives {car.arrivesAt !== null ? gameDateTime(car.arrivesAt, now) : 'soon'}.
+                On its way — the dealer’s driver brings it {car.arrivesAt !== null ? deliveryByLabel(car.arrivesAt, now) : 'soon'}.
               </p>
             ) : (
               <>

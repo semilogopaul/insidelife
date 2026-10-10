@@ -180,6 +180,20 @@ export function isVenueOpen(venue: VenueDefinition, hour: number): boolean {
   return hour >= open || hour < close - 24;
 }
 
+/** A short wait at the door is fine: a venue opening this soon after you arrive doesn't count as closed (minutes). */
+export const OPENING_GRACE_MINUTES = 30;
+
+/**
+ * Will a venue be shut when you get there (game minute `arriveAt`, a ride's arrival)? The hour it opens next, or null
+ * when it's open then — or opens within `OPENING_GRACE_MINUTES` of your arrival.
+ */
+export function closedOnArrival(venue: VenueDefinition, arriveAt: number): number | null {
+  if (!venue.hours) return null;
+  const hourAt = (minute: number): number => Math.floor((((minute % 1440) + 1440) % 1440) / 60);
+  if (isVenueOpen(venue, hourAt(arriveAt)) || isVenueOpen(venue, hourAt(arriveAt + OPENING_GRACE_MINUTES))) return null;
+  return venue.hours[0] % 24;
+}
+
 /**
  * A character's home is not a catalog venue: it is identified as `home:<characterId>` at runtime. This helper keeps
  * that convention in one place.

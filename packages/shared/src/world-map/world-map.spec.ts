@@ -6,11 +6,14 @@ import {
   BILLBOARD_WORLD_PLACEMENTS,
   CITY_BOUNDS,
   CITY_MAP,
+  DOOR_STEP_OUT,
+  ENTRY_RADIUS,
   MAP_KM_PER_WORLD_METRE,
   ROAD_LINE_WIDTH,
   cellKindAt,
   districtAt,
   districtBounds,
+  doorStepFor,
   findRoute,
   homeEntrance,
   homeKey,
@@ -194,5 +197,21 @@ describe('routing', () => {
     const started = Date.now();
     for (let i = 0; i < 200; i++) roadDistance(entranceOf('mmia-airport'), entranceOf('ajah-market'));
     expect((Date.now() - started) / 200).toBeLessThan(2);
+  });
+});
+
+describe('stepping out of a door', () => {
+  it('puts each player on their own spot a step in front of it, the same every time', () => {
+    const door = { position: { x: 10, z: 20 }, heading: Math.PI / 2, parking: { x: 10, z: 26, heading: 0 } };
+    const spots = ['ada', 'femi', 'tolu', 'chidi', 'ngozi'].map((key) => doorStepFor(door, key));
+    expect(doorStepFor(door, 'ada')).toEqual(spots[0]);
+    for (const spot of spots) {
+      const distance = Math.hypot(spot.x - door.position.x, spot.z - door.position.z);
+      expect(distance).toBeGreaterThanOrEqual(DOOR_STEP_OUT - 1e-9);
+      expect(distance).toBeLessThan(ENTRY_RADIUS / 4);
+      // In front of the door (heading +z), never behind it into the building.
+      expect(spot.z).toBeGreaterThan(door.position.z + 1);
+    }
+    expect(new Set(spots.map((spot) => `${spot.x.toFixed(2)},${spot.z.toFixed(2)}`)).size).toBeGreaterThan(2);
   });
 });

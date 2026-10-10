@@ -18,8 +18,9 @@ import { HOME_SLOTS, type At, type Deg, type FurniturePlacement, type HomePiece,
  * - `slot: 'pantry'`: food from your kitchen stock (a plate of jollof on the table while you have meals in);
  * - untagged: a fixture (below) — or, if not, the family's own furniture that never comes with a rented flat.
  *
- * In the family house or a hostel the provided furniture stays (your own gadgets and comforts replace theirs).
- * Nothing owned for the bed slot means a sleeping mat on the floor.
+ * In the family house or a hostel the provided furniture stays until you buy better: what you own in a slot replaces
+ * their piece there (shown as itself), except a slot's entry-level item (a mattress on the floor, plastic chairs),
+ * which is no upgrade on what the house already has. Nothing owned for the bed slot means a sleeping mat on the floor.
  *
  * FIXTURES — part of the building, in every home whether you own anything or not:
  * - the room itself: walls, floor, windows, doors and curtains (from `RoomSpec`, not pieces);
@@ -183,8 +184,31 @@ function bestPerSlot(owned: readonly string[]): Map<HomeSlot, string> {
 /** The dearest item that fills each slot (what the template's own furniture represents). */
 const TOP_OF_SLOT: ReadonlyMap<HomeSlot, string> = bestPerSlot(ITEMS.map((item) => item.id));
 
-/** In a family house or hostel the furniture isn't yours to replace; your own gadgets and comforts still show. */
+/** Your own gadgets and comforts: in a family house or hostel they always show instead of the house's. */
 const PERSONAL: ReadonlySet<HomeSlot> = new Set(['tv', 'console', 'audio', 'laptop', 'books', 'lamp', 'fan', 'ac']);
+
+/** The cheapest item of each slot that has several tiers (a mattress on the floor, plastic chairs): no upgrade on a furnished house. */
+const BASIC_OF_SLOT: ReadonlyMap<HomeSlot, string> = (() => {
+  const tiers = new Map<HomeSlot, string[]>();
+  for (const item of ITEMS) {
+    const slot = slotOf(item.id);
+    if (slot) tiers.set(slot, [...(tiers.get(slot) ?? []), item.id]);
+  }
+  const basic = new Map<HomeSlot, string>();
+  for (const [slot, ids] of tiers) {
+    if (ids.length < 2) continue;
+    const cheapest = ids.reduce((low, id) => ((findItem(id)?.price ?? 0) < (findItem(low)?.price ?? 0) ? id : low));
+    basic.set(slot, cheapest);
+  }
+  return basic;
+})();
+
+/** Does an item have its own look at an anchor (rather than standing for the template's arrangement)? */
+const ORIGIN: Anchor = { at: [0, 0], rot: 0, y: 0 };
+const hasOwnLook = (itemId: string): boolean => {
+  const pieces = piecesFor(itemId, ORIGIN);
+  return (pieces.furniture?.length ?? 0) + (pieces.props?.length ?? 0) > 0;
+};
 
 /** Console and speakers sit by the TV, the washing machine by the fridge, when the template has no spot for them. */
 const BORROWS: Partial<Record<HomeSlot, HomeSlot>> = { console: 'tv', audio: 'tv', laundry: 'fridge' };
@@ -218,11 +242,22 @@ export function furnish(template: InteriorTemplate, owned: readonly string[], { 
   template.furniture.forEach(remember);
   template.props.forEach(remember);
 
-  const mine = new Map([...bestPerSlot(owned)].filter(([slot]) => !providedFurniture || PERSONAL.has(slot)));
-  // A top-tier item in a slot the template furnishes keeps the template's whole (lavish) arrangement.
+  // In a furnished house, an entry-level piece of furniture you own (a mattress on the floor) doesn't replace theirs.
+  const mine = new Map([...bestPerSlot(owned)].filter(([slot, item]) => !providedFurniture || PERSONAL.has(slot) || BASIC_OF_SLOT.get(slot) !== item));
+  // A top-tier item in a slot the template furnishes keeps the template's whole (lavish) arrangement — in a home you
+  // furnish. In a furnished house the template's pieces are the family's, so yours shows as itself.
   const keepOriginal = (slot: HomeSlot): boolean => {
     const item = mine.get(slot);
-    return item ? item === TOP_OF_SLOT.get(slot) && anchors.has(slot) : providedFurniture;
+    if (!item) return providedFurniture;
+    if (item !== TOP_OF_SLOT.get(slot) || !anchors.has(slot)) return false;
+    return !providedFurniture || !hasOwnLook(item);
+  };
+  // Pieces an item brings itself (a super king's bedside drawers) stand in for the template's own of that model.
+  const ownModels = (slot: HomeSlot): ReadonlySet<string> => {
+    const item = mine.get(slot);
+    const anchor = anchors.get(slot);
+    if (!item || !anchor || keepOriginal(slot)) return new Set();
+    return new Set((piecesFor(item, anchor).furniture ?? []).map((piece) => piece.model));
   };
   const shows = (piece: FurniturePlacement | PropSpec): boolean => {
     const slot = piece.slot;
@@ -230,6 +265,7 @@ export function furnish(template: InteriorTemplate, owned: readonly string[], { 
     if (slot === 'pantry') return pantryMeals > 0;
     if (!piece.base) return keepOriginal(slot);
     const item = mine.get(slot);
+    if (item && 'model' in piece && ownModels(slot).has(piece.model)) return false;
     return item ? !BARE_ITEMS.has(item) : providedFurniture;
   };
 

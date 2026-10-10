@@ -17,7 +17,7 @@ import {
   roomPlatforms,
   type Platform,
 } from './colliders';
-import { hotspotLabelElements, portalLabelElements } from './home-view-store';
+import { CONTROLS_COLUMN, hotspotLabelElements, portalLabelElements } from './home-view-store';
 import { InteriorCamera, blocksView } from './interior-camera';
 import { NavGrid, approachPoint } from './nav-grid';
 
@@ -822,10 +822,13 @@ export class HomeWalkRuntime {
         element.style.opacity = '0';
         continue;
       }
-      // Keep the whole label on screen (its width is layout-cached; only transforms change per frame).
+      // Keep the whole label on screen (its width is layout-cached; only transforms change per frame), and out of the
+      // right-edge column of room controls (rooms menu, Overview) when it's at their height.
       const half = element.offsetWidth / 2 + 8;
-      const sx = clamp((projected.x * 0.5 + 0.5) * width, half, Math.max(half, width - half));
       const sy = Math.max(element.offsetHeight + 8, (-projected.y * 0.5 + 0.5) * height);
+      const band = Math.abs(sy - element.offsetHeight / 2 - height / 2) < CONTROLS_COLUMN.halfHeight + element.offsetHeight / 2;
+      const right = width - half - (band ? CONTROLS_COLUMN.width : 0);
+      const sx = clamp((projected.x * 0.5 + 0.5) * width, half, Math.max(half, right));
       element.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
       element.style.opacity = fade.toFixed(2);
     }

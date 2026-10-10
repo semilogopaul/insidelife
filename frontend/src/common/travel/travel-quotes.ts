@@ -13,6 +13,8 @@ export interface TravelQuote {
   readonly fare: number;
   readonly available: boolean;
   readonly reason?: string;
+  /** The place will be shut when this ride gets you there: the hour it opens (booking it needs a confirm). */
+  readonly closedOnArrival?: number;
 }
 
 /**

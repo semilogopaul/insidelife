@@ -54,7 +54,7 @@ export function SpeechBubbles({ inside }: { readonly inside: boolean }) {
   const bubbles = useSpeech((state) => state.bubbles);
   if (bubbles.length === 0) return null;
   return (
-    <div aria-hidden data-testid="speech-bubbles" className="pointer-events-none absolute inset-0 overflow-hidden">
+    <div aria-hidden data-testid="speech-bubbles" className="pointer-events-none absolute inset-0 z-20 overflow-hidden">
       {bubbles.map((bubble) => (
         <SpeechBubble key={bubble.lineId} bubble={bubble} labelled={inside} clearTag={!inside} />
       ))}

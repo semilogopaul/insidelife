@@ -1,7 +1,8 @@
 'use client';
 
 import { Target, X } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { releaseFocusFrom } from '@/common/utils/focus';
 import { formatGameDuration } from '@insidelife/shared';
 import { gameEvents } from '@/common/game/game-events';
 import { isTypingTarget } from '../../play/input/controls';
@@ -41,7 +42,12 @@ export function HotspotCardPanel({ run }: { readonly run: (entryId: string, minu
   const card = useHomeView(
     (state) => state.hotspots.find((hotspot) => hotspot.id === state.selected) ?? null,
   );
-  const close = (): void => useHomeView.getState().select(null);
+  const panel = useRef<HTMLElement>(null);
+  const close = (): void => {
+    // Keys go back to walking, not to a card that's about to vanish.
+    releaseFocusFrom(panel.current);
+    useHomeView.getState().select(null);
+  };
   const choose = (entry: HotspotEntryCard, minutes?: number): void => {
     if (run(entry.id, minutes)) close();
   };
@@ -68,6 +74,7 @@ export function HotspotCardPanel({ run }: { readonly run: (entryId: string, minu
   if (!card) return null;
   return (
     <section
+      ref={panel}
       role="dialog"
       aria-label={`${card.name}: things to do`}
       data-testid="hotspot-card"

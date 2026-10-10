@@ -1,8 +1,9 @@
 import type { DistrictId } from '../catalog/geography.js';
 import type { BillboardFormat } from '../catalog/promotions.js';
 import { createRng } from '../random/rng.js';
-import { BILLBOARD_SPECS } from './city-layout.js';
+import { BILLBOARD_SPECS, CARRIAGEWAY_HALF_WIDTH } from './city-layout.js';
 import { CITY_LAYOUT, CITY_MAP, DIR_E, layoutToWorld, type CityLot, type CityRoadTile } from './city-map.js';
+import { nearestRoadPoint } from './routing.js';
 import type { WorldPoint } from './types.js';
 
 /**
@@ -37,6 +38,11 @@ export interface AdPlacementSpot {
   readonly street: string;
   /** The venue it belongs to (stadium, market and motor-park spots). */
   readonly venueId: string | null;
+  /**
+   * Where the spot is: the point its id was picked at (in today's world). Bookings belong to it; it never moves.
+   * `position` is where the board stands — the same point, or a few metres along the kerb when a door is too close.
+   */
+  readonly anchor: WorldPoint;
   /** Centre of the advert face's bottom edge, on the ground plane. */
   readonly position: WorldPoint;
   /** Height of the bottom edge above the ground (metres). */
@@ -204,13 +210,16 @@ function spots(kind: AdPlacementKind, candidates: readonly Candidate[]): AdPlace
   // The setback moves the face, never the candidate: picking (and so every id) is decided before it.
   return candidates.map((candidate) => {
     const at = layoutToWorld(candidate);
+    const anchor = { x: at.x + (candidate.away?.x ?? 0) * shape.setback, z: at.z + (candidate.away?.z ?? 0) * shape.setback };
+    if (candidate.away) kerbOf.set(candidate.id, { x: Math.abs(candidate.away.z), z: Math.abs(candidate.away.x) });
     return {
     id: candidate.id,
     kind,
     districtId: CITY_LAYOUT.districtAt(candidate),
     street: candidate.street,
     venueId: candidate.venueId ?? null,
-    position: { x: at.x + (candidate.away?.x ?? 0) * shape.setback, z: at.z + (candidate.away?.z ?? 0) * shape.setback },
+    anchor,
+    position: anchor,
     elevation: shape.elevation,
     facing: candidate.facing,
     width: shape.width,
@@ -219,6 +228,89 @@ function spots(kind: AdPlacementKind, candidates: readonly Candidate[]): AdPlace
     doubleSided: shape.doubleSided,
     };
   });
+}
+
+// ----- Doors stay clear ------------------------------------------------------------------------------------------------
+
+/** No board, pole or shelter stands closer than this to any door (venues, homes, office blocks), in metres. */
+export const AD_DOOR_CLEARANCE = 3;
+/** Roadside spots: the direction along their kerb (the way a board may slide within its spot). */
+const kerbOf = new Map<string, WorldPoint>();
+/** Every front door in the city (world metres). */
+const cityDoors: readonly WorldPoint[] = CITY_MAP.lots.flatMap((lot) => (lot.entrance ? [lot.entrance.position] : []));
+/** The furthest a board slides along its kerb to clear a door (metres: up to the next frontage, never into the road). */
+const MAX_SLIDE = 9.5;
+/** Structures of two spots keep at least this far apart when one slides (metres). */
+const STRUCTURE_GAP = 0.9;
+/** A board that slides keeps at least this far from others of its kind (metres; its kind may ask for less). */
+const MOVED_SPACING = 18;
+
+/**
+ * The ground points a spot's structure stands on: a totem's base and panel, a shelter's panel and the shelter running
+ * behind it along the pavement, a street billboard's pole. What must stay clear of doors (and of each other).
+ */
+export function adFootprint(spot: Pick<AdPlacementSpot, 'kind' | 'position' | 'facing' | 'width'>): readonly WorldPoint[] {
+  const { x, z } = spot.position;
+  const bx = -Math.cos(spot.facing);
+  const bz = -Math.sin(spot.facing);
+  const ux = -Math.sin(spot.facing);
+  const uz = Math.cos(spot.facing);
+  const at = (back: number, side: number): WorldPoint => ({ x: x + bx * back + ux * side, z: z + bz * back + uz * side });
+  switch (spot.kind) {
+    case 'street-billboard':
+      return [at(0.4, 0)];
+    case 'bus-shelter':
+      return [at(0, -spot.width / 2), at(0, spot.width / 2), at(1.5, -0.85), at(1.5, 0.85), at(3, -0.85), at(3, 0.85)];
+    case 'totem':
+      return [at(0, -spot.width / 2), at(0, 0), at(0, spot.width / 2)];
+    default:
+      return [];
+  }
+}
+
+const clearOfDoors = (points: readonly WorldPoint[], doors: readonly WorldPoint[] = cityDoors): boolean =>
+  points.every((point) => doors.every((door) => Math.hypot(door.x - point.x, door.z - point.z) >= AD_DOOR_CLEARANCE));
+
+/** On the pavement: low structures never reach the carriageway; a billboard's pole stands off it and its face overhangs little. */
+function offTheRoad(spot: AdPlacementSpot, points: readonly WorldPoint[]): boolean {
+  const kerb = CARRIAGEWAY_HALF_WIDTH - 0.1;
+  const clear = (point: WorldPoint, distance: number): boolean => (nearestRoadPoint(point)?.distance ?? 0) >= distance;
+  if (spot.kind === 'street-billboard') return points.every((point) => clear(point, kerb)) && adFaceEnds(spot).every((end) => clear(end, kerb - 1.4));
+  return [...points, spot.position].every((point) => clear(point, kerb));
+}
+
+/**
+ * Slide every roadside board that stands at a door along its kerb, within its spot, until it's `AD_DOOR_CLEARANCE`
+ * from every door, on the pavement and clear of the other structures. Picking (and so every id and `anchor`) was
+ * decided before this; only `position` moves. Deterministic.
+ */
+function clearDoorways(input: readonly AdPlacementSpot[]): AdPlacementSpot[] {
+  const out = input.map((spot) => ({ ...spot }));
+  const reach = MAX_SLIDE + 8;
+  const slides: number[] = [];
+  for (let step = 0.25; step <= MAX_SLIDE + 1e-9; step += 0.25) slides.push(step, -step);
+  out.forEach((spot, index) => {
+    const kerb = kerbOf.get(spot.id);
+    const doors = cityDoors.filter((door) => Math.hypot(door.x - spot.anchor.x, door.z - spot.anchor.z) < reach);
+    if (!kerb || clearOfDoors(adFootprint(spot), doors)) return;
+    // The other structures it could slide into (as they stand now: earlier spots may have slid already).
+    const nearby = out.flatMap((other, at) =>
+      at === index || Math.hypot(other.position.x - spot.anchor.x, other.position.z - spot.anchor.z) > reach ? [] : [...adFootprint(other), other.position],
+    );
+    // …and the spacing its kind keeps between spots (a shelter every 20 m, not two at one stop).
+    const sameKind = out.filter((other, at) => at !== index && other.kind === spot.kind).map((other) => other.position);
+    for (const slide of slides) {
+      const moved = { ...spot, position: { x: spot.anchor.x + kerb.x * slide, z: spot.anchor.z + kerb.z * slide } };
+      const points = adFootprint(moved);
+      if (!clearOfDoors(points, doors)) continue;
+      if (near(sameKind, moved.position.x, moved.position.z, Math.min(SPACING[spot.kind], MOVED_SPACING))) continue;
+      if (points.some((point) => nearby.some((other) => Math.hypot(other.x - point.x, other.z - point.z) < STRUCTURE_GAP))) continue;
+      if (!offTheRoad(moved, points)) continue;
+      out[index] = moved;
+      return;
+    }
+  });
+  return out;
 }
 
 /** A face as a ground segment with a height range: what `fitFaces` and the spec compare. */
@@ -348,7 +440,8 @@ function generate(): AdPlacementSpot[] {
     ...spots('market-banner', marketBanners),
     ...spots('park-board', parkBoards),
   ].toSorted((a, b) => a.id.localeCompare(b.id));
-  return fitFaces(all, CITY_MAP.billboards);
+  // Twice: a board blocked by a neighbour that slid away later in the first pass gets another go.
+  return fitFaces(clearDoorways(clearDoorways(all)), CITY_MAP.billboards);
 }
 
 /** Every generated advertising surface in the city. */

@@ -1,5 +1,6 @@
 import {
   districtBounds,
+  doorStepFor,
   isVehicleModel,
   nearestRoadPoint,
   streetDistrict,
@@ -35,16 +36,17 @@ export interface SandboxStart {
   readonly carModel: string | null;
 }
 
-/** Doors sit on the apron right against the facade: step out onto the pavement (well within ENTRY_RADIUS). */
-export const DOOR_STEP_OUT = 1.5;
-
-export function stepOut(entrance: Entrance): { x: number; z: number } {
-  return { x: entrance.position.x + Math.cos(entrance.heading) * DOOR_STEP_OUT, z: entrance.position.z + Math.sin(entrance.heading) * DOOR_STEP_OUT };
+/**
+ * Doors sit on the apron right against the facade: step out onto the pavement, at your own spot beside the door
+ * (`key`: the character id) so two players leaving together don't stand inside each other.
+ */
+export function stepOut(entrance: Entrance, key: string): { x: number; z: number } {
+  return doorStepFor(entrance, key);
 }
 
-function fromEntrance(entrance: Entrance, car: DrivenVehicleDto | null, lookupCar: boolean): StartPose {
+function fromEntrance(entrance: Entrance, car: DrivenVehicleDto | null, lookupCar: boolean, key: string): StartPose {
   const { heading, parking } = entrance;
-  const position = stepOut(entrance);
+  const position = stepOut(entrance, key);
   return {
     x: position.x,
     z: position.z,
@@ -78,9 +80,9 @@ export function resolveStart(snapshot: CharacterSnapshotDto | undefined, offer: 
     const car: DrivenVehicleDto | null = sandbox.carModel && isVehicleModel(sandbox.carModel)
       ? { ownedVehicleId: 'sandbox', vehicleId: 'toyota-corolla-2008', name: 'Sandbox car', model: sandbox.carModel, color: '#c0392b', plate: 'DEV-001-IL', fuelType: 'petrol', fuelEconomyKmPerLitre: 12, fuelLitres: 45, tankLitres: 60, condition: 90, brokenDown: false }
       : null;
-    if (entrance) return fromEntrance(entrance, car, false);
+    if (entrance) return fromEntrance(entrance, car, false, 'sandbox');
   }
-  if (offer) return fromEntrance(offer.spawn.entrance, offer.spawn.car, !offer.fromServer);
+  if (offer) return fromEntrance(offer.spawn.entrance, offer.spawn.car, !offer.fromServer, snapshot?.character.id ?? '');
   if (saved) {
     return {
       x: saved.x,

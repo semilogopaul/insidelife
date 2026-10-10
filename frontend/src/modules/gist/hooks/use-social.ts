@@ -3,10 +3,21 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateProposalRequest, ReportPlayerRequest, VenueSprayRequest } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
+import { useRealtimeEvent } from '@/common/realtime/use-realtime';
 import { gistApi } from '../services/gist.api';
 import { gistKeys } from '../services/gist-keys';
 
+/** Server nudges (`character:invalidate`) that mean your friend list changed: a request, an accept, a removal. */
+export const isFriendshipChange = (reason: string): boolean => reason.startsWith('friend');
+
+/** Friends and requests, kept live: the other player's accept (or request) refreshes the list at once. */
 export function useFriends() {
+  const client = useQueryClient();
+  useRealtimeEvent('character:invalidate', ({ reason }) => {
+    if (!isFriendshipChange(reason)) return;
+    void client.invalidateQueries({ queryKey: gistKeys.friends });
+    void client.invalidateQueries({ queryKey: gistKeys.profiles });
+  });
   return useQuery({ queryKey: gistKeys.friends, queryFn: gistApi.friends, staleTime: 20_000, refetchInterval: 60_000 });
 }
 

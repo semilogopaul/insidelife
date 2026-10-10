@@ -10,7 +10,8 @@ import { useEscapeLayer } from '@/common/hooks/use-escape-layer';
 import type { PhoneAppDefinition } from '@/common/game/phone-apps';
 import { useUi } from '@/common/game/ui-store';
 import { useGameMinute } from '@/common/game/use-game-clock';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { releaseFocusFrom } from '@/common/utils/focus';
 import type { LivePhoneAppDto } from '@insidelife/shared';
 import { SponsoredAppPage, SponsoredShelf } from './SponsoredApps';
 
@@ -30,11 +31,17 @@ export function Phone({ apps }: PhoneProps) {
   const sponsored = phoneOpen && phoneApp === 'home' ? openSponsored : null;
 
   useEscapeLayer(phoneOpen, closePhone);
+  // Closing the phone hands the keyboard back to the game at once (not after its slide-out).
+  const handset = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!phoneOpen) releaseFocusFrom(handset.current);
+  }, [phoneOpen]);
 
   return (
     <AnimatePresence>
       {phoneOpen && (
         <motion.div
+          ref={handset}
           key="phone"
           role="dialog"
           aria-modal="true"

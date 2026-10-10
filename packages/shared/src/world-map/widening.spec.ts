@@ -79,7 +79,8 @@ describe('widening moves things outwards with the road (layout → world)', () =
     check(LEGACY_VENUE_DOORS, (id) => venueEntrance(id)?.position);
     check(LEGACY_SERVICE_POINTS, (id) => SERVICE_POINTS.find((point) => point.id === id)?.entrance.position);
     check(LEGACY_PREMIUM_BOARDS, (id) => CITY_MAP.billboards.find((board) => board.slotId === id)?.position);
-    check(LEGACY_AD_SPOTS, (id) => AD_PLACEMENTS.find((spot) => spot.id === id)?.position);
+    // A spot's anchor is where it was picked; its board may stand a few metres along the kerb to clear a door.
+    check(LEGACY_AD_SPOTS, (id) => AD_PLACEMENTS.find((spot) => spot.id === id)?.anchor);
   });
 
   it('is monotonic and invertible, keeps lot cells 10 m and widens every road line to four lanes', () => {

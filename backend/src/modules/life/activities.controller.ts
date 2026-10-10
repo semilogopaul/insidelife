@@ -56,7 +56,7 @@ export class ActivitiesController {
     return this.session.run(
       { userId: user.userId },
       async (ctx) => {
-        await this.movement.travel(ctx, body.destinationId, body.mode);
+        await this.movement.travel(ctx, body.destinationId, body.mode, body.acceptClosed === true);
         return this.snapshots.build(ctx);
       },
       { touch: true },
