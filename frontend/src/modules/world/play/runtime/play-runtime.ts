@@ -90,6 +90,8 @@ export class PlayRuntime {
   /** Player tapped another player (id) — offered on the context button for a while. */
   selectedPlayer: string | null = null;
   selectedAt = 0;
+  /** Where the last taps landed on the ground or a wall (queued by the tap handler; the door walk-in consumes them). */
+  tapPoints: { x: number; z: number }[] = [];
   /** Shared batch for traffic and other players' cars (set by the traffic layer once the kit has loaded). */
   vehicleBatch: VehicleBatch | null = null;
   /** m/s of speed lost in hard hits since the last heartbeat took them (crash damage, reported to the server). */

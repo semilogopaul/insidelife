@@ -1,5 +1,6 @@
 import { Vector3, type Object3D, type PerspectiveCamera } from 'three';
 import type { AvatarClip, AvatarHandle, AvatarStance } from '@/common/three/avatar';
+import { WalkInGate } from '@/common/game/walk-in';
 import { controls, moveAxes } from '../../play/input/controls';
 import { ColliderGrid } from '../../play/physics/collision';
 import { angleDelta, clamp, wrapAngle, yawFromHeading } from '../../play/physics/math';
@@ -162,6 +163,8 @@ export class HomeWalkRuntime {
   private pendingSnap = false;
   private locked = 0;
   private cooldown = 0;
+  /** Walking into the front door (a short push, not a graze) leaves; a door you arrived beside stays inert until you step off it. */
+  private readonly exitGate = new WalkInGate();
   private activity: ActivityTarget | null = null;
   private approach: At | null = null;
   private path: At[] = [];
@@ -652,13 +655,22 @@ export class HomeWalkRuntime {
     stepWalker(this.walker, intent, dt, this.world);
     if (this.cooldown > 0 || this.locked > 0) return;
     const w = this.walker;
+    let exitAt: PortalGeometry | null = null;
     for (const portal of this.portals) {
-      if (!portal.to || !inside(w.x, w.z, portal.trigger)) continue;
-      if (w.vx * portal.inward[0] + w.vz * portal.inward[1] > PORTAL_PUSH) {
+      if (!inside(w.x, w.z, portal.trigger)) continue;
+      const pushing = w.vx * portal.inward[0] + w.vz * portal.inward[1] > PORTAL_PUSH;
+      if (!portal.to) {
+        exitAt = portal;
+        if (this.exitGate.update(dt, portal.id, pushing)) {
+          this.goThrough(portal);
+          return;
+        }
+      } else if (pushing) {
         this.goThrough(portal);
         return;
       }
     }
+    if (!exitAt) this.exitGate.update(dt, null, false);
   }
 
   private stepPath(dt: number): void {
@@ -766,7 +778,7 @@ export class HomeWalkRuntime {
     const x = camera.position.x + ray.x * t;
     const z = camera.position.z + ray.z * t;
     for (const portal of this.portals) {
-      if (portal.to && inside(x, z, portal.trigger, 0.45)) {
+      if (inside(x, z, portal.trigger, 0.45)) {
         this.walkTo(portalApproach(portal), 'portal', portal);
         return;
       }

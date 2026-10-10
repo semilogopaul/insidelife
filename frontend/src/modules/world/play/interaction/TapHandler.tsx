@@ -111,6 +111,17 @@ export function TapHandler({ runtime, remotes, online }: { readonly runtime: Pla
       ndc.set(tap.x, tap.y);
       raycaster.setFromCamera(ndc, camera);
       raycaster.far = BILLBOARD_REACH;
+      // Where the tap landed (the wall it hit, or the ground): the door walk-in treats a tap at a door as pressing Enter.
+      if (runtime.mode === 'walk') {
+        const { origin, direction } = raycaster.ray;
+        const wall = runtime.colliders.raycast(origin.x, origin.y, origin.z, direction.x, direction.y, direction.z, 120);
+        if (wall < 120) runtime.tapPoints.push({ x: origin.x + direction.x * wall, z: origin.z + direction.z * wall });
+        if (direction.y < -0.02) {
+          const t = -origin.y / direction.y;
+          runtime.tapPoints.push({ x: origin.x + direction.x * t, z: origin.z + direction.z * t });
+        }
+        if (runtime.tapPoints.length > 6) runtime.tapPoints.splice(0, runtime.tapPoints.length - 6);
+      }
       const hit = raycaster.intersectObjects(list, true)[0];
       // Your own parked car: tap it to get in (walking up to the door when it's a few steps away).
       const car = runtime.mode === 'walk' ? runtime.controller.car : null;

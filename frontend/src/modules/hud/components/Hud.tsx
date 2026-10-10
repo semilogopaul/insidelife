@@ -91,26 +91,38 @@ function ContextActions({ nearby, alignStart }: { readonly nearby: Interactable;
           {index < 4 && <kbd className="ml-auto rounded bg-white/15 px-1.5 py-0.5 text-2xs pointer-coarse:hidden">{index + 1}</kbd>}
         </PressButton>
       ))}
-      <PressButton
-        aria-disabled={nearby.disabled ? true : undefined}
-        aria-label={nearby.disabled ? `${nearby.label}. Not now: ${nearby.disabled}` : undefined}
-        onPress={() => gameEvents.emit('interact', { interactableId: nearby.id })}
-        className={cn(
-          'flex min-h-12 max-w-[19rem] items-center gap-2 rounded-card px-4 py-1 text-left font-bold shadow-[var(--shadow-lift)]',
-          nearby.disabled ? 'bg-paper-2 text-text-soft' : 'bg-paper text-ink',
-        )}
-      >
-        {nearby.emoji && (
-          <span aria-hidden className="text-lg leading-none">
-            {nearby.emoji}
+      <div className={cn('flex items-stretch gap-1.5', alignStart ? 'flex-row' : 'flex-row-reverse')}>
+        <PressButton
+          aria-disabled={nearby.disabled ? true : undefined}
+          aria-label={nearby.disabled ? `${nearby.label}. Not now: ${nearby.disabled}` : undefined}
+          onPress={() => gameEvents.emit('interact', { interactableId: nearby.id })}
+          className={cn(
+            'flex min-h-12 max-w-[19rem] items-center gap-2 rounded-card px-4 py-1 text-left font-bold shadow-[var(--shadow-lift)]',
+            nearby.disabled ? 'bg-paper-2 text-text-soft' : 'bg-paper text-ink',
+          )}
+        >
+          {nearby.emoji && (
+            <span aria-hidden className="text-lg leading-none">
+              {nearby.emoji}
+            </span>
+          )}
+          <span className="min-w-0">
+            <span className="block truncate">{nearby.label}</span>
+            {nearby.disabled && <span className="block truncate text-xs font-bold text-ink">⛔ {nearby.disabled}</span>}
           </span>
+          <kbd className="rounded bg-paper-3 px-1.5 py-0.5 text-xs pointer-coarse:hidden">E</kbd>
+        </PressButton>
+        {(nearby.choices ?? 0) > 1 && (
+          <PressButton
+            aria-label={`Next option (${nearby.choices} nearby)`}
+            data-testid="context-next"
+            onPress={() => useWorld.getState().cycleChoice()}
+            className="glass flex min-h-12 min-w-12 items-center justify-center rounded-card px-3 text-lg font-bold text-on-ink"
+          >
+            <span aria-hidden>›</span>
+          </PressButton>
         )}
-        <span className="min-w-0">
-          <span className="block truncate">{nearby.label}</span>
-          {nearby.disabled && <span className="block truncate text-xs font-bold text-ink">⛔ {nearby.disabled}</span>}
-        </span>
-        <kbd className="rounded bg-paper-3 px-1.5 py-0.5 text-xs pointer-coarse:hidden">E</kbd>
-      </PressButton>
+      </div>
     </div>
   );
 }
