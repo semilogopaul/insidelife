@@ -7,6 +7,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { CharactersModule } from '../characters/characters.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { SocialGuardModule } from '../social/social-guard.module.js';
+import { WealthClassModule } from '../social/wealth-class.module.js';
 import { UsersModule } from '../users/users.module.js';
 import {
   ChatRetentionProcessor,
@@ -29,6 +30,7 @@ import { SpeechService } from './speech.service.js';
     CharactersModule,
     PresenceModule,
     SocialGuardModule,
+    WealthClassModule,
     UsersModule,
     StorageModule,
     ImageSafetyModule,

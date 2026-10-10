@@ -55,6 +55,7 @@ export * from './contracts/investments.js';
 export * from './catalog/payments.js';
 export * from './contracts/payments.js';
 export * from './catalog/social.js';
+export * from './catalog/onboarding.js';
 export * from './contracts/social.js';
 export * from './catalog/hosting.js';
 export * from './contracts/hosting.js';

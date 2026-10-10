@@ -1,7 +1,8 @@
 'use client';
 
 import { create } from 'zustand';
-import type { ChatSaidDto } from '@insidelife/shared';
+import type { ChatSaidDto, WealthClass } from '@insidelife/shared';
+import { rememberWealthClass } from '@/common/social';
 import { NEARBY_KEEP_MS, NEARBY_MAX_LINES, bubbleDurationMs } from './speech-rules';
 
 /** A line in the Nearby log. */
@@ -16,6 +17,7 @@ export interface Bubble {
   readonly lineId: string;
   readonly characterId: string;
   readonly handle: string;
+  readonly wealthClass?: WealthClass;
   readonly text: string;
   readonly mine: boolean;
   /** Local time (ms) it goes away. */
@@ -56,9 +58,10 @@ export const useSpeech = create<SpeechState>()((set, get) => ({
   hear: (line, now) => {
     const state = get();
     if (state.lines.some((existing) => existing.id === line.id)) return;
+    rememberWealthClass(line.characterId, line.wealthClass);
     const mine = line.characterId === state.selfId;
     const heard: HeardLine = { ...line, heardAt: now, mine };
-    const bubble: Bubble = { lineId: line.id, characterId: line.characterId, handle: line.handle, text: line.text, mine, until: now + bubbleDurationMs(line.text) };
+    const bubble: Bubble = { lineId: line.id, characterId: line.characterId, handle: line.handle, wealthClass: line.wealthClass, text: line.text, mine, until: now + bubbleDurationMs(line.text) };
     set({
       lines: [...state.lines, heard].slice(-NEARBY_MAX_LINES),
       bubbles: [...state.bubbles.filter((existing) => existing.characterId !== line.characterId), bubble],

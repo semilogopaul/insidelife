@@ -5,6 +5,7 @@ import { useState, type ReactNode } from 'react';
 import { RING_LIMITS, formatNaira, type PlayerProfileDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Badge, Button, HoldButton, Sheet, Spinner, toast } from '@/common/components';
+import { PlayerName, WealthBadge } from '@/common/social';
 import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
@@ -33,7 +34,7 @@ export function PlayerProfileSheet() {
     <Sheet
       open={handle !== null}
       onClose={onClose}
-      title={data ? `${data.firstName} ${data.lastName}` : handle ? `@${handle}` : ''}
+      title={data ? <PlayerName wealthClass={data.wealthClass}>{`${data.firstName} ${data.lastName}`}</PlayerName> : handle ? `@${handle}` : ''}
       description={data ? `@${data.handle}` : undefined}
       size="md"
     >
@@ -75,6 +76,8 @@ function ProfileView({ profile, onView, onDone }: { readonly profile: PlayerProf
           )}
         </div>
       </div>
+
+      <WealthBadge wealthClass={profile.wealthClass} />
 
       {profile.badges.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label="Badges">
@@ -214,7 +217,7 @@ function Actions({ profile, onView, onDone }: { readonly profile: PlayerProfileD
           icon={<MessageCircle size={18} aria-hidden />}
           disabled={profile.blockedByYou}
           onClick={() => {
-            openThread({ id: profile.id, handle: profile.handle, name });
+            openThread({ id: profile.id, handle: profile.handle, name, wealthClass: profile.wealthClass });
             onDone();
           }}
         >

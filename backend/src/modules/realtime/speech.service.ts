@@ -7,6 +7,7 @@ import { REDIS } from '../../common/redis/redis.module.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
 import { PresenceService } from '../presence/presence.service.js';
 import { SocialGuard } from '../social/social-guard.service.js';
+import { WealthClassService } from '../social/wealth-class.service.js';
 import { UsersService } from '../users/users.service.js';
 import { SPEECH_RATE, SPEECH_SLOT_SCRIPT, checkSpeech } from './speech.rules.js';
 
@@ -50,6 +51,7 @@ export class SpeechService {
     private readonly users: UsersService,
     private readonly presence: PresenceService,
     private readonly social: SocialGuard,
+    private readonly wealth: WealthClassService,
   ) {}
 
   async say(speaker: Speaker, raw: unknown): Promise<SpokenLine> {
@@ -68,6 +70,7 @@ export class SpeechService {
       characterId: character.id,
       handle: character.handle,
       firstName: character.firstName,
+      wealthClass: await this.wealth.classOf(character.id),
       text: check.text,
       at: Date.now(),
       scope: outside ? 'street' : 'place',

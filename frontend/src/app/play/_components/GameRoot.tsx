@@ -31,6 +31,7 @@ import { Phone } from '@/modules/phone';
 import { TalkButton, TalkFeed, TalkLayer } from '@/modules/talk';
 import { VenueSheet } from '@/modules/venue';
 import { VisitCards } from '@/modules/visits';
+import { WelcomeFlow } from '@/modules/welcome';
 import { LoadingScreen } from './LoadingScreen';
 import { PHONE_APPS } from './phone-apps';
 
@@ -140,6 +141,7 @@ export function GameRoot() {
       <LifeEventsLayer />
       <NotificationCenter />
       <AwayReport />
+      <WelcomeFlow />
       <CelebrationLayer />
       <MomentLayer />
       <EpitaphLayer />

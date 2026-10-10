@@ -3,12 +3,14 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource, EntityManager } from 'typeorm';
 import type { PlayerCardDto } from '@insidelife/shared';
 import { PresenceService } from '../presence/presence.service.js';
+import { WorldService } from '../world/world.service.js';
 import { statusTierDto } from './rules/profile.rules.js';
+import { WEALTH_COLUMNS, wealthClassOfRow, type WealthRow } from './wealth-class.service.js';
 
 /** Columns every card query selects (characters `c` LEFT JOIN social_profiles `p`). */
-export const CARD_COLUMNS = 'c.id, c.handle, c.first_name, c.last_name, c.status, p.title';
+export const CARD_COLUMNS = 'c.id, c.handle, c.first_name, c.last_name, c.status, p.title,' + WEALTH_COLUMNS;
 
-export interface CardRow {
+export interface CardRow extends WealthRow {
   readonly id: string;
   readonly handle: string;
   readonly first_name: string;
@@ -26,6 +28,7 @@ export class PlayerCardsService {
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     private readonly presence: PresenceService,
+    private readonly world: WorldService,
   ) {}
 
   /**
@@ -60,6 +63,7 @@ export class PlayerCardsService {
       statusTier: statusTierDto(Number(row.status)),
       title: row.title,
       online,
+      wealthClass: wealthClassOfRow(row, this.world.economy(this.world.now()).usdRate),
     };
   }
 

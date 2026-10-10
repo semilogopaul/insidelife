@@ -45,6 +45,15 @@
   --color-need-fun: #c8287a;
   --color-need-social: #0f8a4f;
 
+  /* Nepo (gold) and lapo (blue) names. Each has a light-surface shade (>= 5.5:1 on paper) and a dark-surface shade
+     (>= 4.7:1 on ink); names also carry words, never colour alone. */
+  --color-nepo: #7d5200;
+  --color-nepo-on-dark: #ffcc33;
+  --color-nepo-soft: #fff1c2;
+  --color-lapo: #1d4fc4;
+  --color-lapo-on-dark: #8db8ff;
+  --color-lapo-soft: #dde6fd;
+
   /* Type */
   --font-display: var(--font-anybody), 'Arial Narrow', sans-serif;
   --font-sans: var(--font-atkinson), system-ui, sans-serif;

@@ -8,6 +8,7 @@ import type { PresenceService } from '../presence/presence.service.js';
 import type { SocialGuard } from '../social/social-guard.service.js';
 import type { UserEntity } from '../users/entities/user.entity.js';
 import type { UsersService } from '../users/users.service.js';
+import { WealthClassService } from '../social/wealth-class.service.js';
 import { SpeechService, type Speaker } from './speech.service.js';
 import { nextSpeechSlot } from './speech.rules.js';
 
@@ -42,7 +43,7 @@ function service(world: World): SpeechService {
   const users = { findById: async () => world.user } as unknown as UsersService;
   const presenceService = { playersAt: async () => world.present } as unknown as PresenceService;
   const social = { blockedIds: async () => world.blocked } as unknown as SocialGuard;
-  return new SpeechService(slotRedis(), directory, users, presenceService, social);
+  return new SpeechService(slotRedis(), directory, users, presenceService, social, { classOf: async () => 'lapo' } as unknown as WealthClassService);
 }
 
 const speaker: Speaker = { characterId: ADA, cellRoom: CELL, districtId: 'yaba' };
