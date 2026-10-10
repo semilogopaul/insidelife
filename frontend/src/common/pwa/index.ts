@@ -3,3 +3,4 @@ export { useInstallPrompt, type InstallPrompt, type InstallStatus } from './use-
 export { InstallAppButton } from './InstallAppButton';
 export { InstallAppPanel } from './InstallAppPanel';
 export { OfflineScreen } from './OfflineScreen';
+export { isStaleBuildError, recoverFromStaleBuild } from './update-check';

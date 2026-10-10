@@ -75,3 +75,30 @@ export function watchForUpdates(): () => void {
   document.addEventListener('visibilitychange', onVisible);
   return () => document.removeEventListener('visibilitychange', onVisible);
 }
+
+const STALE_RELOAD_KEY = 'insidelife:stale-reload-at';
+const STALE_PATTERN = /ChunkLoadError|Loading (CSS )?chunk|Failed to load chunk|Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i;
+
+/** A screen's code from an older build that this server no longer has (the saved copy is out of date). */
+export function isStaleBuildError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return STALE_PATTERN.test(`${error.name} ${error.message}`);
+}
+
+/**
+ * Refresh into the server's build after a stale-build error instead of showing an error screen. At most once a minute,
+ * so a real outage still shows the normal "This page tripped" screen.
+ */
+export async function recoverFromStaleBuild(now: number = Date.now()): Promise<boolean> {
+  try {
+    const last = Number(window.sessionStorage.getItem(STALE_RELOAD_KEY));
+    if (Number.isFinite(last) && now - last < RECHECK_MS) return false;
+    window.sessionStorage.setItem(STALE_RELOAD_KEY, String(now));
+  } catch {
+    return false;
+  }
+  showUpdating();
+  await dropSavedPages().catch(() => undefined);
+  window.location.reload();
+  return true;
+}

@@ -56,3 +56,30 @@ describe('refresh to the latest build', () => {
     expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('stale-build errors', () => {
+  beforeEach(() => {
+    reload.mockReset();
+    window.sessionStorage.clear();
+    Object.defineProperty(window, 'location', { configurable: true, value: { ...window.location, reload } });
+    vi.stubGlobal('caches', { keys: vi.fn(async () => []), delete: vi.fn(async () => true) });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('recognises old-build code failing to load on every browser', async () => {
+    const { isStaleBuildError } = await import('../update-check');
+    const chunk = new Error('Loading chunk 412 failed.');
+    chunk.name = 'ChunkLoadError';
+    expect(isStaleBuildError(chunk)).toBe(true);
+    expect(isStaleBuildError(new TypeError('Importing a module script failed.'))).toBe(true);
+    expect(isStaleBuildError(new TypeError('Failed to fetch dynamically imported module: https://insidelife.online/_next/x.js'))).toBe(true);
+    expect(isStaleBuildError(new Error('Cannot read properties of undefined'))).toBe(false);
+  });
+
+  it('refreshes into the new build at most once a minute', async () => {
+    const { recoverFromStaleBuild } = await import('../update-check');
+    expect(await recoverFromStaleBuild(5_000_000)).toBe(true);
+    expect(await recoverFromStaleBuild(5_030_000)).toBe(false);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+});

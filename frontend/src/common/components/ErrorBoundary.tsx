@@ -1,6 +1,7 @@
 'use client';
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { isStaleBuildError, recoverFromStaleBuild } from '../pwa/update-check';
 
 interface Props {
   readonly fallback: (reset: () => void) => ReactNode;
@@ -24,6 +25,8 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
+    // A panel's code from an older build after an update: refresh into the new build rather than show the fallback.
+    if (isStaleBuildError(error)) void recoverFromStaleBuild();
     this.props.onError?.(error, info);
   }
 
