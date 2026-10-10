@@ -23,11 +23,16 @@ export interface ApiErrorBody {
 
 // ----- Auth --------------------------------------------------------------------------------------------------------
 
+/** The Terms of Service and Privacy Policy a new account agrees to (their "Last updated" date). Bump it when they change. */
+export const TERMS_VERSION = '2026-10-10';
+
 export interface RegisterRequest {
   readonly email: string;
   readonly password: string;
   /** Date of birth, `YYYY-MM-DD`. Checked against the minimum age; never shown to other players. */
   readonly birthDate: string;
+  /** The player ticked "I agree to the Terms of Service and Privacy Policy" ({@link TERMS_VERSION}). Must be true. */
+  readonly acceptTerms: true;
 }
 
 export interface LoginRequest {

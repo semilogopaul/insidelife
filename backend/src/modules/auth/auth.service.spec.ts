@@ -3,7 +3,7 @@ import argon2 from 'argon2';
 import type { JwtService } from '@nestjs/jwt';
 import { FindOperator, type Repository } from 'typeorm';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { EmailVerificationDto } from '@insidelife/shared';
+import { TERMS_VERSION, type EmailVerificationDto } from '@insidelife/shared';
 import type { AppConfig } from '../../config/configuration.js';
 import { DomainException } from '../../common/exceptions/domain.exception.js';
 import type { CharacterDirectory } from '../characters/character-directory.service.js';
@@ -54,6 +54,8 @@ const USER: UserEntity = {
   passwordHash: 'x',
   emailVerifiedAt: null,
   birthDate: '2000-01-01',
+  termsAcceptedAt: null,
+  termsVersion: null,
   role: 'player',
   lastLoginAt: null,
   suspendedAt: null,
@@ -221,7 +223,7 @@ describe('sign-up', () => {
   it('accepts a player on their 13th birthday', async () => {
     const { service, users } = setup();
     await service.register('teen@example.com', 'secret123', '2013-10-09', 'ua');
-    expect(users.create).toHaveBeenCalledWith('teen@example.com', expect.any(String), '2013-10-09');
+    expect(users.create).toHaveBeenCalledWith('teen@example.com', expect.any(String), '2013-10-09', TERMS_VERSION);
   });
 
   it('rejects impossible dates as a validation problem', async () => {

@@ -19,6 +19,8 @@ const baseUser = (overrides: Partial<UserEntity> = {}): UserEntity => ({
   passwordHash: 'hash',
   emailVerifiedAt: null,
   birthDate: '2000-01-01',
+  termsAcceptedAt: null,
+  termsVersion: null,
   role: 'player',
   lastLoginAt: null,
   suspendedAt: null,

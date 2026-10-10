@@ -16,9 +16,10 @@ export class UsersService {
     return this.users.findOne({ where: { email: email.trim().toLowerCase() } });
   }
 
-  create(email: string, passwordHash: string, birthDate: string): Promise<UserEntity> {
+  /** A new account; `termsVersion` is the Terms of Service and Privacy Policy version the player agreed to just now. */
+  create(email: string, passwordHash: string, birthDate: string, termsVersion: string): Promise<UserEntity> {
     return this.users.save(
-      this.users.create({ email: email.trim().toLowerCase(), passwordHash, birthDate, emailVerifiedAt: null }),
+      this.users.create({ email: email.trim().toLowerCase(), passwordHash, birthDate, emailVerifiedAt: null, termsAcceptedAt: new Date(), termsVersion }),
     );
   }
 

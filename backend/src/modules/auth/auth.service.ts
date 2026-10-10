@@ -8,6 +8,7 @@ import { IsNull, MoreThan, type Repository } from 'typeorm';
 import {
   BIRTH_DATE_MESSAGES,
   birthDateProblem,
+  TERMS_VERSION,
   utcCalendarDate,
   type AuthSessionDto,
   type AuthUserDto,
@@ -87,7 +88,8 @@ export class AuthService {
     if (existing) {
       throw new ConflictException('EMAIL_TAKEN', 'An account with that email already exists — sign in instead');
     }
-    const user = await this.users.create(email, await argon2.hash(password, ARGON2_OPTIONS), birthDate);
+    // The DTO only lets a sign-up through with the terms ticked, so the account records that acceptance.
+    const user = await this.users.create(email, await argon2.hash(password, ARGON2_OPTIONS), birthDate, TERMS_VERSION);
     const issued = await this.sessionOrRefusal(await this.startSession(user.id, randomUUID(), userAgent, null), null);
     const emailVerification = this.emailRequired() ? await this.sendFirstCode(user) : await this.verification.status(user);
     return { ...issued, emailVerification };

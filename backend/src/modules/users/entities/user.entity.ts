@@ -23,6 +23,14 @@ export class UserEntity {
   @Column({ type: 'date', nullable: true })
   birthDate: string | null;
 
+  /** When the player ticked "I agree to the Terms of Service and Privacy Policy" at sign-up (null: older accounts). */
+  @Column({ type: 'timestamptz', nullable: true })
+  termsAcceptedAt: Date | null;
+
+  /** Which version of the terms (TERMS_VERSION) they agreed to. */
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  termsVersion: string | null;
+
   @Column({ type: 'varchar', length: 16, default: 'player' })
   role: UserRole;
 

@@ -177,7 +177,7 @@ export async function signUp(e2e: E2eApp, options: SignUpOptions = {}): Promise<
   const email = options.email ?? `${uniqueHandle('u')}@e2e.test`;
   const password = options.password ?? E2E.password;
   const ip = nextIp();
-  const response = await call(e2e, 'post', '/auth/register', ip).send({ email, password, birthDate: '1996-04-12' });
+  const response = await call(e2e, 'post', '/auth/register', ip).send({ email, password, birthDate: '1996-04-12', acceptTerms: true });
   const body = ok<RegisterResponseDto>(response);
   return new Player(e2e, body.user.id, email, password, body.accessToken, ip, refreshCookieOf(response));
 }

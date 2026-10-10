@@ -130,6 +130,7 @@ class Player {
       email: this.email,
       password: PASSWORD,
       birthDate: `${year}-0${1 + Math.floor(Math.random() * 9)}-1${Math.floor(Math.random() * 9)}`,
+      acceptTerms: true,
     });
     const ok = check(reg, { 'register 2xx': is2xx }) && this.setSession(reg);
     signupOk.add(ok);

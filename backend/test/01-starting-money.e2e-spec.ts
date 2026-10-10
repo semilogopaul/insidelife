@@ -112,7 +112,7 @@ describe('accounts and characters', () => {
     const ip = nextIp();
     const statuses: number[] = [];
     for (let i = 0; i < 9; i++) {
-      const response = await call(e2e, 'post', '/auth/register', ip).send({ email: `${uniqueHandle('r')}@e2e.test`, password: 'Passw0rd-e2e', birthDate: '1999-01-01' });
+      const response = await call(e2e, 'post', '/auth/register', ip).send({ email: `${uniqueHandle('r')}@e2e.test`, password: 'Passw0rd-e2e', birthDate: '1999-01-01', acceptTerms: true });
       statuses.push(response.status);
     }
     expect(statuses.filter((status) => status === 201)).toHaveLength(8);

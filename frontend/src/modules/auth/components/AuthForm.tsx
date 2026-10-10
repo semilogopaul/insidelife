@@ -12,6 +12,8 @@ import { birthDateError, birthDateFromParts, EMPTY_BIRTH_DATE, type BirthDatePar
 import { destinationFor } from '../lib/destination';
 import { BirthDateField } from './BirthDateField';
 
+const TERMS_REQUIRED = 'Tick the box to agree to the Terms of Service and Privacy Policy.';
+
 export interface AuthFormProps {
   readonly mode: 'sign-in' | 'sign-up';
 }
@@ -28,6 +30,8 @@ export function AuthForm({ mode }: AuthFormProps) {
   const [password, setPassword] = useState('');
   const [birth, setBirth] = useState<BirthDateParts>(EMPTY_BIRTH_DATE);
   const [birthError, setBirthError] = useState<string | null>(null);
+  const [agreed, setAgreed] = useState(false);
+  const [termsError, setTermsError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const status = useSession((state) => state.status);
   const user = useSession((state) => state.user);
@@ -45,7 +49,9 @@ export function AuthForm({ mode }: AuthFormProps) {
     }
     const problem = birthDateError(birth, new Date());
     setBirthError(problem);
-    if (!problem) signUp.mutate({ email, password, birthDate: birthDateFromParts(birth) });
+    const notAgreed = agreed ? null : TERMS_REQUIRED;
+    setTermsError(notAgreed);
+    if (!problem && !notAgreed) signUp.mutate({ email, password, birthDate: birthDateFromParts(birth), acceptTerms: true });
   };
 
   const passwordHint = mode === 'sign-up' ? 'At least 8 characters, with a letter and a number.' : undefined;
@@ -90,6 +96,39 @@ export function AuthForm({ mode }: AuthFormProps) {
             if (birthError) setBirthError(null);
           }}
         />
+      )}
+      {mode === 'sign-up' && (
+        <div className="flex flex-col gap-1.5">
+          <label className="flex items-start gap-3 text-sm">
+            <input
+              type="checkbox"
+              checked={agreed}
+              onChange={(event) => {
+                setAgreed(event.target.checked);
+                if (event.target.checked) setTermsError(null);
+              }}
+              aria-invalid={termsError !== null}
+              aria-describedby={termsError ? 'terms-error' : undefined}
+              className="mt-0.5 size-5 shrink-0 accent-ink"
+            />
+            <span>
+              I agree to the{' '}
+              <Link href="/terms" target="_blank" className="font-bold text-ink underline underline-offset-4">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link href="/privacy" target="_blank" className="font-bold text-ink underline underline-offset-4">
+                Privacy Policy
+              </Link>
+              .
+            </span>
+          </label>
+          {termsError && (
+            <p id="terms-error" className="text-sm font-bold text-okada">
+              {termsError}
+            </p>
+          )}
+        </div>
       )}
       {mutation.isError && (
         <p role="alert" className="rounded-card bg-okada-soft px-3.5 py-2.5 text-sm font-bold text-okada">

@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsEmail, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { Equals, IsEmail, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import type { ConfirmEmailRequest, LoginRequest, RegisterRequest } from '@insidelife/shared';
 
 const normaliseEmail = ({ value }: { value: unknown }): unknown => (typeof value === 'string' ? value.trim().toLowerCase() : value);
@@ -22,6 +22,9 @@ export class RegisterDto implements RegisterRequest {
   @IsString({ message: 'Enter your date of birth' })
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Enter your date of birth' })
   readonly birthDate: string;
+
+  @Equals(true, { message: 'Tick the box to agree to the Terms of Service and Privacy Policy' })
+  readonly acceptTerms: true;
 }
 
 export class LoginDto implements LoginRequest {
