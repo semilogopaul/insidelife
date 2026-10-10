@@ -1,3 +1,4 @@
+import { BETTING_APP_NAME } from '@insidelife/shared';
 import type { PhoneApp } from '@/common/game/ui-store';
 import { Linear, naira, type AppIconArt } from './art-kit';
 
@@ -685,6 +686,79 @@ const fobes: AppIconArt = {
   ),
 };
 
+/** The betting app: a floodlit, mown pitch, a Danfo-yellow bet slip and a match ball in front of it. */
+const betting: AppIconArt = {
+  name: BETTING_APP_NAME,
+  tile: ['#17a463', '#05402a'],
+  backdrop: ({ compact }) => (
+    <>
+      {!compact && (
+        <g fill="#ffffff" opacity={0.07}>
+          <rect x={0} y={0} width={8} height={64} />
+          <rect x={16} y={0} width={8} height={64} />
+          <rect x={32} y={0} width={8} height={64} />
+          <rect x={48} y={0} width={8} height={64} />
+        </g>
+      )}
+      <path d="M0 47H64" stroke="#ffffff" strokeOpacity={0.35} strokeWidth={1.2} />
+      <circle cx={47} cy={47} r={9} stroke="#ffffff" strokeOpacity={0.3} strokeWidth={1.2} fill="none" />
+    </>
+  ),
+  subject: ({ id, url, compact }) => (
+    <>
+      <defs>
+        <Linear
+          id={id('slip')}
+          stops={[
+            [0, '#ffe17a'],
+            [1, DANFO],
+          ]}
+        />
+        <radialGradient id={id('ball-shade')} cx={0.38} cy={0.32} r={0.75}>
+          <stop offset={0} stopColor="#ffffff" />
+          <stop offset={0.7} stopColor="#e9eef0" />
+          <stop offset={1} stopColor="#b9c6cc" />
+        </radialGradient>
+        <clipPath id={id('ball')}>
+          <circle cx={24} cy={41} r={12.5} />
+        </clipPath>
+      </defs>
+      <g transform="rotate(-12 40 26)">
+        <rect x={27} y={7.5} width={25} height={35} rx={2.6} fill={url('slip')} />
+        <rect x={31} y={12} width={17} height={3} rx={1.5} fill={INK} />
+        {!compact && (
+          <>
+            <rect x={31} y={19} width={11} height={2} rx={1} fill={INK} opacity={0.55} />
+            <rect x={44} y={19} width={4} height={2} rx={1} fill={INK} />
+            <rect x={31} y={24} width={9} height={2} rx={1} fill={INK} opacity={0.55} />
+            <rect x={44} y={24} width={4} height={2} rx={1} fill={INK} />
+          </>
+        )}
+        <rect x={31} y={31} width={17} height={6.5} rx={2} fill="#0b6b43" />
+        <path d={naira(35.2, 34.25, 4.2)} fill="#ffffff" />
+        {!compact && <rect x={39} y={33.2} width={7} height={2.1} rx={1} fill="#ffffff" />}
+      </g>
+      <circle cx={24} cy={41} r={12.5} fill={url('ball-shade')} />
+      <g clipPath={url('ball')} fill={INK}>
+        <path d="M24 36.6 28.18 39.64 26.59 44.56 21.41 44.56 19.82 39.64Z" />
+        <path d="M24 33.6 20.01 30.7 21.53 26 26.47 26 27.99 30.7Z" />
+        <path d="M31.04 38.71 32.56 34.02 37.5 34.02 39.03 38.71 35.03 41.62Z" />
+        <path d="M28.35 46.99 33.29 46.99 34.81 51.68 30.82 54.58 26.82 51.68Z" />
+        <path d="M19.65 46.99 21.18 51.68 17.18 54.58 13.19 51.68 14.71 46.99Z" />
+        <path d="M16.96 38.71 12.97 41.62 8.97 38.71 10.5 34.02 15.44 34.02Z" />
+      </g>
+      {!compact && (
+        <path
+          d="M24 36.6V33.4M28.18 39.64 31.23 38.65M26.59 44.56 28.47 47.15M21.41 44.56 19.53 47.15M19.82 39.64 16.77 38.65"
+          stroke={INK}
+          strokeWidth={1}
+          strokeLinecap="round"
+        />
+      )}
+    </>
+  ),
+};
+
 const promote: AppIconArt = {
   name: 'Promote',
   tile: ['#ffd84e', '#eb9e00'],
@@ -806,6 +880,7 @@ export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   invest,
   gist,
   fobes,
+  betting,
   promote,
   goals,
   me,

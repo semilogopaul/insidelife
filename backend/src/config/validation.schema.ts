@@ -66,6 +66,16 @@ export const validationSchema = Joi.object({
   WORLD_SEED: Joi.string().min(4).max(64).required(),
   /** Secret seed for market prices (the world seed is public). Set it in production; derived from JWT secret otherwise. */
   MARKET_SEED: Joi.string().min(16).max(128).optional(),
+  /**
+   * Server-only secret the betting league draws every result from (the world seed is public, so results can never
+   * depend on it). Required (32+ random characters) on the live site; locally it is derived from JWT_ACCESS_SECRET
+   * with HKDF. Changing it re-draws every match not yet played, so set it once.
+   */
+  BETTING_SECRET: Joi.string().min(32).max(256).optional(),
+  /** Largest stake on one betting slip (game naira). */
+  BETTING_MAX_STAKE: Joi.number().integer().min(100).max(1_000_000_000).default(1_000_000),
+  /** Default and highest daily loss limit per player (game naira, net losses per game day); players can set it lower. */
+  BETTING_DAILY_LOSS_LIMIT: Joi.number().integer().min(100).max(100_000_000_000).default(5_000_000),
 
   /** Flutterwave v3 secret key: `FLWSECK_TEST-…` locally, `FLWSECK-…` (live) on the public site. Empty → sandbox in development. */
   FLUTTERWAVE_SECRET_KEY: Joi.string().allow('').pattern(/^(FLWSECK(_TEST)?-[A-Za-z0-9-]+)?$/).default(''),
@@ -138,6 +148,7 @@ interface EnvForChecks {
   readonly ALLOW_PAYMENT_SANDBOX: boolean;
   readonly COOKIE_SECURE: boolean;
   readonly MARKET_SEED?: string;
+  readonly BETTING_SECRET?: string;
   readonly DATABASE_SYNCHRONIZE?: boolean;
   readonly S3_SECRET_KEY: string;
   readonly SMTP_URL?: string;
@@ -191,6 +202,9 @@ export function productionProblem(value: EnvForChecks): string | null {
     if (!value.COOKIE_SECURE) return 'COOKIE_SECURE must be true on the live site (HTTPS)';
     if (value.JWT_ACCESS_SECRET.length < 48 || PLACEHOLDER.test(value.JWT_ACCESS_SECRET)) return 'JWT_ACCESS_SECRET must be a long random secret (48+ characters) on the live site';
     if (!value.MARKET_SEED || PLACEHOLDER.test(value.MARKET_SEED)) return 'MARKET_SEED must be set to a private random value on the live site';
+    if (!value.BETTING_SECRET || value.BETTING_SECRET.length < 32 || PLACEHOLDER.test(value.BETTING_SECRET)) {
+      return 'BETTING_SECRET must be a long random secret (32+ characters) on the live site: it seeds every betting result';
+    }
     if (PLACEHOLDER.test(value.S3_SECRET_KEY)) return 'S3_SECRET_KEY must be changed on the live site';
     if (value.CORS_ORIGINS.split(',').some((origin) => !origin.trim().startsWith('https://'))) return 'CORS_ORIGINS must be https:// origins on the live site';
     const adminOrigins = (value.ADMIN_ORIGINS ?? '').split(',').map((origin) => origin.trim()).filter(Boolean);

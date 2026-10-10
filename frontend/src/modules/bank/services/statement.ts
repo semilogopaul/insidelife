@@ -59,6 +59,7 @@ export const LEDGER_KIND_LABELS: Readonly<Record<LedgerKind, string>> = {
   'family-support': 'Family support',
   travel: 'Travel',
   fine: 'Fine',
+  betting: 'Betting',
   property: 'Property',
   refund: 'Refund',
   sale: 'Sale',

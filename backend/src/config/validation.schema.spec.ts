@@ -13,6 +13,7 @@ const live = {
   ALLOW_PAYMENT_SANDBOX: false,
   COOKIE_SECURE: true,
   MARKET_SEED: 'k3Jd9Lq2Xv7Rt5Pm1Wz8',
+  BETTING_SECRET: 'Rm4Tq8Wz1Lp6Xk3Vb9Nc2Hd7Fs5Gj0Ya',
   S3_SECRET_KEY: 'Xp4Lk9Qz2Vb7Nm1Rt6Ws',
   SMTP_URL: 'smtp://hello%40insidelife.online:app-password@smtp-relay.brevo.com:587',
   ADMIN_ORIGINS: 'https://admin.insidelife.online',
@@ -75,6 +76,10 @@ describe('environment checks', () => {
     ).toMatch(/JWT/);
     expect(productionProblem({ ...live, JWT_ACCESS_SECRET: 'a'.repeat(64) })).toMatch(/JWT/);
     expect(productionProblem({ ...live, MARKET_SEED: undefined })).toMatch(/MARKET_SEED/);
+    expect(productionProblem({ ...live, BETTING_SECRET: undefined })).toMatch(/BETTING_SECRET/);
+    expect(productionProblem({ ...live, BETTING_SECRET: 'short-betting-secret' })).toMatch(/BETTING_SECRET/);
+    expect(productionProblem({ ...live, BETTING_SECRET: 'change-me-change-me-change-me-change-me' })).toMatch(/BETTING_SECRET/);
+    expect(productionProblem({ ...live, DEPLOYMENT: 'local', BETTING_SECRET: undefined })).toBeNull();
     expect(productionProblem({ ...live, S3_SECRET_KEY: 'insidelife-storage-secret' })).toMatch(
       /S3_SECRET_KEY/,
     );
