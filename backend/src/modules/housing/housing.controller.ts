@@ -36,7 +36,12 @@ export class HousingController {
 
   @Post('leases')
   signLease(@CurrentUser() user: AuthUser, @Body() body: SignLeaseDto): Promise<HousingActionResultDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.housing.signLease(ctx, body.listingId), { touch: true });
+    const { idempotencyKey, ...request } = body;
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('lease', idempotencyKey, request, () => this.housing.signLease(ctx, request.listingId)),
+      { touch: true },
+    );
   }
 
   @Post('moves')
@@ -51,7 +56,10 @@ export class HousingController {
 
   @Post('land')
   buyLand(@CurrentUser() user: AuthUser, @Body() body: BuyLandDto): Promise<HousingActionResultDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.housing.buyLand(ctx, body), { touch: true });
+    const { idempotencyKey, ...request } = body;
+    return this.session.run({ userId: user.userId }, (ctx) => ctx.once('land', idempotencyKey, request, () => this.housing.buyLand(ctx, request)), {
+      touch: true,
+    });
   }
 
   @Post('properties/:id/title-perfections')
@@ -96,7 +104,12 @@ export class HousingController {
 
   @Post('houses')
   buyHouse(@CurrentUser() user: AuthUser, @Body() body: BuyHouseDto): Promise<BuyHouseResultDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.housing.buyHouse(ctx, body.listingId), { touch: true });
+    const { idempotencyKey, ...request } = body;
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('house', idempotencyKey, request, () => this.housing.buyHouse(ctx, request.listingId)),
+      { touch: true },
+    );
   }
 
   // ----- Makeovers (paint, roof, gate, floors) -----------------------------------------------------------------------
@@ -104,12 +117,22 @@ export class HousingController {
   /** Paint, re-roof, recolour the gate or rename a finished house you own. */
   @Post('properties/:id/makeovers')
   restyle(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: ExteriorMakeoverDto): Promise<HousingActionResultDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.housing.restyleHouse(ctx, id, body), { touch: true });
+    const { idempotencyKey, ...request } = body;
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('exterior-makeover', idempotencyKey, { propertyId: id, ...request }, () => this.housing.restyleHouse(ctx, id, request)),
+      { touch: true },
+    );
   }
 
   /** Repaint inside or lay a new floor where you live (rented or owned). */
   @Post('makeovers')
   redecorate(@CurrentUser() user: AuthUser, @Body() body: DecorMakeoverDto): Promise<HousingActionResultDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.housing.redecorate(ctx, body), { touch: true });
+    const { idempotencyKey, ...request } = body;
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('decor-makeover', idempotencyKey, request, () => this.housing.redecorate(ctx, request)),
+      { touch: true },
+    );
   }
 }

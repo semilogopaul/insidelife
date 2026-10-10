@@ -210,10 +210,9 @@ export class RelationshipsService {
     });
     const personIds = relationships.flatMap((rel) => (rel.personId ? [rel.personId] : []));
     const playerIds = relationships.flatMap((rel) => (rel.otherCharacterId ? [rel.otherCharacterId] : []));
-    const [people, players] = await Promise.all([
-      personIds.length > 0 ? ctx.manager.find(PersonEntity, { where: { id: In(personIds) } }) : Promise.resolve([]),
-      this.loadPlayers(ctx, playerIds),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const people = await (personIds.length > 0 ? ctx.manager.find(PersonEntity, { where: { id: In(personIds) } }) : Promise.resolve([]));
+    const players = await this.loadPlayers(ctx, playerIds);
     return {
       relationships,
       people: new Map(people.map((person) => [person.id, person])),

@@ -9,6 +9,7 @@ import type { DataSource } from 'typeorm';
 import { TestClock } from './clock.js';
 import { applyE2eEnv } from './env.js';
 import { MemoryStorage } from './memory-storage.js';
+import { installPgConcurrencyGuard, takeConcurrentQuerySites } from './pg-guard.js';
 
 export interface E2eApp {
   readonly app: NestExpressApplication;
@@ -36,6 +37,7 @@ export interface BootOptions {
  */
 export async function bootApp(options: BootOptions = {}): Promise<E2eApp> {
   applyE2eEnv(options.env);
+  installPgConcurrencyGuard();
   const [{ AppModule }, { configureApp }, { StorageService }, { WorldService }, { Logger }] = await Promise.all([
     import('../../src/app.module.js'),
     import('../../src/app.setup.js'),
@@ -66,6 +68,14 @@ export async function bootApp(options: BootOptions = {}): Promise<E2eApp> {
     storage,
     baseUrl: `http://127.0.0.1:${address.port}`,
     get: <T>(token: Type<T> | string | symbol): T => app.get<T>(token as Type<T>, { strict: false }),
-    close: () => app.close(),
+    close: async () => {
+      await app.close();
+      // Two queries at once on one transaction's connection anywhere in this file fails it (pg 9 will refuse them).
+      const sites = takeConcurrentQuerySites();
+      if (sites.length === 0) return;
+      const report = `Overlapping queries on one database connection at:\n  ${sites.join('\n  ')}`;
+      if (process.env.E2E_PG_GUARD === 'report') process.stdout.write(`${report}\n`);
+      else throw new Error(report);
+    },
   };
 }

@@ -23,7 +23,7 @@ import { bootApp, type E2eApp } from './support/app.js';
 import { E2E_ENV } from './support/env.js';
 import { burst, fund, worldPrice } from './support/game.js';
 import { cashFlowsByKind, ledgerViolations, NO_VIOLATIONS } from './support/ledger.js';
-import { createPlayer, goHome, moveTo, ok, refused, type Player } from './support/players.js';
+import { createPlayer, goHome, key, moveTo, ok, refused, type Player } from './support/players.js';
 
 let e2e: E2eApp;
 
@@ -259,6 +259,110 @@ describe('homes: renting, land, ready-built houses and makeovers', () => {
     refused(await player.post(`/housing/properties/${bought.propertyId}/makeovers`, { gate: 'white' }), 422, 'TOO_SOON');
     expect((await marker()).exterior).toMatchObject({ roof: 'charcoal', gate: exterior.gate });
     expect(await player.cash()).toBe(restyleBefore - exteriorQuote(listing.blueprintId, exterior, { roof: 'charcoal' }, priceIndex()).total);
+  });
+});
+
+describe('tap once: a purchase sent again with the same key is charged once and answered with the first result', () => {
+  /** Fire `times` identical requests at once; all must succeed with one body. */
+  async function doubleSubmit(times: number, send: () => ReturnType<Player['post']>): Promise<unknown> {
+    const results = await burst(times, send);
+    expect(statuses(results)).toEqual(Array.from({ length: times }, () => 201));
+    for (const result of results) expect(result.body).toEqual(results[0]!.body);
+    return results[0]!.body;
+  }
+  const receipts = async (player: Player): Promise<string[]> =>
+    (await e2e.dataSource.query<Array<{ kind: string }>>(`SELECT kind FROM command_receipts WHERE character_id = $1 ORDER BY created_at`, [player.characterId])).map(
+      (row) => row.kind,
+    );
+
+  it('shop: six taps with one key buy one desk; a later retry with the key still answers, charging nothing', async () => {
+    e2e.clock.at(12);
+    const player = await createPlayer(e2e);
+    await moveTo(player, 'yaba-market');
+    const before = await player.cash();
+    const tap = key();
+    const first = (await doubleSubmit(6, () => player.post('/shop/purchases', { itemId: 'desk-study', idempotencyKey: tap }))) as ShopPurchaseResultDto;
+    const price = worldPrice(findProduct('desk-study')!.def.price, e2e.clock.now);
+    expect(first.balance).toBe(before - price);
+    expect(await player.cash()).toBe(before - price);
+
+    e2e.clock.advance(5);
+    expect(ok<ShopPurchaseResultDto>(await player.post('/shop/purchases', { itemId: 'desk-study', idempotencyKey: tap }))).toEqual(first);
+    expect(await player.cash()).toBe(before - price);
+    const inventory = ok<InventoryDto>(await player.get('/inventory'));
+    expect(inventory.items.filter((item) => item.itemId === 'desk-study').map((item) => item.quantity)).toEqual([1]);
+    // The same key for something else is refused, not answered with the desk; a fresh key is a fresh purchase.
+    refused(await player.post('/shop/purchases', { itemId: 'chairs-plastic', idempotencyKey: tap }), 422, 'IDEMPOTENCY_KEY_REUSED');
+    refused(await player.post('/shop/purchases', { itemId: 'desk-study', idempotencyKey: key() }), 422, 'TOO_MANY');
+    refused(await player.post('/shop/purchases', { itemId: 'desk-study', idempotencyKey: 'no' }), 400);
+    expect(await receipts(player)).toEqual(['shop-purchase']);
+  });
+
+  it('car: three taps with one key buy one car', async () => {
+    e2e.clock.at(10);
+    const player = await createPlayer(e2e);
+    await fund(e2e, player, 1_000_000);
+    await moveTo(player, 'berger-car-market');
+    const view = ok<VehiclesDto>(await player.get('/vehicles'));
+    const before = await player.cash();
+    const tap = key();
+    const bought = (await doubleSubmit(3, () => player.post('/vehicles/purchases', { vehicleId: 'toyota-corolla-2003-taxi', idempotencyKey: tap }))) as VehiclePurchaseResultDto;
+    expect(await player.cash()).toBe(before - bought.price);
+    expect(ok<VehiclesDto>(await player.get('/vehicles')).mine).toHaveLength(view.mine.length + 1);
+  });
+
+  it('rent: three taps with one key sign one lease and charge the upfront once', async () => {
+    e2e.clock.at(10);
+    const player = await createPlayer(e2e);
+    const listing = ok<RentalListingDto[]>(await player.get('/housing/listings')).find(
+      (candidate) => candidate.affordable && candidate.annualRent > candidate.marketRent * 0.9 && candidate.annualRent >= 200_000,
+    )!;
+    const before = await player.cash();
+    const tap = key();
+    const signed = (await doubleSubmit(3, () => player.post('/housing/leases', { listingId: listing.id, idempotencyKey: tap }))) as HousingActionResultDto;
+    expect(signed.outcome).toBe('moved-in');
+    expect(await player.cash()).toBe(before - listing.upfront.total);
+
+    // Home makeover, tapped twice: one charge.
+    const decor = { paint: 'sage' } as const;
+    const quote = decorQuote(listing.bedrooms, NO_DECOR, decor, priceIndex());
+    const beforeDecor = await player.cash();
+    const decorTap = key();
+    await doubleSubmit(2, () => player.post('/housing/makeovers', { ...decor, idempotencyKey: decorTap }));
+    expect(await player.cash()).toBe(beforeDecor - quote.total);
+    expect(await receipts(player)).toEqual(['lease', 'decor-makeover']);
+  });
+
+  it('land: three taps with one key buy one plot (without a key the repeats would be refused as too soon)', async () => {
+    e2e.clock.at(10);
+    const player = await createPlayer(e2e);
+    await fund(e2e, player, 400_000_000);
+    const offer = ok<LandOfferDto[]>(await player.get('/housing/land?districtId=epe')).toSorted((a, b) => a.totalPerPlot - b.totalPerPlot)[0]!;
+    const before = await player.cash();
+    const tap = key();
+    await doubleSubmit(3, () => player.post('/housing/land', { districtId: offer.districtId, title: offer.title, plots: 1, idempotencyKey: tap }));
+    expect((await player.snapshot()).summary.properties.filter((property) => property.stage === 'land')).toHaveLength(1);
+    expect(await player.cash()).toBe(before - offer.totalPerPlot);
+  });
+
+  it('ready-built house and its exterior makeover: tapped twice, bought and painted once', async () => {
+    e2e.clock.at(10);
+    const player = await createPlayer(e2e);
+    await fund(e2e, player, 400_000_000);
+    const listing = ok<HouseListingDto[]>(await player.get('/housing/houses')).toSorted((a, b) => a.total - b.total)[0]!;
+    const before = await player.cash();
+    const tap = key();
+    const bought = (await doubleSubmit(3, () => player.post('/housing/houses', { listingId: listing.id, idempotencyKey: tap }))) as BuyHouseResultDto;
+    expect(await player.cash()).toBe(before - listing.total);
+    expect((await player.snapshot()).summary.properties.filter((property) => property.id === bought.propertyId)).toHaveLength(1);
+
+    const exterior = { paint: 'terracotta' } as const;
+    const current = (await player.snapshot()).summary.properties.find((property) => property.id === bought.propertyId)!.exterior;
+    const quote = exteriorQuote(listing.blueprintId, current, exterior, priceIndex());
+    const beforeRestyle = await player.cash();
+    const restyleTap = key();
+    await doubleSubmit(2, () => player.post(`/housing/properties/${bought.propertyId}/makeovers`, { ...exterior, idempotencyKey: restyleTap }));
+    expect(await player.cash()).toBe(beforeRestyle - quote.total);
   });
 });
 

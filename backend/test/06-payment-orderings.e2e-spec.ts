@@ -125,11 +125,8 @@ function expectRefunded(purchase: Purchase, seen: Observed, step: string, delive
     const once = deliveredBeforeRefund ? 1 : 0;
     expect({ step, credits: seen.credits, clawbacks: seen.clawbacks, cash: seen.cashDelta }).toEqual({ step, credits: once, clawbacks: once, cash: 0 });
   } else {
-    expect({ step, status: seen.itemStatus, deliveries: seen.deliveries }).toEqual({
-      step,
-      status: deliveredBeforeRefund ? 'refunded' : 'pending-payment',
-      deliveries: deliveredBeforeRefund ? 1 : 0,
-    });
+    // Refunded before it was ever delivered, the booking ends at once (it doesn't sit at "awaiting payment").
+    expect({ step, status: seen.itemStatus, deliveries: seen.deliveries }).toEqual({ step, status: 'refunded', deliveries: deliveredBeforeRefund ? 1 : 0 });
   }
 }
 
@@ -270,6 +267,30 @@ describe('two players racing for the last space (a phone-app slot holds one ad a
     expect((await paymentRow(e2e, thirdBooking.reference)).refund_status).toBeNull();
     expect(await maxPaidPerDay('app-9')).toBe(1);
     expect(await maxPaidPerDay('app-8')).toBeLessThanOrEqual(1);
+  });
+
+  it('refunded before anyone confirmed the payment: the booking ends at once and its days are free for the next player', async () => {
+    const [buyer, next] = [await createPlayer(e2e), await createPlayer(e2e)];
+    const nextFree = async (): Promise<string | undefined> => ok<BillboardSlotsDto>(await next.get('/promotions/slots')).slots.find((slot) => slot.id === 'app-7')?.nextStarts[0] ?? undefined;
+    const freeBefore = (await nextFree())!;
+    const booking = ok<CampaignCheckoutDto>(await book(buyer, 'app-7', freeBefore));
+    expect(await nextFree()).not.toBe(freeBefore);
+
+    const paid = fw.pay(booking.reference);
+    const refund = fw.dashboardRefund(paid.id, booking.quote.totalKobo / 100);
+    ok(await sendWebhook(e2e, fw.refundWebhook(refund)));
+    expect(await jobResult(e2e, `refund-${refund.id}-completed`)).toBe('recorded');
+    expect(await statusOf(booking.campaignId)).toBe('refunded');
+    expect(await nextFree()).toBe(freeBefore);
+
+    // The confirmation that arrives afterwards delivers nothing, and the next player gets those days.
+    ok(await buyer.post(`/payments/${booking.reference}/verification`, { transactionId: String(paid.id) }));
+    expect(await statusOf(booking.campaignId)).toBe('refunded');
+    const nextBooking = ok<CampaignCheckoutDto>(await book(next, 'app-7', freeBefore));
+    expect(nextBooking.campaign.startDate).toBe(freeBefore);
+    // Leave the space as we found it for the tests after this one (an unpaid hold that lapsed holds nothing).
+    await e2e.dataSource.query(`UPDATE promotion_campaigns SET hold_expires_at = now() - interval '1 minute' WHERE id = $1`, [nextBooking.campaignId]);
+    expect(await nextFree()).toBe(freeBefore);
   });
 
   it('both pay for the last space at once after a lapsed hold: exactly one keeps it, the other is refunded', async () => {

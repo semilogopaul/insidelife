@@ -16,6 +16,7 @@ import {
   type TenancyAction,
   type TenancyRequest,
 } from '@insidelife/shared';
+import { IsIdempotencyKey } from '../../../common/decorators/idempotency-key.decorator.js';
 
 export class LandQueryDto implements LandOffersQuery {
   @IsOptional()
@@ -35,6 +36,8 @@ export class BuyLandDto implements BuyLandRequest {
   @Min(1)
   @Max(MAX_PLOTS_PER_PURCHASE)
   readonly plots?: number;
+  @IsIdempotencyKey()
+  readonly idempotencyKey?: string;
 }
 
 export class StartConstructionDto implements StartConstructionRequest {

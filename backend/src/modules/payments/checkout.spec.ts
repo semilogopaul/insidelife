@@ -1011,10 +1011,18 @@ describe('TopupsService fulfiller', () => {
 /** A character wallet with ledger-key idempotency, for the creditor (credit and clawback). */
 function walletContext(startCash: number, startSavings: number) {
   const appliedKeys = new Set<string>();
-  const state = { cash: startCash, savings: startSavings, purchasedTotal: 1_000_000, unearnedTotal: 1_500_000 };
+  const state = { cash: startCash, savings: startSavings, purchasedTotal: 1_000_000, unearnedTotal: 1_500_000, debt: 0 };
   const notifications: string[] = [];
+  // character_debts: one row per (reference, refund id), like its unique index.
+  const debts = new Map<string, number>();
   const ctx = {
-    manager: {},
+    manager: {
+      query: async (_sql: string, [, reference, refundId, amount]: [string, string, string, number]) => {
+        if (debts.has(`${reference}|${refundId}`)) return [];
+        debts.set(`${reference}|${refundId}`, amount);
+        return [{ id: `debt-${debts.size}` }];
+      },
+    },
     character: state,
     wallet: {
       get cash() {
@@ -1038,7 +1046,7 @@ function walletContext(startCash: number, startSavings: number) {
   } as unknown as SimulationContext;
   const session = { run: async <T>(_ref: unknown, command: (context: SimulationContext) => Promise<T>) => command(ctx) } as unknown as CharacterSession;
   const ledger = { balances: async () => ({ cash: state.cash, savings: state.savings, pension: 0, usd: 0 }) } as unknown as LedgerService;
-  return { creditor: new TopupCreditor(session, ledger), state, appliedKeys, notifications };
+  return { creditor: new TopupCreditor(session, ledger), state, appliedKeys, notifications, debts };
 }
 
 describe('TopupCreditor', () => {
@@ -1058,8 +1066,22 @@ describe('TopupCreditor', () => {
     expect(await creditor.clawBack('char-1', pack, 350_000, REF, 'rf-1')).toEqual({ taken: 250_000, shortfall: 100_000 });
     expect([state.cash, state.savings]).toEqual([0, 0]);
     expect(state.purchasedTotal).toBe(750_000);
-    expect(notifications).toEqual(['Top-up reversed']);
+    expect(notifications).toEqual(['You owe money from a refunded top-up', 'Top-up reversed']);
     expect(await creditor.clawBack('char-1', pack, 350_000, REF, 'rf-1')).toMatchObject({ taken: 0 });
+  });
+
+  it('records what could not be taken back as a debt, once per refund', async () => {
+    const { creditor, state, debts, notifications } = walletContext(100_000, 0);
+    await creditor.clawBack('char-1', pack, 350_000, REF, 'rf-1');
+    expect(state.debt).toBe(250_000);
+    expect([...debts.values()]).toEqual([250_000]);
+    // The same refund reported again adds nothing; a fully covered refund owes nothing.
+    await creditor.clawBack('char-1', pack, 350_000, REF, 'rf-1');
+    expect(state.debt).toBe(250_000);
+    expect(notifications.filter((title) => title.startsWith('You owe'))).toHaveLength(1);
+    const covered = walletContext(350_000, 0);
+    await covered.creditor.clawBack('char-1', pack, 350_000, REF, 'rf-2');
+    expect([covered.state.debt, covered.debts.size]).toEqual([0, 0]);
   });
 
   it('takes each partial refund’s share: a second refund id claws back again, the same one never twice', async () => {

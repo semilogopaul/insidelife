@@ -123,12 +123,11 @@ export class ShopService {
   }
 
   async inventoryView(ctx: SimulationContext): Promise<InventoryDto> {
-    const [stacks, deliveries, home, tags] = await Promise.all([
-      this.inventory.stacks(ctx),
-      this.pendingOrders(ctx),
-      this.inventory.homeComfortBonus(ctx),
-      this.inventory.tags(ctx),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const stacks = await this.inventory.stacks(ctx);
+    const deliveries = await this.pendingOrders(ctx);
+    const home = await this.inventory.homeComfortBonus(ctx);
+    const tags = await this.inventory.tags(ctx);
     return {
       items: stacks.map((stack) => this.inventory.toDto(ctx, stack)),
       deliveries: deliveries.map((order) => this.orderDto(order)),

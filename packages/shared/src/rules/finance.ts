@@ -128,6 +128,17 @@ export function dailyTransferLimit(tier: TransferTier): number | null {
   return entry.dailyLimit;
 }
 
+/**
+ * Bought coins (top-ups) can be spent at once but only sent to other players this long after the top-up: a card
+ * payment refunded or charged back in the meantime can't have been passed on already.
+ */
+export const PURCHASE_HOLD_HOURS = 48;
+
+/** Why nothing can go to players while a refunded top-up is owed. */
+export function debtOutstandingMessage(debt: number): string {
+  return `You owe ${formatNaira(debt)} from a refunded top-up. It comes out of money you receive; you can send money to players again once it’s repaid.`;
+}
+
 export interface PeerSendableInput {
   readonly earnedTotal: number;
   /** Includes the starting money, free assets, top-ups and everything other players sent you. */
@@ -136,15 +147,17 @@ export interface PeerSendableInput {
   readonly lockedUnearned: number;
   /** Everything this character ever sent to other players. */
   readonly peerSentTotal: number;
+  /** Bought coins credited in the last `PURCHASE_HOLD_HOURS` (net of claw-backs): on hold, not sendable yet. */
+  readonly heldPurchases?: number;
 }
 
 /**
  * How much of a character's money may go to other players: what they earned, bought or were sent, minus what they've
- * already sent. Starting money (and free assets like a starter car) can be spent in the game but never passed on, so
- * new accounts can't be farmed for it.
+ * already sent and minus coins bought in the last 48 hours. Starting money (and free assets like a starter car) can be
+ * spent in the game but never passed on, so new accounts can't be farmed for it.
  */
 export function peerSendable(input: PeerSendableInput): number {
-  return Math.max(0, input.earnedTotal + input.unearnedTotal - input.lockedUnearned - input.peerSentTotal);
+  return Math.max(0, input.earnedTotal + input.unearnedTotal - input.lockedUnearned - input.peerSentTotal - Math.max(0, input.heldPurchases ?? 0));
 }
 
 export interface PeerMoneyCheckInput {
@@ -156,9 +169,13 @@ export interface PeerMoneyCheckInput {
   /** Recipient: received from players today. */
   readonly receivedToday: number;
   readonly recipientHandle: string;
+  /** Sender: bought coins still on hold (already left out of `sendable`), to explain a refusal. */
+  readonly heldPurchases?: number;
+  /** Sender: what they still owe from a refunded top-up. Nothing goes to players until it's repaid. */
+  readonly debt?: number;
 }
 
-export type PeerMoneyViolation = 'DAILY_LIMIT_EXCEEDED' | 'STARTER_MONEY_LOCKED' | 'RECIPIENT_DAILY_LIMIT';
+export type PeerMoneyViolation = 'DAILY_LIMIT_EXCEEDED' | 'DEBT_OUTSTANDING' | 'PURCHASE_ON_HOLD' | 'STARTER_MONEY_LOCKED' | 'RECIPIENT_DAILY_LIMIT';
 
 export type PeerMoneyCheck = { readonly ok: true } | { readonly ok: false; readonly code: PeerMoneyViolation; readonly message: string };
 
@@ -171,6 +188,21 @@ export function checkPeerMoney(input: PeerMoneyCheckInput): PeerMoneyCheck {
       ok: false,
       code: 'DAILY_LIMIT_EXCEEDED',
       message: left === 0 ? 'You’ve used today’s limit for sending money to players. It resets at midnight (UTC).' : `Daily limit: you can still send ${formatNaira(left)} to players today.`,
+    };
+  }
+  if ((input.debt ?? 0) > 0) {
+    return {
+      ok: false,
+      code: 'DEBT_OUTSTANDING',
+      message: debtOutstandingMessage(input.debt ?? 0),
+    };
+  }
+  const held = Math.max(0, input.heldPurchases ?? 0);
+  if (amount > sendable && amount <= sendable + held) {
+    return {
+      ok: false,
+      code: 'PURCHASE_ON_HOLD',
+      message: `Coins you bought can be sent to players ${PURCHASE_HOLD_HOURS} hours after the top-up.${sendable > 0 ? ` You can send ${formatNaira(sendable)} now.` : ''}`,
     };
   }
   if (amount > sendable) {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   DAILY_PEER_RECEIVE_LIMIT,
+  PURCHASE_HOLD_HOURS,
   annualIncomeTax,
   checkPeerMoney,
   computePayslip,
@@ -166,6 +167,35 @@ describe('money rules at their exact boundaries', () => {
     expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT - 60_000 }))).toBe('@femi can only receive ₦60,000 more from players today.');
     expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT }))).toBe('@femi has received all they can from players today (₦4,000,000 a day).');
     expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT + 1 }))).toMatch(/has received all they can/);
+  });
+
+  it('holds bought coins for 48 hours: spendable at once, sendable later', () => {
+    expect(PURCHASE_HOLD_HOURS).toBe(48);
+    const bought = { earnedTotal: 0, unearnedTotal: 3_025_000 + 2_200_000, lockedUnearned: 3_025_000, peerSentTotal: 0 };
+    expect(peerSendable(bought)).toBe(2_200_000);
+    expect(peerSendable({ ...bought, heldPurchases: 2_200_000 })).toBe(0);
+    expect(peerSendable({ ...bought, earnedTotal: 50_000, heldPurchases: 2_200_000 })).toBe(50_000);
+    expect(peerSendable({ ...bought, heldPurchases: -5 })).toBe(2_200_000);
+    const held = peer({ sendable: 50_000, heldPurchases: 2_200_000, amount: 100_000 });
+    expect(held).toMatchObject({ ok: false, code: 'PURCHASE_ON_HOLD' });
+    expect(messageOf(held)).toBe('Coins you bought can be sent to players 48 hours after the top-up. You can send ₦50,000 now.');
+    expect(messageOf(peer({ sendable: 0, heldPurchases: 2_200_000, amount: 100_000 }))).toBe('Coins you bought can be sent to players 48 hours after the top-up.');
+    // More than even the held coins would cover: it's the starting money that's the problem.
+    expect(peer({ sendable: 0, heldPurchases: 50_000, amount: 100_000 })).toMatchObject({ code: 'STARTER_MONEY_LOCKED' });
+    // Exactly what the hold will free is still "on hold"; a naira more is the starting money.
+    expect(peer({ sendable: 50_000, heldPurchases: 50_000, amount: 100_000 })).toMatchObject({ code: 'PURCHASE_ON_HOLD' });
+    expect(peer({ sendable: 50_000, heldPurchases: 50_000, amount: 100_001 })).toMatchObject({ code: 'STARTER_MONEY_LOCKED' });
+    expect(peer({ sendable: 100_000, heldPurchases: 2_200_000, amount: 100_000 }).ok).toBe(true);
+  });
+
+  it('sends nothing to players while a refunded top-up is still owed', () => {
+    const owing = peer({ debt: 75_000 });
+    expect(owing).toMatchObject({ ok: false, code: 'DEBT_OUTSTANDING' });
+    expect(messageOf(owing)).toBe('You owe ₦75,000 from a refunded top-up. It comes out of money you receive; you can send money to players again once it’s repaid.');
+    expect(peer({ debt: 0 }).ok).toBe(true);
+    // The daily limit still comes first; the debt before anything about the amount.
+    expect(peer({ debt: 75_000, sentToday: 4_000_000 })).toMatchObject({ code: 'DAILY_LIMIT_EXCEEDED' });
+    expect(peer({ debt: 75_000, sendable: 0 })).toMatchObject({ code: 'DEBT_OUTSTANDING' });
   });
 
   it('checks the sender’s limit before starting money, and starting money before the recipient’s cap', () => {

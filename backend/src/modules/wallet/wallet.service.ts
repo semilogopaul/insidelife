@@ -18,7 +18,9 @@ export class WalletService {
   ) {}
 
   async wallet(ctx: SimulationContext): Promise<WalletDto> {
-    const [balances, limits] = await Promise.all([this.ledger.balances(ctx.manager, ctx.character.id), this.peerMoney.limitsFor(ctx)]);
+    // One after the other: both run on this session's transaction connection.
+    const balances = await this.ledger.balances(ctx.manager, ctx.character.id);
+    const limits = await this.peerMoney.limitsFor(ctx);
     return {
       balance: balances.cash,
       savings: balances.savings,
@@ -32,6 +34,8 @@ export class WalletService {
       receiveLimit: limits.receiveLimit,
       earnedTotal: ctx.character.earnedTotal,
       purchasedTotal: ctx.character.purchasedTotal,
+      purchaseHold: limits.purchaseHold ? { amount: limits.purchaseHold.amount, releasesAt: limits.purchaseHold.releasesAt.toISOString() } : null,
+      debt: limits.debt,
     };
   }
 

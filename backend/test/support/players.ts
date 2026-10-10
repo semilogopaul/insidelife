@@ -96,7 +96,7 @@ export class Player {
   async character(): Promise<CharacterRow> {
     const rows = await this.e2e.dataSource.query<CharacterRow[]>(
       `SELECT id, handle, location_id, earned_total::bigint AS earned_total, unearned_total::bigint AS unearned_total,
-              locked_unearned::bigint AS locked_unearned, purchased_total::bigint AS purchased_total, mood_modifiers,
+              locked_unearned::bigint AS locked_unearned, purchased_total::bigint AS purchased_total, debt::bigint AS debt, mood_modifiers,
               needs, status, hidden_at, background, activity, born_at::bigint AS born_at
          FROM characters WHERE id = $1`,
       [this.characterId],
@@ -109,6 +109,7 @@ export class Player {
       unearned_total: Number(row.unearned_total),
       locked_unearned: Number(row.locked_unearned),
       purchased_total: Number(row.purchased_total),
+      debt: Number(row.debt),
       born_at: Number(row.born_at),
     };
   }
@@ -122,6 +123,8 @@ export interface CharacterRow {
   readonly unearned_total: number;
   readonly locked_unearned: number;
   readonly purchased_total: number;
+  /** Owed from a refunded top-up. */
+  readonly debt: number;
   readonly mood_modifiers: ReadonlyArray<{ readonly id: string; readonly label: string; readonly value: number; readonly until: number }>;
   readonly needs: Readonly<Record<string, number>>;
   readonly status: number;

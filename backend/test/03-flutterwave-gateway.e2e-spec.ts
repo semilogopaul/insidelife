@@ -8,7 +8,7 @@ import { signInOwner, type Admin } from './support/admin.js';
 import { bootApp, type E2eApp } from './support/app.js';
 import { E2E } from './support/env.js';
 import { FAKE_FLUTTERWAVE_KEY, FakeFlutterwave, type FakeTransaction } from './support/fake-flutterwave.js';
-import { burst } from './support/game.js';
+import { burst, fund } from './support/game.js';
 import { ledgerViolations, NO_VIOLATIONS, postingsWithKey } from './support/ledger.js';
 import { uploadCreative } from './support/media.js';
 import { jobResult, sweepAfterExpiry, sweepWhenDue } from './support/payments.js';
@@ -296,6 +296,39 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     expect(row.refund_status).toBe('refunded');
     expect(row.flag_reason).toMatch(/already spent/);
     expect((await player.character()).purchased_total).toBe(2_200_000 - cash);
+  });
+
+  it('what was already spent becomes a debt: recorded once, blocks sending, shown in the bank and to admins, repaid from the next money in', async () => {
+    const player = await createPlayer(e2e);
+    const friend = await createPlayer(e2e);
+    const { transaction } = await paidTopup(player, 'big-boy-pack');
+    ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: (await player.cash()) - 100_000, idempotencyKey: key() }));
+    const cash = await player.cash();
+    const owed = 2_200_000 - cash;
+
+    const refund = fw.dashboardRefund(transaction.id, 5_000);
+    ok(await webhook(fw.refundWebhook(refund)));
+    await processed(`refund-${refund.id}-completed`);
+    expect((await player.character()).debt).toBe(owed);
+    // The same refund reported again adds no second debt.
+    await (await queue.getJob(`refund-${refund.id}-completed`))?.remove();
+    ok(await webhook(fw.refundWebhook(refund)));
+    await processed(`refund-${refund.id}-completed`);
+    expect((await player.character()).debt).toBe(owed);
+    expect(await e2e.dataSource.query(`SELECT amount FROM character_debts WHERE character_id = $1`, [player.characterId])).toEqual([{ amount: String(owed) }]);
+
+    expect(ok<{ debt: number }>(await player.get('/wallet')).debt).toBe(owed);
+    const owner = await signInOwner(e2e);
+    expect(ok<{ character: { debt: number } }>(await owner.get(`/players/${player.userId}`)).character.debt).toBe(owed);
+    refused(await player.post('/transfers', { toHandle: friend.handle, amount: 1_000, idempotencyKey: key() }), 422, 'DEBT_OUTSTANDING');
+
+    // Money coming in repays the debt first (back to system:topup), then the rest is theirs and sending works again.
+    await fund(e2e, player, owed + 300_000);
+    expect(await player.cash()).toBe(300_000);
+    expect((await player.character()).debt).toBe(0);
+    expect(await postingsWithKey(e2e.dataSource, `${player.characterId}:debt-repayment:0`)).toHaveLength(1);
+    expect(ok<{ debt: number }>(await player.get('/wallet')).debt).toBe(0);
+    ok(await player.post('/transfers', { toHandle: friend.handle, amount: 100_000, idempotencyKey: key() }));
   });
 
   it('a refund that arrives before the charge was confirmed delivers nothing at all', async () => {

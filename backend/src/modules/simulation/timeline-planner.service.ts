@@ -323,7 +323,9 @@ export class TimelinePlanner {
 
   /** Quote a trip between two locations at time `t`, falling back to danfo when the preferred mode can't do it. */
   async quote(ctx: SimulationContext, from: string, to: string, preferred: TransportMode, t: GameMinute): Promise<CommuteQuote> {
-    const [a, b] = await Promise.all([this.place(ctx, from), this.place(ctx, to)]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const a = await this.place(ctx, from);
+    const b = await this.place(ctx, to);
     const economy = ctx.world.economy(t);
     if (a.regionId !== b.regionId) {
       const legs = [a.regionId, b.regionId].filter((region) => region !== 'lagos').map((region) => REGIONS[region]);
@@ -364,7 +366,10 @@ export class TimelinePlanner {
   /** Routine blocks touching the day of `t` (yesterday's overnight blocks included). */
   async blocksAround(ctx: SimulationContext, t: GameMinute): Promise<readonly ScheduleBlock[]> {
     const day = Math.floor(t / MINUTES_PER_DAY);
-    const [yesterday, today, tomorrow] = await Promise.all([this.blocksForDay(ctx, day - 1), this.blocksForDay(ctx, day), this.blocksForDay(ctx, day + 1)]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const yesterday = await this.blocksForDay(ctx, day - 1);
+    const today = await this.blocksForDay(ctx, day);
+    const tomorrow = await this.blocksForDay(ctx, day + 1);
     return [...yesterday, ...today, ...tomorrow]
       .filter((block) => block.endsAt > t - MINUTES_PER_DAY && block.startsAt < t + MINUTES_PER_DAY)
       .toSorted((a, b) => a.startsAt - b.startsAt || b.priority - a.priority);

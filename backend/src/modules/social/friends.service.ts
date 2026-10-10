@@ -200,12 +200,11 @@ export class FriendsService {
   private async decide(ctx: SimulationContext, row: FriendshipEntity | null, action: FriendshipAction, otherId: string): Promise<FriendshipTransition> {
     const me = ctx.character.id;
     const needsCounts = action === 'request' || action === 'accept';
-    const [blocked, actorFriendCount, otherFriendCount, actorPendingOutgoing] = await Promise.all([
-      action === 'request' || action === 'accept' ? this.guard.isBlocked(me, otherId, ctx.manager) : Promise.resolve(false),
-      needsCounts ? this.friendCount(me, ctx.manager) : Promise.resolve(0),
-      needsCounts ? this.friendCount(otherId, ctx.manager) : Promise.resolve(0),
-      action === 'request' ? ctx.manager.count(FriendshipEntity, { where: { requesterId: me, status: 'pending' } }) : Promise.resolve(0),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const blocked = await (action === 'request' || action === 'accept' ? this.guard.isBlocked(me, otherId, ctx.manager) : Promise.resolve(false));
+    const actorFriendCount = await (needsCounts ? this.friendCount(me, ctx.manager) : Promise.resolve(0));
+    const otherFriendCount = await (needsCounts ? this.friendCount(otherId, ctx.manager) : Promise.resolve(0));
+    const actorPendingOutgoing = await (action === 'request' ? ctx.manager.count(FriendshipEntity, { where: { requesterId: me, status: 'pending' } }) : Promise.resolve(0));
     const transition = friendshipTransition(row, action, { actorId: me, otherId, blocked, actorFriendCount, otherFriendCount, actorPendingOutgoing });
     if (transition.type === 'reject') throw ruleException(transition.code, transition.message);
     return transition;

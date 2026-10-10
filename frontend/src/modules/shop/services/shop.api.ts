@@ -8,6 +8,7 @@ import type {
   WardrobeDto,
 } from '@insidelife/shared';
 import { api } from '@/common/api/http';
+import { tapOnce } from '@/common/api/tap-once';
 
 const id = (value: string): string => encodeURIComponent(value);
 
@@ -15,8 +16,11 @@ const id = (value: string): string => encodeURIComponent(value);
 export const shopApi = {
   /** Whole catalogue (filtered on the client); `venue` is where you're standing, if it's a shop. */
   catalogue: () => api.get<ShopCatalogDto>('/shop'),
+  /** Tap once: a retry of the same purchase reuses its key, so it's charged once. */
   purchase: (itemId: string, quantity: number) =>
-    api.post<ShopPurchaseResultDto>('/shop/purchases', { itemId, quantity }),
+    tapOnce(`shop:${itemId}:${quantity}`, (idempotencyKey) =>
+      api.post<ShopPurchaseResultDto>('/shop/purchases', { itemId, quantity, idempotencyKey }),
+    ),
   inventory: () => api.get<InventoryDto>('/inventory'),
   sell: (inventoryId: string, quantity: number) =>
     api.post<InventorySaleResultDto>(`/inventory/${id(inventoryId)}/sale`, { quantity }),

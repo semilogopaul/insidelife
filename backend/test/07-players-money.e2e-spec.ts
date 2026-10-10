@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CreatePartyResultDto, TransferResultDto, WalletDto } from '@insidelife/shared';
+import type { CreatePartyResultDto, TopupStartedDto, TransferResultDto, WalletDto } from '@insidelife/shared';
 import { bootApp, type E2eApp } from './support/app.js';
 import { burst, fund } from './support/game.js';
 import { ledgerViolations, NO_VIOLATIONS } from './support/ledger.js';
@@ -244,5 +244,40 @@ describe('sprays count as player-to-player money', () => {
     const friend = await sender(4_000_000);
     refused(await send(friend, celebrant, 3_500_000), 422, 'RECIPIENT_DAILY_LIMIT');
     ok(await send(friend, celebrant, 3_000_000));
+  });
+});
+
+describe('bought coins can be spent at once but sent to players only 48 hours after the top-up (chargeback protection)', () => {
+  it('holds them back from what can be sent, says why, shows the hold in the bank, and frees them after 48 hours', async () => {
+    const buyer = await createPlayer(e2e);
+    const friend = await createPlayer(e2e);
+    const started = ok<TopupStartedDto>(await buyer.post('/payments/topups', { packageId: 'owambe-pack' }));
+    ok(await buyer.post(`/payments/sandbox/${started.reference}/succeed`));
+    const bought = started.topup.virtualAmount;
+
+    const held = await wallet(buyer);
+    expect(held.purchaseHold?.amount).toBe(bought);
+    expect(Date.parse(held.purchaseHold!.releasesAt) - Date.now()).toBeGreaterThan(47.9 * 3_600_000);
+    expect(held.sendable).toBe(0);
+    const refusal = await send(buyer, friend, 100_000);
+    refused(refusal, 422, 'PURCHASE_ON_HOLD');
+    expect((refusal.body as { message: string }).message).toMatch(/48 hours after the top-up/);
+    // Spending them is fine meanwhile (the cash is there).
+    expect(held.balance).toBeGreaterThanOrEqual(bought);
+
+    // Earned money alongside stays sendable; only the bought coins wait.
+    await fund(e2e, buyer, 50_000);
+    expect((await wallet(buyer)).sendable).toBe(50_000);
+    ok(await send(buyer, friend, 50_000));
+    refused(await send(buyer, friend, 10_000), 422, 'PURCHASE_ON_HOLD');
+
+    // 48 real hours later the top-up is free to send.
+    await e2e.dataSource.query(`UPDATE ledger_transactions SET created_at = created_at - interval '49 hours' WHERE idempotency_key = $1`, [
+      `${buyer.characterId}:topup:${started.reference}`,
+    ]);
+    const freed = await wallet(buyer);
+    expect(freed.purchaseHold).toBeNull();
+    expect(freed.sendable).toBe(bought);
+    ok(await send(buyer, friend, 100_000));
   });
 });

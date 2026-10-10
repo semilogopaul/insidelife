@@ -76,6 +76,7 @@ export class TransfersService {
         // Blocks are symmetric and the 403 never reveals who blocked whom.
         await this.social.assertNotBlocked(sender.id, recipient.id, ctx.manager);
 
+        this.peerMoney.assertNoDebt(ctx);
         const check = checkTransfer({ amount: request.amount, cash: ctx.wallet.cash });
         if (!check.ok) {
           if (check.code === 'INSUFFICIENT_FUNDS') throw new InsufficientFundsException(request.amount);

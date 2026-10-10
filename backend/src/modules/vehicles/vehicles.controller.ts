@@ -32,7 +32,12 @@ export class VehiclesController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('purchases')
   purchase(@CurrentUser() user: AuthUser, @Body() body: VehiclePurchaseDto): Promise<VehiclePurchaseResultDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.vehicles.purchase(ctx, body.vehicleId, body.colour), { touch: true });
+    const { idempotencyKey, ...request } = body;
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('vehicle-purchase', idempotencyKey, request, () => this.vehicles.purchase(ctx, request.vehicleId, request.colour)),
+      { touch: true },
+    );
   }
 
   @Post('licence')

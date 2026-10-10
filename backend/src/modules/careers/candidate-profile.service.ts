@@ -33,11 +33,10 @@ export class CandidateProfileService {
   }
 
   async build(ctx: SimulationContext): Promise<CandidateProfile> {
-    const [credentials, itemTags, experienceYears] = await Promise.all([
-      this.credentials(ctx),
-      this.itemTags(ctx),
-      this.store.experienceYears(ctx),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const credentials = await this.credentials(ctx);
+    const itemTags = await this.itemTags(ctx);
+    const experienceYears = await this.store.experienceYears(ctx);
     return {
       age: ctx.age,
       skills: ctx.character.skills,
