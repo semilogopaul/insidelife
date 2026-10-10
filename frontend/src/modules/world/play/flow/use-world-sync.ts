@@ -15,7 +15,7 @@ import { pickContext, type ContextCandidate } from './context-priority';
 import { doorLabel, nearestDoor, type Door } from './doors';
 import { movementApi } from './movement.api';
 import { usePlayUi } from '../state/play-ui-store';
-import { serviceOffer } from './service-offers';
+import { nothingToDo, serviceOffer } from './service-offers';
 import { savePose } from './spawn-handoff';
 
 export const CAR_ENTER_ID = 'play:car:enter';
@@ -178,7 +178,10 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
         const point = servicePointAt('fuel', { x, z }) ?? servicePointAt('mechanic', { x, z });
         if (!point) return null;
         const dry = point.kind === 'fuel' && fuelStationDry(gameClock.worldSeed, point.id, Math.floor(gameClock.now() / MINUTES_PER_DAY), optionsRef.current.scarcity);
-        return { offer: serviceOffer(point, c.car, { ...prices, dry }), distance: Math.hypot(point.entrance.position.x - x, point.entrance.position.z - z) };
+        const offer = serviceOffer(point, c.car, { ...prices, dry });
+        // Tank full, car in top shape: nothing to do, so no card covering the road or the door next to it.
+        if (nothingToDo(offer)) return null;
+        return { offer, distance: Math.hypot(point.entrance.position.x - x, point.entrance.position.z - z) };
       };
       if (runtime.mode === 'walk') {
         const destinationId = useNavigation.getState().destinationId;

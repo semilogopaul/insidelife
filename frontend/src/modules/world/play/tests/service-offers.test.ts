@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { SERVICE_POINTS, findVehicle, workshopRepairCost, type DrivenVehicleDto } from '@insidelife/shared';
-import { parseServiceAction, serviceActionId, serviceOffer, type RunningCar } from '../flow/service-offers';
+import { nothingToDo, parseServiceAction, serviceActionId, serviceOffer, type RunningCar } from '../flow/service-offers';
 
 const station = SERVICE_POINTS.find((point) => point.kind === 'fuel');
 const workshop = SERVICE_POINTS.find((point) => point.kind === 'mechanic');
@@ -35,5 +35,14 @@ describe('service offers', () => {
   it('round-trips ids that contain colons', () => {
     expect(parseServiceAction(serviceActionId('fuel:12:3', 10))).toEqual({ pointId: 'fuel:12:3', litres: 10 });
     expect(parseServiceAction('play:door:x')).toBeNull();
+  });
+});
+
+describe('cards that have nothing to offer', () => {
+  it('hides a full tank and a car in top shape, but keeps a dry station warning', () => {
+    expect(nothingToDo(serviceOffer(station, car({ fuelLitres: 45 }), prices))).toBe(true);
+    expect(nothingToDo(serviceOffer(workshop, car({ condition: 100 }), prices))).toBe(true);
+    expect(nothingToDo(serviceOffer(station, car(), { ...prices, dry: true }))).toBe(false);
+    expect(nothingToDo(serviceOffer(station, car(), prices))).toBe(false);
   });
 });

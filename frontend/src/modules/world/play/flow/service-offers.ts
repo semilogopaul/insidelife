@@ -40,12 +40,20 @@ export function parseServiceAction(id: string): { readonly pointId: string; read
   return { pointId, litres: Number.isFinite(amount) && amount > 0 ? amount : null };
 }
 
+const TANK_FULL = 'Your tank is full';
+const TOP_SHAPE = 'Your car is in top shape';
+
+/** Nothing needed here (tank full, car in top shape): never worth a card on screen. A dry station still says so. */
+export function nothingToDo(offer: Interactable): boolean {
+  return offer.disabled === TANK_FULL || offer.disabled === TOP_SHAPE;
+}
+
 export function serviceOffer(point: ServicePoint, car: RunningCar, prices: ServicePrices): Interactable {
   if (point.kind === 'fuel') {
     const pump = pumpPricePerLitre(prices.fuelPrice, car.vehicle.fuelType);
     const room = Math.max(0, car.running.tankLitres - car.running.fuelLitres);
     if (prices.dry) return { id: serviceActionId(point.id), kind: 'car', emoji: '⛽', label: point.name, disabled: 'No fuel here today (scarcity): try another station' };
-    if (room < 0.5) return { id: serviceActionId(point.id), kind: 'car', emoji: '⛽', label: point.name, disabled: 'Your tank is full' };
+    if (room < 0.5) return { id: serviceActionId(point.id), kind: 'car', emoji: '⛽', label: point.name, disabled: TANK_FULL };
     const more =
       room > FUEL_TOP_UP_LITRES + 2
         ? [{ id: serviceActionId(point.id, FUEL_TOP_UP_LITRES), emoji: '⛽', label: `Buy ${FUEL_TOP_UP_LITRES} L · ${formatNaira(Math.round(FUEL_TOP_UP_LITRES * pump))}` }]
@@ -55,6 +63,6 @@ export function serviceOffer(point: ServicePoint, car: RunningCar, prices: Servi
   }
   const def = findVehicle(car.vehicle.vehicleId);
   const cost = def ? workshopRepairCost(def, car.running.condition, car.running.brokenDown, prices.priceIndex) : 0;
-  if (cost === 0) return { id: serviceActionId(point.id), kind: 'car', emoji: '🔧', label: point.name, disabled: 'Your car is in top shape' };
+  if (cost === 0) return { id: serviceActionId(point.id), kind: 'car', emoji: '🔧', label: point.name, disabled: TOP_SHAPE };
   return { id: serviceActionId(point.id), kind: 'car', emoji: '🔧', label: `${car.running.brokenDown ? 'Fix the breakdown' : 'Service & repair'} · ${formatNaira(cost)}` };
 }
