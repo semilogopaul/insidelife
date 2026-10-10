@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { Redis } from 'ioredis';
-import { MAX_PLAUSIBLE_SPEED, roadDistance, type WorldPoint } from '@insidelife/shared';
+import { CITY_GEOMETRY_VERSION, MAX_PLAUSIBLE_SPEED, migrateWorldPoint, roadDistance, type WorldPoint } from '@insidelife/shared';
 import { REDIS } from '../../common/redis/redis.module.js';
 
 export interface Fix extends WorldPoint {
@@ -8,6 +8,8 @@ export interface Fix extends WorldPoint {
   readonly mode: 'walk' | 'car';
   /** Radians; 0 for fixes saved before headings were recorded. */
   readonly heading?: number;
+  /** City geometry version the position is in (absent: saved on the first city's two-lane roads). */
+  readonly v?: number;
 }
 
 const KEY = (characterId: string): string => `move:last:${characterId}`;
@@ -24,13 +26,16 @@ const SLACK_METRES = 25;
 export class MovementTracker {
   constructor(@Inject(REDIS) private readonly redis: Redis) {}
 
+  /** The last accepted fix, in today's world: a fix saved before the roads widened is moved with them (once, on read). */
   async last(characterId: string): Promise<Fix | null> {
     const raw = await this.redis.get(KEY(characterId));
-    return raw ? (JSON.parse(raw) as Fix) : null;
+    if (!raw) return null;
+    const fix = JSON.parse(raw) as Fix;
+    return fix.v === CITY_GEOMETRY_VERSION ? fix : { ...migrateWorldPoint(fix, fix.v), v: CITY_GEOMETRY_VERSION };
   }
 
   async anchor(characterId: string, point: WorldPoint, mode: 'walk' | 'car', heading = 0): Promise<void> {
-    const fix: Fix = { x: point.x, z: point.z, at: Date.now(), mode, heading };
+    const fix: Fix = { x: point.x, z: point.z, at: Date.now(), mode, heading, v: CITY_GEOMETRY_VERSION };
     await this.redis.set(KEY(characterId), JSON.stringify(fix), 'EX', FIX_TTL_SECONDS);
   }
 

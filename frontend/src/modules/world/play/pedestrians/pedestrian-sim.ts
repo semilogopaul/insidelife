@@ -1,4 +1,4 @@
-import { CITY_MAP, createRng, type Rng } from '@insidelife/shared';
+import { CITY_MAP, ROAD_LINE_WIDTH, createRng, type Rng } from '@insidelife/shared';
 import { dampAngle } from '../physics/math';
 
 /**
@@ -7,9 +7,9 @@ import { dampAngle } from '../physics/math';
  * range. Seeded; no allocations per frame.
  */
 
-/** On the road cell's pavement strip (asphalt ends at 4 m). */
-export const PED_OFFSET = 4.55;
-const JUNCTION_CLEAR = 6;
+/** On the road cell's pavement strip (asphalt ends at the four-lane kerb, 7 m out). */
+export const PED_OFFSET = ROAD_LINE_WIDTH / 2 - 0.45;
+const JUNCTION_CLEAR = ROAD_LINE_WIDTH / 2 + 1;
 const SPAWN_MIN = 14;
 const SPAWN_MAX = 55;
 const DESPAWN = 75;

@@ -1,4 +1,4 @@
-import type { DrivenVehicleDto, SpawnPoint } from '@insidelife/shared';
+import { CITY_GEOMETRY_VERSION, migrateWorldPoint, type DrivenVehicleDto, type SpawnPoint } from '@insidelife/shared';
 
 /**
  * Hands the spawn point from whoever stepped outside (the world bridge, the venue sheet) to the play layer, which
@@ -44,6 +44,8 @@ export interface SavedPose {
   readonly driving: boolean;
   readonly car: { readonly x: number; readonly z: number; readonly heading: number; readonly vehicle: DrivenVehicleDto } | null;
   readonly savedAt: number;
+  /** City geometry the position is in (absent: saved on the first city's two-lane roads; moved on load). */
+  readonly geometry?: number;
 }
 
 const KEY = 'insidelife:open-world-pose';
@@ -52,7 +54,7 @@ const MAX_AGE_MS = 15 * 60_000;
 
 export function savePose(pose: SavedPose): void {
   try {
-    window.sessionStorage.setItem(KEY, JSON.stringify(pose));
+    window.sessionStorage.setItem(KEY, JSON.stringify({ ...pose, geometry: CITY_GEOMETRY_VERSION }));
   } catch {
     // Storage unavailable (private mode): resuming after a reload just starts at the district centre.
   }
@@ -65,7 +67,9 @@ export function loadPose(characterId: string): SavedPose | null {
     const pose = JSON.parse(raw) as SavedPose;
     if (pose.characterId !== characterId || Date.now() - pose.savedAt > MAX_AGE_MS) return null;
     if (![pose.x, pose.z, pose.heading].every(Number.isFinite)) return null;
-    return pose;
+    if (pose.geometry === CITY_GEOMETRY_VERSION) return pose;
+    // Saved before the roads widened: move you (and your parked car) out with the road.
+    return { ...migrateWorldPoint(pose, pose.geometry), car: pose.car && migrateWorldPoint(pose.car, pose.geometry), geometry: CITY_GEOMETRY_VERSION };
   } catch {
     return null;
   }

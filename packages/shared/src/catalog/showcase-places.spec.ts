@@ -36,10 +36,11 @@ describe('OBO Mansion, AIR OBO and Dangote Refinery', () => {
     expect(jet.footprint.maxX).toBe(mansion.footprint.maxX);
     const a = venueEntrance('obo-mansion')!;
     const b = venueEntrance('air-obo')!;
-    expect(Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z)).toBeLessThan(10);
+    // Both gates face the four-lane bend: about a road half-width apart.
+    expect(Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z)).toBeLessThan(14);
     // The estate is the biggest private lot in Ikoyi.
     const area = (lot: typeof mansion): number => (lot.footprint.maxX - lot.footprint.minX) * (lot.footprint.maxZ - lot.footprint.minZ);
-    for (const lot of CITY_MAP.lots) if (lot.districtId === 'ikoyi' && lot.kind === 'home') expect(area(lot)).toBeLessThan(area(mansion) / 10);
+    for (const lot of CITY_MAP.lots) if (lot.districtId === 'ikoyi' && lot.kind === 'home') expect(area(lot)).toBeLessThan(area(mansion) / 8);
   });
 
   it('puts the refinery works on the lagoon shore behind its visitor centre', () => {

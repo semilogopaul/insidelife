@@ -2,13 +2,18 @@ import type { DistrictId } from '../catalog/geography.js';
 import type { BillboardSlotId } from '../catalog/promotions.js';
 
 /**
- * The authored layout of the drivable city: a compact, stylised Lagos on a 64 × 42 grid of 10 m cells
- * (640 × 420 m). Columns run west → east, rows north → south (world +x is east, +z is south).
+ * The authored layout of the drivable city: a compact, stylised Lagos on a 64 × 42 grid. Columns run west → east,
+ * rows north → south (world +x is east, +z is south).
  *
  * Everything here is plain data in grid coordinates `[col, row]` (inclusive rectangles). `city-map.ts` turns it into
  * terrain, road tiles, a road graph and lots once at module load. Keep relative geography honest:
  * Mainland to the north-west, the Lagos Lagoon in the middle, the Island and the Lekki peninsula south-east,
  * the Atlantic along the south.
+ *
+ * Two coordinate systems: the *layout* is the uniform grid of 10 m cells the city was first built on (640 × 420 m),
+ * and everything that names a thing (lot ids, home lots, ad spot ids, filling stations) is decided there, so ids never
+ * depend on road widths. The *world* widens every grid line that carries a road to `ROAD_LINE_WIDTH` (four lanes);
+ * other lines stay 10 m. `city-map.ts` maps layout → world (`layoutToWorld`).
  */
 
 /** Inclusive cell rectangle `[c0, r0, c1, r1]`. */
@@ -18,8 +23,23 @@ export type CompassSide = 'N' | 'E' | 'S' | 'W';
 
 export const CITY_COLS = 64;
 export const CITY_ROWS = 42;
-/** Edge of one grid cell in world metres (a road tile is one cell). */
+/** Edge of one layout cell (metres); in the world, lot cells keep it and road lines widen to `ROAD_LINE_WIDTH`. */
 export const CITY_CELL_SIZE = 10;
+/** Lanes each way on every road (right-hand traffic: the inner lane is the fast lane). */
+export const LANES_PER_DIRECTION = 2;
+/** Width of one traffic lane (metres). */
+export const LANE_WIDTH = 3.5;
+/** Kerb to the road's centreline: two lanes each way. */
+export const CARRIAGEWAY_HALF_WIDTH = LANES_PER_DIRECTION * LANE_WIDTH;
+/** Pavement on the road cell between the kerb and the lot (the lot adds its own apron behind it). */
+export const ROADSIDE_PAVEMENT = 1;
+/** World width of a grid line (column or row) that carries a road: the carriageway plus a pavement each side. */
+export const ROAD_LINE_WIDTH = 2 * (CARRIAGEWAY_HALF_WIDTH + ROADSIDE_PAVEMENT);
+/** Half the carriageway in the layout (the first city's two-lane roads). */
+export const LAYOUT_CARRIAGEWAY_HALF_WIDTH = 4;
+/** Ajah-style roundabouts: the raised island and the outer kerb of the two-lane ring (metres from the centre). */
+export const ROUNDABOUT_ISLAND_RADIUS = 5.5;
+export const ROUNDABOUT_OUTER_RADIUS = 14.5;
 
 /** District regions, painted in order (later rectangles win). Water left unpainted is assigned to the nearest district. */
 export const DISTRICT_RECTS: ReadonlyArray<readonly [DistrictId, CellRect]> = [
@@ -178,7 +198,7 @@ export const ROADS: readonly RoadSpec[] = [
 
 export interface RoundaboutSpec {
   readonly name: string;
-  /** Centre cell; the roundabout covers the 3 × 3 block around it. */
+  /** Centre cell (where two road lines cross); the roundabout covers the 3 × 3 block around it. */
   readonly centre: CellCoord;
 }
 
@@ -323,7 +343,7 @@ export interface BillboardSpec {
   readonly slotId: BillboardSlotId;
   /** Cell the board stands in (reserved: no filler building there). */
   readonly cell: CellCoord;
-  /** Offset from the cell centre in metres. */
+  /** Offset from the cell centre in layout metres (mapped to the world with the cell, like everything else). */
   readonly offset: readonly [dx: number, dz: number];
   /** Direction the advert faces (towards the viewers). */
   readonly faces: CompassSide | 'NW' | 'NE' | 'SW' | 'SE';

@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { hashString } from '../random/rng.js';
 import { AD_FACE_GAP, AD_PLACEMENTS, adFaceEnds, adFaceGap, type AdFaceExtent } from './ad-placements.js';
+import { CARRIAGEWAY_HALF_WIDTH } from './city-layout.js';
 import { CITY_MAP } from './city-map.js';
 import { nearestRoadPoint } from './routing.js';
 import type { WorldPoint } from './types.js';
 
-/** Half the carriageway from a road's centreline (pavement and lamps start at ~4.5 m). */
-const CARRIAGEWAY = 3.9;
+/** Half the carriageway from a road's centreline, less a hair for the kerb line (four lanes: pavement and lamps start at ~7.5 m). */
+const CARRIAGEWAY = CARRIAGEWAY_HALF_WIDTH - 0.1;
 /** An overhead face (bottom above a danfo roof) may reach this far over the carriageway's edge. */
 const OVERHEAD_FROM = 4.2;
 const OVERHANG = 1.4;

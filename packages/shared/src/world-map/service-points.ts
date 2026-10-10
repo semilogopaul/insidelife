@@ -1,7 +1,7 @@
 import type { DistrictId } from '../catalog/geography.js';
 import { SCARCITY_DRY_STATION_SHARE } from '../catalog/vehicle-care.js';
 import { rngFor } from '../random/rng.js';
-import { CITY_MAP, districtBounds, type CityLot } from './city-map.js';
+import { CITY_LAYOUT, CITY_MAP, type CityLot } from './city-map.js';
 import type { Entrance, WorldPoint } from './types.js';
 
 /**
@@ -12,7 +12,8 @@ import type { Entrance, WorldPoint } from './types.js';
  * repair; the server checks you're within `SERVICE_RADIUS` of `entrance.position`.
  *
  * Home lots are never used (a player's house could be on one) and nothing in `CITY_MAP` changes, so ad spots and
- * houses keep their ids.
+ * houses keep their ids. Lots are picked by distances in the city's layout (`CITY_LAYOUT`), so widening the roads never
+ * moves a station to another lot.
  */
 
 export type ServicePointKind = 'fuel' | 'mechanic';
@@ -56,28 +57,36 @@ const PLAN: ReadonlyArray<readonly [ServicePointKind, DistrictId, number]> = [
 const FUEL_NAMES = ['Mega Station', 'Filling Station', 'Petrol Station'] as const;
 const MECHANIC_NAMES = ['Mechanic Village', 'Auto Workshop', 'Motors & Vulcanizer'] as const;
 
-function lotCentre(lot: CityLot): WorldPoint {
-  return { x: (lot.footprint.minX + lot.footprint.maxX) / 2, z: (lot.footprint.minZ + lot.footprint.maxZ) / 2 };
+/** Layout centre of a lot (picking measures in the layout). */
+function lotCentre(index: number): WorldPoint {
+  const { footprint } = CITY_LAYOUT.lot(index);
+  return { x: (footprint.minX + footprint.maxX) / 2, z: (footprint.minZ + footprint.maxZ) / 2 };
 }
 
 const isCandidate = (lot: CityLot): boolean =>
   lot.kind === 'building' && lot.entrance !== undefined && lot.front !== undefined && lot.cells[0] === lot.cells[2] && lot.cells[1] === lot.cells[3];
+
+/** Layout door of a lot (by id). */
+function doorOf(lotId: string): WorldPoint {
+  const index = CITY_MAP.lots.findIndex((lot) => lot.id === lotId);
+  return CITY_LAYOUT.lot(index).door ?? lotCentre(index);
+}
 
 function buildServicePoints(): readonly ServicePoint[] {
   const used = new Set<string>();
   const points: ServicePoint[] = [];
   const counter: Record<ServicePointKind, number> = { fuel: 0, mechanic: 0 };
   for (const [kind, districtId, count] of PLAN) {
-    const centre = districtBounds(districtId).centre;
+    const centre = CITY_LAYOUT.districtCentre(districtId);
     for (let n = 0; n < count; n++) {
       // Spread out: the free lot farthest from every service point already in the district (the first one is the
       // nearest to the district centre), never right next door to another one.
-      const placed = points.filter((point) => point.districtId === districtId).map((point) => point.entrance.position);
+      const placed = points.filter((point) => point.districtId === districtId).map((point) => doorOf(point.lotId));
       let best: CityLot | null = null;
       let bestScore = Number.NEGATIVE_INFINITY;
-      for (const lot of CITY_MAP.lots) {
+      for (const [index, lot] of CITY_MAP.lots.entries()) {
         if (lot.districtId !== districtId || !isCandidate(lot) || used.has(lot.id)) continue;
-        const at = lotCentre(lot);
+        const at = lotCentre(index);
         const nearest = placed.length === 0 ? 0 : Math.min(...placed.map((p) => Math.hypot(p.x - at.x, p.z - at.z)));
         if (placed.length > 0 && nearest < 25) continue;
         const score = placed.length === 0 ? -Math.hypot(at.x - centre.x, at.z - centre.z) : nearest;

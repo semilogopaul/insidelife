@@ -1,9 +1,8 @@
 import {
   CITY_MAP,
   DIR_E,
-  DIR_N,
-  DIR_S,
-  DIR_W,
+  ROAD_LINE_WIDTH,
+  cellBounds,
   cellCentreX,
   cellCentreZ,
   findVenue,
@@ -24,19 +23,17 @@ import { DISTRICT_STYLES, type BuildingRef, type KitId } from './styles';
  * Pure (no three.js) so it can be unit-tested and reused by the play layer for collisions.
  */
 
-export const CELL = CITY_MAP.cellSize;
-/** Raised pavement (kerb top) height, matching Kenney road tiles scaled ×10. */
+/** Raised pavement (kerb top) height. */
 export const PAVEMENT_Y = 0.2;
 /** Asphalt surface height. */
 export const ROAD_Y = 0.1;
 /** Pavement strip on the lot side of every road edge (metres). */
 export const APRON = 1.6;
-export const ROAD_SCALE = 10;
 export const VEHICLE_SCALE = 1.73;
 const COMMERCIAL_SCALE = 8.6;
 const SUBURBAN_SCALE = 6.8;
-const LOT_FRONT_WIDTH = 9.2;
-const LOT_DEPTH = 8;
+/** The lagoon arm north of Third Mainland (layout columns 32–38) keeps flowing past the grid: world x range. */
+export const LAGOON_ARM_X: readonly [number, number] = [cellBounds(32, 0).minX, cellBounds(38, 0).maxX];
 
 export interface Placement {
   readonly kit: KitId;
@@ -225,51 +222,22 @@ class PlanBuilder {
 // Roads
 // ---------------------------------------------------------------------------------------------------------------
 
-/** Openings of each Kenney tile in model space (before rotation). */
-const TILE_BASE: Readonly<Record<string, { model: string; mask: number }>> = {
-  straight: { model: 'road-straight', mask: DIR_E | DIR_W },
-  bend: { model: 'road-bend', mask: DIR_W | DIR_S },
-  tee: { model: 'road-intersection', mask: DIR_W | DIR_E | DIR_S },
-  cross: { model: 'road-crossroad', mask: DIR_N | DIR_E | DIR_S | DIR_W },
-  end: { model: 'road-end-round', mask: DIR_E },
-  roundabout: { model: 'road-roundabout', mask: DIR_N | DIR_E | DIR_S | DIR_W },
-};
-
-/** A quarter turn (+90° yaw) maps E→N, N→W, W→S, S→E. */
-function rotateMask(mask: number): number {
-  let out = 0;
-  if (mask & DIR_E) out |= DIR_N;
-  if (mask & DIR_N) out |= DIR_W;
-  if (mask & DIR_W) out |= DIR_S;
-  if (mask & DIR_S) out |= DIR_E;
-  return out;
-}
-
-function tileYaw(baseMask: number, mask: number): number {
-  let current = baseMask;
-  for (let k = 0; k < 4; k++) {
-    if (current === mask) return (k * Math.PI) / 2;
-    current = rotateMask(current);
-  }
-  return 0;
-}
-
+/**
+ * Street furniture along the roads (the road surface itself is procedural: `render/road-geometry.ts`). Lamps, poles
+ * and traffic lights stand on the 1 m roadside pavement of the four-lane roads, on the same tiles and sides as on the
+ * first city's roads (the ad spots are picked around them).
+ */
 function addRoads(plan: PlanBuilder): void {
   const poleChains = new Map<string, (readonly [number, number, number])[]>();
   for (const tile of CITY_MAP.roadTiles) {
-    const base = TILE_BASE[tile.kind] ?? TILE_BASE.straight!;
-    const yaw = tile.kind === 'roundabout' ? 0 : tileYaw(base.mask, tile.mask);
-    const crossing = tile.kind === 'cross' && tile.roadClass !== 'street';
-    plan.add('roads', crossing ? 'road-crossroad-path' : base.model, tile.x, 0, tile.z, yaw, ROAD_SCALE);
-    if (tile.bridge) plan.add('roads', 'road-straight-barrier', tile.x, 0, tile.z, yaw, ROAD_SCALE);
     if (tile.kind === 'straight') streetFurniture(plan, tile, poleChains);
     if (tile.kind === 'cross' && tile.roadClass !== 'street') {
-      // Traffic lights on two corners.
+      // Traffic lights on two corners of the junction box.
       for (const [sx, sz, face] of [
         [1, 1, 0],
         [-1, -1, Math.PI],
       ] as const) {
-        plan.add('roads', 'traffic-light', tile.x + sx * 4.4, PAVEMENT_Y, tile.z + sz * 4.4, face + Math.PI / 4, 9);
+        plan.add('roads', 'traffic-light', tile.x + sx * (tile.width / 2 - 0.6), PAVEMENT_Y, tile.z + sz * (tile.depth / 2 - 0.6), face + Math.PI / 4, 9);
       }
     }
   }
@@ -280,14 +248,15 @@ function streetFurniture(plan: PlanBuilder, tile: CityRoadTile, poleChains: Map<
   const alongX = (tile.mask & DIR_E) !== 0;
   const step = (alongX ? tile.col : tile.row) % 3;
   const big = tile.roadClass !== 'street';
-  // Perpendicular unit vector (towards south / east side).
+  // Perpendicular unit vector (towards south / east side), and the road's half width across.
   const px = alongX ? 0 : 1;
   const pz = alongX ? 1 : 0;
+  const half = (alongX ? tile.depth : tile.width) / 2;
   if (tile.bridge) {
     if (step !== 0) return;
     for (const side of [-1, 1]) {
-      const x = tile.x + px * side * 4.45;
-      const z = tile.z + pz * side * 4.45;
+      const x = tile.x + px * side * (half - 0.55);
+      const z = tile.z + pz * side * (half - 0.55);
       plan.add('roads', 'light-curved', x, PAVEMENT_Y, z, yawFacing(-px * side, -pz * side), 9);
       plan.lamps.push({ x: x - px * side * 1.9, y: 6.3, z: z - pz * side * 1.9, warm: true });
     }
@@ -296,28 +265,28 @@ function streetFurniture(plan: PlanBuilder, tile: CityRoadTile, poleChains: Map<
   if (big) {
     if (step !== 0) return;
     const side = (alongX ? tile.col : tile.row) % 2 === 0 ? 1 : -1;
-    const x = tile.x + px * side * 4.5;
-    const z = tile.z + pz * side * 4.5;
+    const x = tile.x + px * side * (half - 0.5);
+    const z = tile.z + pz * side * (half - 0.5);
     plan.add('roads', 'light-curved', x, PAVEMENT_Y, z, yawFacing(-px * side, -pz * side), 9);
     plan.lamps.push({ x: x - px * side * 1.9, y: 6.3, z: z - pz * side * 1.9, warm: tile.roadClass === 'expressway' });
     return;
   }
   // Streets: a sodium lamp every fourth cell on the north/west side…
   if ((alongX ? tile.col : tile.row) % 4 === 3) {
-    const lx = tile.x - px * 4.5;
-    const lz = tile.z - pz * 4.5;
+    const lx = tile.x - px * (half - 0.5);
+    const lz = tile.z - pz * (half - 0.5);
     plan.add('roads', 'light-curved', lx, PAVEMENT_Y, lz, yawFacing(px, pz), 8);
     plan.lamps.push({ x: lx + px * 1.7, y: 5.6, z: lz + pz * 1.7, warm: true });
   }
   // …and wooden electricity poles every third cell on the south/east side, wired together.
   if (step !== 1) return;
-  const x = tile.x + px * 4.55;
-  const z = tile.z + pz * 4.55;
+  const x = tile.x + px * (half - 0.45);
+  const z = tile.z + pz * (half - 0.45);
   plan.add('roads', 'electricity-pole', x, PAVEMENT_Y, z, alongX ? 0 : Math.PI / 2, [6, 13, 9], 0x9c7c64);
   const key = alongX ? `r${tile.row}` : `c${tile.col}`;
   const chain = poleChains.get(key) ?? [];
   const last = chain[chain.length - 1];
-  if (last && Math.hypot(last[0] - x, last[2] - z) > 3 * CELL + 1) {
+  if (last && Math.hypot(last[0] - x, last[2] - z) > 3 * ROAD_LINE_WIDTH + 1) {
     if (chain.length > 1) plan.wires.push(chain.slice());
     chain.length = 0;
   }
@@ -398,11 +367,13 @@ function fillerLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     return;
   }
   const refs = lot.kind === 'home' ? style.homes : style.buildings;
-  // Front face sits on the apron line: CELL/2 - APRON from the cell centre.
-  const frontLine = CELL / 2 - APRON;
+  // Front face sits on the apron line. Lots in a road line are wider (or deeper) than 10 m: the building keeps its
+  // size and gets more yard.
+  const frame = frameOf(lot);
+  const frontLine = frame.depth / 2 - APRON;
   let placed: number | null = null;
   for (let attempt = 0; attempt < 4 && placed === null; attempt++) {
-    placed = plan.building(pick(refs, random), cx, cz, front, LOT_FRONT_WIDTH, LOT_DEPTH, stretch, tint, frontLine);
+    placed = plan.building(pick(refs, random), cx, cz, front, frame.width - 0.8, frame.depth - 2, stretch, tint, frontLine);
   }
   const isHouse = placed !== null && lot.kind === 'home' && style.compoundWalls;
   if (isHouse) {
@@ -412,9 +383,9 @@ function fillerLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
   // Street trees on the apron, between doors.
   if (style.streetTrees !== 'none' && random() < 0.45) {
     const along: readonly [number, number] = [-dz, dx];
-    const sideOffset = (random() < 0.5 ? -1 : 1) * 3.6;
-    const tx = cx + dx * (CELL / 2 - 0.8) + along[0] * sideOffset;
-    const tz = cz + dz * (CELL / 2 - 0.8) + along[1] * sideOffset;
+    const sideOffset = (random() < 0.5 ? -1 : 1) * (frame.width / 2 - 1.4);
+    const tx = cx + dx * (frame.depth / 2 - 0.8) + along[0] * sideOffset;
+    const tz = cz + dz * (frame.depth / 2 - 0.8) + along[1] * sideOffset;
     if (style.streetTrees === 'palm' || (style.streetTrees === 'mixed' && random() < 0.5)) plan.palm(tx, tz, random, PAVEMENT_Y);
     else plan.nature(pick(['tree_default', 'tree_oak', 'tree_fat'], random), tx, tz, 4.2, random, 0xffffff, PAVEMENT_Y);
   }
@@ -471,7 +442,9 @@ function infill(plan: PlanBuilder, lot: CityLot, lotIndex: number, random: () =>
     case 'towers': {
       const sides: CompassSide[] = ['N', 'E', 'S', 'W'];
       const ref = style.infill === 'towers' && random() < 0.6 ? pick(style.buildings, random) : pick(style.homes, random);
-      const placed = plan.building(ref, cx, cz, pick(sides, random), 9.4, 9.4, style.stretch[1], pick(style.tints, random), 4.7);
+      const { footprint } = lot;
+      const fit = Math.min(footprint.maxX - footprint.minX, footprint.maxZ - footprint.minZ) - 0.6;
+      const placed = plan.building(ref, cx, cz, pick(sides, random), fit, fit, style.stretch[1], pick(style.tints, random), fit / 2);
       if (placed === null) plan.tree(cx, cz, random);
       return;
     }
@@ -857,13 +830,13 @@ function parkedCars(plan: PlanBuilder): void {
 /** A belt of palms and bush just outside the playable edge, so the mainland seems to go on. */
 function outskirts(plan: PlanBuilder): void {
   const { minX, minZ, maxX } = CITY_MAP.bounds;
-  const coastZ = minZ + (CITY_MAP.rows - 2) * CELL;
+  const coastZ = cellBounds(0, CITY_MAP.rows - 2).minZ;
   const random = rng(0x5eed);
   const scatter = (x0: number, z0: number, x1: number, z1: number, count: number): void => {
     for (let i = 0; i < count; i++) {
       const x = x0 + random() * (x1 - x0);
       const z = z0 + random() * (z1 - z0);
-      if (x > -2 && x < 72 && z < minZ) continue; // lagoon arm
+      if (x > LAGOON_ARM_X[0] - 2 && x < LAGOON_ARM_X[1] + 2 && z < minZ) continue; // lagoon arm
       if (random() < 0.55) plan.palm(x, z, random);
       else if (random() < 0.6) plan.tree(x, z, random);
       else plan.bush(x, z, random);

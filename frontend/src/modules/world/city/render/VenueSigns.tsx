@@ -1,6 +1,6 @@
 'use client';
 
-import { CITY_MAP, type CityLot } from '@insidelife/shared';
+import { CITY_MAP, cellCentreZ, type CityLot } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial, Vector3 } from 'three';
@@ -109,7 +109,7 @@ function buildSignGeometry(entries: readonly SignEntry[]): BufferGeometry {
       const plaza = CITY_MAP.lots.find((lot) => lot.id === 'landmark:lekki-toll-plaza');
       if (!plaza) continue;
       const x = (plaza.footprint.minX + plaza.footprint.maxX) / 2;
-      const z = plaza.footprint.minZ - CITY_MAP.cellSize / 2;
+      const z = cellCentreZ(plaza.cells[1] - 1);
       const uv = slotUv(entry.slot);
       writer.quad(new Vector3(x - 6.03, 6.7, z), new Vector3(0, 0, -1), new Vector3(-1, 0, 0), 9, 0.92, uv);
       writer.quad(new Vector3(x + 6.03, 6.7, z), new Vector3(0, 0, 1), new Vector3(1, 0, 0), 9, 0.92, uv);

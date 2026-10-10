@@ -1,13 +1,14 @@
-import { createRng, type Rng } from '@insidelife/shared';
+import { LANE_WIDTH, createRng, type Rng } from '@insidelife/shared';
 import { clamp, dampAngle } from '../physics/math';
-import { ROUNDABOUT_LANE_RADIUS, type Lane, type LaneGraph } from './lane-graph';
+import { ROUNDABOUT_LANE_RADII, type Lane, type LaneGraph } from './lane-graph';
 
 /**
- * Ambient traffic: a modest set of cars, danfos and keke following the lane graph in the right-hand lane. Each car
- * follows a polyline (its lane, then a curved turn through the junction or an anticlockwise sweep of the roundabout),
- * keeps a gap to whatever is ahead in its lane (other traffic, the player), swerves round kerbside parked cars, and
- * is recycled ahead of the player when it drifts too far away. Seeded and pure (no three.js); nothing is allocated
- * per frame.
+ * Ambient traffic: a modest set of cars, danfos and keke following the lane graph on four-lane roads (two lanes each
+ * way, right-hand traffic). Most keep to the kerbside lane — keke always do — so the inner lane stays free for
+ * overtaking. Each car follows a polyline (its lane, then a curved turn through the junction or an anticlockwise sweep
+ * of the roundabout), keeps a gap to whatever is ahead in its own lane (other traffic, the player), changes lane round
+ * parked cars and stopped players, and is recycled ahead of the player when it drifts too far away. Seeded and pure
+ * (no three.js); nothing is allocated per frame.
  */
 
 export type TrafficKind = 'car' | 'danfo' | 'keke';
@@ -35,7 +36,7 @@ export interface TrafficCar {
   readonly cum: Float32Array;
   count: number;
   along: number;
-  /** Swerve (metres towards the road centre) to pass parked cars. */
+  /** Sideways shift (metres towards the road centre; negative towards the kerb) to pass something stopped in the lane. */
   swerve: number;
   /** Seconds spent stopped (deadlock breaker). */
   stuck: number;
@@ -61,7 +62,10 @@ const KEKE_SPEED = 8;
 /** Gap kept to the vehicle ahead (centre to centre). */
 const MIN_GAP = 7.5;
 const LOOK_AHEAD = 24;
-const LANE_HALF = 2.3;
+/** Half a lane: anything further to the side is in the next lane and never blocks. */
+const LANE_HALF = 1.6;
+/** Share of spawned traffic in the kerbside lane. */
+const KERBSIDE_SHARE = 0.7;
 const SPAWN_MIN = 45;
 const SPAWN_MAX = 160;
 const DESPAWN = 210;
@@ -157,6 +161,8 @@ export class TrafficSim {
     for (let attempt = 0; attempt < 40; attempt++) {
       const lane = lanes[Math.floor(this.rng.next() * lanes.length)] as Lane;
       if (lane.length < 6) continue;
+      // Pick the kerbside lane most of the time (rejecting inner lanes) so players have an open overtaking lane.
+      if (lane.slot === 0 && this.rng.next() < (KERBSIDE_SHARE - 0.5) * 2) continue;
       const along = this.rng.next() * lane.length;
       const x = lane.x0 + lane.dx * along;
       const z = lane.z0 + lane.dz * along;
@@ -165,7 +171,7 @@ export class TrafficSim {
       if (attempt < 30 && visible?.(x, z)) continue;
       if (this.occupied(x, z, car)) continue;
       const roll = this.rng.next();
-      const kind: TrafficKind = roll < 0.3 ? 'danfo' : roll < 0.48 && lane.roadClass !== 'expressway' ? 'keke' : 'car';
+      const kind: TrafficKind = roll < 0.3 ? 'danfo' : roll < 0.48 && lane.roadClass !== 'expressway' && lane.slot === 1 ? 'keke' : 'car';
       this.place(car, lane.id, along, kind, Math.floor(this.rng.next() * 1000));
       return true;
     }
@@ -192,14 +198,17 @@ export class TrafficSim {
     car.along = 0;
   }
 
-  /** Pick the lane after `lane`: never a U-turn unless it's a dead end; straight on is likelier than a turn. */
+  /** Pick the lane after `lane` (same slot): never a U-turn unless it's a dead end; straight on is likelier than a turn. */
   private chooseNext(lane: Lane): number {
     const options = this.graph.outgoing[lane.to] ?? [];
     let total = 0;
     for (const id of options) total += this.weight(lane, this.graph.lanes[id] as Lane);
     if (total <= 0) {
-      // Dead end: turn round.
-      for (const id of options) if ((this.graph.lanes[id] as Lane).edge === lane.edge) return id;
+      // Dead end: turn round into the same lane on the other side.
+      for (const id of options) {
+        const option = this.graph.lanes[id] as Lane;
+        if (option.edge === lane.edge && option.slot === lane.slot) return id;
+      }
       return options[0] ?? lane.id;
     }
     let roll = this.rng.next() * total;
@@ -211,7 +220,7 @@ export class TrafficSim {
   }
 
   private weight(from: Lane, to: Lane): number {
-    if (to.edge === from.edge) return 0;
+    if (to.edge === from.edge || to.slot !== from.slot) return 0;
     if (to.length < 2) return 0.1;
     const straight = from.dx * to.dx + from.dz * to.dz > 0.9;
     return straight ? 2.2 : 1;
@@ -238,7 +247,8 @@ export class TrafficSim {
       const steps = Math.min(MAX_PATH - 3, Math.max(4, Math.ceil(sweep / 0.3)));
       for (let s = 0; s <= steps; s++) {
         const angle = entry - (sweep * s) / steps;
-        push(centre.x + Math.cos(angle) * ROUNDABOUT_LANE_RADIUS, centre.z + Math.sin(angle) * ROUNDABOUT_LANE_RADIUS);
+        const radius = ROUNDABOUT_LANE_RADII[from.slot];
+        push(centre.x + Math.cos(angle) * radius, centre.z + Math.sin(angle) * radius);
       }
     } else {
       // Cubic Bézier along the incoming and outgoing directions.
@@ -317,6 +327,8 @@ export class TrafficSim {
         gap = Math.min(gap, ahead);
       }
     } else car.creep -= dt;
+    // Something stopped in our lane: move over a lane to pass it (outer lane → inner, inner → outer), Lagos style.
+    const passBy = lane.slot === 1 ? LANE_WIDTH : -LANE_WIDTH;
     let swerveTarget = 0;
     for (const obstacle of obstacles) {
       if (!obstacle.active) continue;
@@ -326,8 +338,7 @@ export class TrafficSim {
       if (ahead <= -2 || ahead > LOOK_AHEAD) continue;
       const side = rx * -fz + rz * fx;
       if (obstacle.parked) {
-        // Something standing still in (or at the edge of) the lane: drive round it, Lagos style.
-        if (!car.turning && Math.abs(side) < LANE_HALF + obstacle.radius) swerveTarget = Math.max(swerveTarget, Math.min(4, 1.2 + obstacle.radius + Math.max(0, side)));
+        if (!car.turning && Math.abs(side) < LANE_HALF + obstacle.radius) swerveTarget = passBy;
         continue;
       }
       // Moving obstacles (the player): queue behind them only when they're really in front of the bumper.
@@ -337,7 +348,7 @@ export class TrafficSim {
       for (const parkedAt of lane.parked) {
         const delta = parkedAt - car.along;
         if (delta > -5 && delta < 16) {
-          swerveTarget = 2.6;
+          swerveTarget = passBy;
           break;
         }
         if (delta >= 16) break;

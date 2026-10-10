@@ -1,7 +1,8 @@
 import type { DistrictId } from '../catalog/geography.js';
 import type { BillboardFormat } from '../catalog/promotions.js';
 import { createRng } from '../random/rng.js';
-import { CITY_MAP, DIR_E, cityDistrictAt, type CityLot, type CityRoadTile } from './city-map.js';
+import { BILLBOARD_SPECS } from './city-layout.js';
+import { CITY_LAYOUT, CITY_MAP, DIR_E, layoutToWorld, type CityLot, type CityRoadTile } from './city-map.js';
 import type { WorldPoint } from './types.js';
 
 /**
@@ -9,6 +10,10 @@ import type { WorldPoint } from './types.js';
  * `BILLBOARD_SPECS`). Deterministic: every client and server derives the same list. Ids are tied to the location
  * (tile, side, lot), not to a running number, so changing the counts below adds or removes spots without moving any
  * existing booking. The 3D client draws each spot; the promotions domain prices and sells them (`AD_SLOTS`).
+ *
+ * Spots are chosen in the city's *layout* (`CITY_LAYOUT`: the first city's 10 m grid and two-lane roads), so the
+ * picking — and with it every id — never depends on road widths; each chosen spot is then placed in the world with
+ * `layoutToWorld` (on the four-lane roads' pavements, the same spot moved outwards with the kerb).
  */
 
 export const AD_PLACEMENT_KINDS = ['street-billboard', 'bus-shelter', 'totem', 'stadium-led', 'market-banner', 'park-board'] as const;
@@ -77,7 +82,7 @@ const BILLBOARD_ANGLE = 1.12;
 /** The least gap between two faces at overlapping heights (metres). */
 export const AD_FACE_GAP = 0.3;
 
-/** Pavement line from a road tile's centre (the kerb-side apron; lamps and poles stand at ±4.5). */
+/** Pavement line from a road tile's centre in the layout (the kerb-side apron; in the world it moves out with the kerb). */
 const PAVEMENT = 4.62;
 /** Keep generated spots this far from the hand-placed premium boards and from each other (metres, per kind). */
 const PREMIUM_CLEARANCE = 14;
@@ -94,6 +99,7 @@ interface Candidate {
   readonly id: string;
   readonly street: string;
   readonly venueId?: string;
+  /** Layout position (where it was picked). */
   readonly x: number;
   readonly z: number;
   readonly facing: number;
@@ -118,8 +124,15 @@ function furnitureClash(tile: CityRoadTile, side: number, along: number): boolea
   return (index % 4 === 3 && side === -1) || (index % 3 === 1 && side === 1);
 }
 
-const venueDoors: readonly WorldPoint[] = CITY_MAP.lots.flatMap((lot) => (lot.kind === 'venue' && lot.entrance ? [lot.entrance.position] : []));
-const premiumBoards: readonly WorldPoint[] = CITY_MAP.billboards.map((board) => board.position);
+// Doors and premium boards where the first city had them (layout metres): picking measures against these.
+const venueDoors: readonly WorldPoint[] = CITY_MAP.lots.flatMap((lot, index) => {
+  const door = CITY_LAYOUT.lot(index).door;
+  return lot.kind === 'venue' && lot.entrance && door ? [door] : [];
+});
+const premiumBoards: readonly WorldPoint[] = CITY_MAP.billboards.flatMap((board) => {
+  const spec = BILLBOARD_SPECS.find((entry) => entry.slotId === board.slotId);
+  return spec ? [{ x: CITY_LAYOUT.cellCentreX(spec.cell[0]) + spec.offset[0], z: CITY_LAYOUT.cellCentreZ(spec.cell[1]) + spec.offset[1] }] : [];
+});
 
 const near = (points: readonly WorldPoint[], x: number, z: number, radius: number): boolean => points.some((point) => Math.hypot(point.x - x, point.z - z) < radius);
 
@@ -132,10 +145,12 @@ function roadside(prefix: string, accept: (tile: CityRoadTile) => boolean, along
   for (const tile of CITY_MAP.roadTiles) {
     if (tile.kind !== 'straight' || tile.bridge || !accept(tile)) continue;
     const { ax, az, px, pz } = axes(tile);
+    const tx = CITY_LAYOUT.cellCentreX(tile.col);
+    const tz = CITY_LAYOUT.cellCentreZ(tile.row);
     for (const side of [-1, 1]) {
       if (furnitureClash(tile, side, along)) continue;
-      const x = tile.x + px * side * PAVEMENT + ax * along;
-      const z = tile.z + pz * side * PAVEMENT + az * along;
+      const x = tx + px * side * PAVEMENT + ax * along;
+      const z = tz + pz * side * PAVEMENT + az * along;
       if (near(venueDoors, x, z, 5) || near(premiumBoards, x, z, PREMIUM_CLEARANCE)) continue;
       // Traffic drives on the right: eastbound cars use the south (+z) kerb, northbound (−z) the east (+x) kerb.
       const travelX = ax * side;
@@ -163,12 +178,14 @@ function pick(kind: AdPlacementKind, candidates: readonly Candidate[], taken: re
 
 /** Spots around a lot's frontage (markets, motor parks) or its whole footprint (the stadium forecourt). */
 function aroundLot(lot: CityLot, prefix: string, count: number, inset: number, wholePerimeter: boolean): Candidate[] {
-  const { minX, minZ, maxX, maxZ } = lot.footprint;
+  const index = CITY_MAP.lots.indexOf(lot);
+  const layout = CITY_LAYOUT.lot(index);
+  const { minX, minZ, maxX, maxZ } = layout.footprint;
   const sides = wholePerimeter ? (['N', 'E', 'S', 'W'] as const) : ([lot.front ?? 'S'] as const);
   const out: Candidate[] = [];
   // One extra spot per side so the ones in front of the entrance (kept clear for people walking in) can be dropped.
   const perSide = Math.ceil(count / sides.length) + 1;
-  const door = lot.entrance?.position;
+  const door = lot.entrance ? layout.door : null;
   for (const side of sides) {
     for (let i = 0; i < perSide && out.length < count; i++) {
       const t = (i + 0.5) / perSide;
@@ -176,7 +193,7 @@ function aroundLot(lot: CityLot, prefix: string, count: number, inset: number, w
       const z = side === 'S' ? maxZ - inset : side === 'N' ? minZ + inset : minZ + (maxZ - minZ) * t;
       if (door && Math.hypot(door.x - x, door.z - z) < 7) continue;
       const facing = side === 'E' ? 0 : side === 'S' ? Math.PI / 2 : side === 'W' ? Math.PI : -Math.PI / 2;
-      out.push({ id: `${prefix}-${CITY_MAP.lots.indexOf(lot)}-${out.length + 1}`, street: lot.street ?? '', venueId: lot.venueId, x, z, facing });
+      out.push({ id: `${prefix}-${index}-${out.length + 1}`, street: lot.street ?? '', venueId: lot.venueId, x, z, facing });
     }
   }
   return out;
@@ -185,20 +202,23 @@ function aroundLot(lot: CityLot, prefix: string, count: number, inset: number, w
 function spots(kind: AdPlacementKind, candidates: readonly Candidate[]): AdPlacementSpot[] {
   const shape = SHAPE[kind];
   // The setback moves the face, never the candidate: picking (and so every id) is decided before it.
-  return candidates.map((candidate) => ({
+  return candidates.map((candidate) => {
+    const at = layoutToWorld(candidate);
+    return {
     id: candidate.id,
     kind,
-    districtId: cityDistrictAt({ x: candidate.x, z: candidate.z }),
+    districtId: CITY_LAYOUT.districtAt(candidate),
     street: candidate.street,
     venueId: candidate.venueId ?? null,
-    position: { x: candidate.x + (candidate.away?.x ?? 0) * shape.setback, z: candidate.z + (candidate.away?.z ?? 0) * shape.setback },
+    position: { x: at.x + (candidate.away?.x ?? 0) * shape.setback, z: at.z + (candidate.away?.z ?? 0) * shape.setback },
     elevation: shape.elevation,
     facing: candidate.facing,
     width: shape.width,
     height: shape.height,
     format: shape.format,
     doubleSided: shape.doubleSided,
-  }));
+    };
+  });
 }
 
 /** A face as a ground segment with a height range: what `fitFaces` and the spec compare. */

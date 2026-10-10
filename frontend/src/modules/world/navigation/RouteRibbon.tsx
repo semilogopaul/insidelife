@@ -1,6 +1,6 @@
 'use client';
 
-import type { CityRoute, WorldPoint } from '@insidelife/shared';
+import { LANE_WIDTH, type CityRoute, type WorldPoint } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
 import { BufferAttribute, BufferGeometry, Color, ShaderMaterial } from 'three';
@@ -8,15 +8,15 @@ import { activeRoute } from './route-state';
 import { setUniform } from '../city/lib/mutate';
 
 /**
- * The GPS ribbon: a strip laid on the right-hand lane (pavement for the walk to the door) with animated chevrons
+ * The GPS ribbon: a strip laid on the inner right-hand lane (pavement for the walk to the door) with animated chevrons
  * flowing towards the destination. Depth-tested, unlit (reads at night), fades out behind the player.
  */
 
 const ROAD_Y = 0.16;
 const PAVEMENT_Y = 0.27;
 const HALF_WIDTH = 1.15;
-/** Right-hand traffic: keep the ribbon in the right lane. */
-const LANE_OFFSET = 2.1;
+/** Right-hand traffic: keep the ribbon in the inner lane of your side (the overtaking lane of the four-lane roads). */
+const LANE_OFFSET = LANE_WIDTH / 2;
 
 function buildRibbon(route: CityRoute): BufferGeometry {
   const { points, cumulative, legs } = route;

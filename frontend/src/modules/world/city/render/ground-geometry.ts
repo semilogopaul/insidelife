@@ -1,6 +1,6 @@
-import { CITY_MAP, DISTRICT_IDS, cellCentreX, cellCentreZ, type DistrictId } from '@insidelife/shared';
+import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, DISTRICT_IDS, cellBounds, cellCentreX, cellCentreZ, type DistrictId } from '@insidelife/shared';
 import { BufferAttribute, BufferGeometry, Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType } from 'three';
-import { APRON, PAVEMENT_Y, type CityPlan } from '../layout/placements';
+import { APRON, LAGOON_ARM_X, PAVEMENT_Y, type CityPlan } from '../layout/placements';
 import { DISTRICT_STYLES } from '../layout/styles';
 
 /**
@@ -13,7 +13,6 @@ import { DISTRICT_STYLES } from '../layout/styles';
 
 export const WATER_Y = -2.4;
 
-const S = CITY_MAP.cellSize;
 const COLS = CITY_MAP.cols;
 const ROWS = CITY_MAP.rows;
 const K_LAND = 0;
@@ -75,29 +74,27 @@ export function buildGroundTexture(plan: CityPlan): DataTexture {
   return texture;
 }
 
-/** One quad per land/sand cell (uv = position in the grid). */
+/** One quad per land/sand cell (uv = position in the grid: cells differ in size since the roads widened). */
 export function buildGroundGeometry(): BufferGeometry {
   const positions: number[] = [];
   const normals: number[] = [];
   const uvs: number[] = [];
   const indices: number[] = [];
-  const { minX, minZ, maxX, maxZ } = CITY_MAP.bounds;
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
       const kind = kindAt(col, row);
       if (kind !== K_LAND && kind !== K_SAND) continue;
-      const x0 = minX + col * S;
-      const z0 = minZ + row * S;
+      const { minX: x0, minZ: z0, maxX: x1, maxZ: z1 } = cellBounds(col, row);
       const base = positions.length / 3;
-      for (const [x, z] of [
-        [x0, z0],
-        [x0 + S, z0],
-        [x0 + S, z0 + S],
-        [x0, z0 + S],
+      for (const [x, z, u, v] of [
+        [x0, z0, col, row],
+        [x1, z0, col + 1, row],
+        [x1, z1, col + 1, row + 1],
+        [x0, z1, col, row + 1],
       ] as const) {
         positions.push(x, 0, z);
         normals.push(0, 1, 0);
-        uvs.push((x - minX) / (maxX - minX), (z - minZ) / (maxZ - minZ));
+        uvs.push(u / COLS, v / ROWS);
       }
       indices.push(base, base + 3, base + 2, base, base + 2, base + 1);
     }
@@ -174,7 +171,7 @@ class GeometryWriter {
 
 const KERB = 0xc9c1b2;
 /** The lagoon arm keeps flowing north past the edge of the playable grid (world x range). */
-export const ARM_X: readonly [number, number] = [0, 70];
+export const ARM_X = LAGOON_ARM_X;
 const OUTER = 2400;
 const ARM_REACH = -760;
 const QUAY = 0x7d7468;
@@ -188,7 +185,7 @@ const PILLAR = 0x8f8a82;
 export function buildOuterLandGeometry(): BufferGeometry {
   const w = new GeometryWriter();
   const { minX, minZ, maxX } = CITY_MAP.bounds;
-  const coastZ = minZ + (CITY_MAP.rows - 2) * S;
+  const coastZ = cellBounds(0, CITY_MAP.rows - 2).minZ;
   const top = (x0: number, z0: number, x1: number, z1: number): void => w.quad([x0, 0, z0], [x0, 0, z1], [x1, 0, z1], [x1, 0, z0], 0xffffff);
   top(-OUTER, -OUTER, ARM_X[0], minZ);
   top(ARM_X[1], -OUTER, OUTER, minZ);
@@ -206,14 +203,10 @@ export function buildOuterLandGeometry(): BufferGeometry {
 
 export function buildStructureGeometry(plan: CityPlan): BufferGeometry {
   const w = new GeometryWriter();
-  const { minX, minZ } = CITY_MAP.bounds;
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
       const kind = kindAt(col, row);
-      const x0 = minX + col * S;
-      const z0 = minZ + row * S;
-      const x1 = x0 + S;
-      const z1 = z0 + S;
+      const { minX: x0, minZ: z0, maxX: x1, maxZ: z1 } = cellBounds(col, row);
       if (kind === K_LAND || kind === K_SAND) {
         // Kerb aprons along road edges (N/S strips run full width; E/W strips are trimmed where N/S exist).
         const n = isRoadLike(kindAt(col, row - 1));
@@ -251,15 +244,17 @@ export function buildStructureGeometry(plan: CityPlan): BufferGeometry {
         // Deck slab under the road tile, with a darker soffit edge.
         w.box(x0, -1.1, z0, x1, 0.01, z1, DECK, 0.78);
         if ((col + row) % 2 === 0) {
-          for (const side of [-2.8, 2.8]) {
+          // Two piers under the four-lane deck, one under each carriageway half, and the pier cap across.
+          const pier = CARRIAGEWAY_HALF_WIDTH * 0.6;
+          const cap = CARRIAGEWAY_HALF_WIDTH + 0.2;
+          for (const side of [-pier, pier]) {
             const cx = cellCentreX(col) + (alongX ? 0 : side);
             const cz = cellCentreZ(row) + (alongX ? side : 0);
             w.box(cx - 0.8, WATER_Y - 1.5, cz - 0.8, cx + 0.8, -1.1, cz + 0.8, PILLAR, 0.82);
           }
-          // Pier cap.
           const cx = cellCentreX(col);
           const cz = cellCentreZ(row);
-          w.box(cx - (alongX ? 0.9 : 4.2), -1.5, cz - (alongX ? 4.2 : 0.9), cx + (alongX ? 0.9 : 4.2), -1.1, cz + (alongX ? 4.2 : 0.9), PILLAR, 0.8);
+          w.box(cx - (alongX ? 0.9 : cap), -1.5, cz - (alongX ? cap : 0.9), cx + (alongX ? 0.9 : cap), -1.1, cz + (alongX ? cap : 0.9), PILLAR, 0.8);
         }
       }
     }

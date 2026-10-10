@@ -1,4 +1,4 @@
-import { CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, SERVICE_POINTS, findVenue } from '@insidelife/shared';
+import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, SERVICE_POINTS, cellBounds, findVenue } from '@insidelife/shared';
 import { placeKindOfArchetype, propertyPlaceKind, venuePlaceKind, type PlaceKind } from '@/common/brand/place-icons';
 
 /**
@@ -31,7 +31,6 @@ export function cityRaster(): HTMLCanvasElement {
   canvas.height = Math.round((maxZ - minZ) * RASTER_PX_PER_METRE);
   const ctx = canvas.getContext('2d');
   if (!ctx) return canvas;
-  const cell = CITY_MAP.cellSize * RASTER_PX_PER_METRE;
   ctx.fillStyle = WATER;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -47,7 +46,10 @@ export function cityRaster(): HTMLCanvasElement {
       else if (lot?.kind === 'venue') fill = lot.archetype === 'park' || lot.archetype === 'campus' || lot.archetype === 'stadium' || lot.archetype === 'mansion' ? PARK : VENUE;
       else if (lot?.id === 'landmark:dangote-works') fill = INDUSTRY;
       ctx.fillStyle = fill;
-      ctx.fillRect(col * cell - 0.5, row * cell - 0.5, cell + 1, cell + 1);
+      const bounds = cellBounds(col, row);
+      const x0 = toRaster(bounds.minX, minX);
+      const z0 = toRaster(bounds.minZ, minZ);
+      ctx.fillRect(x0 - 0.5, z0 - 0.5, toRaster(bounds.maxX, minX) - x0 + 1, toRaster(bounds.maxZ, minZ) - z0 + 1);
     }
   }
 
@@ -67,12 +69,13 @@ export function cityRaster(): HTMLCanvasElement {
       ] as const) {
         if ((tile.mask & bit) === 0) continue;
         ctx.moveTo(x, z);
-        ctx.lineTo(x + (dx * cell) / 2, z + (dz * cell) / 2);
+        ctx.lineTo(x + (dx * tile.width * RASTER_PX_PER_METRE) / 2, z + (dz * tile.depth * RASTER_PX_PER_METRE) / 2);
       }
       ctx.stroke();
     }
   };
-  const roadWidth = (roadClass: string): number => (roadClass === 'street' ? 11 : 14);
+  // Four-lane roads (14 m kerb to kerb): drawn a little narrower than life so the map stays legible.
+  const roadWidth = (roadClass: string): number => Math.round(CARRIAGEWAY_HALF_WIDTH * RASTER_PX_PER_METRE * (roadClass === 'street' ? 1.5 : 1.8));
   strokeRoads(
     (roadClass) => roadWidth(roadClass) + 5,
     (_, bridge) => (bridge ? BRIDGE_CASING : CASING),
@@ -81,13 +84,14 @@ export function cityRaster(): HTMLCanvasElement {
   for (const roundabout of CITY_MAP.roundabouts) {
     const x = toRaster(roundabout.centre.x, minX);
     const z = toRaster(roundabout.centre.z, minZ);
+    const ring = (roundabout.outerRadius - roundabout.islandRadius) * RASTER_PX_PER_METRE;
     ctx.strokeStyle = CASING;
-    ctx.lineWidth = 17;
+    ctx.lineWidth = ring + 5;
     ctx.beginPath();
     ctx.arc(x, z, roundabout.ringRadius * RASTER_PX_PER_METRE, 0, Math.PI * 2);
     ctx.stroke();
     ctx.strokeStyle = ARTERIAL;
-    ctx.lineWidth = 12;
+    ctx.lineWidth = ring;
     ctx.stroke();
   }
   cached = canvas;
