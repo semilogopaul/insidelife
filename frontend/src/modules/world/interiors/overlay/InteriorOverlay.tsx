@@ -38,6 +38,8 @@ export function InteriorOverlay({ onStartAction, onOpenService }: InteriorOverla
   const fading = useHomeView((state) => state.fading);
   const hover = useHomeView((state) => state.hover);
   const phoneOpen = useUi((state) => state.phoneOpen);
+  // Clean screen: markers, the camera/rooms controls and key hints go with the HUD (tapping a thing still works).
+  const hudHidden = useUi((state) => state.settings.hudHidden);
   const touchUi = useTouchUi();
   const run = useHotspotDo({ onStartAction, onOpenService });
   useHotspotKeys();
@@ -56,10 +58,10 @@ export function InteriorOverlay({ onStartAction, onOpenService }: InteriorOverla
         </div>
       )}
       <PortalLabels />
-      {!phoneOpen && <HotspotMarkers />}
-      {!phoneOpen && <HomeControls />}
+      {!phoneOpen && !hudHidden && <HotspotMarkers />}
+      {!phoneOpen && !hudHidden && <HomeControls />}
       {!phoneOpen && <HotspotCardPanel run={run} />}
-      {camera === 'walk' && !touchUi && <KeysHint key={house} />}
+      {camera === 'walk' && !touchUi && !hudHidden && <KeysHint key={house} />}
       <div
         aria-hidden
         className={cn(

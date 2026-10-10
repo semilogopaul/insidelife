@@ -1,9 +1,10 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef } from 'react';
 import { Matrix4, type InstancedMesh, type Material } from 'three';
 import { findAction, type Appearance, type Gender, type Outfit, type PresencePlayerDto } from '@insidelife/shared';
-import { Avatar, npcLook, type AvatarClip } from '@/common/three/avatar';
+import { Avatar, npcLook, type AvatarClip, type AvatarHandle } from '@/common/three/avatar';
+import { SELF_ANCHOR, trackAvatar } from '../../speech/speech-anchors';
 import { blobShadowGeometry, blobShadowMaterial } from '@/common/three/avatar/blob-shadow';
 import { actionSpot } from '../hotspots/action-spots';
 import { placeAt } from '../templates/spots';
@@ -28,6 +29,18 @@ export interface InteriorPeopleProps {
 
 /** NPCs beyond this many render at the crowd LOD. */
 const HIGH_DETAIL_NPCS = 4;
+/** Other players beyond this many render at the crowd LOD too (a busy bar stays inside the draw-call budget). */
+const HIGH_DETAIL_GUESTS = 3;
+
+/** Speech bubbles follow this avatar's head (a guest by character id, or you). */
+function useBubbleAnchor(key: string) {
+  return useCallback((handle: AvatarHandle | null) => (handle ? trackAvatar(key, handle) : undefined), [key]);
+}
+
+function GuestAvatar({ guest, spot, lod }: { readonly guest: PresencePlayerDto; readonly spot: Spot; readonly lod: 'high' | 'low' }) {
+  const anchor = useBubbleAnchor(guest.characterId);
+  return <Avatar ref={anchor} {...placeAt(spot)} appearance={guest.appearance} outfit={guest.outfit} gender={guest.gender} animation={guestAnimation(guest, spot.animation)} stance={spot.stance} lod={lod} shadow={false} deferBuild />;
+}
 
 function guestAnimation(player: PresencePlayerDto, fallback: AvatarClip): AvatarClip {
   if (!player.activity) return fallback;
@@ -57,6 +70,7 @@ export function InteriorPeople({ template, locationId, player, players }: Interi
     return actionSpot(template, action && action.animation === animation ? action : { animation });
   }, [shown, actionId, animation, template]);
   const guests = players.slice(0, template.guests.length).map((guest, index) => ({ guest, spot: template.guests[index]! }));
+  const selfAnchor = useBubbleAnchor(SELF_ANCHOR);
 
   const feet = useMemo(() => {
     const list: Array<readonly [number, number]> = [];
@@ -70,6 +84,7 @@ export function InteriorPeople({ template, locationId, player, players }: Interi
     <group name="people">
       {player && playerSpot && (
         <Avatar
+          ref={selfAnchor}
           {...placeAt(playerSpot)}
           appearance={player.appearance}
           outfit={player.outfit}
@@ -98,8 +113,8 @@ export function InteriorPeople({ template, locationId, player, players }: Interi
           deferBuild
         />
       ))}
-      {guests.map(({ guest, spot }) => (
-        <Avatar key={guest.characterId} {...placeAt(spot)} appearance={guest.appearance} outfit={guest.outfit} gender={guest.gender} animation={guestAnimation(guest, spot.animation)} stance={spot.stance} lod="high" shadow={false} deferBuild />
+      {guests.map(({ guest, spot }, index) => (
+        <GuestAvatar key={guest.characterId} guest={guest} spot={spot} lod={index < HIGH_DETAIL_GUESTS ? 'high' : 'low'} />
       ))}
       <ContactShadows feet={feet} />
     </group>

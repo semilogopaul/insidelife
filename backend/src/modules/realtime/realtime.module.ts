@@ -7,6 +7,7 @@ import { AuthModule } from '../auth/auth.module.js';
 import { CharactersModule } from '../characters/characters.module.js';
 import { PresenceModule } from '../presence/presence.module.js';
 import { SocialGuardModule } from '../social/social-guard.module.js';
+import { UsersModule } from '../users/users.module.js';
 import {
   ChatRetentionProcessor,
   ChatRetentionScheduler,
@@ -20,6 +21,7 @@ import { ChatMessageEntity } from './entities/chat-message.entity.js';
 import { ChatMediaService } from './media/chat-media.service.js';
 import { RealtimeGateway } from './realtime.gateway.js';
 import { ShardsService } from './shards.service.js';
+import { SpeechService } from './speech.service.js';
 
 @Module({
   imports: [
@@ -27,6 +29,7 @@ import { ShardsService } from './shards.service.js';
     CharactersModule,
     PresenceModule,
     SocialGuardModule,
+    UsersModule,
     StorageModule,
     ImageSafetyModule,
     TypeOrmModule.forFeature([ChatMessageEntity, ChatDmThreadEntity]),
@@ -36,6 +39,7 @@ import { ShardsService } from './shards.service.js';
   providers: [
     RealtimeGateway,
     ShardsService,
+    SpeechService,
     ChatService,
     ChatMediaService,
     ChatRetentionService,

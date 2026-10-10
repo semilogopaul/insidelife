@@ -14,6 +14,7 @@ import {
   interestCell,
   interestNeighbourhood,
   type ClientToServerEvents,
+  type DistrictId,
   type PresencePlayerDto,
   type RealtimeAck,
   type ServerToClientEvents,
@@ -32,6 +33,8 @@ import { RealtimeBus, characterRoom } from '../realtime-bus/realtime-bus.service
 import { SocialGuard } from '../social/social-guard.service.js';
 import { ChatService } from './chat.service.js';
 import { ShardsService } from './shards.service.js';
+import { deliverSpeech } from './speech-delivery.js';
+import { SpeechService } from './speech.service.js';
 
 type RealtimeSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
 
@@ -64,6 +67,18 @@ const PRESENCE_SAMPLE = 80;
 const ONLINE_COUNT_MS = 20_000;
 const HEX_COLOUR = /^#[0-9a-f]{6}$/i;
 
+/** A string field of a client payload ('' when missing or not a string: payloads are never trusted). */
+function textField(payload: unknown, key: string): string {
+  if (typeof payload !== 'object' || payload === null) return '';
+  const value = (payload as Record<string, unknown>)[key];
+  return typeof value === 'string' ? value : '';
+}
+
+/** The client's ack callback, or a no-op when it didn't pass one (calling a missing ack would throw). */
+function replyTo(ack: unknown): (result: RealtimeAck) => void {
+  return typeof ack === 'function' ? (result) => (ack as (result: RealtimeAck) => void)(result) : () => undefined;
+}
+
 /** A driving player's car look, if it's a known model and a plain hex colour (cosmetic; anything else is dropped). */
 function vehicleLook(payload: WorldMovePayload): WorldVehicleLook | undefined {
   const vehicle = payload.vehicle;
@@ -72,10 +87,10 @@ function vehicleLook(payload: WorldMovePayload): WorldVehicleLook | undefined {
 }
 
 /**
- * Realtime gateway: presence, chat and open-world position relay. Positions are visual only; the API validates
- * anything that matters (entering buildings, fuel). Rooms: `character:<id>` for private pushes, `cell:<x>:<z>` for
- * interest-managed position batches (you hear the 3×3 cells around you), `district:<id>` for district-wide events,
- * chat channels by name.
+ * Realtime gateway: presence, chat, speech bubbles and open-world position relay. Positions are visual only; the API
+ * validates anything that matters (entering buildings, fuel). Rooms: `character:<id>` for private pushes,
+ * `<instance>|cell:<x>:<z>` for interest-managed position batches and street speech (you hear the 3×3 cells around
+ * you), `district:<id>` for district-wide events, chat channels by name.
  */
 @WebSocketGateway({ namespace: REALTIME_NAMESPACE, cors: { origin: true, credentials: true }, transports: ['websocket', 'polling'] })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect, OnModuleDestroy {
@@ -95,6 +110,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly metrics: MetricsService,
     private readonly shards: ShardsService,
     private readonly social: SocialGuard,
+    private readonly speech: SpeechService,
   ) {}
 
   afterInit(server: Server<ClientToServerEvents, ServerToClientEvents>): void {
@@ -124,10 +140,15 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       ready: ready.promise,
     };
     // Register handlers before any await so events sent right after connecting are queued, not lost.
-    socket.on('chat:send', (body, ack) => void this.whenReady(socket, () => this.onChatSend(socket, body.channel, body.body, ack)));
-    socket.on('chat:join', (body, ack) => void this.whenReady(socket, () => this.onChatJoin(socket, body.channel, ack)));
-    socket.on('chat:leave', (body) => void socket.leave(body.channel));
-    socket.on('world:move', (body) => void this.whenReady(socket, async () => this.onMove(socket, body)));
+    // Payloads and acks come from the client as-is: handlers read them defensively and never throw out of here.
+    socket.on('chat:send', (body: unknown, ack: unknown) => void this.whenReady(socket, () => this.onChatSend(socket, textField(body, 'channel'), textField(body, 'body'), replyTo(ack))));
+    socket.on('chat:join', (body: unknown, ack: unknown) => void this.whenReady(socket, () => this.onChatJoin(socket, textField(body, 'channel'), replyTo(ack))));
+    socket.on('chat:leave', (body: unknown) => {
+      const channel = textField(body, 'channel');
+      if (channel) void socket.leave(channel);
+    });
+    socket.on('chat:say', (body: unknown, ack: unknown) => void this.whenReady(socket, () => this.onSay(socket, body, replyTo(ack))));
+    socket.on('world:move', (body: unknown) => void this.whenReady(socket, async () => this.onMove(socket, body as WorldMovePayload)));
 
     try {
       const token = typeof socket.handshake.auth?.token === 'string' ? socket.handshake.auth.token : undefined;
@@ -160,7 +181,12 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
   }
 
   private async whenReady(socket: RealtimeSocket, handler: () => Promise<void>): Promise<void> {
-    if (await socket.data.ready) await handler();
+    try {
+      if (await socket.data.ready) await handler();
+    } catch (error) {
+      // A malformed payload must never become an unhandled rejection (that would take the node down).
+      this.logger.debug(`Realtime event dropped: ${error instanceof Error ? error.message : 'unknown'}`);
+    }
   }
 
   async handleDisconnect(socket: RealtimeSocket): Promise<void> {
@@ -202,8 +228,27 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     ack({ ok: true });
   }
 
+  /** Say something out loud: a speech bubble for the people around you (`SpeechService` decides who). */
+  private async onSay(socket: RealtimeSocket, payload: unknown, ack: (result: RealtimeAck) => void): Promise<void> {
+    try {
+      const spoken = await this.speech.say(
+        {
+          characterId: socket.data.characterId,
+          cellRoom: socket.data.cell,
+          districtId: socket.data.districtRoom ? (socket.data.districtRoom.slice('district:'.length) as DistrictId) : null,
+        },
+        typeof payload === 'object' && payload !== null ? (payload as Record<string, unknown>).text : undefined,
+      );
+      deliverSpeech(this.server, spoken);
+      ack({ ok: true });
+    } catch (error) {
+      ack({ ok: false, error: error instanceof DomainException ? error.message : 'Couldn’t say that. Try again' });
+    }
+  }
+
   private onMove(socket: RealtimeSocket, payload: WorldMovePayload): void {
     const now = Date.now();
+    if (typeof payload !== 'object' || payload === null) return;
     if (now - socket.data.lastMoveAt < MIN_MOVE_INTERVAL_MS) return;
     if (![payload.x, payload.z, payload.heading, payload.speed].every(Number.isFinite)) return;
     if (payload.mode !== 'walk' && payload.mode !== 'car') return;
