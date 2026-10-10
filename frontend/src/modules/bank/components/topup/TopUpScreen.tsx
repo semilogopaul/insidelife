@@ -332,8 +332,8 @@ function Confirm({ catalog, choice, payment, start, leaving }: ConfirmProps) {
         {catalog.sandbox
           ? 'Test checkout: no real money moves.'
           : dollars
-            ? `${wallet ? `Pay with ${wallet} on Flutterwave’s secure page` : 'International cards are charged in dollars by Flutterwave'}. You come straight back here.`
-            : 'Pay by card, bank transfer or USSD on Flutterwave’s secure page. You come straight back here.'}
+            ? `${wallet ? `Pay with ${wallet} on Flutterwave’s secure page` : 'International cards are charged in dollars by Flutterwave'}. Flutterwave adds its small processing fee at checkout. You come straight back here.`
+            : 'Pay by card, bank transfer or USSD on Flutterwave’s secure page. Flutterwave adds its small processing fee at checkout. You come straight back here.'}
       </p>
     </section>
   );
