@@ -86,7 +86,7 @@ interface Observed {
 
 async function observe(purchase: Purchase): Promise<Observed> {
   const row = await paymentRow(e2e, purchase.reference);
-  const base = { paymentStatus: row.status, refundStatus: row.refund_status, refundedKobo: Number(row.refunded_kobo) };
+  const base = { paymentStatus: row.status, refundStatus: row.refund_status, refundedKobo: Number(row.refunded_minor) };
   if (purchase.kind === 'topup') {
     const id = purchase.buyer.characterId;
     const credits = (await postingsWithKey(e2e.dataSource, `${id}:topup:${purchase.reference}`)).length;
@@ -259,7 +259,7 @@ describe('two players racing for the last space (a phone-app slot holds one ad a
     await sweepWhenDue(e2e, slowBooking.reference);
     ok(await slow.post(`/payments/${slowBooking.reference}/verification`, { transactionId: String(slowPaid.id) }));
     expect(await statusOf(slowBooking.campaignId)).toBe('refunded');
-    expect(await paymentRow(e2e, slowBooking.reference)).toMatchObject({ status: 'success', refund_status: 'refunded', refunded_kobo: String(slowBooking.quote.totalKobo) });
+    expect(await paymentRow(e2e, slowBooking.reference)).toMatchObject({ status: 'success', refund_status: 'refunded', refunded_minor: String(slowBooking.quote.totalKobo) });
     expect(fw.callsTo('POST', `/transactions/${slowPaid.id}/refund`)).toBe(1);
 
     // The paying buyer keeps the slot; at no point do two paid ads share it.
@@ -390,7 +390,7 @@ describe('the owner’s phone payment: redirect lost, no webhook, checkout link 
     const statusOf = async (id: string): Promise<string | undefined> =>
       (await e2e.dataSource.query<Array<{ status: string }>>(`SELECT status FROM promotion_campaigns WHERE id = $1`, [id]))[0]?.status;
     expect(await statusOf(lateBooking.campaignId)).toBe('refunded');
-    expect(await paymentRow(e2e, lateBooking.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(lateBooking.quote.totalKobo) });
+    expect(await paymentRow(e2e, lateBooking.reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: String(lateBooking.quote.totalKobo) });
     expect(fw.callsTo('POST', `/transactions/${latePaid.id}/refund`)).toBe(1);
     expect(await statusOf(promptBooking.campaignId)).toBe('in-review');
     expect((await paymentRow(e2e, promptBooking.reference)).refund_status).toBeNull();

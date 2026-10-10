@@ -39,6 +39,7 @@ import {
 } from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
+import { UsdRateService } from '../payments/usd-rate.service.js';
 import { AdRatesService } from './ad-rates.service.js';
 import { ClubScheduleService } from './club-schedule.service.js';
 import type { CreateClubOrderDto, UploadTrackDto } from './dto/track.dto.js';
@@ -64,6 +65,8 @@ import { buildTimeline } from './rules/timeline.rules.js';
 import { StorageService } from '../../common/storage/storage.service.js';
 import { CachedValue } from './util/cached-value.js';
 import { assertExpectedPrice, assertExpectedStart } from './util/dates.js';
+import { chargeDto, requireCharge } from './util/charge.js';
+import type { BookingCharge } from './rules/charge.rules.js';
 
 const MAX_UNPAID_ORDERS = 3;
 const DAILY_TRACK_UPLOADS = 10;
@@ -128,6 +131,7 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
     private readonly notifier: PromotionsNotifier,
     private readonly rates: AdRatesService,
     private readonly schedule: ClubScheduleService,
+    private readonly usdRate: UsdRateService,
   ) {}
 
   onModuleInit(): void {
@@ -210,6 +214,7 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
     // The price is quoted now and stored on the order: a later rate change never touches it.
     const quote = songQuote(await this.rates.rateKobo('club-song'), request.weeks ?? 1);
     assertExpectedPrice(request.expectedPriceKobo, quote);
+    const charge = requireCharge(quote, request, await this.usdRate.options());
     const character = await this.directory.findLivingByUser(user.userId);
 
     const { track, order } = await withTransaction(this.dataSource, async (manager) => {
@@ -248,6 +253,9 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
           days: quote.days,
           lane: start.lane,
           amountKobo: quote.totalKobo,
+          currency: charge.currency,
+          chargeMinor: charge.chargeMinor,
+          ngnPerUsd: charge.ngnPerUsd,
           status: 'pending-payment',
           holdExpiresAt: new Date(clock.now.getTime() + CHECKOUT_HOLD_MINUTES * 60_000),
         }),
@@ -255,8 +263,15 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
       return { track: owned, order: created };
     });
 
-    const session = await this.startCheckout(user, character, track, order, product, returnOrigin);
-    return { orderId: order.id, reference: session.reference, authorizationUrl: session.authorizationUrl, quote, order: toClubOrderDto(order, clock) };
+    const session = await this.startCheckout(user, character, track, order, product, charge, returnOrigin);
+    return {
+      orderId: order.id,
+      reference: session.reference,
+      authorizationUrl: session.authorizationUrl,
+      quote,
+      charge: chargeDto(charge),
+      order: toClubOrderDto(order, clock),
+    };
   }
 
   /** The Club DJ product as it can be bought now: price, when 1–4 weeks would start, and the plays guarantee. */
@@ -356,6 +371,7 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
     track: ClubTrackEntity,
     order: ClubPlayOrderEntity,
     product: ClubPlayProduct,
+    charge: BookingCharge,
     returnOrigin: string | null,
   ): Promise<CheckoutSession> {
     let session: CheckoutSession;
@@ -366,7 +382,10 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
         customerName: character ? `@${character.handle}` : undefined,
         characterId: character?.id ?? null,
         purpose: 'club-play',
-        amountKobo: order.amountKobo,
+        currency: order.currency,
+        amountMinor: order.chargeMinor,
+        ...(order.ngnPerUsd === null ? {} : { ngnPerUsd: order.ngnPerUsd }),
+        method: charge.method,
         description: `Inside Life club play: ${track.artistName} – ${track.title} (${product.name}, ${runLengthLabel(order.days)})`.slice(0, 120),
         subjectId: order.id,
         returnOrigin,
@@ -438,8 +457,10 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
       const admission = admitAfterPayment({
         range: order,
         today: clock.today,
-        amountKobo: order.amountKobo,
-        paidKobo: payment.amountKobo,
+        currency: order.currency,
+        chargeMinor: order.chargeMinor,
+        paidCurrency: payment.currency,
+        paidMinor: payment.amountMinor,
         hasRoom: track !== null && track.removedAt === null && otherRunning === 0 && lane !== null,
       });
 
@@ -484,7 +505,7 @@ export class TracksService implements OnModuleInit, OnApplicationBootstrap {
     if (applied.settlement.takenDown) this.invalidateRotation();
     const track = await this.tracks.findOne({ where: { id: applied.item.trackId } });
     this.logger.log({ orderId: applied.item.id, reference: payment.reference, refundId: refund.refundId }, 'Club order refunded');
-    await this.notifier.notifyOwner(applied.item.ownerUserId, refundedNotice(trackSubject(track, applied.item), refund.amountKobo));
+    await this.notifier.notifyOwner(applied.item.ownerUserId, refundedNotice(trackSubject(track, applied.item), refund.currency, refund.amountMinor));
   }
 
   /** First day from today a lane is free for a run of `days`, and that lane (null within 30 days). */

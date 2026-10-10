@@ -61,12 +61,13 @@ describe('WelcomeNote', () => {
 });
 
 describe('FeaturedPlacesPrompt', () => {
-  it('lists only the places it is given and closes when a way is picked', () => {
+  it('only announces the places it is given (no travel options) and closes on Got it', () => {
     const onDone = vi.fn();
     render(wrap(<FeaturedPlacesPrompt open places={[{ venueId: 'obo-mansion', name: 'OBO Mansion' }]} onDone={onDone} />));
     expect(screen.getByRole('heading', { name: 'OBO Mansion is now live!' })).toBeTruthy();
     expect(screen.queryByText('Dangote Refinery')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: /Walk there with GPS/ }));
+    expect(screen.queryByRole('button', { name: /Walk there with GPS/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
     expect(onDone).toHaveBeenCalled();
   });
 

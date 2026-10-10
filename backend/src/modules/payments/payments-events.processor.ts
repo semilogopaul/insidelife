@@ -36,7 +36,8 @@ export class PaymentsEventsProcessor extends WorkerHost {
         return decision?.kind ?? 'unknown-reference';
       }
       case 'refund': {
-        const confirmed = await this.checkout.confirmRefund(job.data as RefundJob);
+        const data = job.data as RefundJob;
+        const confirmed = await this.checkout.confirmRefund({ ...data, amountMinor: data.amountMinor ?? data.amountKobo ?? 0 });
         const result = await this.checkout.recordGatewayRefund(confirmed);
         this.logger.log({ refundId: confirmed.refundId, status: confirmed.status, result }, 'Processed Flutterwave refund webhook');
         return result;

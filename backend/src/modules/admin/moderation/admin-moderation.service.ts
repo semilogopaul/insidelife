@@ -7,6 +7,7 @@ import {
   type ModerationCampaignDto,
   type ModerationClubOrderDto,
   type ModerationQueueDto,
+  type PaymentCurrency,
   type PromotionStatus,
 } from '@insidelife/shared';
 import { toCsv, type CsvColumn } from '../../../common/utils/csv.js';
@@ -29,6 +30,9 @@ interface PromotionRow {
   readonly owner_handle: string | null;
   readonly status: PromotionStatus;
   readonly amount_kobo: string;
+  readonly currency: PaymentCurrency;
+  readonly charge_minor: string;
+  readonly ngn_per_usd: number | null;
   readonly start_date: string;
   readonly end_date: string;
   readonly days: number;
@@ -53,12 +57,12 @@ const SORTS: Readonly<Record<PromotionSort, string>> = {
 const FROM = `
   FROM (
     SELECT 'campaign' AS type, pc.id, pc.title, pc.slot_id AS detail, NULL::varchar AS artist, pc.owner_user_id, pc.owner_character_id,
-           pc.status, pc.amount_kobo, pc.start_date, pc.end_date, pc.days, pc.payment_reference, pc.paid_at, pc.reviewed_at,
+           pc.status, pc.amount_kobo, pc.currency, pc.charge_minor, pc.ngn_per_usd, pc.start_date, pc.end_date, pc.days, pc.payment_reference, pc.paid_at, pc.reviewed_at,
            pc.reviewed_by, pc.rejection_reason, pc.created_at, pc.creative_url AS media_url, pc.link_url
       FROM promotion_campaigns pc
     UNION ALL
     SELECT 'club-order', o.id, t.title, o.product_id, t.artist_name, o.owner_user_id, o.owner_character_id,
-           o.status, o.amount_kobo, o.start_date, o.end_date, o.days, o.payment_reference, o.paid_at, o.reviewed_at,
+           o.status, o.amount_kobo, o.currency, o.charge_minor, o.ngn_per_usd, o.start_date, o.end_date, o.days, o.payment_reference, o.paid_at, o.reviewed_at,
            o.reviewed_by, o.rejection_reason, o.created_at, t.audio_url, NULL
       FROM promotion_club_orders o JOIN promotion_tracks t ON t.id = o.track_id
   ) p
@@ -67,7 +71,7 @@ const FROM = `
   LEFT JOIN users rv ON rv.id = p.reviewed_by`;
 
 const COLUMNS = `p.type, p.id, p.title, p.detail, p.artist, p.owner_user_id, ou.email AS owner_email, oc.handle AS owner_handle,
-                 p.status, p.amount_kobo, p.start_date::text AS start_date, p.end_date::text AS end_date, p.days, p.payment_reference,
+                 p.status, p.amount_kobo, p.currency, p.charge_minor, p.ngn_per_usd, p.start_date::text AS start_date, p.end_date::text AS end_date, p.days, p.payment_reference,
                  p.paid_at, p.reviewed_at, rv.email AS reviewer_email, p.rejection_reason, p.created_at, p.media_url, p.link_url`;
 
 const toDto = (row: PromotionRow): AdminPromotionRowDto => ({
@@ -80,6 +84,9 @@ const toDto = (row: PromotionRow): AdminPromotionRowDto => ({
       : `${row.artist ?? 'Unknown artist'} · ${findClubPlayProduct(row.detail)?.name ?? row.detail}`,
   status: row.status,
   amountKobo: Number(row.amount_kobo),
+  currency: row.currency,
+  chargeMinor: Number(row.charge_minor),
+  ngnPerUsd: row.ngn_per_usd,
   startDate: row.start_date,
   endDate: row.end_date,
   days: row.days,
@@ -101,7 +108,9 @@ const CSV_COLUMNS: readonly CsvColumn<AdminPromotionRowDto>[] = [
   { header: 'Title', value: (row) => row.title },
   { header: 'Placement / artist', value: (row) => row.subtitle },
   { header: 'Status', value: (row) => row.status },
-  { header: 'Amount (NGN)', value: (row) => row.amountKobo / 100 },
+  { header: 'Price (NGN)', value: (row) => row.amountKobo / 100 },
+  { header: 'Currency', value: (row) => row.currency },
+  { header: 'Charged', value: (row) => row.chargeMinor / 100 },
   { header: 'Start', value: (row) => row.startDate },
   { header: 'End (exclusive)', value: (row) => row.endDate },
   { header: 'Days', value: (row) => row.days },
@@ -147,6 +156,8 @@ export class AdminModerationService {
           ownerUserId: campaign.ownerUserId,
           slotId: campaign.slotId,
           amountKobo: campaign.amountKobo,
+          currency: campaign.currency,
+          chargeMinor: campaign.chargeMinor,
           paymentReference: campaign.paymentReference,
         },
       });
@@ -167,6 +178,8 @@ export class AdminModerationService {
           trackId: track.id,
           productId: order.productId,
           amountKobo: order.amountKobo,
+          currency: order.currency,
+          chargeMinor: order.chargeMinor,
           paymentReference: order.paymentReference,
         },
       });

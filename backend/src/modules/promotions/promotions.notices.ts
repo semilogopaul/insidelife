@@ -1,4 +1,4 @@
-import { formatNaira, koboToNaira, type IsoDate } from '@insidelife/shared';
+import { formatPaymentAmount, type IsoDate, type PaymentCurrency } from '@insidelife/shared';
 import type { PromotionNotice } from './promotions-notifier.service.js';
 
 /** What the buyer is told about: "Billboard" + ad title + board, or "Club rotation" + song + clubs. */
@@ -94,10 +94,11 @@ export function songEndedNotice(orderId: string, song: string, plays: number, li
   };
 }
 
-export function refundedNotice(subject: NoticeSubject, amountKobo: number): PromotionNotice {
+/** A refund went back to the buyer: `amountMinor` in the payment's currency (kobo, or cents for a dollar payment). */
+export function refundedNotice(subject: NoticeSubject, currency: PaymentCurrency, amountMinor: number): PromotionNotice {
   return {
     title: `${subject.noun} refund sent`,
-    body: `${formatNaira(koboToNaira(amountKobo))} for ${quoted(subject)} has been refunded to your card or bank. It can take a few working days to show.`,
+    body: `${formatPaymentAmount(currency, amountMinor)} for ${quoted(subject)} has been refunded to your card or bank. It can take a few working days to show.`,
     tone: 'neutral',
   };
 }

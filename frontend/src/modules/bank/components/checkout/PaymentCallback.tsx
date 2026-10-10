@@ -4,14 +4,14 @@ import { motion, useReducedMotion } from 'motion/react';
 import { Check, CircleSlash, Hourglass, RotateCcw, X, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { formatNaira, type PaymentDto } from '@insidelife/shared';
+import { formatNaira, type CreateTopupRequest, type PaymentDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, Money, Spinner } from '@/common/components';
 import { useUi } from '@/common/game/ui-store';
-import { checkErrorAlert } from '@/common/payments';
+import { checkErrorAlert, PaymentAmount, paymentChoiceBody } from '@/common/payments';
 import { cn } from '@/common/utils/cn';
 import { usePaymentVerification } from '../../hooks/use-payment-verification';
-import { useStartTopup } from '../../hooks/use-topups';
+import { useStartTopup, useTopupCatalog } from '../../hooks/use-topups';
 import { useWallet } from '../../hooks/use-wallet';
 import { isPaymentReference, outcomeCopy, type PaymentOutcome } from '../../services/payment-status';
 import { CashBurst } from './CashBurst';
@@ -124,7 +124,8 @@ function Verification({ reference, transactionId, closed }: VerificationProps) {
         <dd className="text-right font-bold">{payment.topup ? `${payment.topup.label} (${formatNaira(payment.topup.virtualAmount)} in-game)` : payment.description}</dd>
         <dt className="text-text-soft">{outcome === 'delivered' || outcome === 'delivering' ? 'You paid' : 'Amount'}</dt>
         <dd className="tabular text-right">
-          <Money amount={payment.amountNgn} /> {payment.channel === 'sandbox' ? '(test)' : ''}
+          <PaymentAmount currency={payment.currency} minor={payment.amountMinor} nairaKobo={payment.currency === 'USD' ? payment.amountKobo : null} />{' '}
+          {payment.channel === 'sandbox' ? '(test)' : ''}
         </dd>
         <dt className="text-text-soft">Reference</dt>
         <dd className="tabular truncate text-right text-xs text-text-faint" title={payment.reference}>
@@ -179,9 +180,21 @@ function NewBalance() {
 
 function Retry({ payment }: { readonly payment: PaymentDto }) {
   const start = useStartTopup();
+  const dollars = payment.currency === 'USD';
+  // A dollar retry needs today's rate (the server refuses a stale one); naira retries don't wait for the catalog.
+  const catalog = useTopupCatalog();
   if (payment.purpose !== 'topup' || !payment.topup) return null;
-  // The same pack, or the same custom amount (re-quoted by the server).
-  const again = payment.topup.packageId ? { packageId: payment.topup.packageId } : { amountNgn: payment.amountNgn };
+  const usd = catalog.data?.usd ?? null;
+  // Dollars switched off since (or the catalog can't be read): start again from the Bank rather than here.
+  if (dollars && !usd && !catalog.isPending) return null;
+  // The same pack, the same custom amount, or the same whole dollars at today's rate (re-quoted by the server).
+  const again: CreateTopupRequest | null = dollars
+    ? usd
+      ? { amountUsd: payment.amountMinor / 100, ...paymentChoiceBody({ currency: 'USD', method: 'card' }, usd) }
+      : null
+    : payment.topup.packageId
+      ? { packageId: payment.topup.packageId }
+      : { amountNgn: payment.amountNgn };
   return (
     <>
       {start.isError && (
@@ -189,7 +202,7 @@ function Retry({ payment }: { readonly payment: PaymentDto }) {
           {errorMessage(start.error)}
         </p>
       )}
-      <Button size="lg" block loading={start.isPending || start.isSuccess} onClick={() => start.mutate(again)} icon={<RotateCcw size={18} aria-hidden />}>
+      <Button size="lg" block loading={start.isPending || start.isSuccess || again === null} onClick={() => again && start.mutate(again)} icon={<RotateCcw size={18} aria-hidden />}>
         Try again
       </Button>
     </>

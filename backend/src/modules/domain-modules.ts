@@ -2,6 +2,7 @@ import type { Type } from '@nestjs/common';
 import { AccountsModule } from './accounts/accounts.module.js';
 import { AdminModule } from './admin/admin.module.js';
 import { AuditModule } from './audit/audit.module.js';
+import { BettingModule } from './betting/betting.module.js';
 import { BusinessesModule } from './businesses/businesses.module.js';
 import { CareersModule } from './careers/careers.module.js';
 import { EducationModule } from './education/education.module.js';
@@ -41,6 +42,7 @@ export const DOMAIN_MODULES: Type[] = [
   SocialModule,
   VisitsModule,
   PromotionsModule,
+  BettingModule,
   ProgressionModule,
   AccountsModule,
   AdminModule,

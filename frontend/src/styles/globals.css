@@ -44,6 +44,11 @@
   --color-gold-soft: #f8efd8;
   --color-noir: #0d1210;
 
+  /* The betting app: floodlit pitch green, prices in Danfo yellow */
+  --color-pitch: #0b6b43;
+  --color-pitch-deep: #053a24;
+  --color-pitch-soft: #ddf3e7;
+
   /* Needs (paired with icons; never colour alone) */
   --color-need-energy: #f6b90b;
   --color-need-hunger: #e8742b;

@@ -9,8 +9,10 @@ import type {
   TrackContentType,
 } from '../catalog/promotions.js';
 import type { DistrictId } from '../catalog/geography.js';
-import type { AdRateKey, AdSlotKind } from '../catalog/ad-inventory.js';
+import type { AdSlotKind, RateCardKey, RateCardUnit } from '../catalog/ad-inventory.js';
 import type { AdPlacementKind } from '../world-map/ad-placements.js';
+import type { PaymentCurrency } from '../catalog/payments.js';
+import type { PaymentChoice, UsdPaymentOptionsDto } from './payments.js';
 
 /**
  * Promotions API contracts — owned by the promotions domain. Billboards (players and brands buy ad space on in-world
@@ -130,6 +132,20 @@ export interface BillboardSlotsDto {
   readonly slots: readonly AdSlotStateDto[];
   readonly rules: readonly ContentRule[];
   readonly clubSong: ClubSongOfferDto;
+  /**
+   * Paying for ads and songs in dollars (null when the server takes naira only). A dollar price is the naira total
+   * ÷ `ngnPerUsd`, rounded up to the cent (`usdCentsForKobo`); totals under `minChargeCents` are paid in naira.
+   */
+  readonly usd: UsdPaymentOptionsDto | null;
+}
+
+/** What a booking is charged: its currency, the amount in that currency's minor units and the rate it used. */
+export interface PromotionChargeDto {
+  readonly currency: PaymentCurrency;
+  /** Kobo for NGN (the naira total), cents for USD (`usdCentsForKobo(totalKobo, ngnPerUsd)`). */
+  readonly amountMinor: number;
+  /** ₦ per $1 the dollar price was converted at (null for naira). */
+  readonly ngnPerUsd: number | null;
 }
 
 /** `POST /v1/promotions/creatives` (multipart: `file` + `slotId`). The image is re-encoded to the slot size. */
@@ -147,8 +163,11 @@ export interface CreativeDto {
   readonly bytes: number;
 }
 
-/** `POST /v1/promotions/campaigns` */
-export interface CreateCampaignRequest {
+/**
+ * `POST /v1/promotions/campaigns`. Pays in naira by default; `currency: 'USD'` (with `expectedNgnPerUsd`) pays the
+ * dollar price when the server offers dollars.
+ */
+export interface CreateCampaignRequest extends PaymentChoice {
   readonly slotId: BillboardSlotId;
   readonly creativeKey: string;
   /** Shown to you and to moderators (and as the billboard's accessible label). 3-60 chars. For phone apps: the app's name. */
@@ -189,7 +208,13 @@ export interface AdCampaignDto {
   /** Days per block it was sold in (7, or 3 for expensive slots), and how many blocks. */
   readonly blockDays: number;
   readonly blocks: number;
+  /** The naira price (kobo) quoted at booking. */
   readonly amountKobo: number;
+  /** What the booking is charged in: `chargeMinor` is kobo for NGN (= `amountKobo`), cents for USD. */
+  readonly currency: PaymentCurrency;
+  readonly chargeMinor: number;
+  /** ₦ per $1 the dollar price was converted at (null for naira). */
+  readonly ngnPerUsd: number | null;
   /** Effective status (approved campaigns become `live`/`completed` by date). */
   readonly status: PromotionStatus;
   readonly rejectionReason: string | null;
@@ -215,7 +240,10 @@ export interface CheckoutStartedForPromotionDto {
   readonly reference: string;
   /** Flutterwave hosted checkout (or the local sandbox page). Open it, then verify via the payments API. */
   readonly authorizationUrl: string;
+  /** The naira quote (always). */
   readonly quote: PromotionQuote;
+  /** What this checkout charges (naira, or the dollar price of `quote.totalKobo`). */
+  readonly charge: PromotionChargeDto;
 }
 
 /** Response of `POST /v1/promotions/campaigns`. */
@@ -291,7 +319,7 @@ export interface UploadTrackFields {
  * `POST /v1/promotions/tracks/:id/orders` — one song in every club and lounge for 1–4 consecutive weeks, from the
  * rotation's next free day (today when a lane is free for the whole run).
  */
-export interface CreateClubOrderRequest {
+export interface CreateClubOrderRequest extends PaymentChoice {
   readonly productId: ClubPlayProductId;
   /** 1…`clubSong.maxWeeks` consecutive 7-day blocks (default 1). */
   readonly weeks?: number;
@@ -315,7 +343,12 @@ export interface ClubPlayOrderDto {
   readonly startDate: IsoDate;
   readonly endDate: IsoDate;
   readonly days: number;
+  /** The naira price (kobo) quoted at booking. */
   readonly amountKobo: number;
+  /** What the order is charged in: `chargeMinor` is kobo for NGN (= `amountKobo`), cents for USD. */
+  readonly currency: PaymentCurrency;
+  readonly chargeMinor: number;
+  readonly ngnPerUsd: number | null;
   readonly status: PromotionStatus;
   readonly rejectionReason: string | null;
   readonly paymentReference: string | null;
@@ -424,7 +457,14 @@ export interface PromotionTimelineStepDto {
 
 /** The receipt: what was charged and how to quote it to support. */
 export interface PromotionReceiptDto {
+  /** The naira price (kobo). */
   readonly amountKobo: number;
+  /** What was charged, in `currency`'s minor units (kobo or cents), and the rate a dollar price used. */
+  readonly currency: PaymentCurrency;
+  readonly chargedMinor: number;
+  readonly ngnPerUsd: number | null;
+  /** Sent back, in `currency`'s minor units; 0 when nothing was refunded. */
+  readonly refundedMinor: number;
   readonly blocks: number;
   readonly blockDays: number;
   /** Price of one block as charged. */
@@ -549,12 +589,15 @@ export interface MarkRefundedRequest {
  * One editable price. Keys: each street placement kind (`street-billboard`, `bus-shelter`, `totem`, `stadium-led`,
  * `market-banner`, `park-board`), `lagos-tv`, `phone-app`, each premium board id, and `club-song`. Changing a rate
  * only affects new quotes: every order keeps the price it was quoted and charged.
+ *
+ * The list also carries `usd-rate` (unit `ngn-per-usd`): "₦ per $1 for payments", the exchange rate dollar payments
+ * use, in kobo per $1 (₦500–₦5,000; `blockDays` 0, `blockPriceKobo` null). Changing it only affects new checkouts.
  */
 export interface AdRateDto {
-  readonly key: AdRateKey;
+  readonly key: RateCardKey;
   readonly label: string;
-  /** Always `week` now: every rate is stored per 7 days (the club song included). `song` is no longer used. */
-  readonly unit: 'week' | 'song';
+  /** `week`: every ad rate is stored per 7 days (the club song included; `song` is no longer used). `ngn-per-usd`: the exchange rate. */
+  readonly unit: RateCardUnit;
   /** The rate is a base weekly price that each spot scales by its district's prestige (roadside kinds). */
   readonly byDistrict: boolean;
   /** The catalog default, in kobo per 7 days. */
@@ -575,7 +618,7 @@ export interface AdRateDto {
   readonly updatedBy: string | null;
 }
 
-/** Set a rate: whole naira (a multiple of 100 kobo), from ₦2,000 to ₦100,000,000. */
+/** Set a rate: whole naira (a multiple of 100 kobo), from ₦2,000 to ₦100,000,000 (`usd-rate`: ₦500 to ₦5,000 per $1). */
 export interface UpdateAdRateRequest {
   readonly priceKobo: number;
   /** Why (kept with the rate for the audit trail). */

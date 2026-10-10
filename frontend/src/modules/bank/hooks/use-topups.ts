@@ -17,15 +17,23 @@ export function usePaymentHistory() {
   return useQuery({ queryKey: bankKeys.payments, queryFn: bankApi.payments, enabled: authenticated, staleTime: 10_000 });
 }
 
-/** Start a Flutterwave checkout and leave for it. The browser comes back to /payments/callback. */
+/**
+ * Start a Flutterwave checkout and leave for it. The browser comes back to /payments/callback. A refusal re-reads the
+ * catalog: the dollar rate may have moved (`RATE_CHANGED`), dollars may be off now (`PAYMENT_CURRENCY_UNAVAILABLE`) or
+ * the daily cap used up; the server's message says which.
+ */
 export function useStartTopup() {
+  const client = useQueryClient();
   return useMutation({
     mutationFn: (body: CreateTopupRequest) => bankApi.startTopup(body),
     onSuccess: (started) => {
       gameEvents.emit('sfx', { id: 'ui-click' });
       window.location.assign(started.authorizationUrl);
     },
-    onError: () => gameEvents.emit('sfx', { id: 'ui-error' }),
+    onError: () => {
+      gameEvents.emit('sfx', { id: 'ui-error' });
+      void client.invalidateQueries({ queryKey: bankKeys.packages });
+    },
   });
 }
 

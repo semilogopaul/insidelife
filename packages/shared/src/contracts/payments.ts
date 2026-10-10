@@ -1,4 +1,4 @@
-import type { TopupPackage, TopupPackageId } from '../catalog/payments.js';
+import type { PaymentCurrency, PaymentMethod, TopupPackage, TopupPackageId } from '../catalog/payments.js';
 
 /**
  * Payments API contracts — owned by the payments domain. Also hosts the extra wallet types (the core wallet DTOs
@@ -24,7 +24,12 @@ export interface PaymentDto {
   /** Package id, ad campaign id or club-play order id. */
   readonly subjectId: string;
   readonly description: string;
-  /** Real naira (may carry kobo decimals). */
+  /** What is charged, in `currency`'s minor units (kobo for NGN, cents for USD). Show it with `formatPaymentAmount`. */
+  readonly currency: PaymentCurrency;
+  readonly amountMinor: number;
+  /** Dollar payments: the ₦ per $1 the price was converted at (null for naira). */
+  readonly ngnPerUsd: number | null;
+  /** Naira value of the charge (may carry kobo decimals): the charge itself for NGN, cents × `ngnPerUsd` for USD. */
   readonly amountNgn: number;
   readonly amountKobo: number;
   readonly status: PaymentStatus;
@@ -34,7 +39,9 @@ export interface PaymentDto {
   readonly channel: string | null;
   readonly createdAt: string;
   readonly verifiedAt: string | null;
-  /** Real naira refunded to the payer (0 when nothing was refunded). */
+  /** Refunded to the payer, in `currency`'s minor units (0 when nothing was refunded). */
+  readonly refundedMinor: number;
+  /** Naira value of the refund (0 when nothing was refunded). */
   readonly refundedNgn: number;
   /** Top-up details when `purpose === 'topup'`. */
   readonly topup: TopupDetailsDto | null;
@@ -75,7 +82,39 @@ export interface PaymentVerificationDto {
   readonly fulfilledNow: boolean;
 }
 
+/**
+ * Paying in dollars, as offered right now (null wherever it appears when the server has it off). The game stays in
+ * naira: a dollar price is the naira price ÷ `ngnPerUsd`, rounded up to the cent (`usdCentsForKobo`).
+ */
+export interface UsdPaymentOptionsDto {
+  /** ₦ per $1 for payments (the owner's rate). */
+  readonly ngnPerUsd: number;
+  /** Ways to pay in dollars: `card` always, `applepay` / `googlepay` when enabled. */
+  readonly methods: readonly PaymentMethod[];
+  /** Smallest dollar charge, in cents (cheaper prices are paid in naira). */
+  readonly minChargeCents: number;
+}
+
+/** How a player asks to pay for something: the currency (default NGN) and, for dollars, the method (default card). */
+export interface PaymentChoice {
+  readonly currency?: PaymentCurrency;
+  /** Dollars only: `applepay` / `googlepay` when offered (`UsdPaymentOptionsDto.methods`). Default `card`. */
+  readonly method?: PaymentMethod;
+  /**
+   * Dollars only: the ₦ per $1 the player was shown. If the owner changed the rate meanwhile the server refuses
+   * (`RATE_CHANGED` / `PRICE_CHANGED`) instead of charging a different amount.
+   */
+  readonly expectedNgnPerUsd?: number;
+}
+
 // ----- Top-ups -------------------------------------------------------------------------------------------------
+
+export interface TopupUsdCatalogDto extends UsdPaymentOptionsDto {
+  readonly minUsd: number;
+  readonly maxPerPaymentUsd: number;
+  /** Quick picks in whole dollars ($1, $5, $10, $25, $50 up to the maximum). Credit: `topupVirtualAmountUsd`. */
+  readonly quickPicksUsd: readonly number[];
+}
 
 export interface TopupCatalogDto {
   /** Quick picks. Any whole amount from `minNgn` to `maxPerPaymentNgn` can also be paid (see `topupVirtualAmount`). */
@@ -88,18 +127,34 @@ export interface TopupCatalogDto {
   readonly spentTodayNgn: number;
   /** Null when there is no daily cap. */
   readonly remainingTodayNgn: number | null;
+  /** Dollar top-ups, or null when the server doesn't take dollars. Dollar top-ups count toward the daily cap at their naira value. */
+  readonly usd: TopupUsdCatalogDto | null;
   readonly sandbox: boolean;
 }
 
-/** `POST /v1/payments/topups`: a pack (`packageId`) or a custom whole-naira amount (`amountNgn`), not both. */
-export interface CreateTopupRequest {
+/**
+ * `POST /v1/payments/topups`. In naira (the default): a pack (`packageId`) or a custom whole-naira amount
+ * (`amountNgn`), not both. In dollars (`currency: 'USD'`): whole dollars (`amountUsd`) only.
+ */
+export interface CreateTopupRequest extends PaymentChoice {
   readonly packageId?: TopupPackageId;
   readonly amountNgn?: number;
+  readonly amountUsd?: number;
 }
 
 export interface TopupStartedDto extends CheckoutStartedDto {
-  /** The price, rate and in-game naira quoted (credited once Flutterwave confirms the payment). */
-  readonly topup: TopupDetailsDto & { readonly priceNgn: number };
+  /**
+   * The price, rate and in-game naira quoted (credited once Flutterwave confirms the payment). `priceNgn` is the
+   * naira value (dollars × `ngnPerUsd` for a dollar top-up); `currency` / `amountMinor` are what is charged.
+   */
+  readonly topup: TopupDetailsDto & {
+    readonly priceNgn: number;
+    readonly currency: PaymentCurrency;
+    readonly amountMinor: number;
+    /** Whole dollars for a dollar top-up, else null. */
+    readonly priceUsd: number | null;
+    readonly ngnPerUsd: number | null;
+  };
 }
 
 export interface TopupVerificationDto extends PaymentVerificationDto {

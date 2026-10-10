@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { LessThan, type DataSource, type EntityManager, type Repository } from 'typeorm';
+import { isPaymentCurrency, isValidUsdRateNgn, koboForUsdCents, PAYMENT_METHODS, type PaymentCurrency, type PaymentMethod } from '@insidelife/shared';
 import {
   CHECKOUT_PURPOSES,
   type CheckoutFulfiller,
@@ -44,7 +45,7 @@ const REFUND_HOLD_MS = 30 * MINUTE_MS;
 
 const toReport = (refund: GatewayRefund): RefundReport => ({
   refundId: refund.refundId,
-  amountKobo: refund.amountKobo,
+  amountMinor: refund.amountMinor,
   state: refundStateOf(refund.status),
   gatewayStatus: refund.status.slice(0, 32),
 });
@@ -57,11 +58,15 @@ export class RefundBeforeChargeException extends DomainException {
 }
 
 /**
- * Flutterwave's practical NGN floor is ₦100. The ceiling is a sanity bound, not a business rule: top-ups stop at the
- * configured per-payment maximum (₦10m by default) and ad rates at ₦100m a week × 4 weeks.
+ * Charge bounds per currency, in minor units. Flutterwave's practical NGN floor is ₦100; dollars start at $1. The
+ * ceilings are sanity bounds, not business rules: top-ups stop at the configured per-payment maxima (₦10m / $5,000
+ * by default) and ad rates at ₦100m a week × 4 weeks. The naira value of any charge is bounded by the NGN ceiling.
  */
-const MIN_AMOUNT_KOBO = 10_000;
-const MAX_AMOUNT_KOBO = 50_000_000_000;
+const CHARGE_BOUNDS: Readonly<Record<PaymentCurrency, { readonly min: number; readonly max: number }>> = {
+  NGN: { min: 10_000, max: 50_000_000_000 },
+  USD: { min: 100, max: 100_000_000 },
+};
+const MAX_AMOUNT_KOBO = CHARGE_BOUNDS.NGN.max;
 /** In-flight (initialized) checkouts count toward daily caps for this long, then they're presumed abandoned. */
 const IN_FLIGHT_WINDOW_MINUTES = 30;
 const DASHBOARD_REFUND_REASON = 'Refunded in the Flutterwave dashboard';
@@ -78,7 +83,8 @@ export interface VerifiedPayment {
 export interface ReportedRefund {
   readonly refundId: string;
   readonly transactionId: string | null;
-  readonly amountKobo: number;
+  /** In minor units of the refunded payment's currency. */
+  readonly amountMinor: number;
   /** The gateway's refund status (`completed`, `processing`, `failed`…). Only completed is final. */
   readonly status: string;
 }
@@ -114,6 +120,21 @@ interface ReturnPolicy {
   readonly httpsOnly: boolean;
 }
 
+/** Which currencies and methods this server takes (PAYMENTS_USD_ENABLED, PAYMENTS_WALLETS_ENABLED). */
+interface CurrencyPolicy {
+  readonly usd: boolean;
+  readonly wallets: boolean;
+}
+
+/** What `assertValid` works out for a checkout row. */
+interface ValidCheckout {
+  readonly currency: PaymentCurrency;
+  /** Naira value of the charge (kobo): the charge itself for NGN, cents × rate for USD. */
+  readonly amountKobo: number;
+  readonly ngnPerUsd: number | null;
+  readonly method: PaymentMethod;
+}
+
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : 'Unknown error').slice(0, 200);
 
 /**
@@ -140,6 +161,7 @@ export class CheckoutService implements CheckoutPort {
   private readonly logger = new Logger(CheckoutService.name);
   private readonly fulfillers = new Map<CheckoutPurpose, CheckoutFulfiller>();
   private readonly returnPolicy: ReturnPolicy;
+  private readonly currencies: CurrencyPolicy;
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
@@ -154,6 +176,8 @@ export class CheckoutService implements CheckoutPort {
       callbackUrl: config.get('payments', { infer: true }).callbackUrl,
       httpsOnly: config.get('env', { infer: true }) === 'production',
     };
+    const { usd } = config.get('payments', { infer: true });
+    this.currencies = { usd: usd.enabled, wallets: usd.enabled && usd.wallets };
   }
 
   get sandbox(): boolean {
@@ -171,7 +195,7 @@ export class CheckoutService implements CheckoutPort {
 
   /** Create the payment row and a hosted checkout. `guard` lets a purpose enforce caps atomically (per-user lock). */
   async start(request: CheckoutRequest, guard?: CheckoutGuard): Promise<CheckoutSession> {
-    this.assertValid(request);
+    const { currency, amountKobo, ngnPerUsd, method } = this.assertValid(request);
     const reference = randomUUID();
     const paymentId = await withTransaction(this.dataSource, async (manager) => {
       await manager.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`checkout:${request.userId}`]);
@@ -183,9 +207,11 @@ export class CheckoutService implements CheckoutPort {
         purpose: request.purpose,
         subjectId: request.subjectId,
         description: request.description.trim(),
-        amountKobo: request.amountKobo,
+        currency,
+        amountMinor: request.amountMinor,
+        amountKobo,
+        ngnPerUsd,
         topupRate: request.topupRate ?? null,
-        currency: 'NGN',
         provider: this.gateway.provider,
         status: 'initialized',
         nextCheckAt: new Date(Date.now() + FIRST_CHECK_AFTER_MS),
@@ -201,12 +227,14 @@ export class CheckoutService implements CheckoutPort {
         paymentId,
         email: request.email,
         customerName: request.customerName?.trim() || 'Inside Life player',
-        amountKobo: request.amountKobo,
+        currency,
+        amountMinor: request.amountMinor,
+        method,
         description: request.description,
         redirectUrl,
         metadata: { purpose: request.purpose, subjectId: request.subjectId, characterId: request.characterId },
       });
-      this.logger.log({ reference, purpose: request.purpose, provider: this.gateway.provider, redirectUrl }, 'Checkout started');
+      this.logger.log({ reference, purpose: request.purpose, provider: this.gateway.provider, currency, method, redirectUrl }, 'Checkout started');
       return { reference, authorizationUrl };
     } catch (error) {
       // No hosted checkout was handed out, so there is nothing to re-check.
@@ -265,7 +293,7 @@ export class CheckoutService implements CheckoutPort {
     return this.payments.find({ where: { userId }, order: { createdAt: 'DESC' }, take: limit });
   }
 
-  /** Kobo committed today for a purpose: confirmed payments plus checkouts still in flight. */
+  /** Naira value (kobo) committed today for a purpose, any currency: confirmed payments plus checkouts still in flight. */
   async committedKoboSince(manager: EntityManager, userId: string, purpose: CheckoutPurpose, since: Date): Promise<number> {
     const rows = (await manager.query(
       `SELECT COALESCE(SUM(amount_kobo), 0) AS total
@@ -290,7 +318,7 @@ export class CheckoutService implements CheckoutPort {
         case 'record-success':
           payment.status = 'success';
           payment.verifiedAt = charge.paidAt ?? new Date();
-          payment.paidKobo = charge.amountKobo;
+          payment.paidMinor = charge.amountMinor;
           // Delivery follows at once; if it doesn't, the undelivered sweep picks rows with no retry time first.
           payment.nextCheckAt = null;
           payment.channel = charge.channel?.slice(0, 32) ?? null;
@@ -485,14 +513,14 @@ export class CheckoutService implements CheckoutPort {
     if (found.charge) await this.applyCharge(found.charge);
     const report: RefundReport = {
       refundId: reported.refundId,
-      amountKobo: reported.amountKobo,
+      amountMinor: reported.amountMinor,
       state: refundStateOf(reported.status),
       gatewayStatus: reported.status.slice(0, 32),
     };
     // Throws RefundBeforeChargeException while the charge still isn't verified: the job is retried.
     const applied = await this.applyAndAnnounce(found.reference, report, 'gateway', reported.transactionId);
     if (!applied || applied.decision.kind === 'ignore') return 'duplicate';
-    this.logger.warn({ reference: found.reference, refundId: report.refundId, state: report.state, amountKobo: report.amountKobo }, 'Gateway refund recorded');
+    this.logger.warn({ reference: found.reference, refundId: report.refundId, state: report.state, amountMinor: report.amountMinor }, 'Gateway refund recorded');
     return 'recorded';
   }
 
@@ -556,7 +584,7 @@ export class CheckoutService implements CheckoutPort {
     return {
       refundId: confirmed.refundId,
       transactionId: confirmed.transactionId ?? reported.transactionId,
-      amountKobo: confirmed.amountKobo,
+      amountMinor: confirmed.amountMinor,
       status: confirmed.status,
     };
   }
@@ -639,7 +667,7 @@ export class CheckoutService implements CheckoutPort {
 
     const applied = await this.applyAndAnnounce(reference, report, 'api');
     if (!applied) return { kind: 'not-refundable', reason: 'Unknown payment' };
-    this.logger.log({ reference, refundId: report.refundId, state: report.state, amountKobo: report.amountKobo }, 'Refund sent');
+    this.logger.log({ reference, refundId: report.refundId, state: report.state, amountMinor: report.amountMinor }, 'Refund sent');
     const now = applied.payment;
     switch (now.refundStatus) {
       case 'refunded':
@@ -685,8 +713,8 @@ export class CheckoutService implements CheckoutPort {
           payment.refundReason ??= DASHBOARD_REFUND_REASON;
           break;
         case 'completed': {
-          const paid = payment.paidKobo ?? payment.amountKobo;
-          payment.refundedKobo = decision.additional ? Math.min(paid, payment.refundedKobo + report.amountKobo) : Math.min(paid, report.amountKobo);
+          const paid = payment.paidMinor ?? payment.amountMinor;
+          payment.refundedMinor = decision.additional ? Math.min(paid, payment.refundedMinor + report.amountMinor) : Math.min(paid, report.amountMinor);
           payment.refundStatus = 'refunded';
           payment.refundId = report.refundId;
           payment.refundedAt = now;
@@ -696,7 +724,7 @@ export class CheckoutService implements CheckoutPort {
         }
         case 'failed':
           if (decision.reverted) {
-            payment.refundedKobo = Math.max(0, payment.refundedKobo - report.amountKobo);
+            payment.refundedMinor = Math.max(0, payment.refundedMinor - report.amountMinor);
             payment.refundedAt = null;
           }
           payment.refundStatus = 'failed';
@@ -712,7 +740,8 @@ export class CheckoutService implements CheckoutPort {
       }
       const refund: CheckoutRefund = {
         refundId: report.refundId,
-        amountKobo: report.amountKobo,
+        currency: payment.currency,
+        amountMinor: report.amountMinor,
         source: ours ? 'api' : 'dashboard',
         reason: payment.refundReason,
         delivered: payment.fulfilledAt !== null,
@@ -781,7 +810,14 @@ export class CheckoutService implements CheckoutPort {
   }
 
   private recordedRefund(payment: PaymentEntity): CheckoutRefund {
-    return { refundId: payment.refundId ?? '', amountKobo: payment.refundedKobo, source: 'api', reason: payment.refundReason, delivered: payment.fulfilledAt !== null };
+    return {
+      refundId: payment.refundId ?? '',
+      currency: payment.currency,
+      amountMinor: payment.refundedMinor,
+      source: 'api',
+      reason: payment.refundReason,
+      delivered: payment.fulfilledAt !== null,
+    };
   }
 
   private toPaid(payment: PaymentEntity): PaidCheckout {
@@ -791,23 +827,48 @@ export class CheckoutService implements CheckoutPort {
       characterId: payment.characterId,
       purpose: payment.purpose,
       subjectId: payment.subjectId,
+      currency: payment.currency,
+      amountMinor: payment.amountMinor,
+      // Rows verified before the paid amount was recorded were checked to be at least the price.
+      paidMinor: payment.paidMinor ?? payment.amountMinor,
       amountKobo: payment.amountKobo,
-      // Rows verified before paid_kobo existed were checked to be at least the price.
-      paidKobo: payment.paidKobo ?? payment.amountKobo,
+      ngnPerUsd: payment.ngnPerUsd,
       topupRate: payment.topupRate,
       paidAt: payment.verifiedAt ?? payment.createdAt,
     };
   }
 
-  private assertValid(request: CheckoutRequest): void {
+  /**
+   * Refuse anything malformed before a row exists, and work out what is stored: the naira value of the charge (exact:
+   * kobo for NGN, cents × rate for USD), the rate (USD only) and the method (wallets are USD only). Dollars and wallets
+   * are refused unless this server takes them, whatever the caller asked.
+   */
+  private assertValid(request: CheckoutRequest): ValidCheckout {
     if (!CHECKOUT_PURPOSES.includes(request.purpose)) throw new InvalidCheckoutException('Unknown payment purpose');
-    if (!Number.isSafeInteger(request.amountKobo) || request.amountKobo < MIN_AMOUNT_KOBO || request.amountKobo > MAX_AMOUNT_KOBO) {
+    const currency = request.currency ?? 'NGN';
+    if (!isPaymentCurrency(currency)) throw new InvalidCheckoutException('Unknown payment currency');
+    if (currency === 'USD' && !this.currencies.usd) throw new InvalidCheckoutException('Dollar payments aren’t available');
+    const method = request.method ?? 'card';
+    if (!PAYMENT_METHODS.includes(method)) throw new InvalidCheckoutException('Unknown payment method');
+    if (method !== 'card' && (currency !== 'USD' || !this.currencies.wallets)) throw new InvalidCheckoutException('That payment method isn’t available');
+    const bounds = CHARGE_BOUNDS[currency];
+    if (!Number.isSafeInteger(request.amountMinor) || request.amountMinor < bounds.min || request.amountMinor > bounds.max) {
       throw new InvalidCheckoutException('Payment amount is out of range');
     }
+    let ngnPerUsd: number | null = null;
+    if (currency === 'USD') {
+      if (request.ngnPerUsd === undefined || !isValidUsdRateNgn(request.ngnPerUsd)) throw new InvalidCheckoutException('Exchange rate is invalid');
+      ngnPerUsd = request.ngnPerUsd;
+    } else if (request.ngnPerUsd !== undefined) {
+      throw new InvalidCheckoutException('Naira payments have no exchange rate');
+    }
+    const amountKobo = ngnPerUsd === null ? request.amountMinor : koboForUsdCents(request.amountMinor, ngnPerUsd);
+    if (!Number.isSafeInteger(amountKobo) || amountKobo > MAX_AMOUNT_KOBO) throw new InvalidCheckoutException('Payment amount is out of range');
     const description = request.description.trim();
     if (description.length === 0 || description.length > 120) throw new InvalidCheckoutException('Payment description is invalid');
     if (request.subjectId.length === 0 || request.subjectId.length > 64) throw new InvalidCheckoutException('Payment subject is invalid');
     if (request.topupRate !== undefined && (!Number.isSafeInteger(request.topupRate) || request.topupRate <= 0)) throw new InvalidCheckoutException('Top-up rate is invalid');
     if (!request.email.includes('@')) throw new InvalidCheckoutException('A valid email is required for checkout');
+    return { currency, amountKobo, ngnPerUsd, method };
   }
 }

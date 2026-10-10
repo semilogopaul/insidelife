@@ -38,6 +38,9 @@ export function toCampaignDto(entity: AdCampaignEntity, clock: Clock): AdCampaig
     blockDays: entity.blockDays,
     blocks: Math.max(1, Math.round(entity.days / Math.max(1, entity.blockDays))),
     amountKobo: entity.amountKobo,
+    currency: entity.currency,
+    chargeMinor: entity.chargeMinor,
+    ngnPerUsd: entity.ngnPerUsd,
     status: effectiveStatus(entity.status, entity, clock.today),
     rejectionReason: entity.rejectionReason,
     paymentReference: entity.paymentReference,
@@ -66,6 +69,9 @@ export function toClubOrderDto(entity: ClubPlayOrderEntity, clock: Clock): ClubP
     endDate: entity.endDate,
     days: entity.days,
     amountKobo: entity.amountKobo,
+    currency: entity.currency,
+    chargeMinor: entity.chargeMinor,
+    ngnPerUsd: entity.ngnPerUsd,
     status: effectiveStatus(entity.status, entity, clock.today),
     rejectionReason: entity.rejectionReason,
     paymentReference: entity.paymentReference,
@@ -81,14 +87,22 @@ export function toClubOrderDto(entity: ClubPlayOrderEntity, clock: Clock): ClubP
   };
 }
 
-/** The receipt of a booking: what was charged per block, and what went back (only full refunds are ever made). */
+/**
+ * The receipt of a booking: the naira price per block, what was charged (in the booking's currency) and what went back
+ * (only full refunds are ever made).
+ */
 export function receiptOf(
-  entity: Pick<AdCampaignEntity | ClubPlayOrderEntity, 'amountKobo' | 'days' | 'paymentReference' | 'paidAt' | 'status'>,
+  entity: Pick<AdCampaignEntity | ClubPlayOrderEntity, 'amountKobo' | 'currency' | 'chargeMinor' | 'ngnPerUsd' | 'days' | 'paymentReference' | 'paidAt' | 'status'>,
   blockDays: number,
 ): PromotionReceiptDto {
   const blocks = Math.max(1, Math.round(entity.days / Math.max(1, blockDays)));
+  const refunded = entity.status === 'refunded';
   return {
     amountKobo: entity.amountKobo,
+    currency: entity.currency,
+    chargedMinor: entity.chargeMinor,
+    ngnPerUsd: entity.ngnPerUsd,
+    refundedMinor: refunded ? entity.chargeMinor : 0,
     blocks,
     blockDays,
     blockPriceKobo: Math.round(entity.amountKobo / blocks),

@@ -19,6 +19,7 @@ export const PHONE_APPS = [
   'invest',
   'gist',
   'fobes',
+  'betting',
   'promote',
   'goals',
   'me',

@@ -1,3 +1,4 @@
+import type { PaymentCurrency } from '@insidelife/shared';
 import type { AccountStatus } from '../../accounts/account-status.js';
 import type { AuditEntryDto } from '../../audit/audit.types.js';
 import type { Page } from '../../../common/utils/paging.js';
@@ -114,7 +115,11 @@ export interface AdminPlayerDetailDto {
     readonly reference: string;
     readonly purpose: string;
     readonly description: string;
+    /** Naira value of the charge. */
     readonly amountKobo: number;
+    /** What was charged: `amountMinor` in `currency`'s minor units (kobo, cents). */
+    readonly currency: PaymentCurrency;
+    readonly amountMinor: number;
     readonly status: string;
     readonly provider: string;
     readonly createdAt: string;

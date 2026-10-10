@@ -23,10 +23,11 @@ import { PaymentsSandboxController } from './payments-sandbox.controller.js';
 import { PaymentsController } from './payments.controller.js';
 import { TopupCreditor } from './topup-creditor.service.js';
 import { TopupsService } from './topups.service.js';
+import { UsdRateService } from './usd-rate.service.js';
 
 /**
- * Real-money payments: a generic Flutterwave checkout (`CHECKOUT_PORT`) with refunds, plus top-ups as its first
- * purpose. Webhooks are queued on BullMQ (`payments`) and processed by `PaymentsEventsProcessor`. Imports only core
+ * Real-money payments: a generic Flutterwave checkout (`CHECKOUT_PORT`) in naira or dollars with refunds, the ₦ per $1
+ * rate dollar prices use (`UsdRateService`), plus top-ups as the first purpose. Webhooks are queued on BullMQ (`payments`) and processed by `PaymentsEventsProcessor`. Imports only core
  * modules (simulation, characters, users), so any domain can import this module to sell things for real money
  * without creating a cycle.
  */
@@ -50,7 +51,8 @@ import { TopupsService } from './topups.service.js';
     PaymentsEventsProcessor,
     TopupCreditor,
     TopupsService,
+    UsdRateService,
   ],
-  exports: [CHECKOUT_PORT, CheckoutService],
+  exports: [CHECKOUT_PORT, CheckoutService, UsdRateService],
 })
 export class PaymentsModule {}

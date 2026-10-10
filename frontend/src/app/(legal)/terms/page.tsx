@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { BETTING_APP_NAME } from '@insidelife/shared';
 import { site } from '@/config/site';
 
 export const metadata: Metadata = { title: 'Terms of use', description: 'The rules for playing Inside Life.' };
@@ -8,7 +9,7 @@ export default function TermsPage() {
   return (
     <>
       <h1>Terms of use</h1>
-      <p className="text-sm text-text-soft">Last updated 9 October 2026</p>
+      <p className="text-sm text-text-soft">Last updated 10 October 2026</p>
       <p>
         Inside Life is an online life-simulation game set in Lagos, operated from Nigeria by {site.operator} (“we”, “us”).
         By creating an account you agree to these terms. If you don’t agree, please don’t use the game.
@@ -37,7 +38,12 @@ export default function TermsPage() {
       <h2>Buying things with real money</h2>
       <ul>
         <li>You can buy game naira (top-ups), ad space and club song plays. Payments are processed by Flutterwave; we never see your card details.</li>
-        <li>The price and what you get are shown before you pay. Purchases are final once delivered.</li>
+        <li>
+          Prices are in naira. Where we offer it, you can pay in US dollars instead (card, Apple Pay or Google Pay): the dollar price is the naira price at
+          our exchange rate shown at checkout, rounded up to the cent, and the game itself always stays in naira. Your bank may add its own fees for
+          paying in another currency.
+        </li>
+        <li>The price and what you get are shown before you pay. Purchases are final once delivered. Refunds go back in the currency you paid in.</li>
         <li>
           If a payment goes through but you don’t receive what you paid for, or you’re charged twice, email{' '}
           <a href={`mailto:${site.supportEmail}`}>{site.supportEmail}</a> with your payment reference.
@@ -51,6 +57,27 @@ export default function TermsPage() {
         <li>
           You must own or have permission to use everything you upload (images, logos, music). Songs can be at most 3 minutes long.
           You’re responsible for your ad’s claims and for the business behind it.
+        </li>
+      </ul>
+
+      <h2>Betting</h2>
+      <ul>
+        <li>
+          {BETTING_APP_NAME}, the in-game betting app, is a virtual football league played with game naira only. Stakes and
+          winnings have no cash value and can never be withdrawn, sold or paid out in real money.
+        </li>
+        <li>You must be 18 or older (by your real date of birth, not your character’s age) to bet. We may ask you to confirm your date of birth first.</li>
+        <li>
+          You always bet against the game, never against other players, and no money moves between players through it. Odds
+          include a house margin of about 7%, so over time the house wins.
+        </li>
+        <li>
+          Results are drawn by the server from a secret seed before kickoff and can’t be influenced by anyone. No bets are
+          accepted at or after kickoff. Settled bets are final, except where we correct a bug or an exploit.
+        </li>
+        <li>
+          You can set a daily loss limit, get reality-check reminders and take a break of 1, 7 or 30 days. A break can’t be
+          ended early. If betting with real money is a problem for you, please get support.
         </li>
       </ul>
 

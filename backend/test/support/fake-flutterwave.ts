@@ -1,8 +1,9 @@
 /**
  * A fake Flutterwave v3 API for the gateway spec. The app runs its real `FlutterwaveClient` (a test secret key is
  * configured); every `fetch` to https://api.flutterwave.com/v3 is answered here, in the shapes the real API uses
- * (https://developer.flutterwave.com/v3.0/docs): hosted checkout, verify by id / by reference, refunds. Anything else
- * goes to the real network as usual.
+ * (https://developer.flutterwave.com/v3.0/docs): hosted checkout (NGN or USD), Apple Pay / Google Pay wallet charges
+ * (`POST /charges?type=applepay|googlepay`: a pending transaction plus the wallet page to send the payer to), verify by
+ * id / by reference, refunds. Anything else goes to the real network as usual.
  *
  * The test plays the customer (`pay`) and ops in the dashboard (`dashboardRefund`), and sends the webhooks itself.
  */
@@ -13,6 +14,8 @@ export interface FakeCheckout {
   readonly txRef: string;
   readonly amount: number;
   readonly currency: string;
+  /** `card` for the hosted checkout, else the wallet charged (`applepay`, `googlepay`). */
+  readonly method: string;
   readonly redirectUrl: string;
   readonly meta: Readonly<Record<string, unknown>>;
 }
@@ -26,7 +29,7 @@ export interface FakeTransaction {
   readonly app_fee: number;
   currency: string;
   status: 'successful' | 'failed' | 'cancelled' | 'pending';
-  readonly payment_type: string;
+  payment_type: string;
   readonly created_at: string;
 }
 
@@ -80,21 +83,33 @@ export class FakeFlutterwave {
     if (this.original) globalThis.fetch = this.original;
   }
 
-  /** The customer pays on the hosted checkout (or the payment fails): Flutterwave now has a transaction. */
+  /**
+   * The customer pays on the hosted checkout or the wallet page (or the payment fails): Flutterwave now has a
+   * transaction. A wallet charge's pending transaction is completed in place (same id), as Flutterwave does.
+   */
   pay(txRef: string, options: PayOptions = {}): FakeTransaction {
     const checkout = this.checkouts.get(txRef);
     if (!checkout) throw new RangeError(`No hosted checkout for ${txRef}`);
     const amount = options.amount ?? checkout.amount;
+    const pendingWallet = checkout.method === 'card' ? undefined : this.transactions.find((candidate) => candidate.tx_ref === txRef && candidate.status === 'pending');
+    if (pendingWallet) {
+      pendingWallet.amount = amount;
+      pendingWallet.charged_amount = options.chargedAmount === undefined ? amount : options.chargedAmount;
+      pendingWallet.currency = options.currency ?? checkout.currency;
+      pendingWallet.status = options.status ?? 'successful';
+      return pendingWallet;
+    }
     const transaction: FakeTransaction = {
       id: this.id(),
       tx_ref: txRef,
       flw_ref: `FLW-MOCK-${txRef.slice(0, 8)}`,
       amount,
       charged_amount: options.chargedAmount === undefined ? amount : options.chargedAmount,
-      app_fee: Math.round(amount * 0.014 * 100) / 100,
+      // Local cards ~1.4%, international (dollar) ~4.8%.
+      app_fee: Math.round(amount * (checkout.currency === 'USD' ? 0.048 : 0.014) * 100) / 100,
       currency: options.currency ?? checkout.currency,
       status: options.status ?? 'successful',
-      payment_type: 'card',
+      payment_type: checkout.method,
       created_at: new Date().toISOString(),
     };
     this.transactions.push(transaction);
@@ -143,8 +158,30 @@ export class FakeFlutterwave {
 
     if (method === 'POST' && route === '/payments') {
       const request = body as { tx_ref: string; amount: number; currency: string; redirect_url: string; meta: Record<string, unknown> };
-      this.checkouts.set(request.tx_ref, { txRef: request.tx_ref, amount: request.amount, currency: request.currency, redirectUrl: request.redirect_url, meta: request.meta });
+      this.checkouts.set(request.tx_ref, { txRef: request.tx_ref, amount: request.amount, currency: request.currency, method: 'card', redirectUrl: request.redirect_url, meta: request.meta });
       return json(200, { status: 'success', message: 'Hosted Link', data: { link: `https://checkout.flutterwave.test/v3/hosted/pay/${request.tx_ref.slice(0, 12)}` } });
+    }
+    if (method === 'POST' && route === '/charges') {
+      const type = params.get('type') ?? '';
+      const request = body as { tx_ref: string; amount: number; currency: string; email: string; redirect_url: string; meta: Record<string, unknown> };
+      if (type !== 'applepay' && type !== 'googlepay') return json(400, { status: 'error', message: `Charge type ${type} is not supported`, data: null });
+      if (request.currency !== 'USD') return json(400, { status: 'error', message: `${type} is only available for USD`, data: null });
+      this.checkouts.set(request.tx_ref, { txRef: request.tx_ref, amount: request.amount, currency: request.currency, method: type, redirectUrl: request.redirect_url, meta: request.meta });
+      const pending: FakeTransaction = {
+        id: this.id(),
+        tx_ref: request.tx_ref,
+        flw_ref: `FLW-MOCK-${request.tx_ref.slice(0, 8)}`,
+        amount: request.amount,
+        charged_amount: request.amount,
+        app_fee: 0,
+        currency: request.currency,
+        status: 'pending',
+        payment_type: type,
+        created_at: new Date().toISOString(),
+      };
+      this.transactions.push(pending);
+      const redirect = `https://${type}.flutterwave.test/pay?reference=${request.tx_ref.slice(0, 12)}`;
+      return json(200, { status: 'success', message: 'Charge initiated', data: { ...pending, auth_model: type.toUpperCase() }, meta: { authorization: { mode: 'redirect', redirect } } });
     }
     if (method === 'GET' && route === '/transactions/verify_by_reference') {
       const transaction = this.transactions.filter((candidate) => candidate.tx_ref === params.get('tx_ref')).at(-1);

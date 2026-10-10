@@ -364,6 +364,7 @@ export const LEDGER_KINDS = [
   'family-support',
   'travel',
   'fine',
+  'betting',
   'property',
   'refund',
   'sale',

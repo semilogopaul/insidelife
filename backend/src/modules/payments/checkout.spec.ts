@@ -28,8 +28,18 @@ import { CHECK_DEBOUNCE_MS, CHECKS_PER_MINUTE, PaymentCheckLimiter } from './pay
 import { PaymentsController } from './payments.controller.js';
 import { PaymentsEventsProcessor } from './payments-events.processor.js';
 import { TopupCreditor } from './topup-creditor.service.js';
-import { quoteTopup, topupCredit } from './topup-quote.js';
+import { quoteTopup, topupCredit, type TopupLimits } from './topup-quote.js';
 import { TopupsService } from './topups.service.js';
+import type { UsdRateService } from './usd-rate.service.js';
+
+/** Dollars at ₦1,500 per $1, cards only (what TopupsService reads from the rate card). */
+const usdRate = {
+  usdEnabled: true,
+  methods: ['card'],
+  ngnPerUsd: async () => 1_500,
+  options: async () => ({ ngnPerUsd: 1_500, methods: ['card'], minChargeCents: 100 }),
+  invalidate: () => undefined,
+};
 
 const REF = '7c2b1f0e-6a4d-4c51-9b7e-0d2f3a4b5c6d';
 const TX = '9231836';
@@ -104,7 +114,9 @@ class FakePayments {
       subjectId: 'owambe-pack',
       description: 'Inside Life top-up: Owambe pack',
       amountKobo: 250_000,
-      paidKobo: null,
+      amountMinor: 250_000,
+      paidMinor: null,
+      ngnPerUsd: null,
       topupRate: 400,
       currency: 'NGN',
       provider: 'flutterwave',
@@ -123,7 +135,7 @@ class FakePayments {
       nextCheckAt: null,
       refundStatus: null,
       refundReason: null,
-      refundedKobo: 0,
+      refundedMinor: 0,
       refundId: null,
       refundGatewayStatus: null,
       refundUpdatedAt: null,
@@ -208,8 +220,8 @@ const charge = (overrides: Partial<GatewayCharge> = {}): GatewayCharge => ({
   reference: REF,
   transactionId: TX,
   status: 'success',
-  amountKobo: 250_000,
-  chargedAmountKobo: 253_500,
+  amountMinor: 250_000,
+  chargedAmountMinor: 253_500,
   currency: 'NGN',
   channel: 'card',
   paidAt: new Date(),
@@ -268,7 +280,7 @@ class FakeGateway implements PaymentGateway {
     await new Promise((resolve) => setTimeout(resolve, 2));
     this.refunds.push(input);
     if (this.refundError) throw this.refundError;
-    return { refundId: `75923${this.refunds.length}`, amountKobo: input.amountKobo ?? 250_000, status: this.refundStatus };
+    return { refundId: `75923${this.refunds.length}`, amountMinor: input.amountMinor ?? 250_000, status: this.refundStatus };
   }
 }
 
@@ -372,11 +384,14 @@ const TUNNEL = 'https://x7k2p9-3100.uks1.devtunnels.ms';
 interface SetupOptions {
   readonly env?: 'development' | 'production';
   readonly corsOrigins?: readonly string[];
+  /** PAYMENTS_USD_ENABLED / PAYMENTS_WALLETS_ENABLED (default: both on). */
+  readonly usd?: boolean;
+  readonly wallets?: boolean;
 }
 
 /** Config as `CheckoutService` reads it (CORS_ORIGINS, PAYMENT_CALLBACK_URL, NODE_ENV). */
-const checkoutConfig = ({ env = 'development', corsOrigins = ['http://localhost:3100', TUNNEL] }: SetupOptions = {}) => {
-  const values: Record<string, unknown> = { env, corsOrigins, payments: { callbackUrl: CALLBACK_URL } };
+const checkoutConfig = ({ env = 'development', corsOrigins = ['http://localhost:3100', TUNNEL], usd = true, wallets = true }: SetupOptions = {}) => {
+  const values: Record<string, unknown> = { env, corsOrigins, payments: { callbackUrl: CALLBACK_URL, usd: { enabled: usd, maxTopupUsd: 5_000, wallets } } };
   return { get: (key: string) => values[key] } as never;
 };
 
@@ -393,21 +408,21 @@ function setup(options: SetupOptions = {}): { payments: FakePayments; gateway: F
 }
 
 describe('decideCharge (Flutterwave: successful, tx_ref matches, NGN, amount ≥ expected)', () => {
-  const expected = { reference: REF, amountKobo: 250_000, currency: 'NGN', status: 'initialized' as const };
+  const expected = { reference: REF, amountMinor: 250_000, currency: 'NGN', status: 'initialized' as const };
 
   it('records a matching success, and accepts paying more than the price', () => {
     expect(decideCharge(expected, charge())).toEqual({ kind: 'record-success' });
-    expect(decideCharge(expected, charge({ amountKobo: 250_100 }))).toEqual({ kind: 'record-success' });
+    expect(decideCharge(expected, charge({ amountMinor: 250_100 }))).toEqual({ kind: 'record-success' });
   });
 
   it('also requires charged_amount ≥ the price (and refuses a charge that doesn’t say what was charged)', () => {
-    expect(decideCharge(expected, charge({ chargedAmountKobo: 250_000 }))).toEqual({ kind: 'record-success' });
-    expect(decideCharge(expected, charge({ chargedAmountKobo: 249_999 }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
-    expect(decideCharge(expected, charge({ chargedAmountKobo: null }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(expected, charge({ chargedAmountMinor: 250_000 }))).toEqual({ kind: 'record-success' });
+    expect(decideCharge(expected, charge({ chargedAmountMinor: 249_999 }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(expected, charge({ chargedAmountMinor: null }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
   });
 
   it('refuses a success that paid less, in another currency or for another reference', () => {
-    expect(decideCharge(expected, charge({ amountKobo: 249_999 }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
+    expect(decideCharge(expected, charge({ amountMinor: 249_999 }))).toEqual({ kind: 'mismatch', reason: 'amount_mismatch' });
     expect(decideCharge(expected, charge({ currency: 'USD' }))).toEqual({ kind: 'mismatch', reason: 'currency_mismatch' });
     expect(decideCharge(expected, charge({ reference: 'other' }))).toEqual({ kind: 'mismatch', reason: 'reference_mismatch' });
   });
@@ -449,9 +464,9 @@ describe('CheckoutService delivery (verify before fulfil, exactly once)', () => 
     expect(fulfiller.delivered).toHaveLength(1);
     expect(verified.payment.fulfilledAt).toBeInstanceOf(Date);
     expect([verified.fulfilledNow, retried].filter(Boolean).length).toBeLessThanOrEqual(1);
-    // The fulfiller gets what the gateway verified (paidKobo) and the rate stored at checkout.
-    expect(fulfiller.delivered[0]).toMatchObject({ reference: REF, purpose: 'topup', subjectId: 'owambe-pack', amountKobo: 250_000, paidKobo: 250_000, topupRate: 400 });
-    expect(payments.read(REF)).toMatchObject({ status: 'success', gatewayTransactionId: TX, channel: 'card', paidKobo: 250_000 });
+    // The fulfiller gets what the gateway verified (paidMinor) and the rate stored at checkout.
+    expect(fulfiller.delivered[0]).toMatchObject({ reference: REF, purpose: 'topup', subjectId: 'owambe-pack', amountMinor: 250_000, paidMinor: 250_000, topupRate: 400 });
+    expect(payments.read(REF)).toMatchObject({ status: 'success', gatewayTransactionId: TX, channel: 'card', paidMinor: 250_000 });
     expect(await checkout.fulfill(REF)).toBe(false);
     await checkout.verifyTransaction(TX);
     expect(fulfiller.delivered).toHaveLength(1);
@@ -470,7 +485,7 @@ describe('CheckoutService delivery (verify before fulfil, exactly once)', () => 
 
   it('never delivers when the charged amount is below the price or in another currency', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
-    gateway.byReference = charge({ amountKobo: 50_000 });
+    gateway.byReference = charge({ amountMinor: 50_000 });
     const { payment, fulfilledNow } = await checkout.verify(USER, REF);
     expect(fulfilledNow).toBe(false);
     expect(payment.status).toBe('failed');
@@ -536,7 +551,7 @@ const adCheckout = (returnOrigin?: string | null): CheckoutRequest => ({
   email: 'ada@example.com',
   characterId: 'char-1',
   purpose: 'billboard',
-  amountKobo: 1_750_000,
+  amountMinor: 1_750_000,
   description: 'Inside Life ad: Ikorodu Garage, 1 week',
   subjectId: 'campaign-1',
   returnOrigin,
@@ -553,7 +568,7 @@ describe('Player checks ("I’ve paid: check now", the callback page, the game�
     expect(payment).toMatchObject({ status: 'success', fulfilledAt: expect.any(Date) });
     expect(gateway.verifiedReferences).toEqual([REF]);
     expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual([REF]);
-    expect(payments.read(REF)?.paidKobo).toBe(250_000);
+    expect(payments.read(REF)?.paidMinor).toBe(250_000);
   });
 
   it('still asks Flutterwave about payments the reconciler marked failed or abandoned (a late payment counts)', async () => {
@@ -572,7 +587,7 @@ describe('Player checks ("I’ve paid: check now", the callback page, the game�
 
   it('delivers a paid-but-undelivered payment without asking Flutterwave again', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
-    payments.seed({ status: 'success', paidKobo: 250_000, verifiedAt: new Date(), lastFulfillmentError: 'wallet busy', fulfillmentAttempts: 1 });
+    payments.seed({ status: 'success', paidMinor: 250_000, verifiedAt: new Date(), lastFulfillmentError: 'wallet busy', fulfillmentAttempts: 1 });
     const { fulfilledNow } = await checkout.verify(USER, REF);
     expect(fulfilledNow).toBe(true);
     expect(gateway.verifiedReferences).toEqual([]);
@@ -667,8 +682,8 @@ describe('Player checks ("I’ve paid: check now", the callback page, the game�
     const { gateway, checkout, fulfiller, redis } = setup();
     const directory = { findLivingByUser: async () => ({ id: 'char-1', alive: true, userId: USER }) } as unknown as CharacterDirectory;
     const ledger = { balances: async () => ({ cash: 1_000_000 }) } as unknown as LedgerService;
-    const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000 }) };
-    const topups = new TopupsService(checkout, {} as TopupCreditor, directory, {} as never, ledger, { manager: {} } as DataSource, config as never);
+    const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000, usd: { enabled: true, maxTopupUsd: 5_000, wallets: false } }) };
+    const topups = new TopupsService(checkout, {} as TopupCreditor, directory, {} as never, ledger, usdRate as unknown as UsdRateService, { manager: {} } as DataSource, config as never);
 
     gateway.byReference = charge({ status: 'pending' });
     await expect(topups.verify(USER, REF)).resolves.toMatchObject({ fulfilledNow: false, balance: null, payment: { status: 'initialized' } });
@@ -709,8 +724,8 @@ describe('Checkout return address (Flutterwave redirect_url)', () => {
     const { gateway, checkout } = setup();
     const directory = { findLivingByUser: async () => ({ id: 'char-1', alive: true, userId: USER }) } as unknown as CharacterDirectory;
     const users = { findById: async () => ({ id: USER, email: 'ada@example.com' }) };
-    const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000 }) };
-    const topups = new TopupsService(checkout, {} as TopupCreditor, directory, users as never, {} as never, { manager: {} } as DataSource, config as never);
+    const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000, usd: { enabled: true, maxTopupUsd: 5_000, wallets: false } }) };
+    const topups = new TopupsService(checkout, {} as TopupCreditor, directory, users as never, {} as never, usdRate as unknown as UsdRateService, { manager: {} } as DataSource, config as never);
     const controller = new PaymentsController(checkout, topups);
     const user = { userId: USER } as AuthUser;
 
@@ -719,7 +734,7 @@ describe('Checkout return address (Flutterwave redirect_url)', () => {
     await controller.startTopup(user, { amountNgn: 700 }, withHeaders({ origin: 'https://evil.example' }));
     await controller.startTopup(user, { amountNgn: 700 }, withHeaders({}));
     expect(gateway.initialized.map((input) => input.redirectUrl)).toEqual([`${TUNNEL}/payments/callback`, `${TUNNEL}/payments/callback`, CALLBACK_URL, CALLBACK_URL]);
-    expect(gateway.initialized[0]).toMatchObject({ amountKobo: 250_000, metadata: { purpose: 'topup' } });
+    expect(gateway.initialized[0]).toMatchObject({ amountMinor: 250_000, metadata: { purpose: 'topup' } });
   });
 });
 
@@ -729,7 +744,7 @@ describe('CheckoutService refunds', () => {
     fulfiller.result = { kind: 'refund', reason: 'The space filled up before your payment landed' };
     await Promise.all([checkout.handleCharge(charge()), checkout.verifyTransaction(TX), checkout.fulfill(REF)]);
     expect(gateway.refunds).toEqual([expect.objectContaining({ reference: REF, transactionId: TX })]);
-    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundedKobo: 250_000, refundId: '759231', refundReason: expect.stringContaining('filled up') });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundedMinor: 250_000, refundId: '759231', refundReason: expect.stringContaining('filled up') });
     expect(fulfiller.refunded).toEqual([expect.objectContaining({ source: 'api', refundId: '759231', delivered: true })]);
   });
 
@@ -767,10 +782,10 @@ describe('CheckoutService refunds', () => {
   it('records a dashboard refund once however many times the webhook arrives', async () => {
     const { payments, checkout, fulfiller } = setup();
     payments.seed({ status: 'success', fulfilledAt: new Date(), gatewayTransactionId: TX });
-    const reported = { refundId: '99025', transactionId: TX, amountKobo: 250_000, status: 'completed' };
+    const reported = { refundId: '99025', transactionId: TX, amountMinor: 250_000, status: 'completed' };
     const results = await Promise.all([checkout.recordGatewayRefund(reported), checkout.recordGatewayRefund(reported), checkout.recordGatewayRefund(reported)]);
     expect(results.toSorted()).toEqual(['duplicate', 'duplicate', 'recorded']);
-    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundId: '99025', refundedKobo: 250_000, refundReason: 'Refunded in the Flutterwave dashboard' });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundId: '99025', refundedMinor: 250_000, refundReason: 'Refunded in the Flutterwave dashboard' });
     expect(fulfiller.refunded).toEqual([expect.objectContaining({ source: 'dashboard', delivered: true })]);
   });
 
@@ -778,37 +793,37 @@ describe('CheckoutService refunds', () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.seed({ status: 'success', gatewayTransactionId: null });
     gateway.byTransaction = charge();
-    expect(await checkout.recordGatewayRefund({ refundId: '1', transactionId: TX, amountKobo: 250_000, status: 'completed' })).toBe('recorded');
+    expect(await checkout.recordGatewayRefund({ refundId: '1', transactionId: TX, amountMinor: 250_000, status: 'completed' })).toBe('recorded');
     expect(fulfiller.refunded).toEqual([expect.objectContaining({ delivered: false })]);
     expect(await checkout.fulfill(REF)).toBe(false);
     expect(fulfiller.delivered).toHaveLength(0);
     expect(payments.read(REF)?.lastFulfillmentError).toMatch(/Refunded before delivery/);
     gateway.byTransaction = null;
-    expect(await checkout.recordGatewayRefund({ refundId: '2', transactionId: '777', amountKobo: 1, status: 'completed' })).toBe('unknown');
+    expect(await checkout.recordGatewayRefund({ refundId: '2', transactionId: '777', amountMinor: 1, status: 'completed' })).toBe('unknown');
   });
 });
 
 /** A refund of the default payment as a webhook reports it. */
-const refundReport = (refundId: string, status: string) => ({ refundId, transactionId: TX, amountKobo: 250_000, status });
+const refundReport = (refundId: string, status: string) => ({ refundId, transactionId: TX, amountMinor: 250_000, status });
 
 describe('refund states (only completed is final)', () => {
-  const paidRow = { status: 'success' as const, fulfilledAt: new Date(), gatewayTransactionId: TX, paidKobo: 250_000 };
+  const paidRow = { status: 'success' as const, fulfilledAt: new Date(), gatewayTransactionId: TX, paidMinor: 250_000 };
 
   it('records our refund as pending while Flutterwave processes it, and settles it once when it completes', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.seed(paidRow);
     gateway.refundStatus = 'processing';
     expect(await checkout.refund(REF, 'Not approved in review')).toEqual({ kind: 'pending', refundId: '759231' });
-    expect(payments.read(REF)).toMatchObject({ refundStatus: 'pending', refundGatewayStatus: 'processing', refundedKobo: 0 });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'pending', refundGatewayStatus: 'processing', refundedMinor: 0 });
     expect(fulfiller.refunded).toHaveLength(0);
     // A second request doesn't send another refund.
     expect(await checkout.refund(REF, 'again')).toEqual({ kind: 'pending', refundId: '759231' });
     expect(gateway.refunds).toHaveLength(1);
     // The completion webhook for the same refund id is a status change, not a duplicate.
-    const completed = { refundId: '759231', transactionId: TX, amountKobo: 250_000, status: 'completed' };
+    const completed = { refundId: '759231', transactionId: TX, amountMinor: 250_000, status: 'completed' };
     expect(await checkout.recordGatewayRefund(completed)).toBe('recorded');
     expect(await checkout.recordGatewayRefund(completed)).toBe('duplicate');
-    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundedKobo: 250_000, refundGatewayStatus: 'completed' });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundedMinor: 250_000, refundGatewayStatus: 'completed' });
     expect(fulfiller.refunded).toEqual([expect.objectContaining({ refundId: '759231', source: 'api' })]);
   });
 
@@ -817,7 +832,7 @@ describe('refund states (only completed is final)', () => {
     payments.seed(paidRow);
     expect(await checkout.recordGatewayRefund(refundReport('880', 'completed'))).toBe('recorded');
     expect(await checkout.recordGatewayRefund(refundReport('880', 'failed'))).toBe('recorded');
-    expect(payments.read(REF)).toMatchObject({ refundStatus: 'failed', refundedKobo: 0, refundGatewayStatus: 'failed', refundFailure: expect.stringMatching(/by hand/) });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'failed', refundedMinor: 0, refundGatewayStatus: 'failed', refundFailure: expect.stringMatching(/by hand/) });
     expect(fulfiller.refundFailures).toEqual([{ refundId: '880', wasCompleted: true }]);
     // Completing after all settles it again (the purpose's clawback keys stop a second take).
     expect(await checkout.recordGatewayRefund(refundReport('880', 'completed'))).toBe('recorded');
@@ -829,7 +844,7 @@ describe('refund states (only completed is final)', () => {
     payments.seed(paidRow);
     gateway.refundStatus = 'pending';
     await checkout.refund(REF, 'Not approved');
-    expect(await checkout.recordGatewayRefund({ refundId: '759231', transactionId: TX, amountKobo: 250_000, status: 'failed' })).toBe('recorded');
+    expect(await checkout.recordGatewayRefund({ refundId: '759231', transactionId: TX, amountMinor: 250_000, status: 'failed' })).toBe('recorded');
     expect(payments.read(REF)?.refundStatus).toBe('failed');
     expect(fulfiller.refundFailures).toEqual([{ refundId: '759231', wasCompleted: false }]);
     expect(fulfiller.refunded).toHaveLength(0);
@@ -838,10 +853,10 @@ describe('refund states (only completed is final)', () => {
   it('records a second partial refund as more money back', async () => {
     const { payments, checkout, fulfiller } = setup();
     payments.seed(paidRow);
-    await checkout.recordGatewayRefund({ refundId: '1', transactionId: TX, amountKobo: 100_000, status: 'completed' });
-    await checkout.recordGatewayRefund({ refundId: '2', transactionId: TX, amountKobo: 100_000, status: 'completed-mpgs' });
-    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundId: '2', refundedKobo: 200_000 });
-    expect(fulfiller.refunded.map((refund) => [refund.refundId, refund.amountKobo])).toEqual([
+    await checkout.recordGatewayRefund({ refundId: '1', transactionId: TX, amountMinor: 100_000, status: 'completed' });
+    await checkout.recordGatewayRefund({ refundId: '2', transactionId: TX, amountMinor: 100_000, status: 'completed-mpgs' });
+    expect(payments.read(REF)).toMatchObject({ refundStatus: 'refunded', refundId: '2', refundedMinor: 200_000 });
+    expect(fulfiller.refunded.map((refund) => [refund.refundId, refund.amountMinor])).toEqual([
       ['1', 100_000],
       ['2', 100_000],
     ]);
@@ -851,7 +866,7 @@ describe('refund states (only completed is final)', () => {
     const { payments, gateway, checkout } = setup();
     payments.seed(paidRow);
     gateway.refundError = new RangeError('timeout');
-    gateway.knownRefund = { refundId: '4242', amountKobo: 250_000, status: 'completed', transactionId: TX };
+    gateway.knownRefund = { refundId: '4242', amountMinor: 250_000, status: 'completed', transactionId: TX };
     expect(await checkout.refund(REF, 'Not approved')).toMatchObject({ kind: 'refunded', refund: { refundId: '4242' } });
     expect(gateway.refundLookups).toEqual([TX]);
 
@@ -875,7 +890,7 @@ describe('refund states (only completed is final)', () => {
     expect(payments.read(REF)?.refundStatus).toBe('sending');
     // Flutterwave has it: recorded.
     gateway.lookupError = null;
-    gateway.knownRefund = { refundId: '5150', amountKobo: 250_000, status: 'processing', transactionId: TX };
+    gateway.knownRefund = { refundId: '5150', amountMinor: 250_000, status: 'processing', transactionId: TX };
     await checkout.resolveStaleRefunds(new Date(later.getTime() + 10 * 60_000), 5 * 60_000, 20);
     expect(payments.read(REF)).toMatchObject({ refundStatus: 'pending', refundId: '5150' });
   });
@@ -894,7 +909,7 @@ describe('refund states (only completed is final)', () => {
   it('re-reads refunds still processing, so a lost completion webhook can’t strand them', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.seed({ ...paidRow, refundStatus: 'pending', refundId: '6060', refundReason: 'Not approved', refundUpdatedAt: new Date(Date.now() - 60 * 60_000) });
-    gateway.knownRefund = { refundId: '6060', amountKobo: 250_000, status: 'completed', transactionId: TX };
+    gateway.knownRefund = { refundId: '6060', amountMinor: 250_000, status: 'completed', transactionId: TX };
     await checkout.refreshPendingRefunds(new Date(), 30 * 60_000, 20);
     expect(payments.read(REF)?.refundStatus).toBe('refunded');
     expect(fulfiller.refunded).toEqual([expect.objectContaining({ refundId: '6060', source: 'api' })]);
@@ -914,12 +929,12 @@ describe('refund states (only completed is final)', () => {
     gateway.byTransaction = charge({ status: 'pending' });
     const processor = new PaymentsEventsProcessor(checkout);
     await expect(
-      processor.process({ name: 'refund', data: { refundId: '77', transactionId: TX, amountKobo: 250_000, status: 'completed' } } as never),
+      processor.process({ name: 'refund', data: { refundId: '77', transactionId: TX, amountMinor: 250_000, status: 'completed' } } as never),
     ).rejects.toMatchObject({ errorCode: 'REFUND_BEFORE_CHARGE' });
     expect(payments.read(REF)?.refundStatus).toBeNull();
     // Once the charge is successful, the retry verifies it first and records the refund.
     gateway.byTransaction = charge();
-    expect(await processor.process({ name: 'refund', data: { refundId: '77', transactionId: TX, amountKobo: 250_000, status: 'completed' } } as never)).toBe('recorded');
+    expect(await processor.process({ name: 'refund', data: { refundId: '77', transactionId: TX, amountMinor: 250_000, status: 'completed' } } as never)).toBe('recorded');
     expect(payments.read(REF)).toMatchObject({ status: 'success', refundStatus: 'refunded' });
   });
 });
@@ -976,7 +991,7 @@ describe('Flutterwave webhooks → queue → processor', () => {
     await webhooks.accept(refund);
     await webhooks.accept(refund);
     expect([...queue.jobs.entries()]).toEqual([
-      ['refund-99025-completed', { name: 'refund', data: { refundId: '99025', transactionId: TX, amountKobo: 250_000, status: 'completed' } }],
+      ['refund-99025-completed', { name: 'refund', data: { refundId: '99025', transactionId: TX, amountMinor: 250_000, status: 'completed' } }],
     ]);
     const processor = new PaymentsEventsProcessor(checkout);
     expect(await processor.process({ name: 'refund', data: queue.jobs.get('refund-99025-completed')?.data } as never)).toBe('recorded');
@@ -1099,7 +1114,7 @@ describe('CheckoutReconciler', () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.rows.clear();
     const before = Date.now();
-    const { reference } = await checkout.start({ userId: USER, email: 'ada@example.com', characterId: 'char-1', purpose: 'topup', amountKobo: 250_000, description: 'Owambe pack', subjectId: 'owambe-pack', topupRate: 400 });
+    const { reference } = await checkout.start({ userId: USER, email: 'ada@example.com', characterId: 'char-1', purpose: 'topup', amountMinor: 250_000, description: 'Owambe pack', subjectId: 'owambe-pack', topupRate: 400 });
     const row = payments.read(reference);
     expect(row?.nextCheckAt?.getTime()).toBeGreaterThanOrEqual(before + 2 * 60_000);
     expect(row?.nextCheckAt?.getTime()).toBeLessThanOrEqual(Date.now() + 2 * 60_000);
@@ -1181,44 +1196,106 @@ describe('CheckoutReconciler', () => {
   });
 });
 
-const dashboardRefund = (overrides: Partial<CheckoutRefund> = {}): CheckoutRefund => ({ refundId: '9', amountKobo: 250_000, source: 'dashboard', reason: null, delivered: true, ...overrides });
+const dashboardRefund = (overrides: Partial<CheckoutRefund> = {}): CheckoutRefund => ({ refundId: '9', currency: 'NGN', amountMinor: 250_000, source: 'dashboard', reason: null, delivered: true, ...overrides });
+
+const ngnOnly = (maxNgn: number): TopupLimits => ({ maxNgn, usd: null });
+const withDollars = (ngnPerUsd = 1_500, maxUsd = 5_000): TopupLimits => ({ maxNgn: 10_000_000, usd: { maxUsd, ngnPerUsd } });
 
 describe('top-up quotes and credits', () => {
   it('quotes a pack or a custom amount (not both, not neither) at the rate of the largest pack it reaches', () => {
-    expect(quoteTopup({ packageId: 'owambe-pack' }, 10_000_000)).toEqual({
+    expect(quoteTopup({ packageId: 'owambe-pack' }, ngnOnly(10_000_000))).toEqual({
       ok: true,
-      quote: { subjectId: 'owambe-pack', packageId: 'owambe-pack', label: 'Owambe pack', priceNgn: 2_500, ratePerNaira: 400, virtualAmount: 1_000_000 },
+      quote: {
+        subjectId: 'owambe-pack',
+        packageId: 'owambe-pack',
+        label: 'Owambe pack',
+        priceNgn: 2_500,
+        ratePerNaira: 400,
+        virtualAmount: 1_000_000,
+        currency: 'NGN',
+        amountMinor: 250_000,
+        priceUsd: null,
+        ngnPerUsd: null,
+      },
     });
-    expect(quoteTopup({ amountNgn: 2_500 }, 10_000_000)).toMatchObject({ ok: true, quote: { subjectId: 'custom', packageId: null, ratePerNaira: 400, virtualAmount: 1_000_000 } });
-    expect(quoteTopup({ amountNgn: 7_000 }, 10_000_000)).toMatchObject({ ok: true, quote: { label: 'Custom top-up', ratePerNaira: 440, virtualAmount: 3_080_000 } });
-    expect(quoteTopup({ amountNgn: 250_000 }, 10_000_000)).toMatchObject({ ok: true, quote: { ratePerNaira: 500, virtualAmount: 125_000_000 } });
-    expect(quoteTopup({}, 10_000_000)).toEqual({ ok: false, reason: 'Pick a pack or enter an amount' });
-    expect(quoteTopup({ packageId: 'jollof-pack', amountNgn: 1_000 }, 10_000_000).ok).toBe(false);
-    expect(quoteTopup({ amountNgn: 499 }, 10_000_000)).toMatchObject({ ok: false, reason: expect.stringMatching(/₦500/) });
-    expect(quoteTopup({ amountNgn: 20_000_000 }, 10_000_000)).toMatchObject({ ok: false, reason: expect.stringMatching(/at most ₦10,000,000/) });
-    expect(quoteTopup({ packageId: 'odogwu-pack' }, 5_000)).toMatchObject({ ok: false });
+    expect(quoteTopup({ amountNgn: 2_500 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { subjectId: 'custom', packageId: null, ratePerNaira: 400, virtualAmount: 1_000_000 } });
+    expect(quoteTopup({ amountNgn: 7_000 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { label: 'Custom top-up', ratePerNaira: 440, virtualAmount: 3_080_000 } });
+    expect(quoteTopup({ amountNgn: 250_000 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { ratePerNaira: 500, virtualAmount: 125_000_000 } });
+    expect(quoteTopup({}, ngnOnly(10_000_000))).toEqual({ ok: false, reason: 'Pick a pack or enter an amount' });
+    expect(quoteTopup({ packageId: 'jollof-pack', amountNgn: 1_000 }, ngnOnly(10_000_000)).ok).toBe(false);
+    expect(quoteTopup({ amountNgn: 499 }, ngnOnly(10_000_000))).toMatchObject({ ok: false, reason: expect.stringMatching(/₦500/) });
+    expect(quoteTopup({ amountNgn: 20_000_000 }, ngnOnly(10_000_000))).toMatchObject({ ok: false, reason: expect.stringMatching(/at most ₦10,000,000/) });
+    expect(quoteTopup({ packageId: 'odogwu-pack' }, ngnOnly(5_000))).toMatchObject({ ok: false });
+  });
+
+  it('quotes whole dollars at the naira value they are worth, crediting exactly what that naira credits', () => {
+    expect(quoteTopup({ currency: 'USD', amountUsd: 10 }, withDollars())).toEqual({
+      ok: true,
+      quote: {
+        subjectId: 'custom',
+        packageId: null,
+        label: 'Dollar top-up',
+        priceNgn: 15_000,
+        ratePerNaira: 500,
+        virtualAmount: 7_500_000,
+        currency: 'USD',
+        amountMinor: 1_000,
+        priceUsd: 10,
+        ngnPerUsd: 1_500,
+      },
+    });
+    // $1 at ₦1,500 is ₦1,500 (350 per ₦1); equal value, equal credit, whichever currency.
+    const dollar = quoteTopup({ currency: 'USD', amountUsd: 1 }, withDollars());
+    const naira = quoteTopup({ amountNgn: 1_500 }, ngnOnly(10_000_000));
+    expect(dollar.ok && naira.ok && dollar.quote.virtualAmount === naira.quote.virtualAmount).toBe(true);
+    expect(quoteTopup({ currency: 'USD', amountUsd: 5_000 }, withDollars(5_000))).toMatchObject({ ok: true, quote: { priceNgn: 25_000_000, amountMinor: 500_000 } });
+    expect(quoteTopup({ currency: 'USD', amountUsd: 0 }, withDollars())).toMatchObject({ ok: false, reason: expect.stringMatching(/start at \$1/) });
+    expect(quoteTopup({ currency: 'USD', amountUsd: 5_001 }, withDollars())).toMatchObject({ ok: false, reason: expect.stringMatching(/at most \$5,000/) });
+    expect(quoteTopup({ currency: 'USD', amountUsd: 51 }, withDollars(1_500, 50))).toMatchObject({ ok: false });
+    expect(quoteTopup({ currency: 'USD', amountUsd: 2.5 }, withDollars())).toMatchObject({ ok: false, reason: expect.stringMatching(/whole dollar/) });
+    // Packs and naira amounts are naira; a dollar amount needs dollars; dollars need the server to take them.
+    expect(quoteTopup({ currency: 'USD', packageId: 'jollof-pack' }, withDollars()).ok).toBe(false);
+    expect(quoteTopup({ currency: 'USD', amountNgn: 1_000 }, withDollars()).ok).toBe(false);
+    expect(quoteTopup({ currency: 'USD' }, withDollars()).ok).toBe(false);
+    expect(quoteTopup({ amountUsd: 10 }, withDollars()).ok).toBe(false);
+    expect(quoteTopup({ currency: 'USD', amountUsd: 10 }, ngnOnly(10_000_000))).toMatchObject({ ok: false, reason: expect.stringMatching(/aren’t available/) });
+    expect(quoteTopup({ currency: 'USD', amountUsd: 10 }, withDollars(499)).ok).toBe(false);
+  });
+
+  it('credits a dollar top-up from the cents verified at the rate stored at checkout, never today’s rate', () => {
+    const dollars = { currency: 'USD' as const, ngnPerUsd: 1_500, subjectId: 'custom', amountMinor: 1_000, paidMinor: 1_000, topupRate: 500 };
+    expect(topupCredit(dollars)).toEqual({ ok: true, credit: { packageId: null, label: 'Dollar top-up', ratePerNaira: 500, virtualAmount: 7_500_000 } });
+    // Paid a little more than quoted: the verified cents count, at the stored rate (rounded down to the naira).
+    expect(topupCredit({ ...dollars, paidMinor: 1_001 })).toMatchObject({ ok: true, credit: { virtualAmount: 15_015 * 500 } });
+    expect(topupCredit({ ...dollars, paidMinor: null })).toMatchObject({ ok: true, credit: { virtualAmount: 7_500_000 } });
+    // No rate, or an insane one, on a dollar row: never credited (retried and flagged instead).
+    expect(topupCredit({ ...dollars, ngnPerUsd: null }).ok).toBe(false);
+    expect(topupCredit({ ...dollars, ngnPerUsd: 499 }).ok).toBe(false);
+    expect(topupCredit({ ...dollars, ngnPerUsd: 5_001 }).ok).toBe(false);
+    // A dollar row never falls back to a pack's rate.
+    expect(topupCredit({ ...dollars, subjectId: 'owambe-pack', topupRate: null }).ok).toBe(false);
   });
 
   it('credits the verified amount × the stored rate, and refuses rows that do not add up', () => {
-    const custom = { subjectId: 'custom', amountKobo: 700_000, paidKobo: 700_000, topupRate: 440 };
+    const custom = { currency: 'NGN' as const, ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 440 };
     expect(topupCredit(custom)).toEqual({ ok: true, credit: { packageId: null, label: 'Custom top-up', ratePerNaira: 440, virtualAmount: 3_080_000 } });
     // Paid more than quoted (never on hosted checkout, but the verified amount is what counts).
-    expect(topupCredit({ ...custom, paidKobo: 800_000 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_520_000 } });
+    expect(topupCredit({ ...custom, paidMinor: 800_000 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_520_000 } });
     // Before verification the quote is shown.
-    expect(topupCredit({ ...custom, paidKobo: null })).toMatchObject({ ok: true, credit: { virtualAmount: 3_080_000 } });
+    expect(topupCredit({ ...custom, paidMinor: null })).toMatchObject({ ok: true, credit: { virtualAmount: 3_080_000 } });
     // Top-ups made before custom amounts have no stored rate: the pack's, if the pack still matches what was charged.
-    expect(topupCredit({ subjectId: 'big-boy-pack', amountKobo: 500_000, paidKobo: 500_000, topupRate: null })).toMatchObject({ ok: true, credit: { virtualAmount: 2_200_000, ratePerNaira: 440 } });
-    expect(topupCredit({ subjectId: 'big-boy-pack', amountKobo: 50_000, paidKobo: 50_000, topupRate: null })).toMatchObject({ ok: false });
-    expect(topupCredit({ subjectId: 'free-money', amountKobo: 50_000, paidKobo: 50_000, topupRate: null })).toMatchObject({ ok: false });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'big-boy-pack', amountMinor: 500_000, paidMinor: 500_000, topupRate: null })).toMatchObject({ ok: true, credit: { virtualAmount: 2_200_000, ratePerNaira: 440 } });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'big-boy-pack', amountMinor: 50_000, paidMinor: 50_000, topupRate: null })).toMatchObject({ ok: false });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'free-money', amountMinor: 50_000, paidMinor: 50_000, topupRate: null })).toMatchObject({ ok: false });
   });
 
   it('trusts the rate stored at checkout even after packs or tiers change, within sane bounds', () => {
     // Quoted at 550 per ₦1 on a day the tiers were more generous: today's 440 doesn't strand it.
-    expect(topupCredit({ subjectId: 'custom', amountKobo: 700_000, paidKobo: 700_000, topupRate: 550 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_850_000 } });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 550 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_850_000 } });
     // A pack that has since been renamed or retired still credits, with a generic label.
-    expect(topupCredit({ subjectId: 'retired-pack', amountKobo: 300_000, paidKobo: 300_000, topupRate: 380 })).toMatchObject({ ok: true, credit: { label: 'Top-up', virtualAmount: 1_140_000 } });
-    for (const rate of [0, -5, 2_001, 1.5]) expect(topupCredit({ subjectId: 'custom', amountKobo: 700_000, paidKobo: 700_000, topupRate: rate }), String(rate)).toMatchObject({ ok: false });
-    expect(topupCredit({ subjectId: 'custom', amountKobo: 700_000, paidKobo: 700_000, topupRate: 2_000 }).ok).toBe(true);
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'retired-pack', amountMinor: 300_000, paidMinor: 300_000, topupRate: 380 })).toMatchObject({ ok: true, credit: { label: 'Top-up', virtualAmount: 1_140_000 } });
+    for (const rate of [0, -5, 2_001, 1.5]) expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: rate }), String(rate)).toMatchObject({ ok: false });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 2_000 }).ok).toBe(true);
   });
 });
 
@@ -1226,7 +1303,7 @@ describe('TopupsService checkout', () => {
   const directory = { findLivingByUser: async () => ({ id: 'char-1', alive: true, userId: USER }) } as unknown as CharacterDirectory;
   const users = { findById: async () => ({ id: USER, email: 'ada@example.com' }) };
 
-  function topupsWith(dailyLimitNgn: number, spentKobo = 0) {
+  function topupsWith(dailyLimitNgn: number, spentKobo = 0, rates: unknown = usdRate) {
     const started: Array<Record<string, unknown>> = [];
     const checkout = {
       sandbox: false,
@@ -1238,16 +1315,26 @@ describe('TopupsService checkout', () => {
         return { reference: REF, authorizationUrl: 'https://checkout.flutterwave.com/v3/hosted/pay/x' };
       },
     };
-    const config = { get: () => ({ dailyLimitNgn, maxTopupNgn: 10_000_000 }) };
-    const service = new TopupsService(checkout as unknown as CheckoutService, {} as TopupCreditor, directory, users as never, {} as never, { manager: {} } as DataSource, config as never);
+    const config = { get: () => ({ dailyLimitNgn, maxTopupNgn: 10_000_000, usd: { enabled: true, maxTopupUsd: 5_000, wallets: false } }) };
+    const service = new TopupsService(checkout as unknown as CheckoutService, {} as TopupCreditor, directory, users as never, {} as never, rates as UsdRateService, { manager: {} } as DataSource, config as never);
     return { service, started };
   }
 
   it('starts a custom-amount checkout with the server’s quote and no daily cap by default', async () => {
     const { service, started } = topupsWith(0, 900_000_000);
     const result = await service.start(USER, { amountNgn: 3_000_000 });
-    expect(result.topup).toEqual({ packageId: null, label: 'Custom top-up', priceNgn: 3_000_000, ratePerNaira: 500, virtualAmount: 1_500_000_000 });
-    expect(started).toEqual([expect.objectContaining({ amountKobo: 300_000_000, subjectId: 'custom', topupRate: 500, purpose: 'topup' })]);
+    expect(result.topup).toEqual({
+      packageId: null,
+      label: 'Custom top-up',
+      priceNgn: 3_000_000,
+      ratePerNaira: 500,
+      virtualAmount: 1_500_000_000,
+      currency: 'NGN',
+      amountMinor: 300_000_000,
+      priceUsd: null,
+      ngnPerUsd: null,
+    });
+    expect(started).toEqual([expect.objectContaining({ amountMinor: 300_000_000, subjectId: 'custom', topupRate: 500, purpose: 'topup' })]);
     expect(await service.catalog(USER)).toMatchObject({ dailyLimitNgn: null, remainingTodayNgn: null, minNgn: 500, maxPerPaymentNgn: 10_000_000 });
   });
 
@@ -1256,6 +1343,50 @@ describe('TopupsService checkout', () => {
     await expect(service.start(USER, { amountNgn: 6_000 })).rejects.toMatchObject({ errorCode: 'TOPUP_DAILY_LIMIT' });
     await expect(service.start(USER, { amountNgn: 5_000 })).resolves.toMatchObject({ topup: { virtualAmount: 2_200_000 } });
     expect(await service.catalog(USER)).toMatchObject({ dailyLimitNgn: 20_000, remainingTodayNgn: 5_000 });
+  });
+
+  it('starts a dollar top-up: charged in cents, the ₦ per $1 stored, credited like the same value in naira', async () => {
+    const { service, started } = topupsWith(0);
+    const result = await service.start(USER, { currency: 'USD', amountUsd: 10, expectedNgnPerUsd: 1_500 });
+    expect(result.topup).toEqual({
+      packageId: null,
+      label: 'Dollar top-up',
+      priceNgn: 15_000,
+      ratePerNaira: 500,
+      virtualAmount: 7_500_000,
+      currency: 'USD',
+      amountMinor: 1_000,
+      priceUsd: 10,
+      ngnPerUsd: 1_500,
+    });
+    expect(started).toEqual([expect.objectContaining({ currency: 'USD', amountMinor: 1_000, ngnPerUsd: 1_500, method: 'card', topupRate: 500, subjectId: 'custom' })]);
+    expect(await service.catalog(USER)).toMatchObject({
+      usd: { ngnPerUsd: 1_500, methods: ['card'], minUsd: 1, maxPerPaymentUsd: 5_000, quickPicksUsd: [1, 5, 10, 25, 50], minChargeCents: 100 },
+    });
+  });
+
+  it('refuses a dollar top-up at a rate the player didn’t see, a wallet it doesn’t offer, or wallets in naira', async () => {
+    const { service, started } = topupsWith(0);
+    await expect(service.start(USER, { currency: 'USD', amountUsd: 10, expectedNgnPerUsd: 1_400 })).rejects.toMatchObject({ errorCode: 'RATE_CHANGED', message: expect.stringMatching(/₦1,500 per \$1/) });
+    await expect(service.start(USER, { currency: 'USD', amountUsd: 10, method: 'applepay' })).rejects.toMatchObject({ errorCode: 'INVALID_TOPUP' });
+    await expect(service.start(USER, { amountNgn: 5_000, method: 'googlepay' })).rejects.toMatchObject({ errorCode: 'INVALID_TOPUP' });
+    await expect(service.start(USER, { currency: 'USD', packageId: 'jollof-pack' })).rejects.toMatchObject({ errorCode: 'INVALID_TOPUP' });
+    expect(started).toHaveLength(0);
+  });
+
+  it('takes naira only, and shows no dollar option, when dollars are off', async () => {
+    const off = { usdEnabled: false, methods: ['card'], ngnPerUsd: async () => 1_500, options: async () => null, invalidate: () => undefined };
+    const { service, started } = topupsWith(0, 0, off);
+    await expect(service.start(USER, { currency: 'USD', amountUsd: 10 })).rejects.toMatchObject({ errorCode: 'PAYMENT_CURRENCY_UNAVAILABLE' });
+    expect(started).toHaveLength(0);
+    expect(await service.catalog(USER)).toMatchObject({ usd: null });
+  });
+
+  it('counts a dollar top-up toward the daily cap at its naira value', async () => {
+    // ₦20,000 a day, ₦5,000 already committed: $10 at ₦1,500 is ₦15,000 (fits), $11 is ₦16,500 (doesn't).
+    const { service } = topupsWith(20_000, 500_000);
+    await expect(service.start(USER, { currency: 'USD', amountUsd: 11 })).rejects.toMatchObject({ errorCode: 'TOPUP_DAILY_LIMIT' });
+    await expect(service.start(USER, { currency: 'USD', amountUsd: 10 })).resolves.toMatchObject({ topup: { priceNgn: 15_000 } });
   });
 
   it('refuses amounts outside ₦500 – the maximum and requests with both or neither', async () => {
@@ -1286,17 +1417,20 @@ describe('TopupsService fulfiller', () => {
     findById: async (id: string) => characters.get(id) ?? null,
     findLivingByUser: async (userId: string) => [...characters.values()].find((c) => c.userId === userId && c.alive) ?? null,
   } as unknown as CharacterDirectory;
-  const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000 }) };
+  const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000, usd: { enabled: true, maxTopupUsd: 5_000, wallets: false } }) };
   const checkout = { registerFulfiller: () => undefined, flag: async (_reference: string, reason: string) => void flags.push(reason) };
-  const topups = new TopupsService(checkout as unknown as CheckoutService, creditor as unknown as TopupCreditor, directory, {} as never, {} as never, {} as DataSource, config as never);
+  const topups = new TopupsService(checkout as unknown as CheckoutService, creditor as unknown as TopupCreditor, directory, {} as never, {} as never, usdRate as unknown as UsdRateService, {} as DataSource, config as never);
   const paid = (overrides: Partial<PaidCheckout> = {}): PaidCheckout => ({
     reference: REF,
     userId: USER,
     characterId: 'char-1',
     purpose: 'topup',
     subjectId: 'owambe-pack',
+    currency: 'NGN',
+    amountMinor: 250_000,
+    paidMinor: 250_000,
     amountKobo: 250_000,
-    paidKobo: 250_000,
+    ngnPerUsd: null,
     topupRate: 400,
     paidAt: new Date(),
     ...overrides,
@@ -1314,14 +1448,14 @@ describe('TopupsService fulfiller', () => {
   });
 
   it('credits a custom amount from what Flutterwave verified, at the stored rate', async () => {
-    await topups.fulfill(paid({ subjectId: 'custom', amountKobo: 2_000_000, paidKobo: 2_000_000, topupRate: 500 }));
+    await topups.fulfill(paid({ subjectId: 'custom', amountMinor: 2_000_000, paidMinor: 2_000_000, topupRate: 500 }));
     expect(credits).toEqual([expect.objectContaining({ pack: { packageId: null, label: 'Custom top-up', ratePerNaira: 500, virtualAmount: 10_000_000 } })]);
   });
 
   it('refuses rows with no usable rate (unknown legacy pack, mismatched legacy price, insane stored rate)', async () => {
     await expect(topups.fulfill(paid({ subjectId: 'free-money', topupRate: null }))).rejects.toMatchObject({ errorCode: 'TOPUP_UNDELIVERABLE' });
-    await expect(topups.fulfill(paid({ amountKobo: 50_000, topupRate: null }))).rejects.toMatchObject({ errorCode: 'TOPUP_UNDELIVERABLE' });
-    await expect(topups.fulfill(paid({ subjectId: 'custom', amountKobo: 100_000, paidKobo: 100_000, topupRate: 50_000 }))).rejects.toMatchObject({
+    await expect(topups.fulfill(paid({ amountMinor: 50_000, topupRate: null }))).rejects.toMatchObject({ errorCode: 'TOPUP_UNDELIVERABLE' });
+    await expect(topups.fulfill(paid({ subjectId: 'custom', amountMinor: 100_000, paidMinor: 100_000, topupRate: 50_000 }))).rejects.toMatchObject({
       errorCode: 'TOPUP_UNDELIVERABLE',
     });
     expect(credits).toHaveLength(0);
@@ -1341,7 +1475,7 @@ describe('TopupsService fulfiller', () => {
   });
 
   it('claws back only the refunded share of a partial refund, and nothing for an undelivered top-up', async () => {
-    await topups.onRefunded(paid(), dashboardRefund({ amountKobo: 125_000 }));
+    await topups.onRefunded(paid(), dashboardRefund({ amountMinor: 125_000 }));
     expect(clawbacks).toEqual([expect.objectContaining({ amount: 500_000 })]);
     clawbacks.splice(0);
     await topups.onRefunded(paid(), dashboardRefund({ delivered: false }));

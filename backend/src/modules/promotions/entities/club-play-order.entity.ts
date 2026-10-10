@@ -1,9 +1,11 @@
-import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
-import type { ClubPlayProductId, IsoDate, PromotionStatus } from '@insidelife/shared';
+import { Check, Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
+import type { ClubPlayProductId, IsoDate, PaymentCurrency, PromotionStatus } from '@insidelife/shared';
 import { bigintNumber } from '../../../database/transformers.js';
 
 /** A paid club rotation for one track: one club or all clubs, for whole Lagos calendar days. */
 @Entity('promotion_club_orders')
+// The charge is the naira price (NGN), or at least its value in cents at a sane rate (USD, rounded up).
+@Check('promotion_club_orders_charge', `("currency" = 'NGN' AND "ngn_per_usd" IS NULL AND "charge_minor" = "amount_kobo") OR ("currency" = 'USD' AND "ngn_per_usd" BETWEEN 500 AND 5000 AND "charge_minor" * "ngn_per_usd" >= "amount_kobo")`)
 @Index('promotion_club_orders_track_created', ['trackId', 'createdAt'])
 @Index('promotion_club_orders_owner_created', ['ownerUserId', 'createdAt'])
 @Index('promotion_club_orders_status_window', ['status', 'startDate', 'endDate'])
@@ -41,8 +43,24 @@ export class ClubPlayOrderEntity {
   @Column({ type: 'smallint' })
   days: number;
 
+  /** The naira price quoted at booking, kobo (later rate changes never touch it). */
   @Column({ type: 'bigint', transformer: bigintNumber })
   amountKobo: number;
+
+  /** What the booking is charged in: NGN, or USD when the buyer chose dollars. */
+  @Column({ type: 'varchar', length: 3, default: 'NGN' })
+  currency: PaymentCurrency;
+
+  /**
+   * The charge in `currency`'s minor units, fixed at booking: kobo for NGN (= `amountKobo`), for USD the naira price
+   * ÷ `ngnPerUsd` in cents rounded up (`usdCentsForKobo`). The payment must be for this exact currency and amount.
+   */
+  @Column({ type: 'bigint', transformer: bigintNumber })
+  chargeMinor: number;
+
+  /** Dollar bookings: the ₦ per $1 the price was converted at (null for naira). */
+  @Column({ type: 'integer', nullable: true })
+  ngnPerUsd: number | null;
 
   @Column({ type: 'varchar', length: 16 })
   status: PromotionStatus;

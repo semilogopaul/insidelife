@@ -8,7 +8,7 @@ import { signInOwner, type Admin } from './support/admin.js';
 import { bootApp, type E2eApp } from './support/app.js';
 import { E2E } from './support/env.js';
 import { FAKE_FLUTTERWAVE_KEY, FakeFlutterwave, type FakeTransaction } from './support/fake-flutterwave.js';
-import { burst, fund } from './support/game.js';
+import { burst, drainCash, fund } from './support/game.js';
 import { ledgerViolations, NO_VIOLATIONS, postingsWithKey } from './support/ledger.js';
 import { uploadCreative } from './support/media.js';
 import { jobResult, sweepAfterExpiry, sweepWhenDue } from './support/payments.js';
@@ -38,11 +38,11 @@ interface PaymentRow {
   readonly next_check_at: Date | null;
   readonly status: string;
   readonly failure_reason: string | null;
-  readonly paid_kobo: string | null;
+  readonly paid_minor: string | null;
   readonly gateway_transaction_id: string | null;
   readonly fulfilled_at: Date | null;
   readonly refund_status: string | null;
-  readonly refunded_kobo: string;
+  readonly refunded_minor: string;
   readonly flag_reason: string | null;
   readonly provider: string;
 }
@@ -85,7 +85,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     expect(verified.balance).toBe(before + 1_000_000);
     const row = await paymentRow(started.reference);
     expect(row).toMatchObject({ status: 'success', gateway_transaction_id: String(transaction.id) });
-    expect(Number(row.paid_kobo)).toBe(250_000);
+    expect(Number(row.paid_minor)).toBe(250_000);
 
     for (let i = 0; i < 3; i++) ok(await webhook(fw.chargeWebhook(transaction)));
     expect(await processed(`charge-${transaction.id}`)).toBe('already-paid');
@@ -243,7 +243,7 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     expect(await player.cash()).toBe(start);
     const after = await player.character();
     expect(after.purchased_total).toBe(0);
-    expect(await paymentRow(reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: '250000' });
+    expect(await paymentRow(reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: '250000' });
 
     await (await queue.getJob(`refund-${refund.id}-completed`))?.remove();
     ok(await webhook(fw.refundWebhook(refund)));
@@ -283,6 +283,8 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
 
   it('never goes below zero: what was moved out of reach (here, into dollars) is flagged for ops as a shortfall', async () => {
     const player = await createPlayer(e2e);
+    // From ₦0, so the dollars bought below always fit the monthly FX allowance, whatever the starting money.
+    await drainCash(e2e, player);
     const { reference, transaction } = await paidTopup(player, 'big-boy-pack');
     ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: (await player.cash()) - 100_000, idempotencyKey: key() }));
     const cash = await player.cash();
@@ -301,6 +303,8 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
   it('what was already spent becomes a debt: recorded once, blocks sending, shown in the bank and to admins, repaid from the next money in', async () => {
     const player = await createPlayer(e2e);
     const friend = await createPlayer(e2e);
+    // From ₦0: the birth lottery's starting money (₦8m for a nepo baby) would otherwise blow the $5,000 FX allowance below.
+    await drainCash(e2e, player);
     const { transaction } = await paidTopup(player, 'big-boy-pack');
     ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: (await player.cash()) - 100_000, idempotencyKey: key() }));
     const cash = await player.cash();
@@ -373,7 +377,7 @@ describe('ads paid through Flutterwave and refunded automatically', () => {
     const rejected = ok<{ status: string }>(await owner.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Misleading claims' }));
     expect(rejected.status).toBe('refunded');
     expect(fw.callsTo('POST', `/transactions/${transaction.id}/refund`)).toBe(1);
-    expect(await paymentRow(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(checkout.quote.totalKobo) });
+    expect(await paymentRow(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_minor: String(checkout.quote.totalKobo) });
     refused(await owner.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Again' }), 409);
     expect(fw.callsTo('POST', `/transactions/${transaction.id}/refund`)).toBe(1);
   });
