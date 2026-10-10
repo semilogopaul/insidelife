@@ -189,8 +189,9 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
           {feed && !phoneOpen ? feed : null}
         </div>
         {wide && <div className="pointer-events-auto flex max-w-md flex-1 flex-col gap-2 empty:hidden">{centre}</div>}
-        <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-2">
-          <div className="flex items-center gap-2">
+        {/* The column is as wide as its widest row: only its controls take taps, the gaps go through to the world. */}
+        <div className="pointer-events-none flex shrink-0 flex-col items-end gap-2">
+          <div className="pointer-events-auto flex items-center gap-2">
             <button
               type="button"
               onClick={toggleHud}
@@ -203,7 +204,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
             </button>
             <WalletChip balance={data.snapshot.wallet.balance} />
           </div>
-          {tray && <div className="flex flex-col items-end gap-2">{tray}</div>}
+          {tray && <div className="pointer-events-none flex flex-col items-end gap-2 *:pointer-events-auto">{tray}</div>}
           {!wide && outdoorMap}
         </div>
       </div>

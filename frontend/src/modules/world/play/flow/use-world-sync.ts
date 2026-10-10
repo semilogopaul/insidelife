@@ -28,6 +28,8 @@ const HEARTBEAT_MS = 15_000;
 const MIN_HEARTBEAT_GAP_MS = 4_000;
 /** Stopped (m/s) enough for the pump attendant or the mechanic. */
 const SERVICE_STOP_SPEED = 2.5;
+/** …and an offer already showing stays up to this speed (m/s; reversing on the brake reaches ~4). */
+const OFFER_KEEP_SPEED = 6;
 
 export interface WorldSyncOptions {
   /** A real session (heartbeats, positions); false in the dev sandbox. */
@@ -183,7 +185,10 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
         else if (c.canEnterCar()) next = { id: CAR_ENTER_ID, kind: 'car', label: 'Get in car' };
         else if (door && doorClose) next = { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, false, door === optionsRef.current.homeDoor), locationId: door.locationId };
       } else if (runtime.mode === 'drive') {
-        const slow = Math.abs(c.speed) < SERVICE_STOP_SPEED;
+        // Shown once you've (nearly) stopped, and kept while you creep or the brake starts reversing you, so it never
+        // vanishes under the thumb going for it.
+        const offered = (touchUi ? usePlayUi.getState().driveOffer : world().nearby) !== null && world().nearby?.id !== CAR_EXIT_ID;
+        const slow = Math.abs(c.speed) < (offered ? OFFER_KEEP_SPEED : SERVICE_STOP_SPEED);
         const door = slow ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, privateDoors(optionsRef.current)) : null;
         const offer: Interactable | null =
           (slow ? atService(c.x, c.z) : null) ??
