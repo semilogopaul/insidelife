@@ -15,6 +15,7 @@ export {
   actionContextOf,
   actionEffects,
   formatHour,
+  serviceAvailability,
   useActionAvailability,
   type ActionAvailability,
   type ActionContext,

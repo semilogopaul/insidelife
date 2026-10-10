@@ -246,7 +246,7 @@ describe('hotspots', () => {
   it('offers “Drinks at the lounge · ₦18,000” on the context button, the rest as smaller buttons', () => {
     const drinks = lounge.find((hotspot) => hotspot.id === 'hotspot:lounge') as Hotspot;
     const offer = hotspotInteractable(drinks, (candidate) => ({
-      priceNote: candidate.cost > 0 ? '₦18,000' : '',
+      priceNote: 'cost' in candidate && candidate.cost > 0 ? '₦18,000' : '',
       reason: null,
     }));
     expect(offer).toMatchObject({ kind: 'activity', label: 'Drinks at the lounge · ₦18,000', emoji: '🍹' });
@@ -288,7 +288,7 @@ describe('hotspots', () => {
     const offer = cars ? hotspotInteractable(cars, () => ({ priceNote: '', reason: null })) : null;
     expect(offer).toMatchObject({
       id: serviceInteractableId('browse-cars'),
-      label: 'Browse cars',
+      label: 'Browse cars for sale',
       emoji: '🚗',
     });
     expect(serviceOfInteractable(offer?.id ?? '')).toMatchObject({

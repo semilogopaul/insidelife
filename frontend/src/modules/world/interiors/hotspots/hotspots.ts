@@ -274,7 +274,7 @@ export interface ActionStatus {
  */
 export function hotspotInteractable(
   hotspot: Hotspot,
-  status: (action: ActionDefinition) => ActionStatus,
+  status: (entry: ActionDefinition | PlaceService) => ActionStatus,
   maxMore = MAX_MORE,
 ): Interactable | null {
   const option = (action: ActionDefinition): InteractableOption => {
@@ -286,11 +286,15 @@ export function hotspotInteractable(
       ...(reason ? { disabled: reason } : {}),
     };
   };
-  const service = (entry: PlaceService): InteractableOption => ({
-    id: serviceInteractableId(entry.id),
-    label: entry.label,
-    emoji: entry.emoji,
-  });
+  const service = (entry: PlaceService): InteractableOption => {
+    const { reason } = status(entry);
+    return {
+      id: serviceInteractableId(entry.id),
+      label: entry.label,
+      emoji: entry.emoji,
+      ...(reason ? { disabled: reason } : {}),
+    };
+  };
   const [first, ...rest] = [...hotspot.actions.map(option), ...hotspot.services.map(service)];
   if (!first) return null;
   // "More here" takes the last place when the rest don't all fit.
@@ -334,7 +338,7 @@ export interface HotspotCard {
 /** The card for a hotspot (its marker shows the first entry's emoji). */
 export function hotspotCard(
   hotspot: Hotspot,
-  status: (action: ActionDefinition) => ActionStatus,
+  status: (entry: ActionDefinition | PlaceService) => ActionStatus,
   goal: GoalHere | null = null,
 ): HotspotCard {
   const entries: HotspotEntryCard[] = [
@@ -361,7 +365,7 @@ export function hotspotCard(
       priceNote: '',
       durations: [],
       effects: [],
-      disabled: null,
+      disabled: status(service).reason,
       opens: serviceOpensLabel(service),
       goal: goal?.serviceId === service.id,
     })),
