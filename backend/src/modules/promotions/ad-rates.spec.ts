@@ -103,13 +103,28 @@ describe('AdRatesService', () => {
       byDistrict: false,
       defaultKobo: 100_000 * NAIRA,
       currentKobo: 100_000 * NAIRA,
+      blockDays: 3,
+      blockPriceKobo: 43_000 * NAIRA,
+      summary: '₦100,000 per 7 days · sold in 3-day blocks of ₦43,000',
       updatedAt: null,
       updatedBy: null,
     });
-    expect(await rates.rateKobo('club-song')).toBe(5_000 * NAIRA);
+    // ₦5,000 a day, stored per week; club songs are always sold by the week.
+    expect(await rates.rateKobo('club-song')).toBe(35_000 * NAIRA);
+    expect(list.find((rate) => rate.key === 'club-song')).toMatchObject({ unit: 'week', blockDays: 7, blockPriceKobo: 35_000 * NAIRA, summary: '₦35,000 per 7 days · sold by the week' });
+    expect(list.find((rate) => rate.key === 'street-billboard')).toMatchObject({ byDistrict: true, blockDays: 7, blockPriceKobo: null });
     const pricing = await rates.pricing();
     expect(pricing.weekPriceKobo(lagosTv)).toBe(42_000 * NAIRA);
-    expect(pricing.songPriceKobo).toBe(5_000 * NAIRA);
+    expect(pricing.block(lagosTv)).toEqual({ weekPriceKobo: 42_000 * NAIRA, blockDays: 3, blockPriceKobo: 18_000 * NAIRA });
+    expect(pricing.songPriceKobo).toBe(35_000 * NAIRA);
+  });
+
+  it('moves a slot between 7-day and 3-day blocks when its rate crosses ₦35,000 a week', async () => {
+    const rates = await node(new FakeTable(), new FakeBus());
+    await rates.setRate('lagos-tv', 120_000 * NAIRA, ADMIN);
+    expect((await rates.pricing()).block(lagosTv)).toEqual({ weekPriceKobo: 120_000 * NAIRA, blockDays: 3, blockPriceKobo: 51_500 * NAIRA });
+    await rates.setRate('lagos-tv', 34_500 * NAIRA, ADMIN);
+    expect((await rates.pricing()).block(lagosTv).blockDays).toBe(7);
   });
 
   it('applies an override to new quotes, scaled per district for roadside kinds', async () => {
@@ -152,8 +167,8 @@ describe('AdRatesService', () => {
     const rates = await node(new FakeTable(), new FakeBus());
     await rates.setRate('club-song', 7_500 * NAIRA, ADMIN);
     expect(await rates.rateKobo('club-song')).toBe(7_500 * NAIRA);
-    expect(await rates.resetRate('club-song')).toMatchObject({ currentKobo: 5_000 * NAIRA, updatedAt: null });
-    expect(await rates.rateKobo('club-song')).toBe(5_000 * NAIRA);
+    expect(await rates.resetRate('club-song')).toMatchObject({ currentKobo: 35_000 * NAIRA, updatedAt: null });
+    expect(await rates.rateKobo('club-song')).toBe(35_000 * NAIRA);
   });
 
   it('serves cached rates between changes (one table read per TTL)', async () => {

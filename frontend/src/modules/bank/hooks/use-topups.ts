@@ -1,12 +1,12 @@
 'use client';
 
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CreateTopupRequest } from '@insidelife/shared';
 import { gameEvents } from '@/common/game/game-events';
 import { useSession } from '@/common/auth/session-store';
+import { checkPayment, invalidateAfterPayment } from '@/common/payments';
 import { bankKeys } from '../services/bank-keys';
 import { bankApi } from '../services/bank.api';
-import { useRefreshMoney } from './use-wallet';
 
 export function useTopupCatalog() {
   return useQuery({ queryKey: bankKeys.packages, queryFn: bankApi.packages, staleTime: 15_000 });
@@ -29,14 +29,17 @@ export function useStartTopup() {
   });
 }
 
-/** Ask the server to confirm a payment with Flutterwave (idempotent; delivers if paid). */
+/**
+ * "I've paid: check now": ask the server to confirm a payment with Flutterwave (idempotent; delivers at once if paid;
+ * safe to press often). Refreshes money, the Bank and Promote (an ad or track may have just been paid).
+ */
 export function useVerifyPayment() {
-  const refresh = useRefreshMoney();
+  const client = useQueryClient();
   return useMutation({
-    mutationFn: (reference: string) => bankApi.verify(reference),
+    mutationFn: (reference: string) => checkPayment(reference),
     onSuccess: (result) => {
       if (result.fulfilledNow) gameEvents.emit('sfx', { id: 'cash-in' });
-      void refresh();
+      void invalidateAfterPayment(client);
     },
   });
 }

@@ -27,9 +27,11 @@ export interface TrackUploadFormProps {
   readonly onCancel?: () => void;
   /** Today's price per song (the catalog default until the server's is known). */
   readonly priceKobo?: number;
+  /** Plays a day every song gets (from the offer), for the copy. */
+  readonly playsPerDay?: number;
 }
 
-export function TrackUploadForm({ onUploaded, onCancel, priceKobo = CLUB_PLAY_PRODUCT.priceKobo }: TrackUploadFormProps) {
+export function TrackUploadForm({ onUploaded, onCancel, priceKobo = CLUB_PLAY_PRODUCT.priceKobo, playsPerDay }: TrackUploadFormProps) {
   const inputId = useId();
   const [artist, setArtist] = useState('');
   const [title, setTitle] = useState('');
@@ -90,7 +92,7 @@ export function TrackUploadForm({ onUploaded, onCancel, priceKobo = CLUB_PLAY_PR
           {file ? 'Choose a different song' : 'Choose an MP3 or OGG'}
         </label>
         <p className="mt-1 text-xs text-text-soft">
-          MP3 or OGG, up to {TRACK_MAX_BYTES / 1024 / 1024} MB, from {TRACK_MIN_SECONDS} seconds to <strong>up to {TRACK_MAX_SECONDS / 60} minutes</strong>. {formatNaira(koboToNaira(priceKobo))} plays it in every club and lounge for {CLUB_PLAY_PRODUCT.days} days.
+          MP3 or OGG, up to {TRACK_MAX_BYTES / 1024 / 1024} MB, from {TRACK_MIN_SECONDS} seconds to <strong>up to {TRACK_MAX_SECONDS / 60} minutes</strong>. {formatNaira(Math.round(koboToNaira(priceKobo) / CLUB_PLAY_PRODUCT.days))} a day, sold by the week ({formatNaira(koboToNaira(priceKobo))}), plays it in every club and lounge{playsPerDay ? `, about ${playsPerDay} times a day` : ''}.
         </p>
       </div>
       {picked && (

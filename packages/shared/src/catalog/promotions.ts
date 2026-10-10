@@ -89,9 +89,22 @@ const NAIRA = 100;
 
 // ----- Ad prices (real naira) ----------------------------------------------------------------------------------------
 
-/** Every ad is sold in blocks of 7 consecutive real days: 1 to 4 weeks, starting on the slot's next free day. */
+/**
+ * Ads are sold in blocks of consecutive real days, starting on the slot's next free day, back to back, up to
+ * `AD_MAX_RUN_DAYS` in all. Rates are stored per 7 days (`weekPriceKobo`); most slots are sold in 7-day blocks (1–4
+ * weeks), but expensive ones (a weekly rate of `AD_SHORT_BLOCK_FROM_KOBO` or more) in 3-day blocks (1–9), so a big
+ * board can be tried for a long weekend. The block length follows the CURRENT rate (`adBlockDays`), so re-pricing a
+ * slot moves it between the two automatically; a booking keeps the block length and price it was sold with.
+ */
 export const AD_WEEK_DAYS = 7;
 export const AD_MAX_WEEKS = 4;
+/** Longest run one booking can buy (4 weeks, or 9 × 3 days). */
+export const AD_MAX_RUN_DAYS = 28;
+/** The short block for expensive slots. */
+export const AD_SHORT_BLOCK_DAYS = 3;
+/** The single definition of "expensive" (owner's rule, Oct 2026): a weekly rate of ₦35,000 or more is sold in 3-day blocks. */
+export const AD_SHORT_BLOCK_FROM_KOBO = 35_000 * NAIRA;
+export type AdBlockDays = typeof AD_SHORT_BLOCK_DAYS | typeof AD_WEEK_DAYS;
 /** No ad costs less than ₦2,000 a week; no rate can be set above ₦100m. */
 export const AD_MIN_PRICE_KOBO = 2_000 * NAIRA;
 export const AD_MAX_PRICE_KOBO = 100_000_000 * NAIRA;
@@ -267,18 +280,50 @@ export const BILLBOARD_MAX_LEAD_DAYS = 60;
 export const BILLBOARD_ROTATION_SECONDS = 10;
 
 export interface PromotionQuote {
-  /** Consecutive 7-day blocks (1–4). */
-  readonly weeks: number;
+  /** Consecutive blocks bought. */
+  readonly blocks: number;
+  /** Days per block (7, or 3 for expensive slots). */
+  readonly blockDays: number;
   readonly days: number;
-  /** Price of one 7-day block when quoted (the order keeps it: later rate changes never touch it). */
+  /** Price of one block when quoted (the order keeps it: later rate changes never touch it). */
+  readonly blockPriceKobo: number;
+  /** The slot's weekly rate when quoted (what the block price is derived from). */
   readonly weekPriceKobo: number;
+  /** @deprecated `days / 7` (a whole number only for 7-day blocks). */
+  readonly weeks: number;
   /** What the payer is charged (whole naira). */
   readonly totalKobo: number;
 }
 
-/** Why a booking of `weeks` can't be made (player-facing), or null. */
+/** Block length for a slot at this weekly rate: 3 days from `AD_SHORT_BLOCK_FROM_KOBO`, else 7. */
+export function adBlockDays(weekPriceKobo: number): AdBlockDays {
+  return weekPriceKobo >= AD_SHORT_BLOCK_FROM_KOBO ? AD_SHORT_BLOCK_DAYS : AD_WEEK_DAYS;
+}
+
+/** Most blocks one booking can buy (4 of 7 days, 9 of 3 days). */
+export function adMaxBlocks(blockDays: number): number {
+  return Math.max(1, Math.floor(AD_MAX_RUN_DAYS / blockDays));
+}
+
+/**
+ * Price of one block: the daily rate × the block's days, rounded to a friendly amount (nearest ₦500, never under
+ * ₦2,000). A 7-day block is exactly the weekly rate. E.g. ₦100,000 a week → ₦43,000 for 3 days.
+ */
+export function adBlockPriceKobo(weekPriceKobo: number, blockDays: number): number {
+  if (blockDays === AD_WEEK_DAYS) return weekPriceKobo;
+  return friendlyWeekPriceKobo((weekPriceKobo / AD_WEEK_DAYS) * blockDays);
+}
+
+/** Why a booking of `blocks` blocks of `blockDays` can't be made (player-facing), or null. */
+export function adBlocksProblem(blocks: number, blockDays: number = AD_WEEK_DAYS): string | null {
+  const max = adMaxBlocks(blockDays);
+  if (Number.isInteger(blocks) && blocks >= 1 && blocks <= max) return null;
+  return blockDays === AD_WEEK_DAYS ? `Book 1 to ${max} weeks` : `Book 1 to ${max} blocks of ${blockDays} days`;
+}
+
+/** @deprecated `adBlocksProblem(weeks, 7)`. */
 export function adWeeksProblem(weeks: number): string | null {
-  return Number.isInteger(weeks) && weeks >= 1 && weeks <= AD_MAX_WEEKS ? null : `Book 1 to ${AD_MAX_WEEKS} weeks`;
+  return adBlocksProblem(weeks, AD_WEEK_DAYS);
 }
 
 /** Whole naira between ₦2,000 and ₦100m: the only prices an ad rate can have. */
@@ -286,16 +331,37 @@ export function isValidAdPriceKobo(kobo: number): boolean {
   return Number.isSafeInteger(kobo) && kobo % NAIRA === 0 && kobo >= AD_MIN_PRICE_KOBO && kobo <= AD_MAX_PRICE_KOBO;
 }
 
-/** Price of `weeks` consecutive 7-day blocks at a weekly price. Throws a RangeError for anything that can't be sold. */
-export function adQuote(weekPriceKobo: number, weeks: number): PromotionQuote {
-  const problem = adWeeksProblem(weeks);
+/**
+ * Price of `blocks` consecutive blocks at a weekly rate. The block length defaults to the rate's (`adBlockDays`); club
+ * songs pass 7 (always sold by the week). Throws a RangeError for anything that can't be sold.
+ */
+export function adQuote(weekPriceKobo: number, blocks: number, blockDays: number = adBlockDays(weekPriceKobo)): PromotionQuote {
+  const problem = adBlocksProblem(blocks, blockDays);
   if (problem) throw new RangeError(problem);
   if (!isValidAdPriceKobo(weekPriceKobo)) throw new RangeError(`Ad prices are whole naira from ${formatNaira(AD_MIN_PRICE_KOBO / NAIRA)} a week`);
-  return { weeks, days: weeks * AD_WEEK_DAYS, weekPriceKobo, totalKobo: weekPriceKobo * weeks };
+  const blockPriceKobo = adBlockPriceKobo(weekPriceKobo, blockDays);
+  const days = blocks * blockDays;
+  return { blocks, blockDays, days, blockPriceKobo, weekPriceKobo, weeks: days / AD_WEEK_DAYS, totalKobo: blockPriceKobo * blocks };
 }
 
 /** "₦175,000/week". */
 export const adWeekPriceLabel = (weekPriceKobo: number): string => `${formatNaira(weekPriceKobo / NAIRA)}/week`;
+
+/** "₦17,500/week" for 7-day blocks, "₦43,000 per 3 days" for short ones. */
+export const adBlockPriceLabel = (blockPriceKobo: number, blockDays: number): string =>
+  blockDays === AD_WEEK_DAYS ? adWeekPriceLabel(blockPriceKobo) : `${formatNaira(blockPriceKobo / NAIRA)} per ${blockDays} days`;
+
+/** "1 week", "3 weeks", "3 days", "9 days". */
+export function runLengthLabel(days: number): string {
+  if (days % AD_WEEK_DAYS === 0) return days === AD_WEEK_DAYS ? '1 week' : `${days / AD_WEEK_DAYS} weeks`;
+  return days === 1 ? '1 day' : `${days} days`;
+}
+
+/** How a rate reads on the admin price list: "₦100,000 per 7 days · sold in 3-day blocks of ₦43,000". */
+export function adRateSummary(weekPriceKobo: number, blockDays: number = adBlockDays(weekPriceKobo)): string {
+  const week = `${formatNaira(weekPriceKobo / NAIRA)} per 7 days`;
+  return blockDays === AD_WEEK_DAYS ? `${week} · sold by the week` : `${week} · sold in ${blockDays}-day blocks of ${formatNaira(adBlockPriceKobo(weekPriceKobo, blockDays) / NAIRA)}`;
+}
 
 // ----- Club DJ ------------------------------------------------------------------------------------------------------
 
@@ -312,31 +378,36 @@ export function isClubPlayVenue(venueId: string): boolean {
 }
 
 /**
- * One product (owner's rule): ₦5,000 per song = 7 real days in every club and lounge's rotation, starting on the next
- * day every club has room (today if they do).
+ * One product (owner's rule, Oct 2026): a song costs ₦5,000 a day, sold like every other ad in 7-day blocks (₦35,000 a
+ * week), 1–4 consecutive weeks in every club and lounge's rotation, starting on the rotation's next free day (today
+ * when a lane is free for the whole run).
  */
 export const CLUB_PLAY_PRODUCT_IDS = ['all-clubs-7d'] as const;
 export type ClubPlayProductId = (typeof CLUB_PLAY_PRODUCT_IDS)[number];
 
-/** Default price per song (ops can override it: rate key `club-song`). */
-export const CLUB_TRACK_PRICE_KOBO = 5_000 * NAIRA;
+/** The owner's day rate for a club song (what the weekly default is built from). */
+export const CLUB_SONG_DAY_PRICE_KOBO = 5_000 * NAIRA;
+/** Default price of one 7-day block in every club (ops can override it: rate key `club-song`, stored per week). */
+export const CLUB_SONG_WEEK_PRICE_KOBO = 7 * CLUB_SONG_DAY_PRICE_KOBO;
+/** @deprecated The default price of one 7-day block; use `CLUB_SONG_WEEK_PRICE_KOBO`. */
+export const CLUB_TRACK_PRICE_KOBO = CLUB_SONG_WEEK_PRICE_KOBO;
 
 export interface ClubPlayProduct {
   readonly id: ClubPlayProductId;
   readonly name: string;
   readonly description: string;
-  /** Real calendar days in rotation. */
+  /** Real calendar days in one block (a booking is 1–`AD_MAX_WEEKS` blocks back to back). */
   readonly days: number;
-  /** Default price; the server's current rate wins. */
+  /** Default price of one block; the server's current rate wins. */
   readonly priceKobo: number;
 }
 
 export const CLUB_PLAY_PRODUCT: ClubPlayProduct = {
   id: 'all-clubs-7d',
-  name: 'Every club · 7 days',
-  description: 'Your song in the rotation of every club and lounge in Lagos for 7 days.',
-  days: 7,
-  priceKobo: CLUB_TRACK_PRICE_KOBO,
+  name: 'Every club and lounge',
+  description: 'Your song in the rotation of every club and lounge in Lagos, a week at a time.',
+  days: AD_WEEK_DAYS,
+  priceKobo: CLUB_SONG_WEEK_PRICE_KOBO,
 };
 
 export const CLUB_PLAY_PRODUCTS: readonly ClubPlayProduct[] = [CLUB_PLAY_PRODUCT];
@@ -345,7 +416,11 @@ export function findClubPlayProduct(id: string): ClubPlayProduct | undefined {
   return CLUB_PLAY_PRODUCTS.find((product) => product.id === id);
 }
 
-/** Paid tracks sharing one club's rotation on any given day ('all clubs' orders count in every club). */
+/**
+ * Songs in rotation at once: the "lanes" of the club schedule (`catalog/club-schedule.ts`). A booked song holds one
+ * lane for its whole run and every lane gets the same share of the paid slots in every club, which is what makes the
+ * plays-a-day guarantee hold. When every lane is taken, a booking starts on the day one frees up for the whole run.
+ */
 export const CLUB_ROTATION_CAPACITY = 12;
 /** A club order starts on the rotation's next free day; with no room for this many days, the rotation is full. */
 export const CLUB_PLAY_MAX_LEAD_DAYS = 30;

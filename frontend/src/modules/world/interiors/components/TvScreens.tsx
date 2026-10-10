@@ -2,24 +2,38 @@
 
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
-import { CanvasTexture, Color, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, TextureLoader, type Texture } from 'three';
-import { adTrackingApi } from '@/common/promotions/ad-tracking';
+import { CanvasTexture, Color, Frustum, Matrix4, MeshBasicMaterial, PlaneGeometry, SRGBColorSpace, Sphere, TextureLoader, Vector3, type Texture } from 'three';
 import { useLiveAds } from '@/common/promotions/use-live-ads';
 import { setProps } from '../../city/lib/mutate';
+import { adViewClock, flushWorldAdViews, worldAdViews } from '../../play/billboards/report-views';
 import { FURNITURE_MANIFEST } from '../kit/kit-manifest';
 import { FURNITURE_SCALE } from '../kit/furniture-kit';
 import type { FurniturePlacement } from '../templates/types';
 
 /**
  * Lagos TV on every television in the room (homes, bukas, bars, offices): paid "Lagos TV" ads from Promote rotate
- * with the channel's own card; the screen goes dark in a power cut. Impressions are counted when an ad has been on
- * screen for a few seconds, batched.
+ * with the channel's own card; the screen goes dark in a power cut. An ad counts as a view once it has been showing on
+ * a TV in view of the camera for `AD_VIEW_DWELL_MS` (the same queue as the street boards: once per campaign per game
+ * hour, batched; rules in shared `catalog/ad-views.ts`).
  */
 
 const SLOT_ID = 'lagos-tv';
 const ROTATE_SECONDS = 10;
-const IMPRESSION_AFTER_MS = 3_000;
-const FLUSH_MS = 20_000;
+const TICK_SECONDS = 0.5;
+const FLUSH_CHECK_MS = 1_000;
+const projScreen = new Matrix4();
+const frustum = new Frustum();
+const screenSphere = new Sphere(new Vector3(), 1);
+
+/** Is any of the screens inside the camera's view? */
+function anyScreenInView(screens: readonly Screen[], camera: { readonly projectionMatrix: Matrix4; readonly matrixWorldInverse: Matrix4 }): boolean {
+  frustum.setFromProjectionMatrix(projScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+  return screens.some((screen) => {
+    screenSphere.center.set(...screen.position);
+    screenSphere.radius = Math.max(screen.width, screen.height) / 2;
+    return frustum.intersectsSphere(screenSphere);
+  });
+}
 
 /** Where the picture sits on each TV model's front face (fractions of the model's width/height). */
 const SCREENS: Readonly<Partial<Record<FurniturePlacement['model'], { readonly w: number; readonly h: number; readonly cx: number; readonly cy: number }>>> = {
@@ -104,8 +118,6 @@ export function TvScreens({ furniture, powerCut }: { readonly furniture: readonl
     // The screens share one material; per-frame changes go through setProps (three.js state, not React state).
   }, []);
   const creatives = useRef(new Map<string, Texture | 'loading' | 'failed'>());
-  const shownSince = useRef<{ campaignId: string | null; since: number; counted: boolean }>({ campaignId: null, since: 0, counted: false });
-  const pending = useRef<string[]>([]);
 
   useEffect(() => {
     const textures = creatives.current;
@@ -119,21 +131,24 @@ export function TvScreens({ furniture, powerCut }: { readonly furniture: readonl
   }, [resources]);
 
   useEffect(() => {
-    const id = window.setInterval(() => {
-      const batch = pending.current.splice(0);
-      if (batch.length > 0) adTrackingApi.impressions({ campaignIds: batch }).catch(() => pending.current.push(...batch));
-    }, FLUSH_MS);
-    return () => window.clearInterval(id);
-  }, []);
+    if (screens.length === 0) return;
+    const id = window.setInterval(() => flushWorldAdViews(), FLUSH_CHECK_MS);
+    return () => {
+      window.clearInterval(id);
+      flushWorldAdViews(true);
+    };
+  }, [screens.length]);
 
   const elapsed = useRef(1);
-  useFrame((_, delta) => {
+  useFrame(({ camera }, delta) => {
     elapsed.current += delta;
-    if (elapsed.current < 0.5 || screens.length === 0) return;
+    if (elapsed.current < TICK_SECONDS || screens.length === 0) return;
+    const dtMs = elapsed.current * 1000;
     elapsed.current = 0;
     const material = resources.material;
     if (powerCut) {
       if (material.map !== null) setProps(material, { map: null, color: resources.off, needsUpdate: true });
+      worldAdViews.observe(SLOT_ID, null, false, dtMs, adViewClock());
       return;
     }
     const now = Date.now();
@@ -159,13 +174,9 @@ export function TvScreens({ furniture, powerCut }: { readonly furniture: readonl
       } else if (typeof cached !== 'string') map = cached;
     }
     if (material.map !== map) setProps(material, { map, color: resources.on, needsUpdate: true });
-    // One impression per ad per showing, once it has been on screen a moment.
+    // A view once the ad has been on a TV the camera can see for the dwell time.
     const shown = map !== resources.card ? campaignId : null;
-    if (shown !== shownSince.current.campaignId) shownSince.current = { campaignId: shown, since: now, counted: false };
-    else if (shown && !shownSince.current.counted && now - shownSince.current.since > IMPRESSION_AFTER_MS) {
-      shownSince.current.counted = true;
-      pending.current.push(shown);
-    }
+    worldAdViews.observe(SLOT_ID, shown, shown !== null && anyScreenInView(screens, camera), dtMs, adViewClock());
   });
 
   return (

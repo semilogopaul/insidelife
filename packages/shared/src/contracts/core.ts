@@ -452,7 +452,17 @@ export const NOTIFICATION_KINDS = [
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
+/** A button on a live notification that opens a phone app (`app` is a phone app id, `param` its deep link). */
+export interface NotificationLinkDto {
+  readonly app: string;
+  readonly param: string | null;
+  /** "Take me there", "Run it again". */
+  readonly label: string;
+}
+
 export interface NotificationDto {
+  /** Only on live pushes (not stored): what the alert's button opens. */
+  readonly link?: NotificationLinkDto;
   readonly id: string;
   readonly kind: NotificationKind;
   readonly title: string;

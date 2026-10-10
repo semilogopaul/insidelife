@@ -4,7 +4,9 @@ import {
   type BillboardSlotsDto,
   type CampaignCheckoutDto,
   type ClubOrderCheckoutDto,
+  type ClubOrderDetailDto,
   type ClubRotationDto,
+  type ClubScheduleDto,
   type ClubTrackDto,
   type LiveBillboardsDto,
   type ModerationQueueDto,
@@ -57,7 +59,7 @@ async function book(buyer: Player, slotId: string, body: Record<string, unknown>
     title: 'Suya Republic',
     tagline: 'Hot suya, delivered',
     linkUrl: 'https://suyarepublic.ng/order',
-    weeks: 1,
+    blocks: 1,
     ...body,
   });
 }
@@ -77,33 +79,60 @@ describe('prices and booking rules', () => {
     expect(price('ikorodu-garage')).toBe(17_500 * NAIRA);
     expect(price('lagos-tv')).toBe(42_000 * NAIRA);
     expect(price('app-1')).toBe(100_000 * NAIRA);
-    expect(view.clubSong).toMatchObject({ priceKobo: 5_000 * NAIRA, days: 7 });
+    // Owner's rules (Oct 2026): ₦35,000 a week or more sells in 3-day blocks at the daily rate × 3 (to ₦500); cheaper by
+    // the week. Club songs: ₦5,000 a day, always by the week.
+    const block = (id: string) => view.slots.find((slot) => slot.id === id);
+    expect(block('mmia-arrivals')).toMatchObject({ blockDays: 3, blockPriceKobo: 75_000 * NAIRA, maxBlocks: 9 });
+    expect(block('app-1')).toMatchObject({ blockDays: 3, blockPriceKobo: 43_000 * NAIRA });
+    expect(block('lagos-tv')).toMatchObject({ blockDays: 3, blockPriceKobo: 18_000 * NAIRA });
+    expect(block('surulere-stadium')).toMatchObject({ blockDays: 3, blockPriceKobo: 15_000 * NAIRA });
+    expect(block('ajah-roundabout')).toMatchObject({ blockDays: 7, blockPriceKobo: 28_000 * NAIRA, maxBlocks: 4 });
+    expect(block('ikorodu-garage')).toMatchObject({ blockDays: 7, blockPriceKobo: 17_500 * NAIRA });
+    expect(view.clubSong).toMatchObject({ weekPriceKobo: 35_000 * NAIRA, dayPriceKobo: 5_000 * NAIRA, priceKobo: 35_000 * NAIRA, days: 7, maxWeeks: 4 });
+    expect(view.clubSong.playsPerDay).toBeGreaterThan(0);
     expect(view.maxWeeks).toBe(4);
-    // Street spots are district-scaled and never under ₦2,000 a week.
+    expect(view.maxRunDays).toBe(28);
+    // Street spots are district-scaled, never under ₦2,000 a week, and all sold by the week.
     expect(view.slots.every((slot) => slot.weekPriceKobo >= 2_000 * NAIRA && slot.weekPriceKobo % (500 * NAIRA) === 0)).toBe(true);
+    expect(view.slots.filter((slot) => slot.weekPriceKobo < 35_000 * NAIRA).every((slot) => slot.blockDays === 7)).toBe(true);
   });
 
   it('books 1–4 weeks from the next free day and refuses anything else', async () => {
     const buyer = await createPlayer(e2e);
-    refused(await book(buyer, 'ikeja-allen', { weeks: 0 }), 400);
-    refused(await book(buyer, 'ikeja-allen', { weeks: 5 }), 400);
-    refused(await book(buyer, 'ikeja-allen', { linkUrl: 'http://insecure.ng' }), 422, 'INVALID_LINK');
-    refused(await book(buyer, 'ikeja-allen', { expectedStartDate: addDays(today(), 3) }), 422, 'DATES_CHANGED');
-    const wrongPrice = await book(buyer, 'ikeja-allen', { weeks: 2, expectedPriceKobo: 56_000 * NAIRA });
+    refused(await book(buyer, 'ajah-roundabout', { blocks: 0 }), 400);
+    refused(await book(buyer, 'ajah-roundabout', { blocks: 5 }), 422, 'INVALID_LENGTH');
+    refused(await book(buyer, 'ajah-roundabout', { linkUrl: 'http://insecure.ng' }), 422, 'INVALID_LINK');
+    refused(await book(buyer, 'ajah-roundabout', { expectedStartDate: addDays(today(), 3) }), 422, 'DATES_CHANGED');
+    const wrongPrice = await book(buyer, 'ajah-roundabout', { blocks: 2, expectedPriceKobo: 28_000 * NAIRA });
     refused(wrongPrice, 422, 'PRICE_CHANGED');
-    expect(wrongPrice.body.details).toEqual([`weekPriceKobo=${56_000 * NAIRA}`, `totalKobo=${112_000 * NAIRA}`]);
+    expect(wrongPrice.body.details).toEqual([`weekPriceKobo=${28_000 * NAIRA}`, `totalKobo=${56_000 * NAIRA}`]);
 
-    const checkout = ok<CampaignCheckoutDto>(await book(buyer, 'ikeja-allen', { weeks: 2, expectedStartDate: today(), expectedPriceKobo: 112_000 * NAIRA }));
-    expect(checkout.quote).toMatchObject({ weeks: 2, days: 14, weekPriceKobo: 56_000 * NAIRA, totalKobo: 112_000 * NAIRA });
-    expect(checkout.campaign).toMatchObject({ startDate: today(), endDate: addDays(today(), 14), status: 'pending-payment' });
-    expect(Number((await payment(checkout.reference)).amount_kobo)).toBe(112_000 * NAIRA);
+    // Older clients' `weeks` still work on a spot sold by the week.
+    const checkout = ok<CampaignCheckoutDto>(await book(buyer, 'ajah-roundabout', { blocks: undefined, weeks: 2, expectedStartDate: today(), expectedPriceKobo: 56_000 * NAIRA }));
+    expect(checkout.quote).toMatchObject({ blocks: 2, blockDays: 7, days: 14, weekPriceKobo: 28_000 * NAIRA, totalKobo: 56_000 * NAIRA });
+    expect(checkout.campaign).toMatchObject({ startDate: today(), endDate: addDays(today(), 14), status: 'pending-payment', blockDays: 7, blocks: 2 });
+    expect(Number((await payment(checkout.reference)).amount_kobo)).toBe(56_000 * NAIRA);
+  });
+
+  it('sells expensive spots in 3-day blocks (1–9), back to back from the next free day', async () => {
+    const buyer = await createPlayer(e2e);
+    refused(await book(buyer, 'ikeja-allen', { blocks: 10 }), 400);
+    // `weeks` means nothing on a 3-day spot: refused rather than guessed.
+    refused(await book(buyer, 'ikeja-allen', { blocks: undefined, weeks: 1 }), 422, 'INVALID_LENGTH');
+    const wrongPrice = await book(buyer, 'ikeja-allen', { blocks: 2, expectedPriceKobo: 112_000 * NAIRA });
+    refused(wrongPrice, 422, 'PRICE_CHANGED');
+    expect(wrongPrice.body.message).toMatch(/₦24,000 per 3 days/);
+    const checkout = ok<CampaignCheckoutDto>(await book(buyer, 'ikeja-allen', { blocks: 2, expectedStartDate: today(), expectedPriceKobo: 48_000 * NAIRA }));
+    expect(checkout.quote).toMatchObject({ blocks: 2, blockDays: 3, days: 6, blockPriceKobo: 24_000 * NAIRA, weekPriceKobo: 56_000 * NAIRA, totalKobo: 48_000 * NAIRA });
+    expect(checkout.campaign).toMatchObject({ startDate: today(), endDate: addDays(today(), 6), days: 6, blockDays: 3, blocks: 2 });
+    expect(Number((await payment(checkout.reference)).amount_kobo)).toBe(48_000 * NAIRA);
   });
 });
 
 describe('a billboard from booking to the live feed', () => {
   it('pay → moderation queue → approved by an admin → on the live billboards', async () => {
     const buyer = await createPlayer(e2e);
-    const checkout = ok<CampaignCheckoutDto>(await book(buyer, 'mmia-arrivals', { weeks: 2, expectedStartDate: today(), expectedPriceKobo: 350_000 * NAIRA }));
+    const checkout = ok<CampaignCheckoutDto>(await book(buyer, 'mmia-arrivals', { blocks: 2, expectedStartDate: today(), expectedPriceKobo: 150_000 * NAIRA }));
     expect((await live()).slots.find((slot) => slot.slotId === 'mmia-arrivals')?.creatives.map((creative) => creative.campaignId) ?? []).not.toContain(checkout.campaignId);
 
     const paid = await payInSandbox(buyer, checkout.reference);
@@ -124,17 +153,17 @@ describe('a billboard from booking to the live feed', () => {
     expect(audit.items).toHaveLength(1);
   });
 
-  it('a phone-app ad costs ₦100,000 a week, holds its slot, and the next run starts the day the slot is free', async () => {
+  it('a phone-app ad (₦100,000 a week) sells in 3-day blocks of ₦43,000, holds its slot, and the next run starts the day the slot is free', async () => {
     const first = await createPlayer(e2e);
     const second = await createPlayer(e2e);
-    const one = ok<CampaignCheckoutDto>(await book(first, 'app-1', { title: 'Chop Express', tagline: 'Food in 30 minutes', expectedStartDate: today(), expectedPriceKobo: 100_000 * NAIRA }));
-    expect(Number((await payment(one.reference)).amount_kobo)).toBe(100_000 * NAIRA);
-    // While the first booking's checkout is open, the slot is held: the next run starts a week later.
-    const nextFree = addDays(today(), 7);
+    const one = ok<CampaignCheckoutDto>(await book(first, 'app-1', { title: 'Chop Express', tagline: 'Food in 30 minutes', expectedStartDate: today(), expectedPriceKobo: 43_000 * NAIRA }));
+    expect(Number((await payment(one.reference)).amount_kobo)).toBe(43_000 * NAIRA);
+    // While the first booking's checkout is open, the slot is held: the next run starts when its 3 days end.
+    const nextFree = addDays(today(), 3);
     expect((await slots(second)).slots.find((slot) => slot.id === 'app-1')?.nextStarts[0]).toBe(nextFree);
     refused(await book(second, 'app-1', { expectedStartDate: today() }), 422, 'DATES_CHANGED');
-    const two = ok<CampaignCheckoutDto>(await book(second, 'app-1', { title: 'Keke Ride', tagline: 'Book a keke', expectedStartDate: nextFree, expectedPriceKobo: 100_000 * NAIRA }));
-    expect(two.campaign).toMatchObject({ startDate: nextFree, endDate: addDays(nextFree, 7) });
+    const two = ok<CampaignCheckoutDto>(await book(second, 'app-1', { title: 'Keke Ride', tagline: 'Book a keke', expectedStartDate: nextFree, expectedPriceKobo: 43_000 * NAIRA }));
+    expect(two.campaign).toMatchObject({ startDate: nextFree, endDate: addDays(nextFree, 3) });
 
     await payInSandbox(first, one.reference);
     await payInSandbox(second, two.reference);
@@ -146,7 +175,7 @@ describe('a billboard from booking to the live feed', () => {
     // Rejected before it starts running (approved for next week): refunded automatically.
     const rejected = ok<{ status: string }>(await moderator.post(`/moderation/campaigns/${two.campaignId}/reject`, { reason: 'Unlicensed transport service' }));
     expect(rejected.status).toBe('refunded');
-    expect(await payment(two.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(100_000 * NAIRA) });
+    expect(await payment(two.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(43_000 * NAIRA) });
 
     // Rejected while running: taken down, no refund.
     const takenDown = ok<{ status: string }>(await moderator.post(`/moderation/campaigns/${one.campaignId}/reject`, { reason: 'Reported by players' }));
@@ -157,11 +186,11 @@ describe('a billboard from booking to the live feed', () => {
 
   it('rejecting an ad still in review refunds it in full, once', async () => {
     const buyer = await createPlayer(e2e);
-    const checkout = ok<CampaignCheckoutDto>(await book(buyer, 'lagos-tv', { weeks: 3 }));
+    const checkout = ok<CampaignCheckoutDto>(await book(buyer, 'lagos-tv', { blocks: 3 }));
     await payInSandbox(buyer, checkout.reference);
     const rejected = ok<{ status: string }>(await moderator.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Gambling' }));
     expect(rejected.status).toBe('refunded');
-    expect(await payment(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(3 * 42_000 * NAIRA) });
+    expect(await payment(checkout.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(3 * 18_000 * NAIRA) });
     refused(await moderator.post(`/moderation/campaigns/${checkout.campaignId}/reject`, { reason: 'Again' }), 409);
     refused(await moderator.post(`/moderation/campaigns/${checkout.campaignId}/approve`), 409);
   });
@@ -208,8 +237,8 @@ describe('club songs', () => {
     const offer = (await slots(artist)).clubSong;
     refused(await artist.post(`/promotions/tracks/${track.id}/orders`, { productId: 'all-clubs-7d', expectedPriceKobo: 4_000 * NAIRA }), 422, 'PRICE_CHANGED');
     const order = ok<ClubOrderCheckoutDto>(await artist.post(`/promotions/tracks/${track.id}/orders`, { productId: 'all-clubs-7d', expectedStartDate: offer.startDate!, expectedPriceKobo: offer.priceKobo }));
-    expect(order.quote.totalKobo).toBe(5_000 * NAIRA);
-    expect(Number((await payment(order.reference)).amount_kobo)).toBe(5_000 * NAIRA);
+    expect(order.quote.totalKobo).toBe(35_000 * NAIRA);
+    expect(Number((await payment(order.reference)).amount_kobo)).toBe(35_000 * NAIRA);
 
     await payInSandbox(artist, order.reference);
     const queue = ok<ModerationQueueDto>(await moderator.get('/moderation/queue'));
@@ -220,15 +249,27 @@ describe('club songs', () => {
       const rotation = ok<ClubRotationDto>(await call(e2e, 'get', `/promotions/club-rotation?venueId=${venueId}`));
       expect(rotation.tracks.map((entry) => entry.trackId)).toContain(track.id);
     }
+    // Its page says when and where it plays next; the club's own schedule (what its audio plays) says the same.
+    const detail = ok<ClubOrderDetailDto>(await artist.get(`/promotions/club-orders/${order.orderId}`));
+    expect(detail.guarantee).toMatchObject({ playsPerDay: offer.playsPerDay, minPlaysPerDay: offer.minPlaysPerDay, clubs: offer.clubs });
+    expect(detail.receipt).toMatchObject({ amountKobo: 35_000 * NAIRA, blocks: 1, blockDays: 7, paymentReference: order.reference });
+    expect(detail.timeline.map((step) => `${step.step}:${step.state}`)).toEqual(['paid:done', 'in-review:done', 'approved:done', 'live:current', 'ended:next']);
+    const next = detail.playingNow ?? detail.upcoming[0];
+    expect(next).toBeDefined();
+    const schedule = ok<ClubScheduleDto>(await call(e2e, 'get', `/promotions/club-schedule?venueId=${next!.venueId}`));
+    expect(schedule.plays.find((play) => play.startsAtMs === next!.startsAtMs)).toMatchObject({ trackId: track.id, durationSeconds: 180 });
+
     // One running order per song.
     refused(await artist.post(`/promotions/tracks/${track.id}/orders`, { productId: 'all-clubs-7d' }), 409);
 
-    // The other song: paid, then rejected in review → refunded automatically.
-    const second = ok<ClubOrderCheckoutDto>(await artist.post(`/promotions/tracks/${plain.id}/orders`, { productId: 'all-clubs-7d' }));
+    // The other song, two weeks: paid, then rejected in review → refunded automatically, in full.
+    refused(await artist.post(`/promotions/tracks/${plain.id}/orders`, { productId: 'all-clubs-7d', weeks: 2, expectedPriceKobo: 35_000 * NAIRA }), 422, 'PRICE_CHANGED');
+    const second = ok<ClubOrderCheckoutDto>(await artist.post(`/promotions/tracks/${plain.id}/orders`, { productId: 'all-clubs-7d', weeks: 2, expectedPriceKobo: 70_000 * NAIRA }));
+    expect(second.order).toMatchObject({ days: 14, weeks: 2, amountKobo: 70_000 * NAIRA });
     await payInSandbox(artist, second.reference);
     const rejected = ok<{ status: string }>(await moderator.post(`/moderation/club-orders/${second.orderId}/reject`, { reason: 'Explicit lyrics' }));
     expect(rejected.status).toBe('refunded');
-    expect(await payment(second.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(5_000 * NAIRA) });
+    expect(await payment(second.reference)).toMatchObject({ refund_status: 'refunded', refunded_kobo: String(70_000 * NAIRA) });
   });
 });
 
@@ -236,7 +277,7 @@ describe('ad prices set by the owner', () => {
   it('only an owner can change a rate; new quotes use it at once, paid and pending orders keep their price, and it is audited', async () => {
     const buyer = await createPlayer(e2e);
     // A booking made (and quoted) before the change, paid after it.
-    const pending = ok<CampaignCheckoutDto>(await book(buyer, 'app-2', { title: 'Old Price Co', tagline: 'Booked before', expectedPriceKobo: 100_000 * NAIRA }));
+    const pending = ok<CampaignCheckoutDto>(await book(buyer, 'app-2', { title: 'Old Price Co', tagline: 'Booked before', expectedPriceKobo: 43_000 * NAIRA }));
 
     refused(await moderator.put('/ad-rates/phone-app', { priceKobo: 120_000 * NAIRA, reason: 'Moderators can’t' }), 403);
     refused(await owner.put('/ad-rates/phone-app', { priceKobo: 1_999 * NAIRA, reason: 'Below the minimum' }), 400);
@@ -246,31 +287,31 @@ describe('ad prices set by the owner', () => {
 
     const view = await slots(buyer);
     expect(view.slots.find((slot) => slot.id === 'app-6')?.weekPriceKobo).toBe(120_000 * NAIRA);
-    refused(await book(buyer, 'app-6', { expectedPriceKobo: 100_000 * NAIRA }), 422, 'PRICE_CHANGED');
-    const fresh = ok<CampaignCheckoutDto>(await book(buyer, 'app-6', { expectedPriceKobo: 120_000 * NAIRA }));
-    expect(Number((await payment(fresh.reference)).amount_kobo)).toBe(120_000 * NAIRA);
+    refused(await book(buyer, 'app-6', { expectedPriceKobo: 43_000 * NAIRA }), 422, 'PRICE_CHANGED');
+    const fresh = ok<CampaignCheckoutDto>(await book(buyer, 'app-6', { expectedPriceKobo: 51_500 * NAIRA }));
+    expect(Number((await payment(fresh.reference)).amount_kobo)).toBe(51_500 * NAIRA);
 
     // The booking quoted before the change pays what it was quoted and goes to review as normal.
-    expect(Number((await payment(pending.reference)).amount_kobo)).toBe(100_000 * NAIRA);
+    expect(Number((await payment(pending.reference)).amount_kobo)).toBe(43_000 * NAIRA);
     await payInSandbox(buyer, pending.reference);
     const [row] = await e2e.dataSource.query<Array<{ status: string; amount_kobo: string }>>(`SELECT status, amount_kobo FROM promotion_campaigns WHERE id = $1`, [pending.campaignId]);
-    expect(row).toMatchObject({ status: 'in-review', amount_kobo: String(100_000 * NAIRA) });
+    expect(row).toMatchObject({ status: 'in-review', amount_kobo: String(43_000 * NAIRA) });
 
     // Club songs too.
-    ok(await owner.put('/ad-rates/club-song', { priceKobo: 7_000 * NAIRA, reason: 'Festive season' }));
-    expect((await slots(buyer)).clubSong.priceKobo).toBe(7_000 * NAIRA);
+    ok(await owner.put('/ad-rates/club-song', { priceKobo: 49_000 * NAIRA, reason: 'Festive season: ₦7,000 a day' }));
+    expect((await slots(buyer)).clubSong.priceKobo).toBe(49_000 * NAIRA);
 
     const audit = ok<{ items: Array<{ action: string; before: { priceKobo: number }; after: { priceKobo: number } }> }>(await owner.get('/audit-logs?action=ad-rate.update'));
     expect(audit.items.map((entry) => [entry.before.priceKobo, entry.after.priceKobo])).toEqual(
       expect.arrayContaining([
         [100_000 * NAIRA, 120_000 * NAIRA],
-        [5_000 * NAIRA, 7_000 * NAIRA],
+        [35_000 * NAIRA, 49_000 * NAIRA],
       ]),
     );
 
     // Back to the defaults (setting the default price removes the override).
     expect(ok<AdRateDto>(await owner.put('/ad-rates/phone-app', { priceKobo: 100_000 * NAIRA, reason: 'Back to normal' })).updatedAt).toBeNull();
-    ok(await owner.put('/ad-rates/club-song', { priceKobo: 5_000 * NAIRA, reason: 'Back to normal' }));
+    ok(await owner.put('/ad-rates/club-song', { priceKobo: 35_000 * NAIRA, reason: 'Back to normal' }));
     expect((await slots(buyer)).slots.find((slot) => slot.id === 'app-6')?.weekPriceKobo).toBe(100_000 * NAIRA);
   });
 });

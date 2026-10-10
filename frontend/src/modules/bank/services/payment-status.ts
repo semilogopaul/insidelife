@@ -1,4 +1,5 @@
 import { formatNaira, type PaymentDto, type PaymentPurpose } from '@insidelife/shared';
+import { deliveredAlert, type PaymentAlert } from '@/common/payments';
 
 /**
  * What a payment's state means to the player after checkout. `success` + `fulfilled` is the only "done" state;
@@ -41,11 +42,44 @@ export function outcomeCopy(payment: PaymentDto): OutcomeCopy {
     case 'delivering':
       return { title: 'Paid. Delivering now…', body: 'Flutterwave confirmed your payment. We’re finishing the delivery; this usually takes a few seconds.' };
     case 'pending':
-      return { title: 'Waiting for confirmation', body: 'Your bank hasn’t confirmed the payment yet. Bank transfers and USSD can take a minute.' };
+      return {
+        title: 'Waiting for confirmation',
+        body: 'Flutterwave hasn’t confirmed the payment yet. Bank transfers and USSD can take a few minutes. If you paid, it’s safe: we keep checking and credit it automatically.',
+      };
     case 'failed':
-      return { title: 'Payment didn’t go through', body: 'You weren’t charged. Try again, or use another card or bank.' };
+      return { title: 'Payment didn’t go through', body: 'You weren’t charged. Try again, or use another card or bank. Paid anyway? Check again: a payment that lands later still counts.' };
     case 'abandoned':
-      return { title: 'Checkout was closed', body: 'You left checkout before paying, so nothing was charged.' };
+      return { title: 'Checkout was closed', body: 'You left checkout before paying, so nothing was charged. Paid anyway? Check again: a payment that lands later still counts.' };
+  }
+}
+
+const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * Does this history row offer "I've paid: check now"? Anything not yet confirmed: pending ones, and failed or closed
+ * ones for a day (a late payment still counts, and the server keeps checking that long).
+ */
+export function offersPaidCheck(payment: Pick<PaymentDto, 'status' | 'createdAt'>, now: number): boolean {
+  if (payment.status === 'initialized') return true;
+  if (payment.status === 'success') return false;
+  return now - Date.parse(payment.createdAt) <= DAY_MS;
+}
+
+/** The alert after "I've paid: check now": what Flutterwave says now, and never a dead end for a payment that may be paid. */
+export function checkResultAlert(payment: PaymentDto): PaymentAlert {
+  if (isRefunded(payment)) return { title: 'Payment refunded', body: `${formatNaira(payment.refundedNgn)} went back to your card or bank.`, tone: 'neutral' };
+  const safe = 'If you paid, it’s safe: we keep checking with Flutterwave and credit it the moment it’s confirmed.';
+  switch (paymentOutcome(payment)) {
+    case 'delivered':
+      return deliveredAlert(payment);
+    case 'delivering':
+      return { title: 'Paid. Delivering now…', body: 'Flutterwave confirmed it. It lands in a few seconds.', tone: 'good' };
+    case 'pending':
+      return { title: 'Not confirmed yet', body: `Flutterwave hasn’t confirmed this payment yet. ${safe}`, tone: 'neutral' };
+    case 'failed':
+      return { title: 'Flutterwave says it didn’t go through', body: `You weren’t charged for that attempt. ${safe}`, tone: 'neutral' };
+    case 'abandoned':
+      return { title: 'No payment found yet', body: `Flutterwave has no completed payment for this checkout. ${safe}`, tone: 'neutral' };
   }
 }
 

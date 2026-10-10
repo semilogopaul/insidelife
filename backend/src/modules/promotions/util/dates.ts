@@ -5,10 +5,14 @@ import { PriceChangedException, PromotionRuleException } from '../promotions.err
  * The buyer saw a price before paying; if ops re-priced it since, stop rather than charge a different amount (the
  * error carries the new quote; the app shows it again).
  */
-export function assertExpectedPrice(expectedKobo: number | undefined, quote: { readonly weekPriceKobo: number; readonly totalKobo: number }, unit: 'week' | 'song'): void {
+export function assertExpectedPrice(
+  expectedKobo: number | undefined,
+  quote: { readonly weekPriceKobo: number; readonly totalKobo: number; readonly blockPriceKobo: number; readonly blockDays: number },
+): void {
   if (expectedKobo === undefined || expectedKobo === quote.totalKobo) return;
   const now = formatNaira(koboToNaira(quote.totalKobo));
-  const per = unit === 'week' ? ` (${formatNaira(koboToNaira(quote.weekPriceKobo))} a week)` : '';
+  const block = formatNaira(koboToNaira(quote.blockPriceKobo));
+  const per = quote.blockDays === 7 ? ` (${block} a week)` : ` (${block} per ${quote.blockDays} days)`;
   throw new PriceChangedException(`The price just changed to ${now}${per}. Check it and pay again`, quote.weekPriceKobo, quote.totalKobo);
 }
 

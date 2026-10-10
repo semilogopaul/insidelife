@@ -42,6 +42,58 @@ export function rejectedNotice(subject: NoticeSubject, reason: string, refund: b
   };
 }
 
+/** Deep links into the Promote app (see the frontend's PromoteApp): an ad's or a song order's detail. */
+export const campaignLink = (campaignId: string): string => `campaign:${campaignId}`;
+export const songLink = (orderId: string, venueId?: string): string => (venueId ? `song:${orderId}:${venueId}` : `song:${orderId}`);
+
+const count = (value: number, one: string, many: string): string => `${value.toLocaleString('en-NG')} ${value === 1 ? one : many}`;
+
+export function adLiveNotice(campaignId: string, title: string, where: string): PromotionNotice {
+  return {
+    title: 'Your ad is live',
+    body: `“${title}” is up on ${where} now. Every player who passes it counts as a view.`,
+    tone: 'good',
+    link: { app: 'promote', param: campaignLink(campaignId), label: 'See it' },
+  };
+}
+
+export function adEndedNotice(campaignId: string, title: string, where: string, views: number, viewers: number): PromotionNotice {
+  return {
+    title: `Your campaign has ended: ${count(views, 'view', 'views')}`,
+    body: `“${title}” on ${where} finished its run: ${count(views, 'view', 'views')} from ${count(viewers, 'player', 'players')}. Run it again any time.`,
+    tone: 'neutral',
+    link: { app: 'promote', param: campaignLink(campaignId), label: 'Run it again' },
+  };
+}
+
+export function songLiveNotice(orderId: string, song: string): PromotionNotice {
+  return {
+    title: 'Your song is in rotation',
+    body: `“${song}” plays in every club and lounge from today. Open Promote to see when and where it plays next.`,
+    tone: 'good',
+    link: { app: 'promote', param: songLink(orderId), label: 'See the times' },
+  };
+}
+
+/** "🎶 Your song is on at Quilox now. Go hear it!" with a way there. */
+export function songPlayingNotice(orderId: string, song: string, venueId: string, venueName: string, canEnter: boolean): PromotionNotice {
+  return {
+    title: `🎶 Your song is on at ${venueName} now`,
+    body: canEnter ? `“${song}” is playing at ${venueName}. Go hear it!` : `“${song}” is playing at ${venueName} right now.`,
+    tone: 'good',
+    link: canEnter ? { app: 'promote', param: songLink(orderId, venueId), label: 'Take me there' } : { app: 'promote', param: songLink(orderId), label: 'See the times' },
+  };
+}
+
+export function songEndedNotice(orderId: string, song: string, plays: number, listeners: number, clubs: number): PromotionNotice {
+  return {
+    title: `Your song’s run has ended: ${count(plays, 'play', 'plays')}`,
+    body: `“${song}” played ${count(plays, 'time', 'times')} in ${count(clubs, 'club', 'clubs')} and was heard by ${count(listeners, 'player', 'players')}. Run it again any time.`,
+    tone: 'neutral',
+    link: { app: 'promote', param: songLink(orderId), label: 'Run it again' },
+  };
+}
+
 export function refundedNotice(subject: NoticeSubject, amountKobo: number): PromotionNotice {
   return {
     title: `${subject.noun} refund sent`,

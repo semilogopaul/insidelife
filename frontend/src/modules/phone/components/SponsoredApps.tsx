@@ -1,33 +1,95 @@
 'use client';
 
 import { ExternalLink } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { LivePhoneAppDto } from '@insidelife/shared';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { AD_VIEW_BATCH_MAX, AD_VIEW_DEDUPE_GAME_MINUTES, AD_VIEW_MAX_AGE_MS, type AdViewReport, type LivePhoneAppDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { AppIcon } from '@/common/brand/app-icons';
 import { Button, Sheet, toast } from '@/common/components';
+import { gameClock } from '@/common/game/game-clock';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { adTrackingApi, safeExternalUrl } from '@/common/promotions/ad-tracking';
 import { useLiveAds } from '@/common/promotions/use-live-ads';
 import { site } from '@/config/site';
 
+/** Wait this long after the shelf shows apps so one report carries them all. */
+const COALESCE_MS = 1_000;
+const RETRY_MS = 20_000;
+
 /**
- * Sponsored apps on the phone's home screen (real advertisers, booked in Promote). The shelf counts one impression per
- * app each time the home screen opens; a tap opens the app's page, and its button leaves the game only after the same
- * "you're leaving Inside Life" confirmation the billboards use. An empty shelf invites players to advertise.
+ * Views of the Sponsored shelf (rules in shared `catalog/ad-views.ts`): an app counts when at least half of its icon is
+ * on screen, once per campaign per game hour (kept for the page, so reopening the phone doesn't count again), reported
+ * in one batch with `seenAt` on the server clock. Failed reports are retried while they're fresh enough to count.
+ */
+const shelfViews = {
+  countedIn: new Map<string, number>(),
+  pending: [] as AdViewReport[],
+  timer: 0,
+};
+
+function recordShelfView(app: Pick<LivePhoneAppDto, 'slotId' | 'campaignId'>): void {
+  const bucket = Math.floor(gameClock.now() / AD_VIEW_DEDUPE_GAME_MINUTES);
+  if (shelfViews.countedIn.get(app.campaignId) === bucket) return;
+  shelfViews.countedIn.set(app.campaignId, bucket);
+  shelfViews.pending.push({ slotId: app.slotId, campaignId: app.campaignId, seenAt: gameClock.serverNow() });
+  scheduleShelfFlush(COALESCE_MS);
+}
+
+function scheduleShelfFlush(delayMs: number): void {
+  if (shelfViews.timer) return;
+  shelfViews.timer = window.setTimeout(flushShelfViews, delayMs);
+}
+
+function flushShelfViews(): void {
+  shelfViews.timer = 0;
+  const now = gameClock.serverNow();
+  shelfViews.pending = shelfViews.pending.filter((view) => now - view.seenAt <= AD_VIEW_MAX_AGE_MS);
+  const batch = shelfViews.pending.splice(0, AD_VIEW_BATCH_MAX);
+  if (batch.length === 0) return;
+  adTrackingApi.views({ views: batch }).catch(() => {
+    shelfViews.pending.unshift(...batch);
+    scheduleShelfFlush(RETRY_MS);
+  });
+  if (shelfViews.pending.length > 0) scheduleShelfFlush(COALESCE_MS);
+}
+
+/** Records each app whose icon is at least half on screen (one observer for the whole shelf). */
+function useShelfViews(apps: readonly LivePhoneAppDto[]): RefObject<HTMLUListElement | null> {
+  const list = useRef<HTMLUListElement>(null);
+  useEffect(() => {
+    const node = list.current;
+    if (!node || apps.length === 0) return;
+    const bySlot = new Map(apps.map((app) => [app.slotId, app]));
+    const items = [...node.querySelectorAll<HTMLElement>('[data-slot-id]')];
+    if (typeof IntersectionObserver === 'undefined') {
+      for (const app of apps) recordShelfView(app);
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        for (const entry of entries) {
+          const app = entry.isIntersecting ? bySlot.get((entry.target as HTMLElement).dataset.slotId ?? '') : undefined;
+          if (app) recordShelfView(app);
+        }
+      },
+      { threshold: 0.5 },
+    );
+    for (const item of items) observer.observe(item);
+    return () => observer.disconnect();
+  }, [apps]);
+  return list;
+}
+
+/**
+ * Sponsored apps on the phone's home screen (real advertisers, booked in Promote). Each app shown counts as a view
+ * (once per game hour, see `recordShelfView`); a tap opens the app's page, and its button leaves the game only after the
+ * same "you're leaving Inside Life" confirmation the billboards use. An empty shelf invites players to advertise.
  */
 export function SponsoredShelf({ onOpen }: { readonly onOpen: (app: LivePhoneAppDto) => void }) {
   const { data } = useLiveAds();
   const apps = useMemo(() => data?.phoneApps ?? [], [data]);
-  const counted = useRef<string>('');
-
-  useEffect(() => {
-    const key = apps.map((app) => app.campaignId).join(',');
-    if (!key || counted.current === key) return;
-    counted.current = key;
-    adTrackingApi.impressions({ campaignIds: apps.map((app) => app.campaignId) }).catch(() => undefined);
-  }, [apps]);
+  const list = useShelfViews(apps);
 
   return (
     <section aria-labelledby="sponsored-heading" className="mt-6">
@@ -35,9 +97,9 @@ export function SponsoredShelf({ onOpen }: { readonly onOpen: (app: LivePhoneApp
         Sponsored
       </h3>
       {apps.length > 0 ? (
-        <ul className="grid grid-cols-4 gap-x-3 gap-y-5">
+        <ul ref={list} className="grid grid-cols-4 gap-x-3 gap-y-5">
           {apps.map((app) => (
-            <li key={app.slotId}>
+            <li key={app.slotId} data-slot-id={app.slotId}>
               <button
                 type="button"
                 onClick={() => {

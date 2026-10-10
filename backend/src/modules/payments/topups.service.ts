@@ -74,8 +74,11 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
     };
   }
 
-  /** Start a checkout for a pack or a custom amount. The rate is quoted here and stored on the payment. */
-  async start(userId: string, request: CreateTopupRequest): Promise<TopupStartedDto> {
+  /**
+   * Start a checkout for a pack or a custom amount. The rate is quoted here and stored on the payment. `returnOrigin`:
+   * the web origin the player is on (`requestOrigin`), so Flutterwave sends them back there when it is one of ours.
+   */
+  async start(userId: string, request: CreateTopupRequest, returnOrigin: string | null = null): Promise<TopupStartedDto> {
     const quoted = quoteTopup(request, this.maxNgn);
     if (!quoted.ok) throw new GameRuleException('INVALID_TOPUP', quoted.reason);
     const { quote } = quoted;
@@ -94,6 +97,7 @@ export class TopupsService implements CheckoutFulfiller, OnModuleInit {
         description: `Inside Life top-up: ${formatNaira(quote.virtualAmount)} in game (${quote.label})`.slice(0, 120),
         subjectId: quote.subjectId,
         topupRate: quote.ratePerNaira,
+        returnOrigin,
       },
       (manager, checkoutRequest) => this.enforceDailyCap(manager, checkoutRequest),
     );

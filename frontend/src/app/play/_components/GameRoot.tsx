@@ -12,7 +12,8 @@ import { ErrorBoundary, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { usePlayState } from '@/common/game/play-state';
 import { useSnapshot, useSnapshotConsistency } from '@/common/game/snapshot';
-import { useUi } from '@/common/game/ui-store';
+import { PHONE_APPS as ALL_PHONE_APPS, useUi, type PhoneApp } from '@/common/game/ui-store';
+import { usePaymentRecovery } from '@/common/payments';
 import { useClockSync } from '@/common/game/use-game-clock';
 import { connectSocket, disconnectSocket } from '@/common/realtime/socket';
 import { useRealtimeEvent } from '@/common/realtime/use-realtime';
@@ -77,6 +78,9 @@ export function GameRoot() {
 
   // New DMs anywhere in the game: badge the phone and pop up an alert that opens the conversation in Messages.
   useDmAlerts(characterId, (sender) => useUi.getState().openPhone('messages', dmLink(sender)));
+
+  // Payments that landed while the player was away (closed tab, a redirect that never came back): checked on focus.
+  usePaymentRecovery();
   // Speech bubbles and the Nearby log: what people around you say out loud.
   useSpeechFeed(characterId);
 
@@ -89,7 +93,16 @@ export function GameRoot() {
   useRealtimeEvent('notification', (notification) => {
     // Achievement unlocks get their own badge burst (CelebrationLayer); everything else is a toast.
     if (!isCelebratedNotification(notification)) {
-      toast({ title: notification.title, body: notification.body, tone: notification.tone, amount: notification.amount });
+      // A live alert can carry a button into a phone app ("Take me there" → Promote, "Run it again").
+      const link = notification.link;
+      const app = link && isPhoneApp(link.app) ? link.app : null;
+      toast({
+        title: notification.title,
+        body: notification.body,
+        tone: notification.tone,
+        amount: notification.amount,
+        ...(link && app ? { actionLabel: link.label, onOpen: () => useUi.getState().openPhone(app, link.param) } : {}),
+      });
     }
     gameEvents.emit('sfx', { id: notification.amount && notification.amount > 0 ? 'cash-in' : 'notification' });
     void client.invalidateQueries({ queryKey: queryKeys.notifications });
@@ -147,4 +160,9 @@ function WorldCrashed({ onRetry }: { readonly onRetry: () => void }) {
       </div>
     </div>
   );
+}
+
+/** A notification link's app is a phone app this build knows (older or newer servers may send others). */
+function isPhoneApp(app: string): app is PhoneApp {
+  return (ALL_PHONE_APPS as readonly string[]).includes(app);
 }

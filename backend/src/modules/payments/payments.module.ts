@@ -16,6 +16,7 @@ import { FlutterwaveWebhookService } from './flutterwave-webhook.service.js';
 import { FlutterwaveClient } from './gateways/flutterwave.client.js';
 import { PAYMENT_GATEWAY, type PaymentGateway } from './gateways/payment-gateway.interface.js';
 import { SandboxGateway } from './gateways/sandbox.gateway.js';
+import { PaymentCheckLimiter } from './payment-check-limiter.service.js';
 import { PaymentsEventsProcessor } from './payments-events.processor.js';
 import { PAYMENTS_QUEUE } from './payments-queue.js';
 import { PaymentsSandboxController } from './payments-sandbox.controller.js';
@@ -41,6 +42,7 @@ import { TopupsService } from './topups.service.js';
       useFactory: (config: ConfigService<AppConfig, true>, flutterwave: FlutterwaveClient, sandbox: SandboxGateway): PaymentGateway =>
         config.get('payments', { infer: true }).sandbox ? sandbox : flutterwave,
     },
+    PaymentCheckLimiter,
     CheckoutService,
     { provide: CHECKOUT_PORT, useExisting: CheckoutService },
     CheckoutReconciler,

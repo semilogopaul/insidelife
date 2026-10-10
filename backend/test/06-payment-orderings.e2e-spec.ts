@@ -61,7 +61,7 @@ async function startPurchase(kind: Kind): Promise<Purchase> {
     if (!slotId) throw new RangeError('Ran out of free roadside slots');
     const creative = await uploadCreative(buyer, slotId);
     const checkout = ok<CampaignCheckoutDto>(
-      await buyer.post('/promotions/campaigns', { slotId, creativeKey: creative.creativeKey, title: 'Pepper Soup Joint', linkUrl: 'https://peppersoup.ng', weeks: 1 }),
+      await buyer.post('/promotions/campaigns', { slotId, creativeKey: creative.creativeKey, title: 'Pepper Soup Joint', linkUrl: 'https://peppersoup.ng', blocks: 1 }),
     );
     return { kind, buyer, reference: checkout.reference, amountNaira: checkout.quote.totalKobo / 100, itemId: checkout.campaignId, cashBefore };
   }
@@ -205,7 +205,7 @@ describe('two players racing for the last space (a phone-app slot holds one ad a
       title: `Racer ${player.handle.slice(0, 8)}`,
       tagline: 'First come, first served',
       linkUrl: 'https://racer.ng',
-      weeks: 1,
+      blocks: 1,
       ...(expectedStartDate ? { expectedStartDate } : {}),
     });
   };
@@ -360,7 +360,7 @@ describe('the owner’s phone payment: redirect lost, no webhook, checkout link 
     const late = await createPlayer(e2e);
     const creative = await uploadCreative(late, 'app-7');
     const lateBooking = ok<CampaignCheckoutDto>(
-      await late.post('/promotions/campaigns', { slotId: 'app-7', creativeKey: creative.creativeKey, title: 'Late Payer', tagline: 'Paid too late', linkUrl: 'https://latepayer.ng', weeks: 1 }),
+      await late.post('/promotions/campaigns', { slotId: 'app-7', creativeKey: creative.creativeKey, title: 'Late Payer', tagline: 'Paid too late', linkUrl: 'https://latepayer.ng', blocks: 1 }),
     );
     // The checkout link (and the slot hold) ran out before the player paid.
     await e2e.dataSource.query(`UPDATE promotion_campaigns SET hold_expires_at = now() - interval '1 minute' WHERE id = $1`, [lateBooking.campaignId]);
@@ -374,7 +374,7 @@ describe('the owner’s phone payment: redirect lost, no webhook, checkout link 
         title: 'Prompt Payer',
         tagline: 'Paid on time',
         linkUrl: 'https://promptpayer.ng',
-        weeks: 1,
+        blocks: 1,
         expectedStartDate: lagosToday(),
       }),
     );

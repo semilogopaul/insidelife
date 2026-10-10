@@ -1,10 +1,13 @@
-import type { ClickTargetDto, TrackImpressionsRequest } from '@insidelife/shared';
+import type { ClickTargetDto, TrackViewsRequest } from '@insidelife/shared';
 import { api } from '@/common/api/http';
 
-/** Ad impressions and clicks (public endpoints; signed-in players are attributed by the server). */
+/**
+ * Ad views and links (public endpoints; signed-in players are attributed by the server). Views follow the rules in
+ * shared `catalog/ad-views.ts`; the server re-checks each one against where it last saw the player.
+ */
 export const adTrackingApi = {
-  impressions: (body: TrackImpressionsRequest) => api.post<void>('/promotions/impressions', body),
-  /** Records the click and returns the advertiser's (validated) link. */
+  views: (body: TrackViewsRequest) => api.post<void>('/promotions/views', body),
+  /** The advertiser's (validated) link, opened behind the "You're leaving Inside Life" screen. */
   click: (campaignId: string) => api.post<ClickTargetDto>('/promotions/clicks', { campaignId }),
 };
 

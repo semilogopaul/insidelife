@@ -1,20 +1,24 @@
 'use client';
 
-import { CITY_MAP, findAdPlacement } from '@insidelife/shared';
+import { AD_VIEW_RADIUS_METRES, BILLBOARD_SLOT_IDS, adFaceCentre, adGroundDistance, adSpotGeometry, isInFrontOfAd, type AdSpotGeometry } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { currentBillboard } from '../../city/billboards/billboard-content';
 import { useLiveBillboards } from '../../city/billboards/use-billboards';
-import { promotionsApi } from '../flow/movement.api';
 import type { PlayRuntime } from '../runtime/play-runtime';
-import { ImpressionTracker } from './impressions';
+import { adViewClock, flushWorldAdViews, worldAdViews } from './report-views';
 
-const RANGE = 60;
 const SAMPLE_SECONDS = 0.25;
+const FLUSH_CHECK_MS = 1_000;
+
+const PREMIUM: readonly AdSpotGeometry[] = BILLBOARD_SLOT_IDS.flatMap((slotId) => adSpotGeometry(slotId) ?? []);
+const PREMIUM_IDS: ReadonlySet<string> = new Set(PREMIUM.map((spot) => spot.slotId));
 
 /**
- * Counts billboard impressions: a paid creative on screen, facing the camera, within 60 m for a second. Batches are
- * flushed at most every 20 s to `POST /promotions/impressions` (online sessions only).
+ * Counts views of paid creatives on the city's boards (rules in shared `catalog/ad-views.ts`): the *player* (walking,
+ * driving or riding — not the camera) within `AD_VIEW_RADIUS_METRES` of the board, on its printed side, with the face
+ * on screen, for `AD_VIEW_DWELL_MS` without a break. Each campaign counts once per game hour; views are reported in
+ * batches (`flushWorldAdViews`, at most every 20 s) and only in online sessions.
  */
 export function BillboardTracker({ runtime, online }: { readonly runtime: PlayRuntime; readonly online: boolean }) {
   const { data: live } = useLiveBillboards();
@@ -22,47 +26,45 @@ export function BillboardTracker({ runtime, online }: { readonly runtime: PlayRu
   useEffect(() => {
     liveRef.current = live;
   }, [live]);
-  const tracker = useMemo(() => new ImpressionTracker(), []);
   const timer = useRef(0);
 
-  useFrame(({ camera }, delta) => {
+  useFrame((_, delta) => {
+    if (!online) return;
     timer.current += delta;
     if (timer.current < SAMPLE_SECONDS) return;
     const dtMs = timer.current * 1000;
     timer.current = 0;
+    const player = { x: runtime.subjectX, z: runtime.subjectZ };
     const now = Date.now();
-    const cx = camera.position.x;
-    const cy = camera.position.y;
-    const cz = camera.position.z;
-    const observe = (slotId: string, board: { readonly position: { readonly x: number; readonly z: number }; readonly elevation: number; readonly height: number; readonly width: number; readonly facing: number }, twoSided: boolean): void => {
-      const bx = board.position.x;
-      const by = board.elevation + board.height / 2;
-      const bz = board.position.z;
-      const tx = cx - bx;
-      const tz = cz - bz;
-      const near = Math.hypot(tx, cy - by, tz) <= RANGE;
-      const facing = twoSided || tx * Math.cos(board.facing) + tz * Math.sin(board.facing) > 0;
-      const inView = near && facing && runtime.visible(bx, bz, by, board.width / 2);
-      const content = near ? currentBillboard(slotId, liveRef.current, now) : null;
-      tracker.observe(slotId, content?.kind === 'creative' ? content.campaignId : null, inView, dtMs, now);
+    const clock = adViewClock();
+    const observe = (spot: AdSpotGeometry): void => {
+      const near = adGroundDistance(spot, player) <= AD_VIEW_RADIUS_METRES;
+      const content = near ? currentBillboard(spot.slotId, liveRef.current, now) : null;
+      const campaignId = content?.kind === 'creative' ? content.campaignId : null;
+      let inView = false;
+      if (campaignId && isInFrontOfAd(spot, player)) {
+        const centre = adFaceCentre(spot);
+        inView = runtime.visible(centre.x, centre.z, centre.y, Math.max(spot.width, spot.height) / 2);
+      }
+      worldAdViews.observe(spot.slotId, campaignId, inView, dtMs, clock);
     };
-    for (const board of CITY_MAP.billboards) observe(board.slotId, board, false);
+    for (const spot of PREMIUM) observe(spot);
     // Street spots only matter while a paid creative runs on them.
     for (const slot of liveRef.current?.slots ?? []) {
-      const spot = slot.creatives.length > 0 ? findAdPlacement(slot.slotId) : undefined;
-      if (spot) observe(spot.id, spot, spot.doubleSided);
+      const spot = slot.creatives.length > 0 && !PREMIUM_IDS.has(slot.slotId) ? adSpotGeometry(slot.slotId) : null;
+      if (spot) observe(spot);
     }
   });
 
   useEffect(() => {
     if (!online) return;
-    const id = window.setInterval(() => {
-      const batch = tracker.takeBatch(Date.now());
-      if (!batch) return;
-      promotionsApi.impressions({ campaignIds: batch }).catch(() => tracker.restore(batch));
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [online, tracker]);
+    const id = window.setInterval(() => flushWorldAdViews(), FLUSH_CHECK_MS);
+    return () => {
+      window.clearInterval(id);
+      // Leaving the street (going inside, signing out): send what's queued while it still counts.
+      flushWorldAdViews(true);
+    };
+  }, [online]);
 
   return null;
 }

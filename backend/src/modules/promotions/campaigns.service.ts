@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Brackets, In, LessThanOrEqual, MoreThan, type DataSource, type EntityManager, type Repository } from 'typeorm';
 import {
+  AD_MAX_RUN_DAYS,
   AD_MAX_WEEKS,
   AD_PLACEMENT_KINDS,
   AD_SLOTS,
@@ -11,11 +12,14 @@ import {
   BILLBOARD_ROTATION_SECONDS,
   PROMOTION_CONTENT_RULES,
   PROMOTION_TITLE_MAX,
+  adBlockPriceLabel,
+  adMaxBlocks,
   adQuote,
   adWeekPriceLabel,
-  adWeeksProblem,
   findAdSlot,
   phoneAppSlotNumber,
+  runLengthLabel,
+  type AdCampaignDetailDto,
   type AdCampaignDto,
   type AdPlacementKind,
   type AdSlot,
@@ -43,13 +47,15 @@ import {
 } from '../../common/ports/checkout.port.js';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
-import { AdRatesService, type AdPricing } from './ad-rates.service.js';
+import { AdRatesService, type AdPricing, type SlotBlockPrice } from './ad-rates.service.js';
 import { CreativeService } from './creative.service.js';
 import type { CreateCampaignDto } from './dto/campaign.dto.js';
 import { AdCampaignEntity } from './entities/ad-campaign.entity.js';
+import { ModerationLogEntity } from './entities/moderation-log.entity.js';
 import { appendModerationLog } from './moderation-log.js';
 import { advisoryLock, CHECKOUT_HOLD_MINUTES, LIVE_FEED_CACHE_MS, UUID_PATTERN } from './promotions.constants.js';
-import { clockAt, toCampaignDto, type Clock } from './promotions.mappers.js';
+import { clockAt, receiptOf, toCampaignDto, type Clock } from './promotions.mappers.js';
+import { buildTimeline } from './rules/timeline.rules.js';
 import { autoRefundNotice, paidNotice, refundedNotice, type NoticeSubject } from './promotions.notices.js';
 import { applyRefundToItem, revertRefundOnItem } from './promotion-refunds.js';
 import { PromotionStateException, PromotionRuleException } from './promotions.errors.js';
@@ -72,22 +78,32 @@ interface LiveBillboards {
   readonly dto: LiveBillboardsDto;
   /** campaignId → link, for click tracking. */
   readonly links: ReadonlyMap<string, string>;
+  /** campaignId → the slot it runs on (only campaigns shown right now), for checking views. */
+  readonly slots: ReadonlyMap<string, string>;
 }
 
-const houseAd = (slot: AdSlot, weekPriceKobo: number): BillboardHouseAdDto => ({
+const houseAd = (slot: AdSlot, price: SlotBlockPrice): BillboardHouseAdDto => ({
   headline: 'Your ad here',
   body: 'Open the Billboards app on your phone to put your brand on this board.',
-  priceLabel: adWeekPriceLabel(weekPriceKobo),
+  priceLabel: adBlockPriceLabel(price.blockPriceKobo, price.blockDays),
   action: { type: 'open-phone-app', app: 'billboards', slotId: slot.id },
 });
 
-/** The server's price for `weeks` consecutive weeks on a slot at its current rate. */
-function quoteFor(pricing: AdPricing, slot: AdSlot, weeks: number): PromotionQuote {
+/** The server's price for `blocks` consecutive blocks on a slot at its current rate (and the block length it implies). */
+function quoteFor(pricing: AdPricing, slot: AdSlot, blocks: number): PromotionQuote {
+  const price = pricing.block(slot);
   try {
-    return adQuote(pricing.weekPriceKobo(slot), weeks);
+    return adQuote(price.weekPriceKobo, blocks, price.blockDays);
   } catch (error) {
     throw new PromotionRuleException('INVALID_LENGTH', error instanceof RangeError ? error.message : 'That booking length isn’t available');
   }
+}
+
+/** Blocks asked for: `blocks`, or the older `weeks` on a slot sold by the week. */
+function requestedBlocks(request: Pick<CreateCampaignDto, 'blocks' | 'weeks'>, blockDays: number): number {
+  if (request.blocks !== undefined) return request.blocks;
+  if (request.weeks !== undefined && blockDays === AD_WEEK_DAYS) return request.weeks;
+  throw new PromotionRuleException('INVALID_LENGTH', blockDays === AD_WEEK_DAYS ? 'Choose how many weeks' : `This spot is sold in ${blockDays}-day blocks: choose how many`);
 }
 
 const subjectOf = (campaign: AdCampaignEntity): NoticeSubject => ({
@@ -156,30 +172,33 @@ export class CampaignsService implements OnModuleInit {
     ]);
     const bySlot = new Map<string, AdCampaignEntity[]>();
     for (const booking of bookings) bySlot.set(booking.slotId, [...(bySlot.get(booking.slotId) ?? []), booking]);
-    const freeNow = Array.from({ length: AD_MAX_WEEKS }, () => clock.today);
     return {
       today: clock.today,
       maxWeeks: AD_MAX_WEEKS,
+      maxRunDays: AD_MAX_RUN_DAYS,
       rules: PROMOTION_CONTENT_RULES.filter((rule) => rule.appliesTo !== 'music'),
       clubSong,
       // Static details (name, format, description…) come from the shared catalog on the client; state and price travel.
       slots: this.forSale.map((slot) => {
+        const price = pricing.block(slot);
+        const maxBlocks = adMaxBlocks(price.blockDays);
+        const base = { id: slot.id, weekPriceKobo: price.weekPriceKobo, blockDays: price.blockDays, blockPriceKobo: price.blockPriceKobo, maxBlocks };
         const mine = bySlot.get(slot.id);
-        if (!mine) return { id: slot.id, weekPriceKobo: pricing.weekPriceKobo(slot), nextStarts: freeNow, liveCount: 0 };
+        if (!mine) return { ...base, nextStarts: Array.from({ length: maxBlocks }, () => clock.today), liveCount: 0 };
         const liveCount = mine.filter((booking) => (booking.status === 'approved' || booking.status === 'live') && booking.startDate <= clock.today).length;
-        return { id: slot.id, weekPriceKobo: pricing.weekPriceKobo(slot), nextStarts: this.nextStarts(mine, slot, clock.today), liveCount };
+        return { ...base, nextStarts: this.nextStarts(mine, slot, clock.today, price.blockDays), liveCount };
       }),
     };
   }
 
-  async create(user: AuthUser, request: CreateCampaignDto): Promise<CampaignCheckoutDto> {
+  async create(user: AuthUser, request: CreateCampaignDto, returnOrigin: string | null = null): Promise<CampaignCheckoutDto> {
     const slot = this.slotForSale(request.slotId);
     if (!slot) throw new ResourceNotFoundException('Billboard');
-    const weeksProblem = adWeeksProblem(request.weeks);
-    if (weeksProblem) throw new PromotionRuleException('INVALID_LENGTH', weeksProblem);
     const clock = clockAt();
-    const quote = quoteFor(await this.rates.pricing(), slot, request.weeks);
-    assertExpectedPrice(request.expectedPriceKobo, quote, 'week');
+    const pricing = await this.rates.pricing();
+    const blocks = requestedBlocks(request, pricing.block(slot).blockDays);
+    const quote = quoteFor(pricing, slot, blocks);
+    assertExpectedPrice(request.expectedPriceKobo, quote);
     const title = validateDisplayText(request.title, 'Title', 3, PROMOTION_TITLE_MAX);
     if (!title.ok) throw new PromotionRuleException('INVALID_TITLE', title.reason);
     const link = validatePromotionLink(request.linkUrl);
@@ -218,6 +237,7 @@ export class CampaignsService implements OnModuleInit {
           startDate: range.startDate,
           endDate: range.endDate,
           days: quote.days,
+          blockDays: quote.blockDays,
           amountKobo: quote.totalKobo,
           status: 'pending-payment',
           holdExpiresAt: new Date(clock.now.getTime() + CHECKOUT_HOLD_MINUTES * 60_000),
@@ -225,7 +245,7 @@ export class CampaignsService implements OnModuleInit {
       );
     });
 
-    const session = await this.startCheckout(user, character, campaign, slot);
+    const session = await this.startCheckout(user, character, campaign, slot, returnOrigin);
     return {
       campaignId: campaign.id,
       reference: session.reference,
@@ -239,6 +259,29 @@ export class CampaignsService implements OnModuleInit {
     const clock = clockAt();
     const rows = await this.campaigns.find({ where: { ownerUserId: userId }, order: { createdAt: 'DESC' }, take: 50 });
     return rows.map((row) => toCampaignDto(row, clock));
+  }
+
+  /** "What you paid for": the campaign, its timeline from the audit trail, and the receipt. Owner only. */
+  async detail(userId: string, campaignId: string): Promise<AdCampaignDetailDto> {
+    const clock = clockAt();
+    const campaign = await this.campaigns.findOne({ where: { id: campaignId, ownerUserId: userId } });
+    if (!campaign) throw new ResourceNotFoundException('Campaign');
+    const log = await this.campaigns.manager.find(ModerationLogEntity, {
+      where: { subjectType: 'campaign', subjectId: campaign.id },
+      order: { createdAt: 'ASC' },
+    });
+    const dto = toCampaignDto(campaign, clock);
+    const creativeKept = dto.creativeKey !== null && (await this.creatives.exists(userId, campaign.creativeKey));
+    return {
+      campaign: creativeKept ? dto : { ...dto, creativeKey: null },
+      timeline: buildTimeline(campaign, log, clock.today),
+      receipt: receiptOf(campaign, campaign.blockDays),
+    };
+  }
+
+  /** Live campaign → its slot, for checking reported views. */
+  async liveSlotOf(campaignId: string): Promise<string | null> {
+    return (await this.live.get()).slots.get(campaignId) ?? null;
   }
 
   /** Cancel before payment. A payment that still lands later is honoured if there is room, refunded otherwise. */
@@ -280,14 +323,17 @@ export class CampaignsService implements OnModuleInit {
 
   // ----- Internals --------------------------------------------------------------------------------------------------
 
-  /** `nextStarts[w - 1]` for a w-week booking on a slot with these bookings (see `nextFreeStart`). */
-  private nextStarts(bookings: readonly DateRange[], slot: AdSlot, today: IsoDate): (IsoDate | null)[] {
-    return Array.from({ length: AD_MAX_WEEKS }, (_, index) => nextFreeStart(bookings, today, (index + 1) * AD_WEEK_DAYS, slot.maxConcurrentAds, BILLBOARD_MAX_LEAD_DAYS));
+  /**
+   * `nextStarts[b - 1]` for a booking of b blocks of `blockDays` on a slot with these bookings (see `nextFreeStart`; the
+   * bookings may have been sold in another block length, it works by day).
+   */
+  private nextStarts(bookings: readonly DateRange[], slot: AdSlot, today: IsoDate, blockDays: number): (IsoDate | null)[] {
+    return Array.from({ length: adMaxBlocks(blockDays) }, (_, index) =>
+      nextFreeStart(bookings, today, (index + 1) * blockDays, slot.maxConcurrentAds, BILLBOARD_MAX_LEAD_DAYS),
+    );
   }
 
-  private async startCheckout(user: AuthUser, character: Buyer | null, campaign: AdCampaignEntity, slot: AdSlot): Promise<CheckoutSession> {
-    const weeks = Math.round(campaign.days / AD_WEEK_DAYS);
-    const plural = weeks === 1 ? 'week' : 'weeks';
+  private async startCheckout(user: AuthUser, character: Buyer | null, campaign: AdCampaignEntity, slot: AdSlot, returnOrigin: string | null): Promise<CheckoutSession> {
     let session: CheckoutSession;
     try {
       session = await this.checkout.start({
@@ -297,8 +343,9 @@ export class CampaignsService implements OnModuleInit {
         characterId: character?.id ?? null,
         purpose: 'billboard',
         amountKobo: campaign.amountKobo,
-        description: `Inside Life ad: ${slot.name}, ${weeks} ${plural} from ${campaign.startDate}`.slice(0, 120),
+        description: `Inside Life ad: ${slot.name}, ${runLengthLabel(campaign.days)} from ${campaign.startDate}`.slice(0, 120),
         subjectId: campaign.id,
+        returnOrigin,
       });
     } catch (error) {
       await this.releaseFailedCheckout(campaign.id);
@@ -449,13 +496,17 @@ export class CampaignsService implements OnModuleInit {
       this.rates.pricing(),
     ]);
     const links = new Map<string, string>();
+    const shownOn = new Map<string, string>();
     const bySlot = new Map<string, AdCampaignEntity[]>();
     for (const campaign of running) bySlot.set(campaign.slotId, [...(bySlot.get(campaign.slotId) ?? []), campaign]);
     const slots: LiveBillboardSlotDto[] = [];
     const phoneApps: LivePhoneAppDto[] = [];
     for (const slot of this.forSale) {
       const campaigns = (bySlot.get(slot.id) ?? []).slice(0, slot.maxConcurrentAds);
-      for (const campaign of campaigns) links.set(campaign.id, campaign.linkUrl);
+      for (const campaign of campaigns) {
+        links.set(campaign.id, campaign.linkUrl);
+        shownOn.set(campaign.id, slot.id);
+      }
       if (slot.kind === 'phone-app') {
         const app = campaigns[0];
         if (app) phoneApps.push({ slotId: slot.id, campaignId: app.id, name: app.title, tagline: app.tagline ?? '', iconUrl: app.creativeUrl, linkUrl: app.linkUrl });
@@ -472,10 +523,10 @@ export class CampaignsService implements OnModuleInit {
         rotationSeconds: BILLBOARD_ROTATION_SECONDS,
         creatives,
         hasSpace: creatives.length < slot.maxConcurrentAds,
-        houseAd: houseAd(slot, pricing.weekPriceKobo(slot)),
+        houseAd: houseAd(slot, pricing.block(slot)),
       });
     }
-    return { dto: { generatedAt: clock.now.toISOString(), slots, phoneApps, priceLabels: this.kindPriceLabels(pricing) }, links };
+    return { dto: { generatedAt: clock.now.toISOString(), slots, phoneApps, priceLabels: this.kindPriceLabels(pricing) }, links, slots: shownOn };
   }
 
   /** "From ₦3,500/week" per street placement kind (its cheapest spot), for the empty faces drawn by the client. */

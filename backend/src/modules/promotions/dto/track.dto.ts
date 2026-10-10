@@ -1,5 +1,5 @@
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
-import { CLUB_PLAY_PRODUCT_IDS, type ClubPlayProductId, type CreateClubOrderRequest, type UploadTrackFields } from '@insidelife/shared';
+import { ArrayMaxSize, IsArray, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { AD_MAX_WEEKS, CLUB_PLAY_PRODUCT_IDS, type ClubPlayProductId, type CreateClubOrderRequest, type UploadTrackFields } from '@insidelife/shared';
 
 /** Multipart text fields of `POST /promotions/tracks` (cleaned and bounded again in TracksService). */
 export class UploadTrackDto implements UploadTrackFields {
@@ -15,6 +15,13 @@ export class UploadTrackDto implements UploadTrackFields {
 export class CreateClubOrderDto implements CreateClubOrderRequest {
   @IsIn(CLUB_PLAY_PRODUCT_IDS)
   readonly productId: ClubPlayProductId;
+
+  /** Consecutive weeks (default 1). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(AD_MAX_WEEKS)
+  readonly weeks?: number;
 
   @IsOptional()
   @IsArray()

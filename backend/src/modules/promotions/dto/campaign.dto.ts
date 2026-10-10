@@ -1,5 +1,5 @@
 import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
-import { AD_MAX_WEEKS, LINK_URL_MAX, type BillboardSlotId, type CreateCampaignRequest } from '@insidelife/shared';
+import { AD_MAX_RUN_DAYS, AD_MAX_WEEKS, AD_SHORT_BLOCK_DAYS, LINK_URL_MAX, type BillboardSlotId, type CreateCampaignRequest } from '@insidelife/shared';
 
 /** Slot ids are short kebab-case catalog keys (`findAdSlot` decides whether one exists and is for sale). */
 const SLOT_ID = /^[a-z0-9-]{2,32}$/;
@@ -27,11 +27,19 @@ export class CreateCampaignDto implements CreateCampaignRequest {
   @MaxLength(LINK_URL_MAX + 100)
   readonly linkUrl: string;
 
-  /** Consecutive 7-day blocks; the server picks the start (the slot's next free day). */
+  /** Consecutive blocks of the slot's block length (7 or 3 days); the server picks the start (its next free day). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(Math.floor(AD_MAX_RUN_DAYS / AD_SHORT_BLOCK_DAYS))
+  readonly blocks?: number;
+
+  /** Older clients: weeks, accepted on slots sold by the week. */
+  @IsOptional()
   @IsInt()
   @Min(1)
   @Max(AD_MAX_WEEKS)
-  readonly weeks: number;
+  readonly weeks?: number;
 
   @IsOptional()
   @IsString()

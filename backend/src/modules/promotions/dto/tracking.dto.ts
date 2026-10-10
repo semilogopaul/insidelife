@@ -1,11 +1,34 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsString, IsUUID, MaxLength } from 'class-validator';
-import type { TrackClickRequest, TrackImpressionsRequest, TrackPlayRequest } from '@insidelife/shared';
+import { Type } from 'class-transformer';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsInt, IsString, IsUUID, Matches, MaxLength, Min, ValidateNested } from 'class-validator';
+import { AD_VIEW_BATCH_MAX, type AdViewReport, type TrackClickRequest, type TrackImpressionsRequest, type TrackPlayRequest, type TrackViewsRequest } from '@insidelife/shared';
 
-export class TrackImpressionsDto implements TrackImpressionsRequest {
+export class AdViewReportDto implements AdViewReport {
+  @IsString()
+  @Matches(/^[a-z0-9-]{2,32}$/)
+  readonly slotId: string;
+
+  @IsUUID('all')
+  readonly campaignId: string;
+
+  /** Server-clock epoch ms. */
+  @IsInt()
+  @Min(0)
+  readonly seenAt: number;
+}
+
+export class TrackViewsDto implements TrackViewsRequest {
   @IsArray()
   @ArrayMinSize(1)
+  @ArrayMaxSize(AD_VIEW_BATCH_MAX)
+  @ValidateNested({ each: true })
+  @Type(() => AdViewReportDto)
+  readonly views: AdViewReportDto[];
+}
+
+/** @deprecated No longer counted; kept so older clients get a 204 instead of an error. */
+export class TrackImpressionsDto implements TrackImpressionsRequest {
+  @IsArray()
   @ArrayMaxSize(32)
-  @IsUUID('all', { each: true })
   readonly campaignIds: string[];
 }
 
@@ -14,6 +37,7 @@ export class TrackClickDto implements TrackClickRequest {
   readonly campaignId: string;
 }
 
+/** @deprecated Plays are counted by the server from its own schedule. */
 export class TrackPlayDto implements TrackPlayRequest {
   @IsUUID('all')
   readonly trackId: string;

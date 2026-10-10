@@ -1,4 +1,4 @@
-import { findAdSlot, findClubPlayProduct, type AdCampaignDto, type ClubPlayOrderDto, type ClubTrackDto, type IsoDate } from '@insidelife/shared';
+import { findAdSlot, findClubPlayProduct, type AdCampaignDto, type ClubPlayOrderDto, type ClubTrackDto, type IsoDate, type PromotionReceiptDto } from '@insidelife/shared';
 import type { AdCampaignEntity } from './entities/ad-campaign.entity.js';
 import type { ClubPlayOrderEntity } from './entities/club-play-order.entity.js';
 import type { ClubTrackEntity } from './entities/club-track.entity.js';
@@ -35,6 +35,8 @@ export function toCampaignDto(entity: AdCampaignEntity, clock: Clock): AdCampaig
     startDate: entity.startDate,
     endDate: entity.endDate,
     days: entity.days,
+    blockDays: entity.blockDays,
+    blocks: Math.max(1, Math.round(entity.days / Math.max(1, entity.blockDays))),
     amountKobo: entity.amountKobo,
     status: effectiveStatus(entity.status, entity, clock.today),
     rejectionReason: entity.rejectionReason,
@@ -42,7 +44,10 @@ export function toCampaignDto(entity: AdCampaignEntity, clock: Clock): AdCampaig
     checkoutUrl: openCheckout(entity, clock),
     holdExpiresAt: entity.status === 'pending-payment' ? iso(entity.holdExpiresAt) : null,
     impressions: entity.impressions,
+    uniqueViewers: entity.uniqueViewers,
     clicks: entity.clicks,
+    // A rejected ad's image is deleted after review: it can't be reused.
+    creativeKey: entity.status === 'rejected' || (entity.rejectionReason !== null && entity.reviewedAt !== null) ? null : entity.creativeKey,
     createdAt: entity.createdAt.toISOString(),
     paidAt: iso(entity.paidAt),
     reviewedAt: iso(entity.reviewedAt),
@@ -66,10 +71,30 @@ export function toClubOrderDto(entity: ClubPlayOrderEntity, clock: Clock): ClubP
     paymentReference: entity.paymentReference,
     checkoutUrl: openCheckout(entity, clock),
     holdExpiresAt: entity.status === 'pending-payment' ? iso(entity.holdExpiresAt) : null,
+    weeks: Math.max(1, Math.round(entity.days / 7)),
     plays: entity.plays,
+    listeners: entity.listeners,
+    audience: entity.audience,
     createdAt: entity.createdAt.toISOString(),
     paidAt: iso(entity.paidAt),
     reviewedAt: iso(entity.reviewedAt),
+  };
+}
+
+/** The receipt of a booking: what was charged per block, and what went back (only full refunds are ever made). */
+export function receiptOf(
+  entity: Pick<AdCampaignEntity | ClubPlayOrderEntity, 'amountKobo' | 'days' | 'paymentReference' | 'paidAt' | 'status'>,
+  blockDays: number,
+): PromotionReceiptDto {
+  const blocks = Math.max(1, Math.round(entity.days / Math.max(1, blockDays)));
+  return {
+    amountKobo: entity.amountKobo,
+    blocks,
+    blockDays,
+    blockPriceKobo: Math.round(entity.amountKobo / blocks),
+    paymentReference: entity.paidAt ? entity.paymentReference : null,
+    paidAt: iso(entity.paidAt),
+    refundedKobo: entity.status === 'refunded' ? entity.amountKobo : 0,
   };
 }
 

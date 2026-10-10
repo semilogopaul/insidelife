@@ -3,19 +3,15 @@
 import {
   ENTRY_RADIUS,
   findRoute,
-  findVenue,
   homeEntrance,
   homeKey,
   homeLocationId,
-  servicePointFromLocation,
   straightDistance,
   turnByTurn,
   venueEntrance,
   type CharacterSnapshotDto,
   type CityRoute,
   type DistrictId,
-  type Entrance,
-  type VisitsDto,
   type WorldPoint,
 } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
@@ -24,9 +20,10 @@ import { gameEvents } from '@/common/game/game-events';
 import { useNavigation, type NavigationInstruction } from '@/common/game/navigation-store';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useWorld } from '@/common/game/world-store';
+import { useAdFocus } from '@/common/promotions/ad-focus';
 import { useVisits } from '@/common/visits';
-import { ownedLots } from '../city/layout/owned-lots';
 import { DestinationBeacon } from './DestinationBeacon';
+import { resolveDestination } from './destination';
 import { etaSeconds, instructionText, projectOnRoute, upcomingManeuver, VoicePrompter, type TravelMode } from './guidance';
 import { livePose, livePoseFresh } from './live-pose';
 import { RouteRibbon } from './RouteRibbon';
@@ -34,9 +31,10 @@ import { setActiveRoute, activeRoute } from './route-state';
 
 /**
  * GPS inside the world canvas. When `navigation-store.destinationId` is set it routes from the player to the
- * destination door (A* over the shared road graph), draws the ribbon and beacon, publishes guidance at ~4 Hz,
- * speaks prompts at 200 m / 50 m / now (walking: 50 m / now), re-routes after 25 m off-route and announces arrival
- * inside ENTRY_RADIUS of the door.
+ * destination door (A* over the shared road graph; `resolveDestination`), draws the ribbon and beacon, publishes
+ * guidance at ~4 Hz, speaks prompts at 200 m / 50 m / now (walking: 50 m / now), re-routes after 25 m off-route and
+ * announces arrival inside ENTRY_RADIUS of the door. An ad destination (`ad:<slotId>`, "See it in Lagos") leads to the
+ * spot in front of the board, and arriving there lights the board up (`useAdFocus`).
  */
 
 const GUIDANCE_INTERVAL = 0.25;
@@ -44,32 +42,6 @@ const OFF_ROUTE_METRES = 25;
 const OFF_ROUTE_SECONDS = 1.5;
 const REROUTE_COOLDOWN = 3;
 const CLEAR_AFTER_ARRIVAL_MS = 4000;
-
-interface Destination {
-  readonly id: string;
-  readonly name: string;
-  readonly entrance: Entrance;
-}
-
-/**
- * Resolves a navigation destination id to a door: venues, the player's own home, `property:<id>` they own, or the
- * home of a host whose invite they accepted.
- */
-export function resolveDestination(id: string, name: string | null, snapshot: CharacterSnapshotDto | undefined, visits?: VisitsDto): Destination | null {
-  if (snapshot && id === homeLocationId(snapshot.character.id)) {
-    return { id, name: name ?? 'home', entrance: homeEntrance(homeKey(snapshot.character.id, snapshot.character.homePropertyId), snapshot.character.homeDistrictId as DistrictId) };
-  }
-  const owned = snapshot ? ownedLots(snapshot.summary.properties).find(({ property }) => `property:${property.id}` === id) : undefined;
-  if (owned?.lot.entrance) return { id, name: name ?? owned.property.label, entrance: owned.lot.entrance };
-  const visit = visits?.incoming.find((candidate) => candidate.home.locationId === id && candidate.status === 'accepted');
-  if (visit) return { id, name: name ?? `${visit.host.firstName}’s place`, entrance: visit.home.entrance };
-  // A filling station or mechanic workshop ("Nearest fuel" on the drive alert).
-  const service = servicePointFromLocation(id);
-  if (service) return { id, name: name ?? service.name, entrance: service.entrance };
-  const entrance = venueEntrance(id);
-  if (!entrance) return null;
-  return { id, name: name ?? findVenue(id)?.name ?? 'your destination', entrance };
-}
 
 /** Where the player stands right now: live pose, else the published pose, else the door they came out of. */
 function playerPoint(fallback: WorldPoint | null): WorldPoint | null {
@@ -175,6 +147,7 @@ export function NavigationLayer() {
       store.setGuidance({ text, maneuver: 'arrive', distance: 0 }, 0, 0);
       gameEvents.emit('speak', { text });
       gameEvents.emit('sfx', { id: 'ui-success' });
+      if (destination.adSlotId) useAdFocus.getState().highlightAd(destination.adSlotId);
       const id = destination.id;
       window.setTimeout(() => {
         if (useNavigation.getState().destinationId === id) useNavigation.getState().setDestination(null);

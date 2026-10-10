@@ -46,15 +46,36 @@ export interface AdPlacementSpot {
   readonly doubleSided: boolean;
 }
 
-/** Physical size and mounting per kind. */
-const SHAPE: Readonly<Record<AdPlacementKind, { readonly format: BillboardFormat; readonly width: number; readonly height: number; readonly elevation: number; readonly doubleSided: boolean }>> = {
-  'street-billboard': { format: 'landscape', width: 5.4, height: 1.8, elevation: 4.6, doubleSided: false },
-  'bus-shelter': { format: 'portrait', width: 1.2, height: 1.8, elevation: 0.35, doubleSided: true },
-  totem: { format: 'square', width: 1.3, height: 1.3, elevation: 1.15, doubleSided: true },
-  'stadium-led': { format: 'landscape', width: 6, height: 2, elevation: 0.6, doubleSided: false },
-  'market-banner': { format: 'landscape', width: 3.6, height: 1.2, elevation: 2.8, doubleSided: true },
-  'park-board': { format: 'landscape', width: 4.5, height: 1.5, elevation: 3.2, doubleSided: false },
+interface AdShape {
+  readonly format: BillboardFormat;
+  /** Advert size in metres (the format's aspect). Spots narrow where a neighbour would touch (`fitFaces`). */
+  readonly width: number;
+  readonly height: number;
+  readonly elevation: number;
+  readonly doubleSided: boolean;
+  /** Roadside kinds: how far the face stands back from the pavement line, away from the road (metres). */
+  readonly setback: number;
+}
+
+/**
+ * Physical size and mounting per kind, sized to read from the street on a phone (about 1.6–1.8× the area of the first
+ * city) while staying off the carriageway and clear of building fronts and doors (`ad-placements.spec.ts`): low faces
+ * (shelters, totems) stand back from the kerb so their whole width is over the pavement; street billboards are overhead
+ * and turned a little more along the kerb, so the bigger panel reaches no further over the road than the old one.
+ */
+const SHAPE: Readonly<Record<AdPlacementKind, AdShape>> = {
+  'street-billboard': { format: 'landscape', width: 7.2, height: 2.4, elevation: 4.8, doubleSided: false, setback: 0.2 },
+  'bus-shelter': { format: 'portrait', width: 1.6, height: 2.4, elevation: 0.3, doubleSided: true, setback: 0.5 },
+  totem: { format: 'square', width: 1.7, height: 1.7, elevation: 1, doubleSided: true, setback: 0.35 },
+  'stadium-led': { format: 'landscape', width: 7.5, height: 2.5, elevation: 0.5, doubleSided: false, setback: 0 },
+  'market-banner': { format: 'landscape', width: 4.5, height: 1.5, elevation: 2.8, doubleSided: true, setback: 0 },
+  'park-board': { format: 'landscape', width: 5.7, height: 1.9, elevation: 3.2, doubleSided: false, setback: 0 },
 };
+
+/** Street billboards turn this far from end-on (up the road) towards the road: about 26° off the kerb line. */
+const BILLBOARD_ANGLE = 1.12;
+/** The least gap between two faces at overlapping heights (metres). */
+export const AD_FACE_GAP = 0.3;
 
 /** Pavement line from a road tile's centre (the kerb-side apron; lamps and poles stand at ±4.5). */
 const PAVEMENT = 4.62;
@@ -76,6 +97,8 @@ interface Candidate {
   readonly x: number;
   readonly z: number;
   readonly facing: number;
+  /** Away from the road (roadside candidates only): the direction a setback moves the face. */
+  readonly away?: WorldPoint;
 }
 
 const headingOf = (dx: number, dz: number): number => Math.atan2(dz, dx);
@@ -118,7 +141,7 @@ function roadside(prefix: string, accept: (tile: CityRoadTile) => boolean, along
       const travelX = ax * side;
       const travelZ = -az * side;
       const facing = headingOf(-travelX * Math.cos(angle) - px * side * Math.sin(angle), -travelZ * Math.cos(angle) - pz * side * Math.sin(angle));
-      out.push({ id: `${prefix}-${tile.col}-${tile.row}-${side > 0 ? 'p' : 'n'}`, street: tile.name, x, z, facing });
+      out.push({ id: `${prefix}-${tile.col}-${tile.row}-${side > 0 ? 'p' : 'n'}`, street: tile.name, x, z, facing, away: { x: px * side, z: pz * side } });
     }
   }
   return out;
@@ -161,13 +184,14 @@ function aroundLot(lot: CityLot, prefix: string, count: number, inset: number, w
 
 function spots(kind: AdPlacementKind, candidates: readonly Candidate[]): AdPlacementSpot[] {
   const shape = SHAPE[kind];
+  // The setback moves the face, never the candidate: picking (and so every id) is decided before it.
   return candidates.map((candidate) => ({
     id: candidate.id,
     kind,
     districtId: cityDistrictAt({ x: candidate.x, z: candidate.z }),
     street: candidate.street,
     venueId: candidate.venueId ?? null,
-    position: { x: candidate.x, z: candidate.z },
+    position: { x: candidate.x + (candidate.away?.x ?? 0) * shape.setback, z: candidate.z + (candidate.away?.z ?? 0) * shape.setback },
     elevation: shape.elevation,
     facing: candidate.facing,
     width: shape.width,
@@ -177,10 +201,117 @@ function spots(kind: AdPlacementKind, candidates: readonly Candidate[]): AdPlace
   }));
 }
 
+/** A face as a ground segment with a height range: what `fitFaces` and the spec compare. */
+export interface AdFaceExtent {
+  readonly position: WorldPoint;
+  readonly facing: number;
+  readonly width: number;
+  readonly height: number;
+  readonly elevation: number;
+}
+
+/** The two ends of a face on the ground plane. */
+export function adFaceEnds(face: Pick<AdFaceExtent, 'position' | 'facing' | 'width'>): readonly [WorldPoint, WorldPoint] {
+  const ax = (-Math.sin(face.facing) * face.width) / 2;
+  const az = (Math.cos(face.facing) * face.width) / 2;
+  return [
+    { x: face.position.x - ax, z: face.position.z - az },
+    { x: face.position.x + ax, z: face.position.z + az },
+  ];
+}
+
+/** Closest approach of two ground segments, and where it happens along each (0–1). */
+function segmentGap(a0: WorldPoint, a1: WorldPoint, b0: WorldPoint, b1: WorldPoint): { readonly gap: number; readonly ta: number; readonly tb: number } {
+  const ux = a1.x - a0.x;
+  const uz = a1.z - a0.z;
+  const vx = b1.x - b0.x;
+  const vz = b1.z - b0.z;
+  const cross = ux * vz - uz * vx;
+  if (Math.abs(cross) > 1e-9) {
+    const ta = ((b0.x - a0.x) * vz - (b0.z - a0.z) * vx) / cross;
+    const tb = ((b0.x - a0.x) * uz - (b0.z - a0.z) * ux) / cross;
+    if (ta >= 0 && ta <= 1 && tb >= 0 && tb <= 1) return { gap: 0, ta, tb };
+  }
+  const along = (p: WorldPoint, s: WorldPoint, sx: number, sz: number): number => {
+    const length = sx * sx + sz * sz;
+    return length === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - s.x) * sx + (p.z - s.z) * sz) / length));
+  };
+  let best = { gap: Number.POSITIVE_INFINITY, ta: 0, tb: 0 };
+  for (const [ta, tb] of [
+    [0, along(a0, b0, vx, vz)],
+    [1, along(a1, b0, vx, vz)],
+    [along(b0, a0, ux, uz), 0],
+    [along(b1, a0, ux, uz), 1],
+  ] as const) {
+    const gap = Math.hypot(a0.x + ux * ta - (b0.x + vx * tb), a0.z + uz * ta - (b0.z + vz * tb));
+    if (gap < best.gap) best = { gap, ta, tb };
+  }
+  return best;
+}
+
+/** Horizontal gap between two faces whose height ranges overlap (Infinity when one is wholly above the other). */
+export function adFaceGap(a: AdFaceExtent, b: AdFaceExtent): number {
+  if (Math.min(a.elevation + a.height, b.elevation + b.height) <= Math.max(a.elevation, b.elevation)) return Number.POSITIVE_INFINITY;
+  const [a0, a1] = adFaceEnds(a);
+  const [b0, b1] = adFaceEnds(b);
+  return segmentGap(a0, a1, b0, b1).gap;
+}
+
+/** A face is never narrowed below this share of its kind's size. */
+const MIN_FIT_SCALE = 0.5;
+
+type Sized = { width: number; height: number };
+
+/**
+ * Spots packed along a lot's sides (stadium LEDs, market banners, motor-park boards) or standing near a premium board
+ * could touch a neighbour at full size. Narrow the face whose end is in the way (format aspect kept; premium boards
+ * never change) until every pair at overlapping heights is `AD_FACE_GAP` apart. Deterministic; never moves or drops a spot.
+ */
+function fitFaces(input: readonly AdPlacementSpot[], fixed: readonly AdFaceExtent[]): AdPlacementSpot[] {
+  const out: (AdPlacementSpot & Sized)[] = input.map((spot) => ({ ...spot }));
+  const faces: { readonly face: AdFaceExtent; readonly spot: (AdPlacementSpot & Sized) | null }[] = [...out.map((spot) => ({ face: spot, spot })), ...fixed.map((face) => ({ face, spot: null }))];
+  // Only pairs that could touch at full size are ever compared.
+  const pairs: (readonly [number, number])[] = [];
+  for (let i = 0; i < faces.length; i++) {
+    for (let j = i + 1; j < faces.length; j++) {
+      const a = faces[i] as (typeof faces)[number];
+      const b = faces[j] as (typeof faces)[number];
+      if (!a.spot && !b.spot) continue;
+      if (Math.hypot(a.face.position.x - b.face.position.x, a.face.position.z - b.face.position.z) < (a.face.width + b.face.width) / 2 + AD_FACE_GAP) pairs.push([i, j]);
+    }
+  }
+  const shrink = (spot: (AdPlacementSpot & Sized) | null): void => {
+    if (!spot || spot.width <= SHAPE[spot.kind].width * MIN_FIT_SCALE) return;
+    spot.width *= 0.95;
+    spot.height *= 0.95;
+  };
+  for (let pass = 0; pass < 60; pass++) {
+    let touching = false;
+    for (const [i, j] of pairs) {
+      const a = faces[i] as (typeof faces)[number];
+      const b = faces[j] as (typeof faces)[number];
+      if (adFaceGap(a.face, b.face) >= AD_FACE_GAP) continue;
+      touching = true;
+      const [a0, a1] = adFaceEnds(a.face);
+      const [b0, b1] = adFaceEnds(b.face);
+      const { ta, tb } = segmentGap(a0, a1, b0, b1);
+      const aEnd = ta < 0.02 || ta > 0.98;
+      const bEnd = tb < 0.02 || tb > 0.98;
+      // Narrowing a face only helps when its end is what touches the other.
+      if (aEnd && !bEnd) shrink(a.spot ?? b.spot);
+      else if (bEnd && !aEnd) shrink(b.spot ?? a.spot);
+      else shrink(!b.spot || (a.spot && a.face.width >= b.face.width) ? a.spot : b.spot);
+    }
+    if (!touching) break;
+  }
+  return out;
+}
+
 function generate(): AdPlacementSpot[] {
   const big = (tile: CityRoadTile): boolean => tile.roadClass !== 'street';
-  // Billboards stand ~33° off the kerb line so the panel clears both the carriageway and the buildings behind it.
-  const billboards = pick('street-billboard', roadside('sb', big, 2.2, 1.0), premiumBoards);
+  // Billboards stand ~26° off the kerb line: overhead, the panel reaches less than a metre over the road and clears the
+  // building fronts behind it.
+  const billboards = pick('street-billboard', roadside('sb', big, 2.2, BILLBOARD_ANGLE), premiumBoards);
   const shelters = pick('bus-shelter', roadside('bs', () => true, -2.2, 0), [...premiumBoards, ...billboards]);
   const totems = pick('totem', roadside('tt', (tile) => tile.roadClass !== 'expressway', 0.4, 0), [...premiumBoards, ...billboards, ...shelters]);
   const lotsOf = (archetype: string): CityLot[] => CITY_MAP.lots.filter((lot) => lot.archetype === archetype);
@@ -189,7 +320,7 @@ function generate(): AdPlacementSpot[] {
   const marketBanners = markets.flatMap((lot) => aroundLot(lot, 'mk', Math.round(AD_PLACEMENT_COUNTS['market-banner'] / Math.max(1, markets.length)), 2.5, true));
   const parks = lotsOf('motor-park');
   const parkBoards = parks.flatMap((lot) => aroundLot(lot, 'mp', Math.round(AD_PLACEMENT_COUNTS['park-board'] / Math.max(1, parks.length)), 2, false));
-  return [
+  const all = [
     ...spots('street-billboard', billboards),
     ...spots('bus-shelter', shelters),
     ...spots('totem', totems),
@@ -197,6 +328,7 @@ function generate(): AdPlacementSpot[] {
     ...spots('market-banner', marketBanners),
     ...spots('park-board', parkBoards),
   ].toSorted((a, b) => a.id.localeCompare(b.id));
+  return fitFaces(all, CITY_MAP.billboards);
 }
 
 /** Every generated advertising surface in the city. */

@@ -11,6 +11,7 @@ import {
   TRACK_MIN_SECONDS,
   adQuote,
   koboToNaira,
+  runLengthLabel,
   type BillboardFormat,
   type IsoDate,
   type PromotionQuote,
@@ -104,7 +105,7 @@ export function checkTrackFile(file: Pick<File, 'type' | 'size'>): string | null
 }
 
 /**
- * The browser's reading of a song's length, checked against the rule (30 s to under 5 minutes). The server measures
+ * The browser's reading of a song's length, checked against the rule (30 s to 3 minutes). The server measures
  * the file itself and has the last word.
  */
 export function trackDurationProblem(seconds: number | null): string | null {
@@ -171,18 +172,32 @@ export function formatRunDays(startDate: IsoDate, endDate: IsoDate): string {
 }
 
 export interface QuotePreview extends PromotionQuote {
-  readonly weekNaira: number;
+  readonly blockNaira: number;
   readonly totalNaira: number;
 }
 
-/** Shared `adQuote` (consecutive 7-day blocks at the current weekly price) in naira, or null when it can't be sold. */
-export function quoteWeeks(weekPriceKobo: number, weeks: number): QuotePreview | null {
+/**
+ * Shared `adQuote` in naira: `blocks` consecutive blocks of `blockDays` (7, or 3 for slots of ₦35,000 a week or more)
+ * at the slot's current weekly rate, or null when it can't be sold. The server quotes the same.
+ */
+export function quoteBlocks(weekPriceKobo: number, blocks: number, blockDays: number): QuotePreview | null {
   try {
-    const quote = adQuote(weekPriceKobo, weeks);
-    return { ...quote, weekNaira: koboToNaira(quote.weekPriceKobo), totalNaira: koboToNaira(quote.totalKobo) };
+    const quote = adQuote(weekPriceKobo, blocks, blockDays);
+    return { ...quote, blockNaira: koboToNaira(quote.blockPriceKobo), totalNaira: koboToNaira(quote.totalKobo) };
   } catch {
     return null;
   }
+}
+
+/** @deprecated `quoteBlocks(weekPriceKobo, weeks, 7)`. */
+export const quoteWeeks = (weekPriceKobo: number, weeks: number): QuotePreview | null => quoteBlocks(weekPriceKobo, weeks, 7);
+
+/** How a choice of blocks reads on its button: "1 week", "2 weeks", "3 days", "9 days". */
+export const blocksLabel = (blocks: number, blockDays: number): string => runLengthLabel(blocks * blockDays);
+
+/** "Runs Fri 9 Oct – Sun 11 Oct · 3 days" for a run starting on `start`. */
+export function runSummary(start: IsoDate, days: number): string {
+  return `Runs ${formatRunDays(start, addDays(start, days))} · ${runLengthLabel(days)}`;
 }
 
 /** A slot's next free day in words: "Free from today" / "Next free: Thu 15 Oct" / "Fully booked for 2 months". */

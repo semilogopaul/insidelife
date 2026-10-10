@@ -16,7 +16,7 @@ export function FormatGlyph({ format, className }: { readonly format: BillboardF
   );
 }
 
-/** A board in the list: shape, place, traffic tier, price per 7 days and when a booking made now would start. */
+/** A board in the list: shape, place, traffic tier, price per block (a week, or 3 days) and when a booking would start. */
 export function SlotCard({ slot, today, onOpen }: { readonly slot: BillboardSlotDto; readonly today: IsoDate; readonly onOpen: () => void }) {
   const next = slot.nextStarts[0] ?? null;
   const soldOut = next === null;
@@ -32,9 +32,9 @@ export function SlotCard({ slot, today, onOpen }: { readonly slot: BillboardSlot
       </span>
       <span className="mt-auto">
         <span className="type-figure text-lg">
-          <Money amount={koboToNaira(slot.weekPriceKobo)} />
+          <Money amount={koboToNaira(slot.blockPriceKobo)} />
         </span>
-        <span className="text-xs text-text-soft"> /week</span>
+        <span className="text-xs text-text-soft">{slot.blockDays === 7 ? ' /week' : ` /${slot.blockDays} days`}</span>
       </span>
       <span className={cn('flex items-center gap-1 text-2xs', soldOut ? 'font-bold text-okada' : next === today ? 'font-bold text-naira' : 'text-text-soft')}>
         {soldOut ? <Ban size={11} aria-hidden /> : <CalendarCheck size={11} aria-hidden />}

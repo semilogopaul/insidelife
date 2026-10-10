@@ -7,7 +7,11 @@ import {
   AD_RATE_KEYS,
   AD_MAX_PRICE_KOBO,
   AD_MIN_PRICE_KOBO,
+  AD_WEEK_DAYS,
+  adBlockDays,
+  adBlockPriceKobo,
   adRateKeyOf,
+  adRateSummary,
   adWeekPriceKobo,
   formatNaira,
   isAdRateKey,
@@ -31,6 +35,13 @@ const REASON_MAX = 300;
 
 type Overrides = ReadonlyMap<AdRateKey, AdRateEntity>;
 
+/** A slot's current price as sold: its weekly rate, the block length that rate implies, and one block's price. */
+export interface SlotBlockPrice {
+  readonly weekPriceKobo: number;
+  readonly blockDays: number;
+  readonly blockPriceKobo: number;
+}
+
 /**
  * Runs inside the price change's transaction, after the change is saved (the admin API writes its audit entry here):
  * throwing rolls the change back, so a price never changes without its audit entry.
@@ -39,10 +50,18 @@ export type AdRateHook = (manager: EntityManager, rate: AdRateDto) => Promise<vo
 
 /** Current prices, resolved once for a batch (e.g. the ~560 slots of the slots endpoint). */
 export interface AdPricing {
-  /** Current price of one 7-day block on this slot (rate override or catalog default, district-scaled). */
+  /** Current weekly rate on this slot (rate override or catalog default, district-scaled). */
   weekPriceKobo(slot: Pick<AdSlot, 'id' | 'kind' | 'districtId'>): number;
-  /** Current price of one club song. */
+  /** The weekly rate with the block it's sold in (3 days from ₦35,000 a week, else 7: `adBlockDays`; songs always 7). */
+  block(slot: Pick<AdSlot, 'id' | 'kind' | 'districtId'>): SlotBlockPrice;
+  /** Current price of one week of a club song (always sold by the week). */
   readonly songPriceKobo: number;
+}
+
+/** The block a weekly rate is sold in. */
+export function blockPriceOf(weekPriceKobo: number): SlotBlockPrice {
+  const blockDays = adBlockDays(weekPriceKobo);
+  return { weekPriceKobo, blockDays, blockPriceKobo: adBlockPriceKobo(weekPriceKobo, blockDays) };
 }
 
 /**
@@ -100,8 +119,10 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
   async pricing(): Promise<AdPricing> {
     const overrides = await this.overrides.get();
     const rate = (key: AdRateKey): number => overrides.get(key)?.priceKobo ?? AD_RATE_DEFINITIONS[key].defaultKobo;
+    const weekPriceKobo = (slot: Pick<AdSlot, 'id' | 'kind' | 'districtId'>): number => adWeekPriceKobo(slot, rate(adRateKeyOf(slot)));
     return {
-      weekPriceKobo: (slot) => adWeekPriceKobo(slot, rate(adRateKeyOf(slot))),
+      weekPriceKobo,
+      block: (slot) => blockPriceOf(weekPriceKobo(slot)),
       songPriceKobo: rate('club-song'),
     };
   }
@@ -174,13 +195,20 @@ export class AdRatesService implements OnModuleInit, OnModuleDestroy {
 
   private toDto(key: AdRateKey, override: AdRateEntity | undefined): AdRateDto {
     const definition = AD_RATE_DEFINITIONS[key];
+    const currentKobo = override?.priceKobo ?? definition.defaultKobo;
+    // Club songs are always sold by the week; ads by the block their (base) weekly rate implies.
+    const blockDays = key === 'club-song' ? AD_WEEK_DAYS : adBlockDays(currentKobo);
+    const summary = adRateSummary(currentKobo, blockDays);
     return {
       key,
       label: definition.label,
       unit: definition.unit,
       byDistrict: definition.byDistrict,
       defaultKobo: definition.defaultKobo,
-      currentKobo: override?.priceKobo ?? definition.defaultKobo,
+      currentKobo,
+      blockDays,
+      blockPriceKobo: definition.byDistrict ? null : adBlockPriceKobo(currentKobo, blockDays),
+      summary: definition.byDistrict ? `${summary} (base rate; each district scales it)` : summary,
       updatedAt: override?.updatedAt?.toISOString() ?? null,
       updatedBy: override?.updatedBy ?? null,
     };

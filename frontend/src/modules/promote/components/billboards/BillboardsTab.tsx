@@ -29,10 +29,11 @@ export interface BillboardsTabProps {
   readonly view: BillboardsView;
   readonly onView: (view: BillboardsView) => void;
   readonly onBook: (slotId: BillboardSlotId) => void;
+  readonly onOpenCampaign: (campaignId: string) => void;
 }
 
 /** Every ad spot for sale, by kind and district (cheapest first), plus your campaigns. */
-export function BillboardsTab({ view, onView, onBook }: BillboardsTabProps) {
+export function BillboardsTab({ view, onView, onBook, onOpenCampaign }: BillboardsTabProps) {
   const slots = useSlots();
   const campaigns = useCampaigns();
   const [kind, setKind] = useState<AdSlotKind>('premium-billboard');
@@ -67,7 +68,7 @@ export function BillboardsTab({ view, onView, onBook }: BillboardsTabProps) {
       />
       <div role="tabpanel" aria-label={view === 'boards' ? 'Book a spot' : 'My campaigns'}>
         {view === 'mine' ? (
-          <CampaignList slots={all ?? []} onBrowse={() => onView('boards')} />
+          <CampaignList slots={all ?? []} onBrowse={() => onView('boards')} onOpen={onOpenCampaign} />
         ) : slots.isPending ? (
           <Spinner className="mx-auto my-10 block text-text-soft" />
         ) : slots.isError ? (

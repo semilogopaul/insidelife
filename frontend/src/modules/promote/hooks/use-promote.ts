@@ -3,7 +3,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type { BillboardSlotId, CreateCampaignRequest, CreateClubOrderRequest } from '@insidelife/shared';
+import { toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
+import { checkErrorAlert, checkPayment, invalidateAfterPayment } from '@/common/payments';
 import { promoteApi, promoteKeys } from '../services/promote.api';
 import { toSlotCatalog } from '../services/slot-views';
 
@@ -17,6 +19,44 @@ export function useCampaigns() {
 
 export function useTracks() {
   return useQuery({ queryKey: promoteKeys.tracks, queryFn: promoteApi.tracks, staleTime: 15_000 });
+}
+
+/** An ad's "what you paid for" page (stats refresh every 30 s while it's open). */
+export function useCampaignDetail(id: string) {
+  return useQuery({ queryKey: promoteKeys.campaign(id), queryFn: () => promoteApi.campaign(id), staleTime: 15_000, refetchInterval: 30_000 });
+}
+
+/** A song order's page; refreshed every 20 s so "playing now" and the next times stay right. */
+export function useClubOrderDetail(id: string) {
+  return useQuery({ queryKey: promoteKeys.clubOrder(id), queryFn: () => promoteApi.clubOrder(id), staleTime: 10_000, refetchInterval: 20_000 });
+}
+
+/**
+ * "I've paid: check now": asks the server to verify the payment with Flutterwave right away (delivers it if paid),
+ * then refreshes everything that depends on it and says what happened.
+ */
+export function useCheckPayment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (reference: string) => checkPayment(reference),
+    onSuccess: async (result) => {
+      await invalidateAfterPayment(client);
+      const { payment } = result;
+      if (payment.status === 'success') {
+        gameEvents.emit('sfx', { id: 'ui-success' });
+        toast({ title: 'Payment confirmed', body: payment.fulfilled ? 'It’s in review now. We’ll tell you when a moderator approves it.' : 'Finishing your booking now.', tone: 'good' });
+      } else if (payment.status === 'initialized') {
+        toast({ title: 'Not paid yet', body: 'Flutterwave hasn’t received this payment. If you just paid by transfer or USSD, give it a minute and check again.', tone: 'neutral' });
+      } else {
+        toast({ title: 'That payment didn’t go through', body: 'Nothing was charged. You can book again.', tone: 'neutral' });
+      }
+    },
+    onError: (error) => {
+      gameEvents.emit('sfx', { id: 'ui-error' });
+      const alert = checkErrorAlert(error);
+      toast({ title: alert.title, body: alert.body, tone: alert.tone });
+    },
+  });
 }
 
 /** Leave for checkout (Flutterwave or the dev sandbox). The browser returns to /payments/callback. */

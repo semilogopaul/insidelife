@@ -21,6 +21,13 @@ export interface CheckoutRequest {
   readonly subjectId: string;
   /** Top-ups: game naira per real ₦1 quoted now, stored on the payment (later rate changes never touch it). */
   readonly topupRate?: number;
+  /**
+   * The web origin the player started checkout from (`requestOrigin(request)` from `common/http/request-origin`).
+   * Flutterwave sends them back to the callback page on that origin when it is one of ours (CORS_ORIGINS), so a
+   * player on a phone, a second domain or a dev tunnel returns somewhere they can reach; anything else (missing, not
+   * listed, malformed) returns them to PAYMENT_CALLBACK_URL. Never trusted beyond that allowlist check.
+   */
+  readonly returnOrigin?: string | null;
 }
 
 export interface CheckoutSession {

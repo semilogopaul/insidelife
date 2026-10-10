@@ -1,19 +1,17 @@
 'use client';
 
-import { Eye, Megaphone, MousePointerClick } from 'lucide-react';
-import { koboToNaira, type AdCampaignDto, type BillboardSlotDto } from '@insidelife/shared';
+import { ChevronRight, Eye, Megaphone, Users } from 'lucide-react';
+import { koboToNaira, runLengthLabel, type AdCampaignDto, type BillboardSlotDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
-import { Button, EmptyState, Money, Spinner, toast } from '@/common/components';
-import { useNow } from '@/common/hooks/use-now';
+import { Button, EmptyState, Money, Spinner } from '@/common/components';
 import { useCancelCampaign, useCampaigns } from '../../hooks/use-promote';
 import { formatRange } from '../../services/rules';
 import { STATUS_META } from '../../services/status';
+import { PendingPayment } from '../detail/PendingPayment';
 import { StatusBadge } from '../shared';
 
-const clock = new Intl.DateTimeFormat('en-NG', { hour: 'numeric', minute: '2-digit' });
-
-/** Your bookings with status, reach (impressions, clicks) and the one action each status allows. */
-export function CampaignList({ slots, onBrowse }: { readonly slots: readonly BillboardSlotDto[]; readonly onBrowse: () => void }) {
+/** Your bookings with their status and views; tap one for everything you paid for. */
+export function CampaignList({ slots, onBrowse, onOpen }: { readonly slots: readonly BillboardSlotDto[]; readonly onBrowse: () => void; readonly onOpen: (campaignId: string) => void }) {
   const campaigns = useCampaigns();
   if (campaigns.isPending) return <Spinner className="mx-auto my-10 text-text-soft" />;
   if (campaigns.isError) {
@@ -27,96 +25,76 @@ export function CampaignList({ slots, onBrowse }: { readonly slots: readonly Bil
     );
   }
   if (campaigns.data.length === 0) {
-    return <EmptyState icon={Megaphone} title="No billboards yet" body="Put your brand above Third Mainland Bridge traffic from ₦2,500 a day." action={<Button onClick={onBrowse}>Find a board</Button>} />;
+    return <EmptyState icon={Megaphone} title="No ads yet" body="Put your brand above Third Mainland Bridge traffic, on a bus shelter or on every player’s phone." action={<Button onClick={onBrowse}>Find a spot</Button>} />;
   }
   return (
     <ul className="flex flex-col gap-3">
       {campaigns.data.map((campaign) => (
-        <CampaignCard key={campaign.id} campaign={campaign} aspect={aspectFor(slots, campaign.slotId)} />
+        <CampaignCard key={campaign.id} campaign={campaign} aspect={aspectFor(slots, campaign.slotId)} onOpen={() => onOpen(campaign.id)} />
       ))}
     </ul>
   );
 }
 
-/** "2 weeks" (bookings are whole weeks; older bookings may be any number of days). */
-const runLength = (days: number): string => (days % 7 === 0 ? (days === 7 ? '1 week' : `${days / 7} weeks`) : days === 1 ? '1 day' : `${days} days`);
-
-const aspectFor =(slots: readonly BillboardSlotDto[], slotId: string): string => {
+const aspectFor = (slots: readonly BillboardSlotDto[], slotId: string): string => {
   const slot = slots.find((item) => item.id === slotId);
   return slot ? `${slot.width} / ${slot.height}` : '3 / 1';
 };
 
-function CampaignCard({ campaign, aspect }: { readonly campaign: AdCampaignDto; readonly aspect: string }) {
+function CampaignCard({ campaign, aspect, onOpen }: { readonly campaign: AdCampaignDto; readonly aspect: string; readonly onOpen: () => void }) {
   const cancel = useCancelCampaign();
-  const now = useNow();
   const meta = STATUS_META[campaign.status];
-  const holdOpen = campaign.holdExpiresAt !== null && Date.parse(campaign.holdExpiresAt) > now;
   const showsReach = campaign.status === 'live' || campaign.status === 'completed' || campaign.impressions > 0;
   return (
     <li className="overflow-hidden rounded-sheet ring-1 ring-line">
-      <div className="flex gap-3 p-3">
-        <div className="relative w-24 shrink-0 self-start overflow-hidden rounded-chip bg-ink" style={{ aspectRatio: aspect, maxHeight: 96 }}>
+      <button type="button" onClick={onOpen} className="flex w-full gap-3 p-3 text-left hover:bg-paper-2" aria-label={`${campaign.title}: ${meta.label}. Open what you paid for`}>
+        <span className="relative w-24 shrink-0 self-start overflow-hidden rounded-chip bg-ink" style={{ aspectRatio: aspect, maxHeight: 96 }}>
           {/* eslint-disable-next-line @next/next/no-img-element -- media-server URL, already sized by the server */}
           <img src={campaign.creativeUrl} alt="" className="absolute inset-0 size-full object-cover" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <StatusBadge status={campaign.status} />
-          </div>
-          <p className="mt-1 truncate font-bold leading-tight">{campaign.title}</p>
-          <p className="truncate text-xs text-text-soft">
+        </span>
+        <span className="min-w-0 flex-1">
+          <StatusBadge status={campaign.status} />
+          <span className="mt-1 block truncate font-bold leading-tight">{campaign.title}</span>
+          <span className="block truncate text-xs text-text-soft">
             {campaign.slotName} · {formatRange(campaign.startDate, campaign.endDate)}
-          </p>
-          <p className="text-xs text-text-soft">
-            <Money amount={koboToNaira(campaign.amountKobo)} /> · {runLength(campaign.days)}
-          </p>
+          </span>
+          <span className="block text-xs text-text-soft">
+            <Money amount={koboToNaira(campaign.amountKobo)} /> · {runLengthLabel(campaign.days)}
+          </span>
+          {showsReach && (
+            <span className="mt-1 flex gap-3 text-xs">
+              <span className="inline-flex items-center gap-1">
+                <Eye size={13} aria-hidden /> <strong className="tabular">{campaign.impressions.toLocaleString('en-NG')}</strong> views
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Users size={13} aria-hidden /> <strong className="tabular">{campaign.uniqueViewers.toLocaleString('en-NG')}</strong> players
+              </span>
+            </span>
+          )}
+        </span>
+        <ChevronRight size={18} aria-hidden className="shrink-0 self-center text-text-faint" />
+      </button>
+      {(campaign.status === 'pending-payment' || campaign.rejectionReason) && (
+        <div className="flex flex-col gap-2 border-t border-line bg-paper-2 px-3 py-2.5 text-sm">
+          {campaign.rejectionReason && (campaign.status === 'rejected' || campaign.status === 'refund-due' || campaign.status === 'refunded') && (
+            <p>
+              <span className="font-bold">Moderator: </span>“{campaign.rejectionReason}”
+              {campaign.status === 'refund-due' && <span className="block text-text-soft">{meta.next}</span>}
+            </p>
+          )}
+          {campaign.status === 'pending-payment' && (
+            <PendingPayment
+              compact
+              paymentReference={campaign.paymentReference}
+              checkoutUrl={campaign.checkoutUrl}
+              holdExpiresAt={campaign.holdExpiresAt}
+              onCancel={async () => {
+                await cancel.mutateAsync(campaign.id);
+              }}
+            />
+          )}
         </div>
-      </div>
-      <div className="flex flex-col gap-2 border-t border-line bg-paper-2 px-3 py-2.5 text-sm">
-        {campaign.rejectionReason && (campaign.status === 'rejected' || campaign.status === 'refund-due' || campaign.status === 'refunded') ? (
-          <p>
-            <span className="font-bold">Moderator: </span>“{campaign.rejectionReason}”
-            {campaign.status === 'refund-due' && <span className="block text-text-soft">{meta.next}</span>}
-          </p>
-        ) : (
-          <p className="text-text-soft">{meta.next}</p>
-        )}
-        {showsReach && (
-          <p className="flex gap-4 text-xs">
-            <span className="inline-flex items-center gap-1">
-              <Eye size={13} aria-hidden /> <strong className="tabular">{campaign.impressions.toLocaleString('en-NG')}</strong> views
-            </span>
-            <span className="inline-flex items-center gap-1">
-              <MousePointerClick size={13} aria-hidden /> <strong className="tabular">{campaign.clicks.toLocaleString('en-NG')}</strong> clicks
-            </span>
-          </p>
-        )}
-        {campaign.status === 'pending-payment' && (
-          <div className="flex flex-wrap items-center gap-2">
-            {campaign.checkoutUrl && holdOpen && (
-              <Button size="sm" onClick={() => campaign.checkoutUrl && window.location.assign(campaign.checkoutUrl)}>
-                Finish payment
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="paper"
-              loading={cancel.isPending}
-              onClick={() =>
-                cancel.mutate(campaign.id, {
-                  onSuccess: () => toast({ title: 'Booking cancelled', body: 'Nothing was charged.', tone: 'neutral' }),
-                  onError: (error) => toast({ title: 'Couldn’t cancel', body: errorMessage(error), tone: 'bad' }),
-                })
-              }
-            >
-              Cancel booking
-            </Button>
-            {campaign.holdExpiresAt && (
-              <span className="text-xs text-text-soft">{holdOpen ? `Held until ${clock.format(new Date(campaign.holdExpiresAt))}` : 'Hold expired — book again if the board is free'}</span>
-            )}
-          </div>
-        )}
-      </div>
+      )}
     </li>
   );
 }

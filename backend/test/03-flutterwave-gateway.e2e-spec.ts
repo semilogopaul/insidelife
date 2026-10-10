@@ -351,7 +351,7 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
 async function bookAndPay(buyer: Player, slotId: string): Promise<{ checkout: CampaignCheckoutDto; transaction: FakeTransaction }> {
   const creative = await uploadCreative(buyer, slotId);
   const checkout = ok<CampaignCheckoutDto>(
-    await buyer.post('/promotions/campaigns', { slotId, creativeKey: creative.creativeKey, title: 'Mama Put Deluxe', tagline: 'Hot jollof, any time', linkUrl: 'https://mamaput.ng/menu', weeks: 1 }),
+    await buyer.post('/promotions/campaigns', { slotId, creativeKey: creative.creativeKey, title: 'Mama Put Deluxe', tagline: 'Hot jollof, any time', linkUrl: 'https://mamaput.ng/menu', blocks: 1 }),
   );
   const transaction = fw.pay(checkout.reference);
   const verified = ok<PaymentVerificationDto>(await buyer.post(`/payments/${checkout.reference}/verification`, { transactionId: String(transaction.id) }));

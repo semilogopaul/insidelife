@@ -1,19 +1,31 @@
 import { FindOperator, type DataSource, type EntityManager, type Repository } from 'typeorm';
 import type { Queue } from 'bullmq';
+import type { Request } from 'express';
+import type { Redis } from 'ioredis';
 import type { TopupDetailsDto } from '@insidelife/shared';
-import type { CheckoutFulfiller, CheckoutRefund, FulfilmentResult, PaidCheckout } from '../../common/ports/checkout.port.js';
+import type { CheckoutFulfiller, CheckoutRefund, CheckoutRequest, FulfilmentResult, PaidCheckout } from '../../common/ports/checkout.port.js';
+import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import type { CharacterDirectory } from '../characters/character-directory.service.js';
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
 import type { LedgerService } from '../ledger/ledger.service.js';
 import type { CharacterSession } from '../simulation/character-session.service.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { CheckoutReconciler } from './checkout-reconciler.service.js';
-import { claimRefund, decideCharge, nextCheckAt } from './checkout-rules.js';
+import { CHECK_SCHEDULE_MINUTES, claimRefund, decideCharge, FIRST_CHECK_AFTER_MS, nextCheckAt } from './checkout-rules.js';
 import { CheckoutService } from './checkout.service.js';
 import { PaymentEntity } from './entities/payment.entity.js';
 import { FlutterwaveWebhookService, InvalidWebhookSignatureException } from './flutterwave-webhook.service.js';
-import type { GatewayCharge, GatewayRefund, GatewayRefundInput, GatewayRefundRecord, PaymentGateway } from './gateways/payment-gateway.interface.js';
+import type {
+  GatewayCharge,
+  GatewayInitializeInput,
+  GatewayRefund,
+  GatewayRefundInput,
+  GatewayRefundRecord,
+  PaymentGateway,
+} from './gateways/payment-gateway.interface.js';
 import type { SandboxGateway } from './gateways/sandbox.gateway.js';
+import { CHECK_DEBOUNCE_MS, CHECKS_PER_MINUTE, PaymentCheckLimiter } from './payment-check-limiter.service.js';
+import { PaymentsController } from './payments.controller.js';
 import { PaymentsEventsProcessor } from './payments-events.processor.js';
 import { TopupCreditor } from './topup-creditor.service.js';
 import { quoteTopup, topupCredit } from './topup-quote.js';
@@ -149,6 +161,12 @@ class FakePayments {
       this.write(payment);
       return payment;
     },
+    // `start()`: the per-user advisory lock, then the new row.
+    query: async () => [],
+    insert: async (_entity: unknown, values: Partial<PaymentEntity>) => {
+      const row = this.seed({ ...values, createdAt: new Date() });
+      return { identifiers: [{ id: row.id }] };
+    },
   } as unknown as EntityManager;
 
   readonly dataSource = {
@@ -205,7 +223,9 @@ class FakeGateway implements PaymentGateway {
   byReference: GatewayCharge | null = charge();
   byTransaction: GatewayCharge | null = charge();
   verifyError: Error | null = null;
+  verifyTransactionError: Error | null = null;
   refundError: Error | null = null;
+  readonly initialized: GatewayInitializeInput[] = [];
   refundStatus = 'completed';
   /** What `findRefund` / `fetchRefund` report (a refund the gateway has), or an error to throw. */
   knownRefund: GatewayRefundRecord | null = null;
@@ -227,7 +247,8 @@ class FakeGateway implements PaymentGateway {
     return this.knownRefund?.refundId === refundId ? this.knownRefund : null;
   }
 
-  async initialize(): Promise<{ readonly authorizationUrl: string }> {
+  async initialize(input: GatewayInitializeInput): Promise<{ readonly authorizationUrl: string }> {
+    this.initialized.push(input);
     return { authorizationUrl: 'https://checkout.flutterwave.com/v3/hosted/pay/x' };
   }
 
@@ -239,6 +260,7 @@ class FakeGateway implements PaymentGateway {
 
   async verifyTransaction(transactionId: string): Promise<GatewayCharge | null> {
     this.verifiedTransactions.push(transactionId);
+    if (this.verifyTransactionError) throw this.verifyTransactionError;
     return this.byTransaction;
   }
 
@@ -278,14 +300,96 @@ class CountingFulfiller implements CheckoutFulfiller {
   }
 }
 
-function setup(): { payments: FakePayments; gateway: FakeGateway; checkout: CheckoutService; fulfiller: CountingFulfiller } {
+/**
+ * The few Redis commands the check limiter uses (SET … PX … NX, MULTI/INCR, DEL), with expiry on a clock the test
+ * moves by hand. `failing` makes every command throw (Redis down).
+ */
+class FakeRedis {
+  now = 0;
+  failing = false;
+  private readonly store = new Map<string, { value: string; expiresAt: number }>();
+
+  private live(key: string): { value: string; expiresAt: number } | null {
+    const entry = this.store.get(key);
+    if (entry && entry.expiresAt <= this.now) this.store.delete(key);
+    return this.store.get(key) ?? null;
+  }
+
+  private assertUp(): void {
+    if (this.failing) throw new RangeError('connect ECONNREFUSED redis');
+  }
+
+  private setNow(key: string, value: string, ttlMs: number, onlyIfAbsent: boolean): 'OK' | null {
+    if (onlyIfAbsent && this.live(key)) return null;
+    this.store.set(key, { value, expiresAt: this.now + ttlMs });
+    return 'OK';
+  }
+
+  private incrNow(key: string): number {
+    const entry = this.live(key);
+    const next = Number(entry?.value ?? 0) + 1;
+    this.store.set(key, { value: String(next), expiresAt: entry?.expiresAt ?? Number.POSITIVE_INFINITY });
+    return next;
+  }
+
+  advance(ms: number): void {
+    this.now += ms;
+  }
+
+  async set(key: string, value: string, _px: 'PX', ttlMs: number, nx?: 'NX'): Promise<'OK' | null> {
+    this.assertUp();
+    return this.setNow(key, value, ttlMs, nx === 'NX');
+  }
+
+  async del(key: string): Promise<number> {
+    this.assertUp();
+    return this.store.delete(key) ? 1 : 0;
+  }
+
+  multi() {
+    const ops: Array<() => unknown> = [];
+    const chain = {
+      set: (key: string, value: string, _px: 'PX', ttlMs: number, nx?: 'NX') => {
+        ops.push(() => this.setNow(key, value, ttlMs, nx === 'NX'));
+        return chain;
+      },
+      incr: (key: string) => {
+        ops.push(() => this.incrNow(key));
+        return chain;
+      },
+      exec: async () => {
+        this.assertUp();
+        return ops.map((op) => [null, op()] as [null, unknown]);
+      },
+    };
+    return chain;
+  }
+}
+
+const CALLBACK_URL = 'http://localhost:3100/payments/callback';
+const TUNNEL = 'https://x7k2p9-3100.uks1.devtunnels.ms';
+
+interface SetupOptions {
+  readonly env?: 'development' | 'production';
+  readonly corsOrigins?: readonly string[];
+}
+
+/** Config as `CheckoutService` reads it (CORS_ORIGINS, PAYMENT_CALLBACK_URL, NODE_ENV). */
+const checkoutConfig = ({ env = 'development', corsOrigins = ['http://localhost:3100', TUNNEL] }: SetupOptions = {}) => {
+  const values: Record<string, unknown> = { env, corsOrigins, payments: { callbackUrl: CALLBACK_URL } };
+  return { get: (key: string) => values[key] } as never;
+};
+
+function setup(options: SetupOptions = {}): { payments: FakePayments; gateway: FakeGateway; checkout: CheckoutService; fulfiller: CountingFulfiller; redis: FakeRedis } {
   const payments = new FakePayments();
   payments.seed();
   const gateway = new FakeGateway();
-  const checkout = new CheckoutService(payments.dataSource, payments.repository, gateway, {} as SandboxGateway);
+  const redis = new FakeRedis();
+  const limiter = new PaymentCheckLimiter(redis as unknown as Redis);
+  const checkout = new CheckoutService(payments.dataSource, payments.repository, gateway, {} as SandboxGateway, limiter, checkoutConfig(options));
   const fulfiller = new CountingFulfiller();
   checkout.registerFulfiller(fulfiller);
-  return { payments, gateway, checkout, fulfiller };
+  return { payments, gateway, checkout, fulfiller, redis };
 }
 
 describe('decideCharge (Flutterwave: successful, tx_ref matches, NGN, amount ≥ expected)', () => {
@@ -419,6 +523,203 @@ describe('CheckoutService delivery (verify before fulfil, exactly once)', () => 
   it('refuses a second fulfiller for the same purpose', () => {
     const { checkout } = setup();
     expect(() => checkout.registerFulfiller(new CountingFulfiller())).toThrow(RangeError);
+  });
+});
+
+/** `count` unconfirmed checkouts of `userId`. */
+const seedFor = (payments: FakePayments, count: number, userId = USER): string[] =>
+  Array.from({ length: count }, (_, index) => payments.seed({ reference: `ref-${userId}-${index}`, userId }).reference);
+
+/** An ad checkout started from `returnOrigin`. */
+const adCheckout = (returnOrigin?: string | null): CheckoutRequest => ({
+  userId: USER,
+  email: 'ada@example.com',
+  characterId: 'char-1',
+  purpose: 'billboard',
+  amountKobo: 1_750_000,
+  description: 'Inside Life ad: Ikorodu Garage, 1 week',
+  subjectId: 'campaign-1',
+  returnOrigin,
+});
+
+/** An Express request carrying only these headers. */
+const withHeaders = (values: Record<string, string>): Request => ({ get: (name: string) => values[name.toLowerCase()] }) as unknown as Request;
+
+describe('Player checks ("I’ve paid: check now", the callback page, the game’s recovery check)', () => {
+  it('delivers a paid payment at once', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    const { payment, fulfilledNow } = await checkout.verify(USER, REF);
+    expect(fulfilledNow).toBe(true);
+    expect(payment).toMatchObject({ status: 'success', fulfilledAt: expect.any(Date) });
+    expect(gateway.verifiedReferences).toEqual([REF]);
+    expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual([REF]);
+    expect(payments.read(REF)?.paidKobo).toBe(250_000);
+  });
+
+  it('still asks Flutterwave about payments the reconciler marked failed or abandoned (a late payment counts)', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.rows.clear();
+    payments.seed({ reference: 'marked-failed', status: 'failed', failureReason: 'charge_failed', nextCheckAt: null });
+    payments.seed({ reference: 'marked-abandoned', status: 'abandoned', failureReason: 'checkout_expired', nextCheckAt: null });
+    for (const reference of ['marked-failed', 'marked-abandoned']) {
+      const { payment, fulfilledNow } = await checkout.verify(USER, reference);
+      expect(fulfilledNow, reference).toBe(true);
+      expect(payment, reference).toMatchObject({ status: 'success', failureReason: null });
+    }
+    expect(gateway.verifiedReferences).toEqual(['marked-failed', 'marked-abandoned']);
+    expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['marked-failed', 'marked-abandoned']);
+  });
+
+  it('delivers a paid-but-undelivered payment without asking Flutterwave again', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.seed({ status: 'success', paidKobo: 250_000, verifiedAt: new Date(), lastFulfillmentError: 'wallet busy', fulfillmentAttempts: 1 });
+    const { fulfilledNow } = await checkout.verify(USER, REF);
+    expect(fulfilledNow).toBe(true);
+    expect(gateway.verifiedReferences).toEqual([]);
+    expect(fulfiller.delivered).toHaveLength(1);
+  });
+
+  it('asks Flutterwave at most once every 5 s per payment: a repeat gets the stored state (and taps at once make one call)', async () => {
+    const { gateway, checkout, fulfiller, redis } = setup();
+    gateway.byReference = charge({ status: 'pending' });
+    const [first, second] = await Promise.all([checkout.verify(USER, REF), checkout.verify(USER, REF)]);
+    expect([first.payment.status, second.payment.status]).toEqual(['initialized', 'initialized']);
+    expect(gateway.verifiedReferences).toEqual([REF]);
+
+    // The bank confirms; a tap inside the window still answers from what we have, without a gateway call.
+    gateway.byReference = charge();
+    redis.advance(CHECK_DEBOUNCE_MS - 1);
+    expect((await checkout.verify(USER, REF)).payment.status).toBe('initialized');
+    expect(gateway.verifiedReferences).toEqual([REF]);
+
+    redis.advance(1);
+    const later = await checkout.verify(USER, REF);
+    expect(later).toMatchObject({ fulfilledNow: true, payment: { status: 'success' } });
+    expect(gateway.verifiedReferences).toEqual([REF, REF]);
+    expect(fulfiller.delivered).toHaveLength(1);
+  });
+
+  it('limits gateway checks per account (15 a minute), never other accounts, and lets the refused payment be checked later', async () => {
+    const { payments, gateway, checkout, redis } = setup();
+    gateway.byReference = null; // nothing paid yet
+    const mine = seedFor(payments, CHECKS_PER_MINUTE + 1);
+    for (const reference of mine.slice(0, CHECKS_PER_MINUTE)) await checkout.verify(USER, reference);
+    const refused = mine[CHECKS_PER_MINUTE] ?? '';
+    await expect(checkout.verify(USER, refused)).rejects.toMatchObject({ errorCode: 'RATE_LIMITED', status: 429, message: expect.stringMatching(/safe/) });
+    expect(gateway.verifiedReferences).toHaveLength(CHECKS_PER_MINUTE);
+
+    // Someone else is unaffected.
+    const [theirs] = seedFor(payments, 1, 'user-2');
+    await checkout.verify('user-2', theirs ?? '');
+    expect(gateway.verifiedReferences).toHaveLength(CHECKS_PER_MINUTE + 1);
+
+    // A minute later the refused payment is checked (its debounce window was released, not held).
+    redis.advance(60_000);
+    gateway.byReference = charge();
+    await expect(checkout.verify(USER, refused)).resolves.toMatchObject({ fulfilledNow: true });
+  });
+
+  it('never counts debounced repeats against the account (pressing often on one payment is never refused)', async () => {
+    const { gateway, checkout, redis } = setup();
+    gateway.byReference = charge({ status: 'pending' });
+    // 60 taps a minute, one every second: Flutterwave is asked every 5 s (12 times), nothing is refused.
+    for (let second = 0; second < 60; second++) {
+      await checkout.verify(USER, REF);
+      redis.advance(1_000);
+    }
+    expect(gateway.verifiedReferences).toHaveLength(12);
+  });
+
+  it('says “couldn’t reach Flutterwave, try again” (never “not paid”) when the gateway is down, and the next tap asks again', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    gateway.verifyError = new RangeError('ETIMEDOUT');
+    await expect(checkout.verify(USER, REF)).rejects.toMatchObject({ errorCode: 'PAYMENT_CHECK_UNAVAILABLE', status: 502, message: expect.stringMatching(/try again/) });
+    expect(payments.read(REF)).toMatchObject({ status: 'initialized', failureReason: null });
+
+    gateway.verifyError = null;
+    await expect(checkout.verify(USER, REF)).resolves.toMatchObject({ fulfilledNow: true });
+    expect(gateway.verifiedReferences).toEqual([REF, REF]);
+    expect(fulfiller.delivered).toHaveLength(1);
+  });
+
+  it('falls back to the reference when the redirect’s transaction id can’t be looked up', async () => {
+    const { gateway, checkout } = setup();
+    gateway.verifyTransactionError = new RangeError('ECONNRESET');
+    await expect(checkout.verify(USER, REF, TX)).resolves.toMatchObject({ fulfilledNow: true });
+    expect(gateway.verifiedTransactions).toEqual([TX]);
+    expect(gateway.verifiedReferences).toEqual([REF]);
+  });
+
+  it('still checks when Redis is down (fails open: a player can always confirm a payment)', async () => {
+    const { gateway, checkout, redis } = setup();
+    redis.failing = true;
+    await expect(checkout.verify(USER, REF)).resolves.toMatchObject({ fulfilledNow: true });
+    expect(gateway.verifiedReferences).toEqual([REF]);
+  });
+
+  it('only checks the player’s own payments', async () => {
+    const { gateway, checkout } = setup();
+    await expect(checkout.verify('someone-else', REF)).rejects.toMatchObject({ errorCode: 'RESOURCE_NOT_FOUND' });
+    expect(gateway.verifiedReferences).toEqual([]);
+  });
+
+  it('top-up verification is the same check (shares the debounce, delivers at once, then shows the new balance)', async () => {
+    const { gateway, checkout, fulfiller, redis } = setup();
+    const directory = { findLivingByUser: async () => ({ id: 'char-1', alive: true, userId: USER }) } as unknown as CharacterDirectory;
+    const ledger = { balances: async () => ({ cash: 1_000_000 }) } as unknown as LedgerService;
+    const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000 }) };
+    const topups = new TopupsService(checkout, {} as TopupCreditor, directory, {} as never, ledger, { manager: {} } as DataSource, config as never);
+
+    gateway.byReference = charge({ status: 'pending' });
+    await expect(topups.verify(USER, REF)).resolves.toMatchObject({ fulfilledNow: false, balance: null, payment: { status: 'initialized' } });
+    gateway.byReference = charge();
+    await expect(checkout.verify(USER, REF)).resolves.toMatchObject({ fulfilledNow: false, payment: { status: 'initialized' } });
+    expect(gateway.verifiedReferences).toEqual([REF]);
+
+    redis.advance(CHECK_DEBOUNCE_MS);
+    await expect(topups.verify(USER, REF)).resolves.toMatchObject({ fulfilledNow: true, balance: 1_000_000, payment: { status: 'success', fulfilled: true } });
+    expect(fulfiller.delivered).toHaveLength(1);
+  });
+});
+
+describe('Checkout return address (Flutterwave redirect_url)', () => {
+  it('sends the player back to the callback page on the origin they started from, when it is one of ours', async () => {
+    const { gateway, checkout } = setup();
+    await checkout.start(adCheckout(TUNNEL));
+    await checkout.start(adCheckout(`${TUNNEL}/`));
+    expect(gateway.initialized.map((input) => input.redirectUrl)).toEqual([`${TUNNEL}/payments/callback`, `${TUNNEL}/payments/callback`]);
+  });
+
+  it('falls back to PAYMENT_CALLBACK_URL for a missing, foreign or malformed origin', async () => {
+    const { gateway, checkout } = setup();
+    for (const origin of [undefined, null, '', 'https://evil.example', `${TUNNEL}/phish`, 'https://user:pw@x7k2p9-3100.uks1.devtunnels.ms', 'null']) {
+      await checkout.start(adCheckout(origin));
+    }
+    expect(new Set(gateway.initialized.map((input) => input.redirectUrl))).toEqual(new Set([CALLBACK_URL]));
+  });
+
+  it('refuses an http origin in production even when listed', async () => {
+    const { gateway, checkout } = setup({ env: 'production', corsOrigins: ['http://insidelife.online', 'https://insidelife.online'] });
+    await checkout.start(adCheckout('http://insidelife.online'));
+    await checkout.start(adCheckout('https://insidelife.online'));
+    expect(gateway.initialized.map((input) => input.redirectUrl)).toEqual([CALLBACK_URL, 'https://insidelife.online/payments/callback']);
+  });
+
+  it('top-ups: the controller passes the request’s Origin (else Referer) through to Flutterwave’s redirect_url', async () => {
+    const { gateway, checkout } = setup();
+    const directory = { findLivingByUser: async () => ({ id: 'char-1', alive: true, userId: USER }) } as unknown as CharacterDirectory;
+    const users = { findById: async () => ({ id: USER, email: 'ada@example.com' }) };
+    const config = { get: () => ({ dailyLimitNgn: 0, maxTopupNgn: 10_000_000 }) };
+    const topups = new TopupsService(checkout, {} as TopupCreditor, directory, users as never, {} as never, { manager: {} } as DataSource, config as never);
+    const controller = new PaymentsController(checkout, topups);
+    const user = { userId: USER } as AuthUser;
+
+    await controller.startTopup(user, { packageId: 'owambe-pack' }, withHeaders({ origin: TUNNEL }));
+    await controller.startTopup(user, { amountNgn: 700 }, withHeaders({ referer: `${TUNNEL}/play?phone=bank` }));
+    await controller.startTopup(user, { amountNgn: 700 }, withHeaders({ origin: 'https://evil.example' }));
+    await controller.startTopup(user, { amountNgn: 700 }, withHeaders({}));
+    expect(gateway.initialized.map((input) => input.redirectUrl)).toEqual([`${TUNNEL}/payments/callback`, `${TUNNEL}/payments/callback`, CALLBACK_URL, CALLBACK_URL]);
+    expect(gateway.initialized[0]).toMatchObject({ amountKobo: 250_000, metadata: { purpose: 'topup' } });
   });
 });
 
@@ -718,20 +1019,20 @@ const at = (date: Date, minutes: number): Date => new Date(date.getTime() + minu
 describe('CheckoutReconciler', () => {
   const now = new Date('2026-10-09T12:00:00Z');
   const minutesAgo = (minutes: number): Date => new Date(now.getTime() - minutes * 60_000);
-  /** A checkout started `age` minutes ago, scheduled like `start()` does (first check 10 minutes in). */
+  /** A checkout started `age` minutes ago, scheduled like `start()` does (first check 2 minutes in). */
   const checkoutRow = (reference: string, age: number, extra: Partial<PaymentEntity> = {}): Partial<PaymentEntity> => ({
     reference,
     createdAt: minutesAgo(age),
-    nextCheckAt: at(minutesAgo(age), 10),
+    nextCheckAt: at(minutesAgo(age), 2),
     ...extra,
   });
 
   it('checks due checkouts with the gateway, sends owed refunds and expires day-old ones after a last check', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.rows.clear();
-    payments.seed(checkoutRow('fresh', 5));
+    payments.seed(checkoutRow('fresh', 1));
     payments.seed(checkoutRow('stale', 15));
-    payments.seed(checkoutRow('ancient', 25 * 60, { checkAttempts: 5, nextCheckAt: null }));
+    payments.seed(checkoutRow('ancient', 25 * 60, { checkAttempts: 6, nextCheckAt: null }));
     payments.seed({ reference: 'owed', status: 'success', fulfilledAt: minutesAgo(30), refundStatus: 'due', refundReason: 'Sold out', gatewayTransactionId: '1', createdAt: minutesAgo(30) });
     gateway.byReference = charge({ reference: 'stale' });
 
@@ -750,14 +1051,14 @@ describe('CheckoutReconciler', () => {
   it('delivers a day-old checkout that turns out to be paid at its last check, instead of abandoning it', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.rows.clear();
-    payments.seed(checkoutRow('late', 24 * 60 + 5, { checkAttempts: 5, nextCheckAt: null }));
+    payments.seed(checkoutRow('late', 24 * 60 + 5, { checkAttempts: 6, nextCheckAt: null }));
     gateway.byReference = charge({ reference: 'late' });
     await new CheckoutReconciler(checkout, payments.repository).sweep(now);
     expect(payments.read('late')?.status).toBe('success');
     expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['late']);
   });
 
-  it('backs unpaid checkouts off (10 min, 30 min, 2 h, 6 h, 23 h) so a paid one with a lost webhook is reached at once', async () => {
+  it('backs unpaid checkouts off (2 min, 10 min, 30 min, 2 h, 6 h, 23 h) so a paid one with a lost webhook is reached at once', async () => {
     const { payments, gateway, checkout, fulfiller } = setup();
     payments.rows.clear();
     // 40 old unpaid checkouts, all due, older than the paid one: the old code re-checked these 20 oldest forever.
@@ -774,14 +1075,17 @@ describe('CheckoutReconciler', () => {
     expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual(['paid']);
     const first = payments.read('unpaid-0');
     expect(first).toMatchObject({ status: 'initialized', checkAttempts: 1 });
-    // Next look at 30 minutes after it started (already past), so at least a minute from the check.
+    // Next look at 10 minutes after it started (already past), so at least a minute from the check.
     expect(first?.lastCheckedAt).toEqual(expect.any(Date));
     expect(first?.nextCheckAt?.getTime()).toBeGreaterThan(now.getTime());
   });
 
-  it('follows the check schedule by age and stops after the fifth check', () => {
+  it('follows the check schedule by age (first check at 2 min) and stops after the sixth check', () => {
     const created = new Date('2026-10-09T00:00:00Z');
-    expect([0, 1, 2, 3, 4, 5].map((attempts) => nextCheckAt(created, attempts)?.toISOString().slice(11, 16) ?? null)).toEqual([
+    expect(CHECK_SCHEDULE_MINUTES).toEqual([2, 10, 30, 120, 360, 1_380]);
+    expect(FIRST_CHECK_AFTER_MS).toBe(2 * 60_000);
+    expect([0, 1, 2, 3, 4, 5, 6].map((attempts) => nextCheckAt(created, attempts)?.toISOString().slice(11, 16) ?? null)).toEqual([
+      '00:02',
       '00:10',
       '00:30',
       '02:00',
@@ -789,6 +1093,44 @@ describe('CheckoutReconciler', () => {
       '23:00',
       null,
     ]);
+  });
+
+  it('schedules a new checkout’s first check 2 minutes in, and a lost webhook is delivered by the 3-minute sweep', async () => {
+    const { payments, gateway, checkout, fulfiller } = setup();
+    payments.rows.clear();
+    const before = Date.now();
+    const { reference } = await checkout.start({ userId: USER, email: 'ada@example.com', characterId: 'char-1', purpose: 'topup', amountKobo: 250_000, description: 'Owambe pack', subjectId: 'owambe-pack', topupRate: 400 });
+    const row = payments.read(reference);
+    expect(row?.nextCheckAt?.getTime()).toBeGreaterThanOrEqual(before + 2 * 60_000);
+    expect(row?.nextCheckAt?.getTime()).toBeLessThanOrEqual(Date.now() + 2 * 60_000);
+
+    const created = row?.createdAt ?? new Date();
+    gateway.byReference = charge();
+    const reconciler = new CheckoutReconciler(checkout, payments.repository);
+    await reconciler.sweep(at(created, 1)); // too early: nobody asked
+    expect(gateway.verifiedReferences).toEqual([]);
+    await reconciler.sweep(at(created, 2.5)); // the sweep after the 2-minute mark
+    expect(gateway.verifiedReferences).toEqual([reference]);
+    expect(fulfiller.delivered.map((paid) => paid.reference)).toEqual([reference]);
+  });
+
+  it('sweeps every minute (so the 2-minute check lands 2–3 minutes after checkout)', () => {
+    vi.useFakeTimers();
+    try {
+      const { payments, checkout } = setup();
+      const reconciler = new CheckoutReconciler(checkout, payments.repository);
+      const sweep = vi.spyOn(reconciler, 'sweep').mockResolvedValue(undefined);
+      reconciler.onApplicationBootstrap();
+      vi.advanceTimersByTime(59_999);
+      expect(sweep).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(sweep).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(60_000);
+      expect(sweep).toHaveBeenCalledTimes(2);
+      reconciler.onModuleDestroy();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('re-checks failed checkouts within the day (a mismatched or failed attempt may still be paid)', async () => {
@@ -808,7 +1150,7 @@ describe('CheckoutReconciler', () => {
     payments.seed(checkoutRow('flaky', 15));
     gateway.verifyError = new RangeError('flutterwave down');
     await new CheckoutReconciler(checkout, payments.repository).sweep(now);
-    expect(payments.read('flaky')).toMatchObject({ status: 'initialized', checkAttempts: 0, nextCheckAt: at(now, 10) });
+    expect(payments.read('flaky')).toMatchObject({ status: 'initialized', checkAttempts: 0, nextCheckAt: at(now, 5) });
   });
 
   it('backs off deliveries that keep failing, so they can’t block other payments', async () => {

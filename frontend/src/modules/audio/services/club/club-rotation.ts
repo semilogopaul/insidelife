@@ -1,25 +1,27 @@
 import { api } from '@/common/api/http';
-import type { ClubTrack } from '../../types/audio';
+import type { ScheduledClubTrack } from '../../types/audio';
 
 /**
- * Club rotation API (`GET /promotions/club-rotation?venueId=`) — approved, player-paid tracks to interleave with
- * the club's house groove. The contract may still move, so parsing is defensive: it accepts a bare array,
- * `{ tracks }` or `{ items }`, and either naming (`audioUrl`/`url`, `artistName`/`artist`, `trackId`/`id`).
+ * The club schedule (`GET /promotions/club-schedule?venueId=`): the paid songs that play in this club and exactly when
+ * (server clock). The server publishes it from the shared schedule, so what plays here is what the artist's Promote
+ * app says and what the server counts. Parsing is defensive: anything malformed or unsafe is dropped.
  */
 
-const MAX_TRACKS = 24;
-const FALLBACK_DURATION_SEC = 180;
+const MAX_PLAYS = 24;
+const MAX_DURATION_SEC = 600;
 
 type UnknownRecord = Readonly<Record<string, unknown>>;
 
 const isRecord = (value: unknown): value is UnknownRecord => typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const firstString = (record: UnknownRecord, keys: readonly string[]): string | null => {
-  for (const key of keys) {
-    const value = record[key];
-    if (typeof value === 'string' && value.trim()) return value.trim();
-  }
-  return null;
+const text = (record: UnknownRecord, key: string): string | null => {
+  const value = record[key];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+};
+
+const finite = (record: UnknownRecord, key: string): number | null => {
+  const value = Number(record[key]);
+  return Number.isFinite(value) ? value : null;
 };
 
 /** Only http(s) on any origin, or same-origin paths. Rejects javascript:, data:, blob: etc. */
@@ -35,49 +37,61 @@ export function safeMediaUrl(raw: string, origin: string): string | null {
   }
 }
 
-export function parseClubRotation(payload: unknown, origin: string): ClubTrack[] {
-  const list: unknown = Array.isArray(payload)
-    ? payload
-    : isRecord(payload)
-      ? (payload.tracks ?? payload.items ?? (isRecord(payload.data) ? (payload.data.tracks ?? payload.data.items) : undefined))
-      : undefined;
-  if (!Array.isArray(list)) return [];
-  const tracks: ClubTrack[] = [];
-  const seen = new Set<string>();
-  for (const item of list) {
+export interface ClubSchedule {
+  readonly venueId: string;
+  readonly plays: readonly ScheduledClubTrack[];
+  /** Ask again before this (server clock, ms). */
+  readonly untilMs: number;
+}
+
+/** A schedule response, cleaned: plays for this club, in time order, with safe media URLs and sane durations. */
+export function parseClubSchedule(payload: unknown, venueId: string, origin: string): ClubSchedule | null {
+  if (!isRecord(payload) || !Array.isArray(payload.plays)) return null;
+  const untilMs = finite(payload, 'untilMs');
+  if (untilMs === null) return null;
+  const plays: ScheduledClubTrack[] = [];
+  const seen = new Set<number>();
+  for (const item of payload.plays) {
     if (!isRecord(item)) continue;
-    const trackId = firstString(item, ['trackId', 'id']);
-    const rawUrl = firstString(item, ['audioUrl', 'url', 'src']);
+    const slotIndex = finite(item, 'slotIndex');
+    const startsAtMs = finite(item, 'startsAtMs');
+    const durationSeconds = finite(item, 'durationSeconds');
+    const trackId = text(item, 'trackId');
+    const rawUrl = text(item, 'audioUrl');
     const url = rawUrl ? safeMediaUrl(rawUrl, origin) : null;
-    if (!trackId || !url || seen.has(trackId)) continue;
-    seen.add(trackId);
-    const duration = Number(item.durationSeconds ?? item.duration);
-    tracks.push({
+    if (slotIndex === null || startsAtMs === null || durationSeconds === null || durationSeconds <= 0 || !trackId || !url || seen.has(slotIndex)) continue;
+    if ((text(item, 'venueId') ?? venueId) !== venueId) continue;
+    seen.add(slotIndex);
+    plays.push({
+      slotIndex,
+      startsAtMs,
       trackId,
       url,
-      artist: (firstString(item, ['artistName', 'artist']) ?? 'Unknown artist').slice(0, 80),
-      title: (firstString(item, ['title', 'name']) ?? 'Untitled').slice(0, 120),
-      durationSeconds: Number.isFinite(duration) && duration > 0 ? Math.min(duration, 600) : FALLBACK_DURATION_SEC,
+      artist: (text(item, 'artistName') ?? 'Unknown artist').slice(0, 80),
+      title: (text(item, 'title') ?? 'Untitled').slice(0, 120),
+      durationSeconds: Math.min(durationSeconds, MAX_DURATION_SEC),
     });
-    if (tracks.length >= MAX_TRACKS) break;
+    if (plays.length >= MAX_PLAYS) break;
   }
-  return tracks;
+  return { venueId, untilMs, plays: plays.toSorted((a, b) => a.startsAtMs - b.startsAtMs) };
 }
 
-/** Tolerates 404/empty/offline: any failure is "no paid tracks right now". */
-export async function fetchClubRotation(venueId: string, signal?: AbortSignal): Promise<ClubTrack[]> {
+/** Tolerates 404/empty/offline: a failure is null (the DJ keeps game music and asks again later). */
+export async function fetchClubSchedule(venueId: string, signal?: AbortSignal): Promise<ClubSchedule | null> {
   try {
-    const payload = await api.get<unknown>('/promotions/club-rotation', { query: { venueId }, signal });
-    return parseClubRotation(payload, window.location.origin);
+    const payload = await api.get<unknown>('/promotions/club-schedule', { query: { venueId }, signal, anonymous: true });
+    return parseClubSchedule(payload, venueId, window.location.origin);
   } catch {
-    return [];
+    return null;
   }
 }
 
-/** `POST /promotions/plays` once per play (after ≥ 30 s). Fire-and-forget; failures are ignored. */
-export function reportClubPlay(trackId: string, venueId: string): void {
-  void api.post<void>('/promotions/plays', { trackId, venueId }).catch(() => undefined);
+/** The play that should be sounding at `nowMs` (started, and more than `tailMs` from its end), if any. */
+export function playAt(plays: readonly ScheduledClubTrack[], nowMs: number, tailMs = 1_500): ScheduledClubTrack | null {
+  return plays.find((play) => play.startsAtMs <= nowMs && nowMs < play.startsAtMs + play.durationSeconds * 1000 - tailMs) ?? null;
 }
 
-/** Seconds of playback after which a paid play counts (contract: "played ≥ 30 s in a club"). */
-export const PLAY_REPORT_AFTER_SEC = 30;
+/** The next play to start after `nowMs`, if any. */
+export function nextPlayAfter(plays: readonly ScheduledClubTrack[], nowMs: number): ScheduledClubTrack | null {
+  return plays.find((play) => play.startsAtMs > nowMs) ?? null;
+}

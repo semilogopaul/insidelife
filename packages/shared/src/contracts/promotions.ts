@@ -59,42 +59,74 @@ export interface BillboardSlotDto {
   readonly width: number;
   readonly height: number;
   readonly tier: BillboardVisibilityTier;
-  /** Current price of one 7-day block, in kobo (from the server). */
+  /** Current weekly rate, in kobo (from the server). */
   readonly weekPriceKobo: number;
+  /** Days per block it's sold in now (7, or 3 for expensive slots: see `adBlockDays`). */
+  readonly blockDays: number;
+  /** Current price of one block, in kobo. */
+  readonly blockPriceKobo: number;
+  /** Most blocks one booking can buy (`adMaxBlocks`). */
+  readonly maxBlocks: number;
   readonly maxConcurrentAds: number;
   /** Ads running on the board right now. */
   readonly liveCount: number;
-  /** `nextStarts[w - 1]`: the day a booking of `w` weeks made now would start (null: no room in the next 60 days). */
+  /** `nextStarts[b - 1]`: the day a booking of `b` blocks made now would start (null: no room in the next 60 days). */
   readonly nextStarts: readonly (IsoDate | null)[];
 }
 
-/** What changes about a slot: its current weekly price, when a booking would start, and ads running now. */
+/** What changes about a slot: its current price and block length, when a booking would start, and ads running now. */
 export interface AdSlotStateDto {
   readonly id: BillboardSlotId;
-  /** Current price of one 7-day block, in kobo (ops can change it; a booking keeps the price it was quoted). */
+  /** Current weekly rate, in kobo (ops can change it; a booking keeps the price it was quoted). */
   readonly weekPriceKobo: number;
+  /** Days per block at this rate (3 when the weekly rate is ₦35,000 or more, else 7). */
+  readonly blockDays: number;
+  /** Price of one block at this rate. */
+  readonly blockPriceKobo: number;
+  readonly maxBlocks: number;
   /**
-   * For 1…`maxWeeks` consecutive weeks: the start date the server would give a booking made now — today when the run
-   * fits, else the day the earliest blocking booking ends. Null when there's no room within 60 days.
+   * For 1…`maxBlocks` consecutive blocks: the start date the server would give a booking made now — today when the
+   * run fits, else the day the earliest blocking booking ends. Null when there's no room within 60 days.
    */
   readonly nextStarts: readonly (IsoDate | null)[];
   readonly liveCount: number;
 }
 
-/** The Club DJ product as it can be bought right now. */
+/**
+ * The Club DJ product as it can be bought right now: ₦5,000 a day, sold in 7-day blocks (1–`maxWeeks` weeks back to
+ * back) like every other ad, with a guaranteed number of plays a day spread over every club and lounge.
+ */
 export interface ClubSongOfferDto {
-  /** Current price per song, in kobo. */
+  /** Current price of one 7-day block, in kobo. */
+  readonly weekPriceKobo: number;
+  /** The same price per day (`weekPriceKobo / 7`, rounded to the naira) for the copy. */
+  readonly dayPriceKobo: number;
+  /** @deprecated Same as `weekPriceKobo` (older clients read it as the price of 7 days). */
   readonly priceKobo: number;
+  /** Days in one block (7). */
   readonly days: number;
-  /** When an order placed now would start playing in every club (null: rotation full for 30 days). */
+  readonly maxWeeks: number;
+  /** `nextStarts[w - 1]`: the day a booking of `w` weeks made now would start playing (null: no free lane in 30 days). */
+  readonly nextStarts: readonly (IsoDate | null)[];
+  /** @deprecated `nextStarts[0]`. */
   readonly startDate: IsoDate | null;
+  /** Average plays a real day for one song, across every club and lounge. */
+  readonly playsPerDay: number;
+  /** Plays a real day every booked song gets at least. */
+  readonly minPlaysPerDay: number;
+  /** Clubs and lounges it plays in. */
+  readonly clubs: number;
+  /** Songs that can be in rotation at once (the cap that keeps the guarantee). */
+  readonly lanes: number;
 }
 
 /** `GET /v1/promotions/slots` — every slot for sale (phone app slots up to the server's configured count). */
 export interface BillboardSlotsDto {
   readonly today: IsoDate;
-  /** Bookings are 1…`maxWeeks` consecutive 7-day blocks. */
+  /** Bookings of 7-day blocks are 1…`maxWeeks` weeks (each slot says its own `blockDays` and `maxBlocks`). */
   readonly maxWeeks: number;
+  /** Longest run one booking can buy, in days. */
+  readonly maxRunDays: number;
   readonly slots: readonly AdSlotStateDto[];
   readonly rules: readonly ContentRule[];
   readonly clubSong: ClubSongOfferDto;
@@ -125,16 +157,19 @@ export interface CreateCampaignRequest {
   readonly tagline?: string;
   /** https only, no IPs, localhost, shorteners or file downloads. */
   readonly linkUrl: string;
-  /** 1…`maxWeeks` consecutive 7-day blocks. The server picks the start: the slot's next free day. */
-  readonly weeks: number;
+  /** 1…`maxBlocks` consecutive blocks of the slot's `blockDays`. The server picks the start: the slot's next free day. */
+  readonly blocks?: number;
+  /** @deprecated Weeks, for 7-day slots only (same as `blocks` there). */
+  readonly weeks?: number;
   /**
-   * The start date the buyer was shown (`nextStarts[weeks - 1]`). If the slot filled up meanwhile and the run would
+   * The start date the buyer was shown (`nextStarts[blocks - 1]`). If the slot filled up meanwhile and the run would
    * start later, the server refuses (`DATES_CHANGED`) instead of charging for dates the buyer never saw.
    */
   readonly expectedStartDate?: IsoDate;
   /**
-   * The total the buyer was shown (`weekPriceKobo × weeks`). If ops re-priced the slot meanwhile, the server refuses
-   * with `PRICE_CHANGED` (details: `weekPriceKobo=…`, `totalKobo=…`) instead of charging a different amount.
+   * The total the buyer was shown (`blockPriceKobo × blocks`). If ops re-priced the slot meanwhile (or it moved to
+   * another block length), the server refuses with `PRICE_CHANGED` (details: `weekPriceKobo=…`, `totalKobo=…`) instead
+   * of charging a different amount.
    */
   readonly expectedPriceKobo?: number;
 }
@@ -151,6 +186,9 @@ export interface AdCampaignDto {
   /** Exclusive. */
   readonly endDate: IsoDate;
   readonly days: number;
+  /** Days per block it was sold in (7, or 3 for expensive slots), and how many blocks. */
+  readonly blockDays: number;
+  readonly blocks: number;
   readonly amountKobo: number;
   /** Effective status (approved campaigns become `live`/`completed` by date). */
   readonly status: PromotionStatus;
@@ -160,8 +198,14 @@ export interface AdCampaignDto {
   readonly checkoutUrl: string | null;
   /** The slot is held for you until then; after it a late payment may be refunded if the slot filled up. */
   readonly holdExpiresAt: string | null;
+  /** Views (see `catalog/ad-views.ts`): each player counts once per game hour. */
   readonly impressions: number;
+  /** Different players who saw it. */
+  readonly uniqueViewers: number;
+  /** @deprecated Kept for the admin portal; players see views only. */
   readonly clicks: number;
+  /** The uploaded image, reusable for "Run it again" on a slot of the same format (null once removed after review). */
+  readonly creativeKey: string | null;
   readonly createdAt: string;
   readonly paidAt: string | null;
   readonly reviewedAt: string | null;
@@ -237,23 +281,25 @@ export interface LiveBillboardsDto {
 
 // ----- Club DJ ------------------------------------------------------------------------------------------------------
 
-/** `POST /v1/promotions/tracks` (multipart: `file` + these fields). MP3/OGG, ≤ 10 MB, 30 s to under 5 min. */
+/** `POST /v1/promotions/tracks` (multipart: `file` + these fields). MP3/OGG, ≤ 10 MB, 30 s to 3 min. */
 export interface UploadTrackFields {
   readonly artistName: string;
   readonly title: string;
 }
 
 /**
- * `POST /v1/promotions/tracks/:id/orders` — one song, 7 days in every club and lounge, from the rotation's next free
- * day (today when every club has room).
+ * `POST /v1/promotions/tracks/:id/orders` — one song in every club and lounge for 1–4 consecutive weeks, from the
+ * rotation's next free day (today when a lane is free for the whole run).
  */
 export interface CreateClubOrderRequest {
   readonly productId: ClubPlayProductId;
+  /** 1…`clubSong.maxWeeks` consecutive 7-day blocks (default 1). */
+  readonly weeks?: number;
   /** Every order plays in every club: `['all']` or omit. */
   readonly clubs?: readonly string[];
-  /** The start date the artist was shown (`clubSong.startDate`); a later one is refused with `DATES_CHANGED`. */
+  /** The start date the artist was shown (`clubSong.nextStarts[weeks - 1]`); a later one is refused with `DATES_CHANGED`. */
   readonly expectedStartDate?: IsoDate;
-  /** The price the artist was shown (`clubSong.priceKobo`); a different one is refused with `PRICE_CHANGED`. */
+  /** The total the artist was shown (`weekPriceKobo × weeks`); a different one is refused with `PRICE_CHANGED`. */
   readonly expectedPriceKobo?: number;
 }
 
@@ -275,7 +321,14 @@ export interface ClubPlayOrderDto {
   readonly paymentReference: string | null;
   readonly checkoutUrl: string | null;
   readonly holdExpiresAt: string | null;
+  /** Consecutive 7-day blocks booked. */
+  readonly weeks: number;
+  /** Plays so far (every scheduled slot of its lane in a club while it ran). */
   readonly plays: number;
+  /** Different players who were in the club during at least one play (the artist not counted). */
+  readonly listeners: number;
+  /** Sum of each play's audience. */
+  readonly audience: number;
   readonly createdAt: string;
   readonly paidAt: string | null;
   readonly reviewedAt: string | null;
@@ -314,16 +367,121 @@ export interface ClubRotationTrackDto {
   readonly durationSeconds: number;
 }
 
-/** `GET /v1/promotions/club-rotation?venueId=` (public, cached 60 s). Interleave with the club's house playlist. */
+/** `GET /v1/promotions/club-rotation?venueId=` (public, cached 60 s): the songs in rotation there today (no times). */
 export interface ClubRotationDto {
   readonly venueId: string;
   readonly generatedAt: string;
   readonly tracks: readonly ClubRotationTrackDto[];
 }
 
-// ----- Tracking (public, no PII; counted once per player per item per real hour) ----------------------------------
+/** One paid song at an exact time in one club (see `catalog/club-schedule.ts`). */
+export interface ClubScheduledPlayDto extends ClubRotationTrackDto {
+  /** The schedule slot (unique across Lagos). */
+  readonly slotIndex: number;
+  readonly venueId: string;
+  /** Real time the song starts (server clock, ms); it plays `durationSeconds` from there. */
+  readonly startsAtMs: number;
+  /** Game minute it starts. */
+  readonly gameMinute: number;
+}
 
-/** `POST /v1/promotions/impressions` → 204. Batch what was on screen (≤ 32 ids); send the access token if you have it. */
+/**
+ * `GET /v1/promotions/club-schedule?venueId=` (public, cached ~15 s): the paid songs that play in this club from a
+ * few minutes ago to `untilMs`. The audio plays exactly these at these times (joining mid-song seeks into it); between
+ * them, and when there are none, the club's own game music plays.
+ */
+export interface ClubScheduleDto {
+  readonly venueId: string;
+  readonly generatedAt: string;
+  readonly serverNowMs: number;
+  /** Ask again before this (the schedule is complete up to here). */
+  readonly untilMs: number;
+  readonly plays: readonly ClubScheduledPlayDto[];
+}
+
+/** One play of a song (when and where), for the Promote app. */
+export interface ClubPlayTimeDto {
+  readonly venueId: string;
+  readonly startsAtMs: number;
+  readonly endsAtMs: number;
+  readonly gameMinute: number;
+}
+
+// ----- Detail screens ("what you paid for") -------------------------------------------------------------------------
+
+export const PROMOTION_TIMELINE_STEPS = ['paid', 'in-review', 'approved', 'live', 'ended', 'rejected', 'refund-due', 'refunded', 'cancelled'] as const;
+export type PromotionTimelineStep = (typeof PROMOTION_TIMELINE_STEPS)[number];
+
+/** One step of an ad or song's life, oldest first. `next` steps are what happens if all goes well. */
+export interface PromotionTimelineStepDto {
+  readonly step: PromotionTimelineStep;
+  readonly state: 'done' | 'current' | 'next';
+  /** When it happened (or is due, for `next` steps with a date); null when unknown. */
+  readonly at: string | null;
+  /** Why (a rejection reason, a refund) when there is one. */
+  readonly note: string | null;
+}
+
+/** The receipt: what was charged and how to quote it to support. */
+export interface PromotionReceiptDto {
+  readonly amountKobo: number;
+  readonly blocks: number;
+  readonly blockDays: number;
+  /** Price of one block as charged. */
+  readonly blockPriceKobo: number;
+  readonly paymentReference: string | null;
+  readonly paidAt: string | null;
+  /** Real naira sent back (kobo); 0 when nothing was refunded. */
+  readonly refundedKobo: number;
+}
+
+/** `GET /v1/promotions/campaigns/:id` */
+export interface AdCampaignDetailDto {
+  readonly campaign: AdCampaignDto;
+  readonly timeline: readonly PromotionTimelineStepDto[];
+  readonly receipt: PromotionReceiptDto;
+}
+
+export interface ClubPlaysByClubDto {
+  readonly venueId: string;
+  readonly plays: number;
+  readonly audience: number;
+}
+
+/** `GET /v1/promotions/club-orders/:id` */
+export interface ClubOrderDetailDto {
+  readonly order: ClubPlayOrderDto;
+  readonly track: Pick<ClubTrackDto, 'id' | 'artistName' | 'title' | 'audioUrl' | 'contentType' | 'durationSeconds' | 'removed'>;
+  readonly timeline: readonly PromotionTimelineStepDto[];
+  readonly receipt: PromotionReceiptDto;
+  readonly guarantee: { readonly playsPerDay: number; readonly minPlaysPerDay: number; readonly clubs: number };
+  readonly byClub: readonly ClubPlaysByClubDto[];
+  /** Playing somewhere right now. */
+  readonly playingNow: ClubPlayTimeDto | null;
+  /** The next plays (soonest first) while the run lasts. */
+  readonly upcoming: readonly ClubPlayTimeDto[];
+}
+
+// ----- Tracking (public, no PII) ------------------------------------------------------------------------------------
+
+/** A running ad a player saw (see `catalog/ad-views.ts` for the rules the client applies before reporting). */
+export interface AdViewReport {
+  readonly slotId: string;
+  readonly campaignId: string;
+  /** Server-clock ms when it had been in view for `AD_VIEW_DWELL_MS`. */
+  readonly seenAt: number;
+}
+
+/**
+ * `POST /v1/promotions/views` → 204. Signed-in players only (others are ignored). Batches of up to `AD_VIEW_BATCH_MAX`;
+ * the server checks each view against where it last knew the player to be (or the ride they're on), rate-limits them
+ * and counts each player once per ad per game hour.
+ */
+export interface TrackViewsRequest {
+  readonly views: readonly AdViewReport[];
+}
+
+/** @deprecated `POST /v1/promotions/impressions` no longer counts (it can't be checked); use `TrackViewsRequest`. */
 export interface TrackImpressionsRequest {
   readonly campaignIds: readonly string[];
 }
@@ -337,7 +495,7 @@ export interface ClickTargetDto {
   readonly url: string;
 }
 
-/** `POST /v1/promotions/plays` → 204. Report when a paid track has played ≥ 30 s in a club. */
+/** @deprecated `POST /v1/promotions/plays` → 204, ignored: the server counts plays from its own schedule. */
 export interface TrackPlayRequest {
   readonly trackId: string;
   readonly venueId: string;
@@ -395,14 +553,23 @@ export interface MarkRefundedRequest {
 export interface AdRateDto {
   readonly key: AdRateKey;
   readonly label: string;
-  /** `week`: per 7-day block of an ad; `song`: per club song (7 days in every club). */
+  /** Always `week` now: every rate is stored per 7 days (the club song included). `song` is no longer used. */
   readonly unit: 'week' | 'song';
   /** The rate is a base weekly price that each spot scales by its district's prestige (roadside kinds). */
   readonly byDistrict: boolean;
-  /** The catalog default, in kobo. */
+  /** The catalog default, in kobo per 7 days. */
   readonly defaultKobo: number;
-  /** What new quotes use now, in kobo (the override when there is one, else the default). */
+  /** What new quotes use now, in kobo per 7 days (the override when there is one, else the default). */
   readonly currentKobo: number;
+  /**
+   * Days per block it's sold in at the current rate: 3 when the weekly rate is ₦35,000 or more (`adBlockDays`), else
+   * 7; club songs always 7. For district-scaled kinds it's the base rate's (each spot may differ).
+   */
+  readonly blockDays: number;
+  /** Price of one block at the current rate (null for district-scaled kinds, where each spot has its own). */
+  readonly blockPriceKobo: number | null;
+  /** How to show it: "₦100,000 per 7 days · sold in 3-day blocks of ₦43,000" (or "… · sold by the week"). */
+  readonly summary: string;
   /** When and by whom the override was last set (null when the default applies). */
   readonly updatedAt: string | null;
   readonly updatedBy: string | null;

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { BoxGeometry, Color, InstancedMesh, Matrix4, MeshStandardMaterial, Object3D, PlaneGeometry, type BufferGeometry, type CanvasTexture, type Texture } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { atmosphereFrame } from '../lib/atmosphere-frame';
+import { highlightGlow } from './AdHighlight';
 import { setProps } from '../lib/mutate';
 import { addNearFade, createCityMaterial } from '../materials/city-materials';
 import { paint } from '../render/paint';
@@ -224,9 +225,14 @@ export function StreetAds({ shadows }: { readonly shadows: boolean }) {
   }, [structure, house]);
 
   const elapsed = useRef(1);
-  useFrame(({ camera }, delta) => {
+  useFrame(({ camera, clock }, delta) => {
     const glow = 0.12 + atmosphereFrame.night * 0.85;
     for (const entry of house.meshes) setProps(entry.material, { emissiveIntensity: glow });
+    // A live face in focus ("See it in Lagos") glows; empty faces are instances and rely on AdHighlight's frame.
+    for (const face of liveFaces) {
+      const boost = highlightGlow(face.spot.id, clock.elapsedTime);
+      if (boost > 0 || face.material.emissiveIntensity > glow) setProps(face.material, { emissiveIntensity: glow + boost });
+    }
     elapsed.current += delta;
     if (elapsed.current < 0.5) return;
     elapsed.current = 0;

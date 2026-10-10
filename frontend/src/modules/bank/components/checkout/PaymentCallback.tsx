@@ -8,6 +8,7 @@ import { formatNaira, type PaymentDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, Money, Spinner } from '@/common/components';
 import { useUi } from '@/common/game/ui-store';
+import { checkErrorAlert } from '@/common/payments';
 import { cn } from '@/common/utils/cn';
 import { usePaymentVerification } from '../../hooks/use-payment-verification';
 import { useStartTopup } from '../../hooks/use-topups';
@@ -18,8 +19,10 @@ import { CheckoutShell, SessionGate } from './CheckoutShell';
 
 /**
  * Where Flutterwave sends the browser back: `/payments/callback?status=…&tx_ref=…&transaction_id=…` (the sandbox uses
- * `?reference=…`). Nothing in the URL is trusted: the server verifies the charge with Flutterwave (idempotent). Then
- * we celebrate a success, explain a failure and offer the way back into the game.
+ * `?reference=…`), on the origin the player started from. Nothing in the URL is trusted: the server verifies the
+ * charge with Flutterwave (idempotent). Then we celebrate a success, explain a failure and offer the way back into the
+ * game. Never a dead end for a payment that might be paid: if the check errors or stays pending, we say it's safe,
+ * offer "Check again" and "Back to Lagos", and keep checking automatically (server reconciler + the game's recovery).
  */
 export function PaymentCallback() {
   const params = useSearchParams();
@@ -64,17 +67,23 @@ function Verification({ reference, transactionId, closed }: VerificationProps) {
       <div className="flex flex-col items-center gap-3 py-10 text-center" role="status">
         <Spinner size={28} className="text-text-soft" />
         <p className="type-title text-xl">Confirming your payment…</p>
-        <p className="text-sm text-text-soft">Checking with Flutterwave. Don’t close this page.</p>
+        <p className="text-sm text-text-soft">Checking with Flutterwave. This takes a few seconds.</p>
       </div>
     );
   }
-  if (verification.isError || !verification.data || !verification.outcome) {
+  if (!verification.data || !verification.outcome) {
+    // The first check couldn't finish (Flutterwave unreachable, offline, rate limited…): we don't know yet, so no verdict.
+    const alert = checkErrorAlert(verification.error);
     return (
-      <div className="py-4 text-center">
-        <p className="type-title text-2xl">We couldn’t confirm this payment</p>
-        <p className="mt-2 text-sm text-text-soft">{errorMessage(verification.error)} If you were charged, it will be credited automatically once Flutterwave confirms.</p>
-        <div className="mt-5 flex flex-col gap-2">
-          <Button block onClick={verification.checkAgain} icon={<RotateCcw size={18} aria-hidden />}>
+      <div className="flex flex-col items-center py-4 text-center" aria-live="polite">
+        <span className="grid size-20 place-items-center rounded-full bg-danfo text-ink">
+          <Hourglass size={40} strokeWidth={2.6} aria-hidden />
+        </span>
+        <h1 className="type-title mt-5 text-2xl">{alert.title}</h1>
+        <p className="mt-2 max-w-xs text-sm text-text-soft">{alert.body}</p>
+        <p className="mt-2 max-w-xs text-sm text-text-soft">It’s safe to leave this page: the game checks again when you’re back.</p>
+        <div className="mt-5 flex w-full flex-col gap-2">
+          <Button block loading={verification.isFetching} onClick={verification.checkAgain} icon={<RotateCcw size={18} aria-hidden />}>
             Check again
           </Button>
           <BackToLagos payment={null} />
@@ -89,6 +98,8 @@ function Verification({ reference, transactionId, closed }: VerificationProps) {
   const copy = outcomeCopy(outcome === 'abandoned' ? { ...payment, status: 'abandoned' } : payment);
   const { icon: Icon, className } = OUTCOME_ICON[outcome];
   const waiting = outcome === 'pending' || outcome === 'delivering';
+  // A later poll failed: the last answer stays on screen and polling goes on, but say why it may look stuck.
+  const pollTrouble = verification.isError ? checkErrorAlert(verification.error) : null;
 
   return (
     <div className="flex flex-col items-center text-center" aria-live="polite">
@@ -124,8 +135,14 @@ function Verification({ reference, transactionId, closed }: VerificationProps) {
       <div className="mt-5 flex w-full flex-col gap-2">
         {waiting && (
           <>
-            {verification.exhausted ? (
-              <p className="text-sm text-text-soft">Still waiting. You can go back to the game — we’ll credit you automatically and send an alert.</p>
+            {pollTrouble ? (
+              <p className="text-sm text-text-soft" role="status">
+                {pollTrouble.title}. {pollTrouble.body}
+              </p>
+            ) : verification.exhausted ? (
+              <p className="text-sm text-text-soft">
+                Still waiting for Flutterwave. It’s safe to go back to Lagos: we keep checking automatically and credit you the moment it’s confirmed.
+              </p>
             ) : (
               <p className="flex items-center justify-center gap-2 text-sm text-text-soft" role="status">
                 <Spinner size={14} /> Checking again every few seconds…
@@ -136,7 +153,15 @@ function Verification({ reference, transactionId, closed }: VerificationProps) {
             </Button>
           </>
         )}
-        {(outcome === 'failed' || outcome === 'abandoned') && <Retry payment={payment} />}
+        {(outcome === 'failed' || outcome === 'abandoned') && (
+          <>
+            <Retry payment={payment} />
+            {/* Paid anyway (a slow transfer, a retry on the same checkout)? A late payment still counts. */}
+            <Button variant="paper" block icon={<RotateCcw size={18} aria-hidden />} loading={verification.isFetching} onClick={verification.checkAgain}>
+              I’ve paid: check again
+            </Button>
+          </>
+        )}
         <BackToLagos payment={payment} primary={outcome === 'delivered'} />
       </div>
     </div>
