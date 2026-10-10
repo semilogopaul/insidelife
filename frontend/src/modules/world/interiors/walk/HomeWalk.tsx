@@ -100,7 +100,7 @@ export function HomeWalk({
   // What the server says we're doing, and where: a spot in this room, or a door towards the room it happens in.
   const animation = player.animation;
   const free = isFreeAnimation(animation);
-  const target = free ? null : roomForActivity(layout, animation, room.id);
+  const target = free ? null : roomForActivity(layout, animation, room.id, player.actionId);
   const action = useMemo(() => runningAction(player.actionId, animation), [player.actionId, animation]);
   const spot = useMemo(
     () => (target === room.id ? actionSpot(template, action) : null),

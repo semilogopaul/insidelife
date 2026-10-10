@@ -46,6 +46,9 @@ const VENUE_CONTEXT: Readonly<Record<VenueType, MusicContext>> = {
   gym: 'city',
   salon: 'city',
   cinema: 'city',
+  mansion: 'party',
+  'private-jet': 'home',
+  refinery: 'office',
 };
 
 const ENERGY: Partial<Record<PlaceType, number>> = { club: 1, bar: 0.65, 'event-centre': 1, beach: 0.8 };

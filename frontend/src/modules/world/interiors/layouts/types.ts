@@ -25,6 +25,11 @@ export interface LayoutRoom {
   readonly level: number;
   readonly template: InteriorTemplate;
   readonly portals: readonly PortalSpec[];
+  /**
+   * Place actions that happen in this room (multi-room venues, where several rooms play the same animation: you sit
+   * in the cinema to watch a movie and on the gaming couch to play FIFA). Unlisted actions follow `activityRooms`.
+   */
+  readonly actions?: readonly string[];
 }
 
 export interface HomeLayout {

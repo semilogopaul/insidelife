@@ -34,6 +34,9 @@ export const INTERIOR_TEMPLATE_IDS = [
   'beach',
   'park',
   'motor-park',
+  'mansion',
+  'private-jet',
+  'refinery',
 ] as const;
 export type InteriorTemplateId = (typeof INTERIOR_TEMPLATE_IDS)[number];
 
@@ -67,6 +70,9 @@ const VENUE_TEMPLATES: Readonly<Partial<Record<Exclude<VenueType, 'home'>, Inter
   salon: 'salon',
   government: 'government',
   school: 'school',
+  mansion: 'mansion',
+  'private-jet': 'private-jet',
+  refinery: 'refinery',
 };
 
 /** A sensible walkable room for a venue type without its own interior yet (by what its name suggests). */

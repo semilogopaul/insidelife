@@ -118,8 +118,19 @@ export function findRoom(layout: HomeLayout, id: string | null | undefined): Lay
   return id ? layout.rooms.find((room) => room.id === id) : undefined;
 }
 
-/** Room an activity happens in: the layout's mapping, else the room you're in (or the entry). */
-export function roomForActivity(layout: HomeLayout, animation: AvatarClip, current?: string | null): string {
+/** The room that lists an action as its own (multi-room places: the cinema's movie, the jet's toilet), if any. */
+export function listedRoom(layout: HomeLayout, actionId: string | null | undefined): string | null {
+  if (!actionId) return null;
+  return layout.rooms.find((room) => room.actions?.includes(actionId))?.id ?? null;
+}
+
+/**
+ * Room an activity happens in: the room that lists the running action, else the layout's mapping for its animation,
+ * else the room you're in (or the entry).
+ */
+export function roomForActivity(layout: HomeLayout, animation: AvatarClip, current?: string | null, actionId?: string | null): string {
+  const listed = listedRoom(layout, actionId);
+  if (listed) return listed;
   const mapped = layout.activityRooms[animation];
   if (mapped && findRoom(layout, mapped)) return mapped;
   return findRoom(layout, current)?.id ?? layout.entry;
@@ -131,7 +142,9 @@ export function isFreeAnimation(animation: AvatarClip): boolean {
 }
 
 /** Where someone else present (a host, a guest) is shown: the room their activity belongs to, else the entry room. */
-export function roomForPerson(layout: HomeLayout, animation: AvatarClip | null): string {
+export function roomForPerson(layout: HomeLayout, animation: AvatarClip | null, actionId?: string | null): string {
+  const listed = listedRoom(layout, actionId);
+  if (listed) return listed;
   if (!animation || isFreeAnimation(animation)) return layout.entry;
   return roomForActivity(layout, animation, layout.entry);
 }

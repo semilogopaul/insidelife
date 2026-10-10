@@ -15,9 +15,9 @@ export interface HomeRoom {
   readonly camera: HomeCamera;
 }
 
-/** Room to open a home with: where the running activity happens (you're found there), else the front door's room. */
-function openingRoom(layout: HomeLayout, animation: AvatarClip): string {
-  return isFreeAnimation(animation) ? layout.entry : roomForActivity(layout, animation, layout.entry);
+/** Room to open a place with: where the running activity happens (you're found there), else the front door's room. */
+function openingRoom(layout: HomeLayout, animation: AvatarClip, actionId: string | null): string {
+  return isFreeAnimation(animation) ? layout.entry : roomForActivity(layout, animation, layout.entry, actionId);
 }
 
 /**
@@ -29,14 +29,15 @@ export function useHomeRoom(
   locationId: string,
   animation: AvatarClip,
   walkable: boolean,
+  actionId: string | null = null,
 ): HomeRoom | null {
   const houseKey = layout ? `${locationId}|${layout.id}` : '';
   const house = useHomeView((state) => state.house);
   const roomId = useHomeView((state) => state.roomId);
   const camera = useHomeView((state) => state.camera);
-  const animationRef = useRef(animation);
+  const animationRef = useRef({ animation, actionId });
   useEffect(() => {
-    animationRef.current = animation;
+    animationRef.current = { animation, actionId };
   });
 
   useEffect(() => {
@@ -47,15 +48,15 @@ export function useHomeRoom(
       .enterHouse(
         houseKey,
         layout,
-        openingRoom(layout, opening),
-        isFreeAnimation(opening) ? { kind: 'enter' } : { kind: 'spot' },
+        openingRoom(layout, opening.animation, opening.actionId),
+        isFreeAnimation(opening.animation) ? { kind: 'enter' } : { kind: 'spot' },
       );
     return () => useHomeView.getState().leaveHouse(houseKey);
   }, [layout, houseKey, walkable]);
 
   if (!layout) return null;
   const current = walkable && house === houseKey ? findRoom(layout, roomId) : undefined;
-  const room = current ?? findRoom(layout, openingRoom(layout, animation)) ?? (layout.rooms[0] as LayoutRoom);
+  const room = current ?? findRoom(layout, openingRoom(layout, animation, actionId)) ?? (layout.rooms[0] as LayoutRoom);
   return { layout, room, walkable, camera };
 }
 
@@ -71,5 +72,5 @@ export function peopleInRoom(
   players: readonly PresencePlayerDto[],
 ): readonly PresencePlayerDto[] {
   if (layout.rooms.length <= 1) return players;
-  return players.filter((player) => roomForPerson(layout, presenceAnimation(player)) === roomId);
+  return players.filter((player) => roomForPerson(layout, presenceAnimation(player), player.activity) === roomId);
 }

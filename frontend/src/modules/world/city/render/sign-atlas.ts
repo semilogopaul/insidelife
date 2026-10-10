@@ -54,6 +54,9 @@ const BY_ARCHETYPE: Readonly<Record<LotArchetype, SignStyle>> = {
   'car-dealer': { background: '#c62828', text: '#ffffff', accent: '#ffffff', label: 'CARS · TOKUNBO & NEW' },
   shop: { background: '#e8742b', text: '#ffffff', accent: '#0e2733', label: 'SHOP' },
   school: { background: '#2457d6', text: '#ffffff', accent: '#f6b90b', label: 'SCHOOLS' },
+  mansion: { background: '#141414', text: '#e8c35a', accent: '#e8c35a', label: 'IKOYI · OPEN HOUSE' },
+  'jet-pad': { background: '#141414', text: '#e8c35a', accent: '#ffffff', label: 'PRIVATE JET · BOARD HERE' },
+  refinery: { background: '#1d4f91', text: '#ffffff', accent: '#e23b2e', label: 'VISITOR CENTRE · TOURS' },
 };
 
 export function signStyleFor(lot: CityLot): SignStyle {

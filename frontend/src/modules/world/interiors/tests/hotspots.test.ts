@@ -53,7 +53,8 @@ const action = (id: string): ActionDefinition => {
 };
 const foot = (spot: Spot): At => [spot.at[0], spot.at[spot.at.length - 1] as number];
 const near = (a: At, b: At, distance = 0.05): boolean => Math.hypot(a[0] - b[0], a[1] - b[1]) < distance;
-const VENUE_TEMPLATES = INTERIOR_TEMPLATE_IDS.filter((id) => !id.startsWith('home-'));
+/** One-room venues (the multi-room showcase places are checked room by room in `showcase.test.ts`). */
+const VENUE_TEMPLATES = INTERIOR_TEMPLATE_IDS.filter((id) => !id.startsWith('home-') && placeLayoutFor(id).rooms.length === 1);
 
 /** A treatment the hospital might offer, described only by animation and category (no template knows its id). */
 const treatment = (
@@ -339,6 +340,12 @@ describe('every venue', () => {
       expect(placeLayoutFor(id), `${id} stable`).toBe(layout);
     }
     expect(placeLayoutFor('home-mansion')).toBe(HOME_LAYOUTS['home-mansion']);
+    // OBO Mansion, AIR OBO and the refinery have rooms; you come in to the venue's registered template.
+    for (const id of ['mansion', 'private-jet', 'refinery'] as const) {
+      const layout = placeLayoutFor(id);
+      expect(layout.rooms.length, id).toBeGreaterThan(1);
+      expect(findRoom(layout, layout.entry)?.template.id, id).toBe(id);
+    }
   });
 
   it('covers every venue type you can enter, and gives a new type a sensible room', () => {

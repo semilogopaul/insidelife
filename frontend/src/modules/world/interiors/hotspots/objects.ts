@@ -3,7 +3,7 @@ import { FURNITURE_SCALE } from '../kit/furniture-kit';
 import { FURNITURE_MANIFEST } from '../kit/kit-manifest';
 import type { PropSpec } from '../props/prop-types';
 import type { At, FurniturePlacement, InteriorTemplate } from '../templates/types';
-import { rotatedBox } from '../walk/colliders';
+import { propFootprint, rotatedBox } from '../walk/colliders';
 
 /**
  * The things in a room you can use — the bar, the DJ booth, the dance floor, a bed, the front desk, a gym machine, a
@@ -91,6 +91,7 @@ function furnitureObject(
   if (m.startsWith('television')) return { kind: 'tv', name: 'TV', box: b() };
   if (m === 'kitchenStove') return { kind: 'cooker', name: 'Cooker', box: b() };
   if (m === 'shower' || m === 'bathtub') return { kind: 'shower', name: 'Shower', box: b() };
+  if (m === 'toilet') return { kind: 'toilet', name: 'Toilet', box: b() };
   if (m.startsWith('bookcase')) return { kind: 'shelf', name: 'Bookshelf', box: b() };
   if (m === 'bench' || m === 'benchCushion') return { kind: 'bench', name: 'Bench', box: b() };
   return null;
@@ -168,17 +169,30 @@ function propObject(prop: PropSpec, template: InteriorTemplate): PlaceObject | n
   }
 }
 
+/** A prop the template names (`thing`): its footprint, or for something on a wall, its face. */
+function namedProp(prop: PropSpec): PlaceObject | null {
+  if (!prop.thing) return null;
+  const foot = propFootprint(prop);
+  const y = prop.y ?? 0;
+  const b: Box3 = foot
+    ? { minX: foot.minX, maxX: foot.maxX, minZ: foot.minZ, maxZ: foot.maxZ, minY: 0, maxY: Math.max(foot.height, MIN_TAP_HEIGHT) }
+    : prop.kind === 'sign'
+      ? box(prop.at, prop.size[0], 0.3, prop.rot ?? 0, prop.size[1], y)
+      : box(prop.at, 0.6, 0.6, prop.rot ?? 0, 1, y);
+  return { kind: prop.thing.kind, name: prop.thing.name, box: b };
+}
+
 /** Every usable thing in a room, with its tap box. */
 export function roomObjects(template: InteriorTemplate): PlaceObject[] {
   const people: At[] = template.npcs.map((npc) => [npc.at[0], npc.at[npc.at.length - 1] as number]);
   const staffed = (b: Box3): boolean => people.some(([x, z]) => distanceToBox(b, x, z) < 0.8);
   const objects: PlaceObject[] = [];
   for (const prop of template.props) {
-    const object = propObject(prop, template);
+    const object = prop.thing ? namedProp(prop) : propObject(prop, template);
     if (object) objects.push(object);
   }
   for (const piece of template.furniture) {
-    const object = furnitureObject(piece, template, staffed);
+    const object = piece.thing ? { kind: piece.thing.kind, name: piece.thing.name, box: pieceBox(piece) } : furnitureObject(piece, template, staffed);
     if (object) objects.push(object);
   }
   const floor = template.extras?.clubLights;
