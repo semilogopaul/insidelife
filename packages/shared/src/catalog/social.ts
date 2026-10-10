@@ -40,6 +40,37 @@ export function wealthBandLabel(amount: number): string {
   return floor === 0 ? 'Under ₦100k' : `${formatNairaCompact(floor)}+`;
 }
 
+// ----- Nepo vs Lapo --------------------------------------------------------------------------------------------------
+
+/** Bank money (cash + savings + dollars at the going rate) from which a player is a "nepo" (gold name). */
+export const NEPO_THRESHOLD = 20_000_000;
+
+export const WEALTH_CLASSES = ['nepo', 'lapo'] as const;
+export type WealthClass = (typeof WEALTH_CLASSES)[number];
+
+/** Money in the bank: cash + savings + the USD balance (US cents) converted at the game's rate. Pension isn't counted. */
+export function bankMoneyOf(balances: { readonly cash: number; readonly savings: number; readonly usdCents: number }, usdRate: number): number {
+  return Math.round(balances.cash + balances.savings + (balances.usdCents / 100) * usdRate);
+}
+
+/** Over ₦20M in the bank is nepo (gold); anything less is lapo (blue). */
+export function wealthClass(amount: number): WealthClass {
+  return amount > NEPO_THRESHOLD ? 'nepo' : 'lapo';
+}
+
+export const WEALTH_CLASS_COPY: Readonly<Record<WealthClass, { readonly label: string; readonly badge: string; readonly explainer: string }>> = {
+  nepo: {
+    label: 'Nepo',
+    badge: 'Nepo 👑 — over ₦20M in the bank',
+    explainer: 'Gold names belong to nepos: players with more than ₦20M in the bank (cash, savings and dollars).',
+  },
+  lapo: {
+    label: 'Lapo',
+    badge: 'Lapo — under ₦20M',
+    explainer: 'Blue names belong to lapos: players with less than ₦20M in the bank. Grow your money and your name turns gold.',
+  },
+};
+
 export const PROFILE_LOCATION_VISIBILITY = ['friends', 'nobody'] as const;
 export type ProfileLocationVisibility = (typeof PROFILE_LOCATION_VISIBILITY)[number];
 

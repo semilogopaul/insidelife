@@ -1,5 +1,6 @@
 'use client';
 
+import { PlayerName } from '@/common/social';
 import { useEffect, useRef, useState } from 'react';
 import { FEED_MAX_LINES, FEED_MS, type HeardLine } from '@/common/speech';
 import { cn } from '@/common/utils/cn';
@@ -27,7 +28,10 @@ function Speaker({ line }: { readonly line: HeardLine }) {
     <span className="font-bold text-danfo">You</span>
   ) : (
     <span className="font-bold text-on-ink">
-      {line.firstName} <span className="font-normal text-on-ink-soft">@{line.handle}</span>
+      <PlayerName wealthClass={line.wealthClass} onDark>
+        {line.firstName}
+      </PlayerName>{' '}
+      <span className="font-normal text-on-ink-soft">@{line.handle}</span>
     </span>
   );
 }

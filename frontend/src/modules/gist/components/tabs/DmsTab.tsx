@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { DmThreadDto } from '@insidelife/shared';
 import { useDmFocus } from '@/common/chat';
 import { EmptyState, LoadingRows } from '@/common/components';
+import { PlayerName } from '@/common/social';
 import { cn } from '@/common/utils/cn';
 import { useDmThreads } from '../../hooks/use-chat';
 import { useGistNav, type DmPartner } from '../../hooks/use-gist-nav';
@@ -43,7 +44,9 @@ export function DmsTab({ me }: { readonly me: Me }) {
           </button>
           <PlayerAvatar name={thread.name} handle={thread.handle} size="sm" />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-bold leading-tight">{thread.name}</p>
+            <p className="truncate font-bold leading-tight">
+              <PlayerName wealthClass={thread.wealthClass}>{thread.name}</PlayerName>
+            </p>
             <p className="truncate text-xs text-text-soft">@{thread.handle}</p>
           </div>
           <button type="button" onClick={() => openProfile(thread.handle)} aria-label={`View ${thread.name}’s profile`} className="grid size-10 place-items-center rounded-full hover:bg-paper-2">
@@ -85,12 +88,12 @@ function Conversations() {
     const items = new Map<string, ConversationItem>();
     for (const thread of threads.data ?? []) {
       if (thread.request === 'incoming') continue;
-      const { characterId, handle, firstName, lastName } = thread.counterpart;
-      items.set(characterId, { partner: { id: characterId, handle, name: `${firstName} ${lastName}` }, thread, online: online.get(characterId) });
+      const { characterId, handle, firstName, lastName, wealthClass } = thread.counterpart;
+      items.set(characterId, { partner: { id: characterId, handle, name: `${firstName} ${lastName}`, wealthClass }, thread, online: online.get(characterId) });
     }
     for (const partner of partners) if (!items.has(partner.id)) items.set(partner.id, { partner, thread: null, online: online.get(partner.id) });
     for (const friend of friends.data?.friends ?? []) {
-      if (!items.has(friend.id)) items.set(friend.id, { partner: { id: friend.id, handle: friend.handle, name: `${friend.firstName} ${friend.lastName}` }, thread: null, online: friend.online });
+      if (!items.has(friend.id)) items.set(friend.id, { partner: { id: friend.id, handle: friend.handle, name: `${friend.firstName} ${friend.lastName}`, wealthClass: friend.wealthClass }, thread: null, online: friend.online });
     }
     return [...items.values()];
   }, [friends.data, threads.data, partners]);
@@ -117,7 +120,7 @@ function Conversations() {
               <ConversationRow
                 key={thread.channel}
                 item={{
-                  partner: { id: thread.counterpart.characterId, handle: thread.counterpart.handle, name: `${thread.counterpart.firstName} ${thread.counterpart.lastName}` },
+                  partner: { id: thread.counterpart.characterId, handle: thread.counterpart.handle, name: `${thread.counterpart.firstName} ${thread.counterpart.lastName}`, wealthClass: thread.counterpart.wealthClass },
                   thread,
                   online: undefined,
                 }}
@@ -165,7 +168,9 @@ function ConversationRow({ item }: { readonly item: ConversationItem }) {
       <button type="button" onClick={() => openThread(partner)} className="flex w-full items-center gap-3 rounded-card px-2 py-2.5 text-left hover:bg-paper-2">
         <PlayerAvatar name={partner.name} handle={partner.handle} online={online} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-bold">{partner.name}</span>
+          <span className="block truncate font-bold">
+            <PlayerName wealthClass={partner.wealthClass}>{partner.name}</PlayerName>
+          </span>
           <span className={cn('block truncate text-sm', unread ? 'font-bold text-text' : 'text-text-soft')}>
             {thread ? `${thread.request === 'outgoing' ? 'Request sent · ' : thread.lastFromMe ? 'You: ' : ''}${thread.preview}` : `Say hi to @${partner.handle}`}
           </span>

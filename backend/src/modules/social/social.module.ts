@@ -43,6 +43,7 @@ import { RankingCache } from './ranking-cache.service.js';
 import { ReportReviewService } from './report-review.service.js';
 import { SOCIAL_LIFE_EVENTS } from './social.events.js';
 import { SocialGuardModule } from './social-guard.module.js';
+import { WealthClassModule } from './wealth-class.module.js';
 import { SocialNotifier } from './social-notifier.service.js';
 import { SocialSystem } from './social.system.js';
 import { SocialViewer } from './social-viewer.service.js';
@@ -83,6 +84,7 @@ import { VenueSpraysService } from './venue-sprays.service.js';
     EducationModule,
     FamilyModule,
     SocialGuardModule,
+    WealthClassModule,
     PeerMoneyModule,
   ],
   controllers: [

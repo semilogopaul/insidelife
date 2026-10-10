@@ -5,6 +5,7 @@ import { useDeferredValue, useState, type ReactNode } from 'react';
 import type { FriendRequestDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, EmptyState, Section, Spinner, TextField, toast } from '@/common/components';
+import { PlayerName } from '@/common/social';
 import { gameEvents } from '@/common/game/game-events';
 import { useGistNav } from '../../hooks/use-gist-nav';
 import { useBlocked, useFriendActions, useFriends, usePlayerSearch } from '../../hooks/use-social';
@@ -87,7 +88,9 @@ export function FriendsTab({ myHandle }: { readonly myHandle: string }) {
                   <PlayerAvatar name={`${friend.firstName} ${friend.lastName}`} handle={friend.handle} online={friend.online} />
                   <span className="min-w-0">
                     <span className="block truncate font-bold">
-                      {friend.firstName} {friend.lastName}
+                      <PlayerName wealthClass={friend.wealthClass}>
+                        {friend.firstName} {friend.lastName}
+                      </PlayerName>
                     </span>
                     <span className="flex items-center gap-1 truncate text-xs text-text-soft">
                       {friend.locationLabel ? (
@@ -103,7 +106,7 @@ export function FriendsTab({ myHandle }: { readonly myHandle: string }) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => openThread({ id: friend.id, handle: friend.handle, name: `${friend.firstName} ${friend.lastName}` })}
+                  onClick={() => openThread({ id: friend.id, handle: friend.handle, name: `${friend.firstName} ${friend.lastName}`, wealthClass: friend.wealthClass })}
                   aria-label={`Message ${friend.firstName}`}
                   className="grid size-10 shrink-0 place-items-center rounded-full text-ink hover:bg-paper-3"
                 >
@@ -141,7 +144,9 @@ function RequestRow({ request, onOpen, children }: { readonly request: FriendReq
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left">
         <PlayerAvatar name={name} handle={request.player.handle} online={request.player.online} />
         <span className="min-w-0">
-          <span className="block truncate font-bold">{name}</span>
+          <span className="block truncate font-bold">
+            <PlayerName wealthClass={request.player.wealthClass}>{name}</PlayerName>
+          </span>
           <span className="block truncate text-xs text-text-soft">
             @{request.player.handle} — {request.player.statusTier.label}
           </span>
@@ -203,7 +208,9 @@ function AddFriend({ myHandle }: { readonly myHandle: string }) {
                 <PlayerAvatar name={`${player.firstName} ${player.lastName}`} handle={player.handle} online={player.online} size="sm" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-bold">
-                    {player.firstName} {player.lastName}
+                    <PlayerName wealthClass={player.wealthClass}>
+                      {player.firstName} {player.lastName}
+                    </PlayerName>
                   </span>
                   <span className="block truncate text-xs text-text-soft">@{player.handle}</span>
                 </span>

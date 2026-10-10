@@ -16,6 +16,7 @@ import {
   type ClientToServerEvents,
   type DistrictId,
   type PresencePlayerDto,
+  type WealthClass,
   type RealtimeAck,
   type ServerToClientEvents,
   type WorldMovePayload,
@@ -35,6 +36,7 @@ import { ChatService } from './chat.service.js';
 import { ShardsService } from './shards.service.js';
 import { deliverSpeech } from './speech-delivery.js';
 import { SpeechService } from './speech.service.js';
+import { WealthClassService } from '../social/wealth-class.service.js';
 
 type RealtimeSocket = Socket<ClientToServerEvents, ServerToClientEvents, Record<string, never>, SocketData>;
 
@@ -111,6 +113,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     private readonly shards: ShardsService,
     private readonly social: SocialGuard,
     private readonly speech: SpeechService,
+    private readonly wealth: WealthClassService,
   ) {}
 
   afterInit(server: Server<ClientToServerEvents, ServerToClientEvents>): void {
@@ -163,7 +166,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       const shard = await this.shards.assign(character.id, await this.social.friendIds(character.id));
       socket.data.shard = shard;
       await socket.join([characterRoom(character.id), shardRoom(shard)]);
-      const player = this.toPresence(character);
+      const player = this.toPresence(character, await this.wealth.classOf(character.id));
       await this.presence.markOnline(player);
       this.metrics.onlinePlayers.inc();
       ready.resolve(true);
@@ -298,7 +301,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
     this.pendingPositions.clear();
   }
 
-  private toPresence(character: CharacterEntity): PresencePlayerDto {
+  private toPresence(character: CharacterEntity, wealthClass: WealthClass): PresencePlayerDto {
     return {
       characterId: character.id,
       handle: character.handle,
@@ -309,6 +312,7 @@ export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection, OnGa
       locationId: character.locationId,
       activity: character.activity?.actionId ?? null,
       status: character.status,
+      wealthClass,
     };
   }
 }
