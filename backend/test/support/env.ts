@@ -48,6 +48,8 @@ export const E2E_ENV: Readonly<Record<string, string>> = {
   REQUIRE_EMAIL_VERIFICATION: 'false',
   GAME_EPOCH: '2026-10-01T00:00:00.000Z',
   GAME_TIME_SCALE: '120',
+  // Pinned like everything else so a developer's .env can't slow (or speed up) the suite's clock mid-run.
+  GAME_TIME_RESCALES: '',
   WORLD_SEED: 'e2e-world-seed',
   MARKET_SEED: secret('market-seed', 32),
   FLUTTERWAVE_SECRET_KEY: '',
