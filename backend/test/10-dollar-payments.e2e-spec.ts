@@ -20,7 +20,7 @@ import { signInOwner, type Admin } from './support/admin.js';
 import { bootApp, type E2eApp } from './support/app.js';
 import { E2E } from './support/env.js';
 import { FAKE_FLUTTERWAVE_KEY, FakeFlutterwave, type FakeTransaction } from './support/fake-flutterwave.js';
-import { burst } from './support/game.js';
+import { burst, drainCash } from './support/game.js';
 import { ledgerViolations, NO_VIOLATIONS, postingsWithKey } from './support/ledger.js';
 import { synthMp3, uploadCreative, uploadTrack } from './support/media.js';
 import { jobResult, paymentRow, sendWebhook, sweepWhenDue } from './support/payments.js';
@@ -343,6 +343,8 @@ describe('refunds of dollar payments take back the coins in proportion, once', (
 
   it('what was already spent becomes a debt, recorded once and repaid from the next money in', async () => {
     const player = await createPlayer(e2e);
+    // From ₦0, so the dollars bought below always fit the monthly FX allowance, whatever the starting money.
+    await drainCash(e2e, player);
     const { transaction } = await paidDollars(player, 2);
     // Spend everything but ₦1,000 by moving it into dollars (out of reach of a claw-back).
     ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: (await player.cash()) - 1_000, idempotencyKey: key() }));

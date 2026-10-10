@@ -10,8 +10,8 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * The checks make a mismatched row impossible: a naira payment charges exactly its naira value; a dollar payment has
  * a rate and its naira value is exactly cents × rate.
  */
-export class DollarPayments1791610000000 implements MigrationInterface {
-  name = 'DollarPayments1791610000000';
+export class DollarPayments1791620000000 implements MigrationInterface {
+  name = 'DollarPayments1791620000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "payments" ADD "amount_minor" bigint`);
