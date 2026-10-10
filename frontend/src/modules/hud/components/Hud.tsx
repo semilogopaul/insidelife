@@ -25,7 +25,6 @@ import { ClockCard } from './ClockCard';
 import { DriveAlert } from './DriveAlert';
 import { DrivePanel } from './DrivePanel';
 import { GpsBanner } from './GpsBanner';
-import { NextGoalChip } from './NextGoalChip';
 import { RoutinePrompt } from './RoutinePrompt';
 import { SuggestionChips } from './SuggestionChips';
 import { VitalsPanel } from './VitalsPanel';
@@ -147,7 +146,8 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const mode = useWorld((state) => state.mode);
   const navigation = useNavigation();
   const suggestions = useSuggestions();
-  const goalGuide = useGoalGuide(suggestions.data);
+  // The goal's place on the minimap and the "Step done!" toast (the goal itself is the pill in the corner).
+  useGoalGuide(suggestions.data);
   const wide = useMediaQuery('(min-width: 768px)');
   // Stick on the right: the buttons go bottom-left and the bottom-right is the thumb zone.
   const stickSide = useStickSide();
@@ -168,7 +168,8 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   // suggestions: they lift above it.
   const contextLift = !wide && nearby && !sheetOpen ? CONTEXT_BASE_PX + (talkButton ? TALK_PX : 0) + (nearby.disabled ? 14 : 0) + (nearby.more?.length ?? 0) * CONTEXT_OPTION_PX : 0;
   // Inside on a phone the stick's ring is in its corner (where the pills go when the stick is on the right).
-  const stickLift = !wide && inside && stickSide !== null && !phoneOpen ? STICK_CLEAR_PX : 0;
+  // Walking outside the ring is there too: the pills sit just above it.
+  const stickLift = !wide && (inside || mode === 'walking') && stickSide !== null && !phoneOpen ? STICK_CLEAR_PX : 0;
   const bottomLift = Math.max(contextLift, stickLift, inside && !phoneOpen ? SHEET_LIFT_PX : 0);
   // On phones the stick's corner is the walking/steering thumb zone: keep it clear while moving around outside.
   const thumbZoneBusy = !wide && (mode === 'walking' || mode === 'driving');
@@ -182,7 +183,9 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const outdoorMap = map && !data.inside ? map : null;
   const all = suggestions.data ?? [];
   const routine = data.free && !drive ? (all.find((suggestion) => isRoutineDue(suggestion, data.minute) && !skipped.has(suggestion.id)) ?? null) : null;
-  const chips = all.filter((suggestion) => suggestion.id !== routine?.id);
+  // Outside, the life goal leads: it's the direction when there's nothing else to do here.
+  const unordered = all.filter((suggestion) => suggestion.id !== routine?.id);
+  const chips = inside ? unordered : [...unordered.filter((s) => s.kind === 'goal'), ...unordered.filter((s) => s.kind !== 'goal')];
 
   const gps = navigation.destinationId ? (
     <GpsBanner
@@ -196,7 +199,6 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const centre = (
     <>
       {drive?.warning && <DriveAlert warning={drive.warning} />}
-      {!phoneOpen && !drive && <NextGoalChip guide={goalGuide} compact={inside} />}
       {gps}
       {routinePrompt}
       {notices}
@@ -246,7 +248,8 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
         >
           {wide && !flip && outdoorMap}
           {/* A phone with a stack of things to do at this spot shows one pill, not two (no five-layer pile-ups). */}
-          {!drive && !thumbZoneBusy && !sheetOpen && <SuggestionChips suggestions={chips} max={wide ? 3 : (nearby?.more?.length ?? 0) > 0 ? 1 : 2} />}
+          {/* Everywhere but behind the wheel (the steering buttons own that corner); one pill while walking on a phone. */}
+          {!drive && !sheetOpen && <SuggestionChips suggestions={chips} max={wide ? 3 : thumbZoneBusy || (nearby?.more?.length ?? 0) > 0 ? 1 : 2} />}
           {showActivity && !sheetOpen && data.segment && (
             <ActivityBanner
               segment={data.segment}
