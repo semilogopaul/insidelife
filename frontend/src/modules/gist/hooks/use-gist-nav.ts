@@ -1,5 +1,6 @@
 'use client';
 
+import type { WealthClass } from '@insidelife/shared';
 import { create } from 'zustand';
 
 export type GistTab = 'lagos' | 'here' | 'dms' | 'friends' | 'parties';
@@ -9,6 +10,7 @@ export interface DmPartner {
   readonly id: string;
   readonly handle: string;
   readonly name: string;
+  readonly wealthClass?: WealthClass;
 }
 
 interface GistNavState {

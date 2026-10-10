@@ -1,7 +1,7 @@
-import { Body, Controller, HttpCode, HttpStatus, Post, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Res } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
-import type { AccountDeletionDto } from '@insidelife/shared';
+import type { AccountDeletionDto, OnboardingDto } from '@insidelife/shared';
 import { AllowUnverifiedEmail } from '../../common/decorators/allow-unverified-email.decorator.js';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { ReqMeta, type RequestMeta } from '../../common/decorators/request-meta.decorator.js';
@@ -9,11 +9,36 @@ import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { REFRESH_COOKIE, REFRESH_COOKIE_PATH } from '../auth/auth.controller.js';
 import { AccountLifecycleService } from './account-lifecycle.service.js';
 import { DeleteAccountDto } from './dto/delete-account.dto.js';
+import { WelcomeReactionDto } from './dto/welcome-reaction.dto.js';
+import { UsersService } from '../users/users.service.js';
 
 /** The signed-in player's own account. */
 @Controller({ path: 'account', version: '1' })
 export class AccountsController {
-  constructor(private readonly lifecycle: AccountLifecycleService) {}
+  constructor(
+    private readonly lifecycle: AccountLifecycleService,
+    private readonly users: UsersService,
+  ) {}
+
+  /** Which one-time prompts (welcome note, featured places) this account has already seen. */
+  @Get('onboarding')
+  onboarding(@CurrentUser() user: AuthUser): Promise<OnboardingDto> {
+    return this.users.onboarding(user.userId);
+  }
+
+  /** Answer the welcome note (either button closes it; the first answer is recorded). */
+  @HttpCode(HttpStatus.OK)
+  @Post('onboarding/welcome')
+  answerWelcome(@CurrentUser() user: AuthUser, @Body() body: WelcomeReactionDto): Promise<OnboardingDto> {
+    return this.users.answerWelcome(user.userId, body.reaction);
+  }
+
+  /** The featured-places prompt was dismissed or used. */
+  @HttpCode(HttpStatus.OK)
+  @Post('onboarding/featured')
+  featuredSeen(@CurrentUser() user: AuthUser): Promise<OnboardingDto> {
+    return this.users.markFeaturedSeen(user.userId);
+  }
 
   /**
    * Delete my account (soft delete). Needs the password and the confirmation phrase. Ends every session, including

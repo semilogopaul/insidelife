@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { NIGHT_OUT_VENUE_TYPES, SPRAY_VENUE_TYPES, findVenue, isHomeLocation, isStreetLocation, type CharacterSnapshotDto, type NightOutSection } from '@insidelife/shared';
 import { PlaceIcon, venuePlaceKind } from '@/common/brand/place-icons';
 import { Button, EmptyState, Spinner } from '@/common/components';
+import { PlayerName } from '@/common/social';
 import { useUi } from '@/common/game/ui-store';
 import { useNightOutNav } from '@/common/night-out';
 import { useGistNav } from '../../hooks/use-gist-nav';
@@ -82,7 +83,9 @@ export function HereTab({ snapshot }: { readonly snapshot: CharacterSnapshotDto 
               <li key={player.id}>
                 <button type="button" onClick={() => openProfile(player.handle)} className="flex w-20 flex-col items-center gap-1 rounded-card p-1.5 text-center hover:bg-paper-3">
                   <PlayerAvatar name={`${player.firstName} ${player.lastName}`} handle={player.handle} online={player.online} />
-                  <span className="w-full truncate text-xs font-bold">{player.firstName}</span>
+                  <span className="w-full truncate text-xs font-bold">
+                    <PlayerName wealthClass={player.wealthClass}>{player.firstName}</PlayerName>
+                  </span>
                   <span className="w-full truncate text-2xs text-text-soft">{player.isFriend ? 'Friend' : (player.activity ?? player.statusTier.label)}</span>
                 </button>
               </li>

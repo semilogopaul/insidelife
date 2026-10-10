@@ -1,3 +1,4 @@
+import type { WelcomeReaction } from '@insidelife/shared';
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn, UpdateDateColumn } from 'typeorm';
 
 export type UserRole = 'player' | 'admin';
@@ -58,6 +59,18 @@ export class UserEntity {
   /** Personal data removed (email, password, birth date, names, handle). Can't be restored after this. */
   @Column({ type: 'timestamptz', nullable: true })
   purgedAt: Date | null;
+
+  /** When the new-player welcome note was answered (existing accounts were marked seen when it launched). */
+  @Column({ type: 'timestamptz', nullable: true })
+  welcomeSeenAt: Date | null;
+
+  /** Which button they pressed on the welcome note: `i-dey-for-you` or `na-you-sabi`. */
+  @Column({ type: 'varchar', length: 24, nullable: true })
+  welcomeReaction: WelcomeReaction | null;
+
+  /** When the "featured places are live" prompt was dismissed (it shows once per account). */
+  @Column({ type: 'timestamptz', nullable: true })
+  featuredSeenAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

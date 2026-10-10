@@ -1,3 +1,4 @@
+import type { WealthClassService } from '../social/wealth-class.service.js';
 import { describe, expect, it, vi } from 'vitest';
 import type { ChatSaidDto, RealtimeAck } from '@insidelife/shared';
 import { RateLimitedException } from '../../common/exceptions/domain.exception.js';
@@ -49,6 +50,7 @@ async function connect(say: SpeechService['say']) {
     { assign: async () => 'lagos-1', sample: async () => [], size: async () => 1 } as unknown as ShardsService,
     { friendIds: async () => [] } as unknown as SocialGuard,
     speech,
+    { classOf: async () => 'lapo' } as unknown as WealthClassService,
   );
   (gateway as unknown as { server: unknown }).server = server;
   await gateway.handleConnection(socket as never);

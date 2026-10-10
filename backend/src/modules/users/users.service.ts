@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import type { OnboardingDto, WelcomeReaction } from '@insidelife/shared';
 import { IsNull, type Repository } from 'typeorm';
 import { UserEntity } from './entities/user.entity.js';
 
@@ -28,5 +29,21 @@ export class UsersService {
 
   async touchLogin(id: string): Promise<void> {
     await this.users.update({ id }, { lastLoginAt: new Date() });
+  }
+
+  async onboarding(id: string): Promise<OnboardingDto> {
+    const user = await this.findById(id);
+    return { welcomeSeen: (user?.welcomeSeenAt ?? null) !== null, welcomeReaction: user?.welcomeReaction ?? null, featuredSeen: (user?.featuredSeenAt ?? null) !== null };
+  }
+
+  /** Records the first answer to the welcome note; later answers (another tab or device) change nothing. */
+  async answerWelcome(id: string, reaction: WelcomeReaction): Promise<OnboardingDto> {
+    await this.users.update({ id, welcomeSeenAt: IsNull() }, { welcomeSeenAt: new Date(), welcomeReaction: reaction });
+    return this.onboarding(id);
+  }
+
+  async markFeaturedSeen(id: string): Promise<OnboardingDto> {
+    await this.users.update({ id, featuredSeenAt: IsNull() }, { featuredSeenAt: new Date() });
+    return this.onboarding(id);
   }
 }

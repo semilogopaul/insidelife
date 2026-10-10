@@ -1,5 +1,6 @@
 import type { PresencePlayerDto } from '@insidelife/shared';
 import { getSocket } from '@/common/realtime/socket';
+import { rememberWealthClass } from '@/common/social';
 
 /**
  * Who is who: positions arrive by character id (`world:players`), looks and handles by presence events. The
@@ -19,6 +20,7 @@ function put(player: PresencePlayerDto): void {
   const previous = byId.get(player.characterId);
   byId.set(player.characterId, player);
   rememberHandle(player.characterId, player.handle);
+  rememberWealthClass(player.characterId, player.wealthClass);
   if (!previous || previous.handle !== player.handle || JSON.stringify(previous.outfit) !== JSON.stringify(player.outfit)) {
     for (const listener of listeners) listener();
   }

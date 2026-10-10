@@ -6,6 +6,7 @@ import { Button, Sheet } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useWorld } from '@/common/game/world-store';
 import { useTouchUi } from '@/common/hooks/use-touch-ui';
+import { PlayerName, useWealthClass } from '@/common/social';
 import { cn } from '@/common/utils/cn';
 import type { WorldPresence } from '../flow/use-play-bridge';
 import { tagElements, usePlayUi, type RemoteTag } from '../state/play-ui-store';
@@ -13,6 +14,7 @@ import { DriveControls } from './DriveControls';
 import { PointerLayer } from './PointerLayer';
 
 function NameTag({ tag }: { readonly tag: RemoteTag }) {
+  const wealthClass = useWealthClass(tag.id);
   const ref = useCallback(
     (element: HTMLDivElement | null) => {
       if (element) tagElements.set(tag.id, element);
@@ -22,7 +24,9 @@ function NameTag({ tag }: { readonly tag: RemoteTag }) {
   );
   return (
     <div ref={ref} className="pointer-events-none absolute left-0 top-0 whitespace-nowrap rounded-full bg-ink/75 px-2.5 py-0.5 text-xs font-bold text-on-ink opacity-0 shadow-[var(--shadow-glass)] will-change-transform">
-      @{tag.handle}
+      <PlayerName wealthClass={wealthClass} onDark>
+        @{tag.handle}
+      </PlayerName>
     </div>
   );
 }
