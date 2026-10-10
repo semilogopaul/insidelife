@@ -39,6 +39,9 @@ export const DISTRICT_RECTS: ReadonlyArray<readonly [DistrictId, CellRect]> = [
   ['victoria-island', [20, 35, 45, 41]],
   ['lekki', [46, 27, 53, 41]],
   ['ajah', [54, 27, 58, 41]],
+  // Reclaimed land: OBO's waterfront estate at the end of Awolowo Road, and the refinery on the Lekki lagoon shore.
+  ['ikoyi', [41, 30, 44, 34]],
+  ['epe', [55, 19, 58, 26]],
 ];
 
 export type TerrainPaint = 'land' | 'water' | 'sand';
@@ -60,6 +63,10 @@ export const TERRAIN_RECTS: ReadonlyArray<readonly [TerrainPaint, CellRect]> = [
   ['water', [43, 23, 45, 34]],
   // Banana Island sits in the lagoon.
   ['land', [38, 19, 43, 22]],
+  // Reclaimed: OBO's estate (the jet apron and the creekside garden) and the Dangote Refinery on the lagoon shore.
+  ['land', [43, 30, 44, 34]],
+  ['land', [41, 34, 42, 34]],
+  ['land', [55, 19, 58, 26]],
   // The Atlantic.
   ['water', [0, 41, 63, 41]],
   ['water', [12, 40, 63, 40]],
@@ -197,7 +204,10 @@ export type LotArchetype =
   | 'motor-park'
   | 'car-dealer'
   | 'shop'
-  | 'school';
+  | 'school'
+  | 'mansion'
+  | 'jet-pad'
+  | 'refinery';
 
 export interface VenueLotSpec {
   readonly venueId: string;
@@ -283,6 +293,13 @@ export const VENUE_LOTS: readonly VenueLotSpec[] = [
   lot('ajah-market', [57, 31, 58, 32], 'W', 'market', 0),
   // Epe & Ibeju-Lekki
   lot('epe-land-office', [62, 30, 63, 31], 'W', 'shop', 1),
+  // Showcase places, appended last so every earlier lot keeps its index (ad spot ids use lot indices). Their doors face
+  // a bend or a junction, where no roadside ad spot stands, so the generated ad inventory is unchanged.
+  // OBO's estate: the mansion's gate on the Awolowo/Bourdillon bend, the jet's apron gate beside it.
+  lot('obo-mansion', [41, 32, 44, 34], 'N', 'mansion', 0),
+  lot('air-obo', [42, 31, 44, 31], 'W', 'jet-pad'),
+  // Dangote Refinery's visitor centre and gate, on the Ikorodu-Epe Road junction; the works fill the shore behind it.
+  lot('dangote-refinery', [60, 26, 60, 26], 'E', 'refinery'),
 ];
 
 /** Landmark lots that are not venues (the renderer puts something iconic there and no filler building). */
@@ -295,6 +312,9 @@ export interface LandmarkSpec {
 export const LANDMARKS: readonly LandmarkSpec[] = [
   { id: 'vi-towers', rect: [39, 37, 40, 37], front: 'S' },
   { id: 'lekki-toll-plaza', rect: [44, 36, 44, 36], front: 'N' },
+  // The jet apron's waterfront (OBO's estate) and the refinery works behind the visitor centre.
+  { id: 'obo-apron', rect: [43, 30, 44, 30], front: 'S' },
+  { id: 'dangote-works', rect: [55, 19, 59, 26], front: 'E' },
 ];
 
 export type BillboardMount = 'pole' | 'wall' | 'roof' | 'gantry';

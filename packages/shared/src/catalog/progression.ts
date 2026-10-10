@@ -497,6 +497,20 @@ export const LIFE_GOALS = [
     celebration: 'toast',
     doneText: 'New connection unlocked. Man know man!',
   },
+  {
+    id: 'visit-obo-mansion',
+    chapter: 1,
+    order: 8,
+    title: 'Visit OBO Mansion',
+    description: 'OBO’s mansion in Ikoyi is open to the public: a cinema, a studio, a games room — and a jet parked outside.',
+    hint: 'Open Phone → Map and go to OBO Mansion in Ikoyi (open 8:00–22:00). Walk in and look around.',
+    targetVenueTypes: ['mansion'],
+    optional: true,
+    condition: visited('mansion'),
+    reward: { cash: 5_000, clout: 1 },
+    celebration: 'toast',
+    doneText: 'Shekpe! You don enter OBO’s house.',
+  },
 
   // ===== Chapter 2 — Finding your path ===========================================================================
   {
@@ -591,6 +605,21 @@ export const LIFE_GOALS = [
     reward: { cash: 10_000, clout: 3 },
     celebration: 'toast',
     doneText: 'Licensed and legal. Checkpoints can’t shake you now.',
+  },
+  {
+    id: 'tour-dangote-refinery',
+    chapter: 2,
+    order: 6,
+    title: 'Tour Dangote Refinery',
+    description: 'Africa’s biggest refinery sits on the Lekki lagoon. See where Lagos petrol comes from.',
+    hint: 'Ride or drive to Dangote Refinery (Epe & Ibeju-Lekki, open 8:00–17:00) and choose “Take the tour”.',
+    targetVenueTypes: ['refinery'],
+    suggestedActionId: 'refinery-tour',
+    optional: true,
+    condition: did('refinery-tour'),
+    reward: { cash: 10_000, clout: 2 },
+    celebration: 'toast',
+    doneText: 'Hard hat off. Now you know where the fuel queue starts.',
   },
 
   // ===== Chapter 3 — Building ===================================================================================
@@ -827,6 +856,21 @@ export const ACHIEVEMENTS = [
   { id: 'interstate', title: 'Interstate', description: 'Left Lagos for another city. Mind the potholes on the expressway.', icon: 'map', rarity: 'uncommon', category: 'city', condition: count('regions') },
   { id: 'departure-lounge', title: 'Departure lounge', description: 'Visited the airport. Just looking. For now.', icon: 'plane', rarity: 'common', category: 'city', condition: visited('airport') },
   { id: 'server-don-down', title: 'Server don down', description: 'Visited a CBT centre. The generator was louder than the invigilator.', icon: 'monitor', rarity: 'common', category: 'city', condition: visited('cbt-centre') },
+  { id: 'inside-obo-mansion', title: 'Inside OBO’s house', description: 'Walked into OBO Mansion in Ikoyi. Shekpe!', icon: 'castle', rarity: 'common', category: 'city', condition: count(progressionCounter.venue('obo-mansion')) },
+  { id: 'movie-night-at-obos', title: 'Movie night at OBO’s', description: 'Watched a movie in OBO’s cinema. Recliner, popcorn, surround sound.', icon: 'clapperboard', rarity: 'uncommon', category: 'city', condition: anyOf(did('obo-movie'), did('obo-vip-screening')) },
+  { id: 'winner-stays-on', title: 'Winner stays on', description: 'Played FIFA in OBO’s games room.', icon: 'gamepad-2', rarity: 'common', category: 'city', condition: did('obo-fifa') },
+  { id: 'captain-on-deck', title: 'Captain on deck', description: 'Took a selfie in the AIR OBO cockpit. The jet stayed parked.', icon: 'plane', rarity: 'uncommon', category: 'city', condition: did('air-obo-selfie') },
+  { id: 'peed-on-a-private-jet', title: 'Peed on a private jet', description: 'Used the toilet on AIR OBO. Gold taps and all.', icon: 'toilet', rarity: 'uncommon', category: 'city', condition: did('air-obo-toilet') },
+  { id: 'where-petrol-comes-from', title: 'Where petrol comes from', description: 'Toured Dangote Refinery on the Lekki lagoon.', icon: 'factory', rarity: 'uncommon', category: 'city', condition: did('refinery-tour') },
+  {
+    id: 'e-choke',
+    title: 'E choke!',
+    description: 'At OBO’s: watched a movie, played FIFA, recorded a song, and took a selfie in the AIR OBO cockpit.',
+    icon: 'sparkles',
+    rarity: 'rare',
+    category: 'city',
+    condition: allOf(anyOf(did('obo-movie'), did('obo-vip-screening')), did('obo-fifa'), did('obo-record'), did('air-obo-selfie')),
+  },
   { id: 'night-crawler', title: 'Night crawler', description: 'Out on the streets between 2am and 4am. Lagos never sleeps, and neither do you.', icon: 'moon', rarity: 'uncommon', category: 'city', secret: true, condition: count('street-late') },
 
   // ----- Food & lifestyle ---------------------------------------------------------------------------------------
