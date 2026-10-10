@@ -70,3 +70,5 @@ export * from './world-map/service-points.js';
 export * from './catalog/ad-inventory.js';
 export * from './catalog/ad-views.js';
 export * from './catalog/club-schedule.js';
+export * from './catalog/betting.js';
+export * from './contracts/betting.js';

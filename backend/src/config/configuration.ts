@@ -48,6 +48,14 @@ export interface AppConfig {
     readonly privateBucket: string;
     readonly publicBaseUrl: string;
   };
+  readonly betting: {
+    /** BETTING_SECRET (server-only seed of every result); empty → derived from the JWT secret with HKDF. */
+    readonly secret: string;
+    /** Largest stake per slip. */
+    readonly maxStake: number;
+    /** Default and highest daily loss limit (net losses per game day). */
+    readonly dailyLossLimit: number;
+  };
   readonly adminEmails: readonly string[];
   readonly admin: {
     /** Key that encrypts admins' authenticator secrets at rest (32+ chars; derived from the JWT secret when unset). */
@@ -149,6 +157,11 @@ export const configuration = (): AppConfig => {
     ads: {
       phoneAppSlots: Math.min(20, Math.max(0, Number.parseInt(env.PHONE_APP_AD_SLOTS ?? '10', 10) || 0)),
     },
+    betting: {
+      secret: env.BETTING_SECRET?.trim() ?? '',
+      maxStake: Number(env.BETTING_MAX_STAKE ?? 1_000_000),
+      dailyLossLimit: Number(env.BETTING_DAILY_LOSS_LIMIT ?? 5_000_000),
+    },
     adminEmails: (env.ADMIN_EMAILS ?? '')
       .split(',')
       .map((email) => email.trim().toLowerCase())
@@ -179,7 +192,9 @@ export const configuration = (): AppConfig => {
       callbackUrl: env.PAYMENT_CALLBACK_URL || 'http://localhost:3100/payments/callback',
       dailyLimitNgn: Number(env.TOPUP_DAILY_LIMIT_NGN ?? 0),
       maxTopupNgn: Number(env.TOPUP_MAX_PER_PAYMENT_NGN ?? 10_000_000),
-      sandbox: !env.FLUTTERWAVE_SECRET_KEY && (env.NODE_ENV !== 'production' || bool(env.ALLOW_PAYMENT_SANDBOX, false)),
+      sandbox:
+        !env.FLUTTERWAVE_SECRET_KEY &&
+        (env.NODE_ENV !== 'production' || bool(env.ALLOW_PAYMENT_SANDBOX, false)),
     },
   };
 };
