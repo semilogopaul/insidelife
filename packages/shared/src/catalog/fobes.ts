@@ -47,13 +47,11 @@ export const FOBES_LISTS: Readonly<Record<FobesListId, FobesListDefinition>> = {
   },
 };
 
-/** Ranked lists stop here: ranks beyond it read "outside the top 1,000". Also the size of each daily snapshot. */
-export const FOBES_RANKED_LIMIT = 1000;
+/** Each list shows the top 100 (your own rank is still worked out beyond it). Also the size of each daily snapshot. */
+export const FOBES_LIST_LIMIT = 100;
 export const FOBES_PAGE_SIZE = 20;
-/** Risers and fallers show at most this many people. */
-export const FOBES_MOVERS_LIMIT = 100;
 /** The last page a list can have. */
-export const FOBES_MAX_PAGE = Math.ceil(FOBES_RANKED_LIMIT / FOBES_PAGE_SIZE);
+export const FOBES_MAX_PAGE = Math.ceil(FOBES_LIST_LIMIT / FOBES_PAGE_SIZE);
 /** Under this age (whole game years) you're on the Under 30 list. */
 export const FOBES_UNDER_AGE = 30;
 /** "This game week": movers compare today with the snapshot this many game days ago. */
@@ -66,10 +64,11 @@ export function isFobesMoversList(list: FobesListId): list is 'risers' | 'faller
 }
 
 /** Where a fortune came from, by the largest share of today's net worth. */
-export const FOBES_WEALTH_SOURCES = ['self-made', 'mostly-self-made', 'inherited', 'family-money', 'topped-up', 'mixed'] as const;
+export const FOBES_WEALTH_SOURCES = ['none', 'self-made', 'mostly-self-made', 'inherited', 'family-money', 'topped-up', 'mixed'] as const;
 export type FobesWealthSource = (typeof FOBES_WEALTH_SOURCES)[number];
 
 export const FOBES_WEALTH_SOURCE_LABELS: Readonly<Record<FobesWealthSource, string>> = {
+  none: 'Nothing to count yet',
   'self-made': 'Self-made',
   'mostly-self-made': 'Mostly self-made',
   inherited: 'Inherited',

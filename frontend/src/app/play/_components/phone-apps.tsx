@@ -22,6 +22,7 @@ const HealthApp = dynamic(() => import('@/modules/health').then((m) => m.HealthA
 const FamilyApp = dynamic(() => import('@/modules/family').then((m) => m.FamilyApp), { loading });
 const InvestApp = dynamic(() => import('@/modules/invest').then((m) => m.InvestApp), { loading });
 const GistApp = dynamic(() => import('@/modules/gist').then((m) => m.GistApp), { loading });
+const FobesApp = dynamic(() => import('@/modules/fobes').then((m) => m.FobesApp), { loading });
 const MessagesApp = dynamic(() => import('@/modules/gist').then((m) => m.MessagesApp), { loading });
 const PromoteApp = dynamic(() => import('@/modules/promote').then((m) => m.PromoteApp), { loading });
 const GoalsApp = dynamic(() => import('@/modules/goals').then((m) => m.GoalsApp), { loading });
@@ -41,6 +42,7 @@ export const PHONE_APPS: readonly PhoneAppDefinition[] = [
   { id: 'family', name: 'Family', component: FamilyApp },
   { id: 'invest', name: 'Invest', component: InvestApp },
   { id: 'gist', name: 'Gist', component: GistApp },
+  { id: 'fobes', name: 'Fobes', component: FobesApp },
   { id: 'promote', name: 'Promote', component: PromoteApp },
   { id: 'goals', name: 'Goals', component: GoalsApp },
   { id: 'me', name: 'Me', component: MeApp },

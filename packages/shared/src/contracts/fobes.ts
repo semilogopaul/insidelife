@@ -36,9 +36,9 @@ export interface FobesMoveDto {
   readonly pct: number | null;
   /** "+₦120M", "▲ 34%", "New entry". */
   readonly display: string;
-  /** Their rank a week ago, if they were in the top 1,000 then. */
+  /** Their rank on the rich list a week ago, if they were in the top 100 then. */
   readonly rankBefore: number | null;
-  /** Wasn't in the top 1,000 a week ago. */
+  /** Wasn't in the top 100 a week ago. */
   readonly newEntry: boolean;
 }
 
@@ -72,7 +72,7 @@ export interface FobesListDto {
   readonly page: number;
   readonly pageSize: number;
   readonly totalPages: number;
-  /** People on the list (capped at the top 1,000; movers at 100). */
+  /** People on the list (at most the top 100). */
   readonly total: number;
   readonly entries: readonly FobesEntryDto[];
   /** Risers and fallers: the game minute their week is measured from; null on the ranked lists. */
@@ -83,11 +83,13 @@ export interface FobesListDto {
 /** Your place on one ranked list. */
 export interface FobesPositionDto {
   readonly list: Extract<FobesListId, 'rich-list' | 'self-made' | 'under-30'>;
-  /** Null: not ranked (outside the top 1,000, or nothing on this list yet). */
+  /** Your rank among everyone (it can be beyond the top 100); null when you're not on this list yet (nothing to count). */
   readonly rank: number | null;
+  /** In the top 100 the list shows. */
+  readonly inTop: boolean;
   /** Your figure on this list (always exact: it's yours). */
   readonly worth: number;
-  /** Who to beat next: the rank above you, or #1,000 to get in. Null when you're #1 or the list is empty. */
+  /** Who to beat next: the rank above you in the top 100, or #100 to get in. Null when you're #1 or not ranked. */
   readonly next: {
     readonly rank: number;
     /** How far behind you are (an exact figure only if they show theirs; otherwise a band). */

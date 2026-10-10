@@ -1,5 +1,15 @@
-import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
-import { LEADERBOARD_BOARDS, PROFILE_LOCATION_VISIBILITY, type LeaderboardBoardId, type ProfileLocationVisibility, type UpdateSocialPrivacyRequest } from '@insidelife/shared';
+import { Type } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  FOBES_LIST_IDS,
+  FOBES_MAX_PAGE,
+  LEADERBOARD_BOARDS,
+  PROFILE_LOCATION_VISIBILITY,
+  type FobesListId,
+  type LeaderboardBoardId,
+  type ProfileLocationVisibility,
+  type UpdateSocialPrivacyRequest,
+} from '@insidelife/shared';
 
 export class PlayerSearchQueryDto {
   @IsString()
@@ -27,4 +37,18 @@ export class VenueParamsDto {
   @IsString()
   @MaxLength(64)
   readonly venueId: string;
+}
+
+export class FobesListParamsDto {
+  @IsIn(FOBES_LIST_IDS)
+  readonly list: FobesListId;
+}
+
+export class FobesPageQueryDto {
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(FOBES_MAX_PAGE)
+  readonly page?: number;
 }
