@@ -4,7 +4,7 @@ import { Copy } from 'lucide-react';
 import { koboToNaira, runLengthLabel, type PromotionReceiptDto } from '@insidelife/shared';
 import { Money, toast } from '@/common/components';
 
-const when = new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+const when = new Intl.DateTimeFormat('en-NG', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true });
 
 /** The receipt: blocks × block price, the total charged, when, the payment reference (copyable) and any refund. */
 export function ReceiptCard({ receipt }: { readonly receipt: PromotionReceiptDto }) {

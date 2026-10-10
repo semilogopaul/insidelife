@@ -20,8 +20,9 @@ export function adSlotOfDestination(destinationId: string | null | undefined): s
 }
 
 interface AdFocusState {
-  /** The board to highlight, until `until` (epoch ms). */
+  /** The board to highlight, from `since` until `until` (epoch ms). */
   readonly slotId: string | null;
+  readonly since: number;
   readonly until: number;
   highlightAd(slotId: string, durationMs?: number): void;
   clear(): void;
@@ -29,14 +30,18 @@ interface AdFocusState {
 
 export const useAdFocus = create<AdFocusState>()((set) => ({
   slotId: null,
+  since: 0,
   until: 0,
-  highlightAd: (slotId, durationMs = AD_HIGHLIGHT_MS) => set({ slotId, until: Date.now() + durationMs }),
-  clear: () => set({ slotId: null, until: 0 }),
+  highlightAd: (slotId, durationMs = AD_HIGHLIGHT_MS) => {
+    const now = Date.now();
+    set({ slotId, since: now, until: now + Math.max(1, durationMs) });
+  },
+  clear: () => set({ slotId: null, since: 0, until: 0 }),
 }));
 
 /** For frame loops: the highlighted slot right now and how far into the highlight we are (0–1), or null. */
 export function activeAdHighlight(now: number = Date.now()): { readonly slotId: string; readonly progress: number } | null {
-  const { slotId, until } = useAdFocus.getState();
+  const { slotId, since, until } = useAdFocus.getState();
   if (!slotId || now >= until) return null;
-  return { slotId, progress: 1 - (until - now) / AD_HIGHLIGHT_MS };
+  return { slotId, progress: Math.max(0, Math.min(1, (now - since) / Math.max(1, until - since))) };
 }

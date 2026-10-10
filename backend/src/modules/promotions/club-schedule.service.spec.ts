@@ -20,6 +20,7 @@ const order = (patch: Partial<ClubPlayOrderEntity>): ClubPlayOrderEntity =>
     endDate: '2026-10-16',
     lane: 4,
     paidAt: new Date('2026-10-08T10:00:00Z'),
+    reviewedAt: null,
     ...patch,
   }) as ClubPlayOrderEntity;
 
@@ -56,6 +57,16 @@ describe('ClubScheduleService', () => {
     const later = service([order({ startDate: '2026-10-20', endDate: '2026-10-27' })]);
     expect((await later.slotsBetween(NOW, NOW + 3 * 3_600_000)).some((slot) => slot.holder)).toBe(false);
     expect(await service([order({ status: 'in-review' })]).playsOf(order({ status: 'in-review' }), track, 3, NOW)).toEqual({ playingNow: null, upcoming: [] });
+  });
+
+  it('never counts slots from before the song was approved (a restart catching up can’t invent plays)', async () => {
+    const approvedAt = new Date(NOW + 60 * 60_000);
+    const schedule = service([order({ reviewedAt: approvedAt })]);
+    const slots = (await schedule.slotsBetween(NOW, NOW + 3 * 3_600_000)).filter((slot) => slot.lane === 4);
+    expect(slots.some((slot) => slot.startsAtMs < approvedAt.getTime())).toBe(true);
+    for (const slot of slots) expect(slot.holder !== null, new Date(slot.startsAtMs).toISOString()).toBe(slot.startsAtMs >= approvedAt.getTime());
+    const { upcoming } = await schedule.playsOf(order({ reviewedAt: approvedAt }), track, 5, NOW);
+    for (const play of upcoming) expect(play.startsAtMs).toBeGreaterThanOrEqual(approvedAt.getTime());
   });
 
   it('gives a song about the guaranteed plays a day, in every club', async () => {

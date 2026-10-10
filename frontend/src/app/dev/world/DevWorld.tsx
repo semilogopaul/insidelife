@@ -1,10 +1,11 @@
 'use client';
 
-import { WEATHER_CONDITIONS, findVenue, venueEntrance, type WeatherCondition } from '@insidelife/shared';
+import { WEATHER_CONDITIONS, findAdSlot, findVenue, venueEntrance, type WeatherCondition } from '@insidelife/shared';
 import dynamic from 'next/dynamic';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo } from 'react';
 import { useNavigation } from '@/common/game/navigation-store';
+import { useAdFocus } from '@/common/promotions/ad-focus';
 
 const CityPreview = dynamic(() => import('@/modules/world').then((module) => module.CityPreview), { ssr: false });
 const Minimap = dynamic(() => import('@/modules/world').then((module) => module.Minimap), { ssr: false });
@@ -20,7 +21,7 @@ const parseOffset = (value: string | null): readonly [number, number, number] | 
   return parts && parts.length === 3 && parts.every(Number.isFinite) ? [parts[0] as number, parts[1] as number, parts[2] as number] : undefined;
 };
 
-/** Composition root for the dev city viewer (query: hour, weather, at=<venue>|x,z, cam=x,y,z, to, quality, hud=0, play=1, car). */
+/** Composition root for the dev city viewer (query: hour, weather, at=<venue>|x,z, cam=x,y,z, to, quality, hud=0, play=1, car, highlight=<ad slot>). */
 export function DevWorld() {
   const params = useSearchParams();
   const hourParam = params.get('hour');
@@ -41,8 +42,13 @@ export function DevWorld() {
   const guidance = useNavigation((state) => state.instruction);
   const remaining = useNavigation((state) => state.remainingMetres);
   useEffect(() => {
-    setDestination(to ?? null, to ? (findVenue(to)?.name ?? to) : null);
+    setDestination(to ?? null, to ? (findVenue(to)?.name ?? findAdSlot(to.replace(/^ad:/, ''))?.name ?? to) : null);
   }, [to, setDestination]);
+  // `highlight=<slot id>`: light a board up as "See it in Lagos" does on arrival (held for a minute here).
+  const highlight = params.get('highlight');
+  useEffect(() => {
+    if (highlight) useAdFocus.getState().highlightAd(highlight, 60_000);
+  }, [highlight]);
   return (
     <main className="fixed inset-0 overflow-hidden bg-ink">
       <CityPreview hour={hour} weather={weather} focus={focus} cameraOffset={offset} graphics={graphics} play={play} />

@@ -14,7 +14,7 @@ const STEP_LABEL: Readonly<Record<PromotionTimelineStep, string>> = {
   cancelled: 'Cancelled',
 };
 
-const when = new Intl.DateTimeFormat('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' });
+const when = new Intl.DateTimeFormat('en-NG', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
 const day = new Intl.DateTimeFormat('en-NG', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Africa/Lagos' });
 
 /** Midnight (Lagos) steps read as a day; everything else as a day and time on the player's clock. */

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { findVenue, runLengthLabel, type ClubPlayTimeDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Button, Section, Spinner, StatTile, TakeMeThere } from '@/common/components';
+import { useSnapshot } from '@/common/game/snapshot';
 import { useNow } from '@/common/hooks/use-now';
 import { useClubOrderDetail } from '../../hooks/use-promote';
 import { playTimeLabels } from '../../services/play-times';
@@ -34,6 +35,7 @@ export interface SongDetailProps {
 export function SongDetail({ orderId, goToVenueId = null, onBack, onRunAgain }: SongDetailProps) {
   const detail = useClubOrderDetail(orderId);
   const now = useNow();
+  const clout = useSnapshot().data?.character.status ?? 0;
   const [going, setGoing] = useState<string | null>(goToVenueId);
 
   if (detail.isPending || detail.isError) {
@@ -58,7 +60,8 @@ export function SongDetail({ orderId, goToVenueId = null, onBack, onRunAgain }: 
   const meta = STATUS_META[order.status];
   const running = order.status === 'live' || order.status === 'approved';
   const plays: readonly ClubPlayTimeDto[] = playingNow ? [playingNow, ...upcoming] : upcoming;
-  const next = plays[0] ?? null;
+  // The next play at a club the player can get into (clout gates), else simply the next one.
+  const next = plays.find((play) => (findVenue(play.venueId)?.minStatus ?? 0) <= clout) ?? plays[0] ?? null;
   const goingTo = going ? findVenue(going) : undefined;
 
   return (

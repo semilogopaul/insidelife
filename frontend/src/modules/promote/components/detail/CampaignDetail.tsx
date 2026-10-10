@@ -143,7 +143,7 @@ export function CampaignDetail({ campaignId, onBack, onRunAgain }: CampaignDetai
       )}
 
       {slot && RERUNNABLE.has(campaign.status) && (
-        <div className="sticky bottom-0 -mx-1 bg-paper px-1 pb-1 pt-2">
+        <div className={campaign.status === 'live' || campaign.status === 'approved' ? 'pt-1' : 'sticky bottom-0 -mx-1 bg-paper px-1 pb-1 pt-2'}>
           <Button size="lg" block variant={campaign.status === 'live' || campaign.status === 'approved' ? 'paper' : 'danfo'} icon={<Repeat size={18} aria-hidden />} onClick={() => onRunAgain(campaign)}>
             {campaign.status === 'live' || campaign.status === 'approved' ? 'Book it again after this run' : 'Run it again'}
           </Button>

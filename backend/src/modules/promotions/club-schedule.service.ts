@@ -31,7 +31,7 @@ const SCHEDULE_AHEAD_MS = 20 * 60_000;
 
 /** An approved song holding a lane on its dates. */
 export interface LaneHolder {
-  readonly order: Pick<ClubPlayOrderEntity, 'id' | 'trackId' | 'ownerUserId' | 'ownerCharacterId' | 'startDate' | 'endDate' | 'lane'>;
+  readonly order: Pick<ClubPlayOrderEntity, 'id' | 'trackId' | 'ownerUserId' | 'ownerCharacterId' | 'startDate' | 'endDate' | 'lane' | 'reviewedAt'>;
   readonly track: Pick<ClubTrackEntity, 'id' | 'artistName' | 'title' | 'audioUrl' | 'contentType' | 'durationSeconds'>;
 }
 
@@ -106,7 +106,7 @@ export class ClubScheduleService {
    * it's approved. Times are exact (the same slots the audio plays).
    */
   async playsOf(
-    order: Pick<ClubPlayOrderEntity, 'id' | 'lane' | 'startDate' | 'endDate' | 'status'>,
+    order: Pick<ClubPlayOrderEntity, 'id' | 'lane' | 'startDate' | 'endDate' | 'status' | 'reviewedAt'>,
     track: Pick<ClubTrackEntity, 'durationSeconds'>,
     count: number,
     nowMs: number = Date.now(),
@@ -122,7 +122,7 @@ export class ClubScheduleService {
     const upcoming: ClubPlayTimeDto[] = [];
     for (const slot of candidates) {
       const startsAtMs = Math.round(realMsAt(clock, slot.startMinute));
-      if (startsAtMs < runStarts || startsAtMs >= runEnds) continue;
+      if (startsAtMs < runStarts || startsAtMs >= runEnds || (order.reviewedAt !== null && startsAtMs < order.reviewedAt.getTime())) continue;
       const time = { venueId: slot.venueId, startsAtMs, endsAtMs: startsAtMs + durationMs, gameMinute: slot.startMinute };
       if (startsAtMs <= nowMs && nowMs < time.endsAtMs) playingNow = time;
       else if (startsAtMs > nowMs && upcoming.length < count) upcoming.push(time);
@@ -135,7 +135,15 @@ export class ClubScheduleService {
   private fill(slot: ClubSlot, holders: readonly LaneHolder[]): ScheduledSlot {
     const startsAtMs = Math.round(realMsAt(this.world.clock, slot.startMinute));
     const date = lagosToday(new Date(startsAtMs));
-    const holder = holders.find((candidate) => candidate.order.lane === slot.lane && candidate.order.startDate <= date && date < candidate.order.endDate) ?? null;
+    // Only slots that start once it was approved: a song approved mid-day never "played" in that morning's slots.
+    const holder =
+      holders.find(
+        (candidate) =>
+          candidate.order.lane === slot.lane &&
+          candidate.order.startDate <= date &&
+          date < candidate.order.endDate &&
+          (candidate.order.reviewedAt === null || candidate.order.reviewedAt.getTime() <= startsAtMs),
+      ) ?? null;
     return { ...slot, startsAtMs, date, holder, songEndsAtMs: holder ? startsAtMs + holder.track.durationSeconds * 1000 : null };
   }
 

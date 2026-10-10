@@ -5,7 +5,7 @@ import { formatClock12, toDateParts, WEEKDAYS, type ClubPlayTimeDto } from '@ins
  * in-game time it happens at ("11:00 PM, Sat in Lagos"). Pure, so the copy is testable.
  */
 
-const realClock = new Intl.DateTimeFormat('en-NG', { hour: 'numeric', minute: '2-digit' });
+const realClock = new Intl.DateTimeFormat('en-NG', { hour: 'numeric', minute: '2-digit', hour12: true });
 const realDay = new Intl.DateTimeFormat('en-NG', { weekday: 'short', day: 'numeric', month: 'short' });
 
 /** "in 3 min", "in 1 h 5 min", "now", "2 min ago". */

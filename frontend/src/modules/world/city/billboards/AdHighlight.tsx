@@ -16,7 +16,7 @@ import { setProps } from '../lib/mutate';
  */
 
 const DANFO = new Color('#f6b90b');
-const BRIGHT = new Color('#ffe27a');
+const BRIGHT = new Color('#ffffff');
 
 let reducedQuery: MediaQueryList | null = null;
 
@@ -49,7 +49,7 @@ export function highlightGlow(slotId: string, elapsedSeconds: number): number {
  */
 export function highlightGeometry(spot: Pick<AdSpotGeometry, 'width' | 'height' | 'doubleSided'>): BufferGeometry {
   const { width: w, height: h } = spot;
-  const border = Math.min(0.6, Math.max(0.14, Math.min(w, h) * 0.08));
+  const border = Math.min(0.8, Math.max(0.18, Math.min(w, h) * 0.13));
   const depth = spot.doubleSided ? 0.55 : 0.14;
   const z = spot.doubleSided ? -0.07 : 0.08;
   const marker = Math.min(1.8, Math.max(0.4, w * 0.09));
