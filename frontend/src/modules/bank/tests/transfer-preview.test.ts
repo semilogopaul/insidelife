@@ -25,6 +25,24 @@ describe('previewTransfer', () => {
     expect(previewTransfer(100, { ...tier1, sentToday: 4_000_000 }).problem?.code).toBe('OVER_LIMIT');
   });
 
+  it('blocks sending while a refunded top-up is owed', () => {
+    const owing = { ...tier1, debt: 25_000 };
+    const problem = previewTransfer(5_000, owing).problem;
+    expect(problem).toMatchObject({ code: 'DEBT', debt: 25_000 });
+    expect(problem && 'message' in problem ? problem.message : '').toContain('₦25,000');
+    expect(maxSendable(owing)).toBe(0);
+  });
+
+  it('says bought coins are on hold for 48 hours, not that they are starting money', () => {
+    const holding = { ...tier1, sendable: 100_000, held: 500_000 };
+    expect(previewTransfer(100_000, holding).problem).toBeNull();
+    const held = previewTransfer(300_000, holding).problem;
+    expect(held).toMatchObject({ code: 'ON_HOLD', sendable: 100_000 });
+    expect(held && 'message' in held ? held.message : '').toContain('48 hours');
+    // More than even the held coins would free: that's the starting-money lock.
+    expect(previewTransfer(700_000, holding).problem?.code).toBe('LOCKED');
+  });
+
   it('has no daily limit at Tier 3', () => {
     expect(previewTransfer(MAX_SINGLE_TRANSFER, { cash: 1e10, dailyLimit: null, sentToday: 50_000_000, sendable: 1e10 }).problem).toBeNull();
   });

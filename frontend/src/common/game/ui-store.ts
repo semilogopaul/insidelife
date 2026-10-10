@@ -40,6 +40,11 @@ export interface PlayerSettings {
   readonly invertSteering: boolean;
   /** Touch: the walking stick (and the steering arrows) on this side; the other thumb looks around (and drives the pedals). */
   readonly walkStick: StickSide;
+  /**
+   * Clean screen: the HUD is hidden for an unobstructed view (a small Show button brings it back; H on a keyboard).
+   * Movement controls, name tags, speech bubbles, toasts and alerts still show.
+   */
+  readonly hudHidden: boolean;
 }
 
 const DEFAULT_SETTINGS: PlayerSettings = {
@@ -52,6 +57,7 @@ const DEFAULT_SETTINGS: PlayerSettings = {
   showFps: false,
   invertSteering: false,
   walkStick: 'right',
+  hudHidden: false,
 };
 
 interface UiState {

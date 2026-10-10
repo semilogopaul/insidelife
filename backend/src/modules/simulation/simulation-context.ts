@@ -1,5 +1,6 @@
 import type { EntityManager } from 'typeorm';
 import {
+  formatNaira,
   rngFor,
   yearsBetween,
   type GameMinute,
@@ -7,7 +8,7 @@ import {
   type NotificationDto,
   type Rng,
 } from '@insidelife/shared';
-import { InsufficientFundsException } from '../../common/exceptions/domain.exception.js';
+import { GameRuleException, InsufficientFundsException } from '../../common/exceptions/domain.exception.js';
 import type { CharacterEntity } from '../characters/entities/character.entity.js';
 import type { LedgerService } from '../ledger/ledger.service.js';
 import type { CharacterAccounts, SystemAccount } from '../ledger/interfaces/ledger.interfaces.js';
@@ -25,6 +26,12 @@ export interface PayOptions {
   readonly account?: AccountKind;
   readonly counterpartyCharacterId?: string;
   readonly metadata?: LedgerMetadata;
+  /**
+   * For player purchases keyed by the game minute (`land:<district>:<title>:<time>`): if the key was already used, refuse
+   * with this message (`TOO_SOON`) instead of letting the ledger skip the charge silently. Without it, a second request
+   * inside the same game minute (half a real second) would get its land or makeover for free.
+   */
+  readonly refuseRepeat?: string;
 }
 
 export interface ReceiveOptions {
@@ -132,6 +139,8 @@ export class CharacterWallet {
       amount: rounded,
       sink: options.sink ?? 'burn',
     });
+    // Throwing rolls the whole command back, so nothing is delivered for the charge that didn't happen.
+    if (!result.applied && options.refuseRepeat) throw new GameRuleException('TOO_SOON', options.refuseRepeat);
     this.sync(result.balances);
   }
 
@@ -175,6 +184,50 @@ export class CharacterWallet {
     if (options.income === 'earned') character.earnedTotal = Number(character.earnedTotal) + net;
     if (options.income === 'unearned' || options.income === 'purchased') character.unearnedTotal = Number(character.unearnedTotal) + net;
     if (options.income === 'purchased') character.purchasedTotal = Number(character.purchasedTotal) + net;
+    await this.collectDebt();
+  }
+
+  /**
+   * Repay what the character owes from a refunded top-up out of the cash they have now (`CharacterSession` calls this
+   * before every command, and every credit calls it), so incoming money pays the debt before it can be spent. The
+   * coins go back to `system:topup`, like a claw-back, and come off the purchased and unearned totals. Each repayment
+   * is keyed by how much had been repaid before it: a replayed transaction can't repay twice.
+   */
+  async collectDebt(): Promise<void> {
+    const character = this.ctx.character;
+    const owed = Number(character.debt);
+    if (owed <= 0) return;
+    await this.flush();
+    const amount = Math.min(owed, this.cashBalance);
+    if (amount <= 0) return;
+    const repaidBefore = Number(character.debtRepaid);
+    const result = await this.ledger.debit(this.ctx.manager, {
+      kind: 'adjustment',
+      memo: 'Repaying a refunded top-up',
+      idempotencyKey: `${character.id}:debt-repayment:${repaidBefore}`,
+      gameMinute: this.ctx.time,
+      characterId: character.id,
+      accountId: this.accounts.cash,
+      amount,
+      sink: 'topup',
+      metadata: { owedBefore: owed },
+    });
+    if (!result.applied) return;
+    this.sync(result.balances);
+    character.debt = owed - amount;
+    character.debtRepaid = repaidBefore + amount;
+    character.purchasedTotal = Math.max(0, Number(character.purchasedTotal) - amount);
+    character.unearnedTotal = Math.max(0, Number(character.unearnedTotal) - amount);
+    this.ctx.notify({
+      kind: 'bill',
+      title: character.debt > 0 ? 'Part of your debt repaid' : 'Debt repaid ✓',
+      body:
+        character.debt > 0
+          ? `${formatNaira(amount)} went to the top-up you were refunded. ${formatNaira(character.debt)} still to go.`
+          : `${formatNaira(amount)} cleared what you owed from a refunded top-up. You can send money to players again.`,
+      tone: character.debt > 0 ? 'bad' : 'good',
+      amount: -amount,
+    });
   }
 
   /** Realised investment gains (the sale proceeds themselves are neutral). */
@@ -277,8 +330,39 @@ export class SimulationContext {
   }
 
   /**
-   * Memoise domain state for the rest of this transaction. The promise itself is cached, so concurrent callers (the
-   * snapshot builds its parts in parallel) share one load instead of racing.
+   * Run a "tap once" command. With a client `key`, the first result is stored in this transaction (so only if the
+   * command commits) and a retry with the same key gets that stored result back instead of acting twice; the same key
+   * sent for a different request is refused. Without a key the command just runs. The session's row lock on the
+   * character makes a double submit wait for the first, then find its receipt.
+   */
+  async once<T>(kind: string, key: string | undefined, request: object, run: () => Promise<T>): Promise<T> {
+    if (!key) return run();
+    const asked = canonicalJson(request);
+    const stored = await this.manager.query<Array<{ request: unknown; response: T }>>(
+      `SELECT request, response FROM command_receipts WHERE character_id = $1 AND kind = $2 AND key = $3`,
+      [this.character.id, kind, key],
+    );
+    if (stored.length > 0) {
+      if (canonicalJson(stored[0].request) !== asked) {
+        throw new GameRuleException('IDEMPOTENCY_KEY_REUSED', 'That request key was already used for something else. Try again.');
+      }
+      return stored[0].response;
+    }
+    const result = await run();
+    await this.manager.query(`DELETE FROM command_receipts WHERE character_id = $1 AND created_at < now() - interval '7 days'`, [this.character.id]);
+    await this.manager.query(`INSERT INTO command_receipts (character_id, kind, key, request, response) VALUES ($1, $2, $3, $4, $5)`, [
+      this.character.id,
+      kind,
+      key,
+      asked,
+      JSON.stringify(result ?? null),
+    ]);
+    return result;
+  }
+
+  /**
+   * Memoise domain state for the rest of this transaction. The promise itself is cached, so callers that ask for the
+   * same state share one load.
    */
   memo<T>(key: string, loader: () => Promise<T>): Promise<T> {
     const cached = this.cache.get(key) as Promise<T> | undefined;
@@ -307,3 +391,14 @@ export class SimulationContext {
 }
 
 export type PushedNotifications = readonly NotificationDto[];
+
+/** JSON with object keys sorted (Postgres `jsonb` reorders keys), with `undefined` fields dropped as JSON does. */
+export function canonicalJson(value: unknown): string {
+  const sort = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(sort);
+    if (input === null || typeof input !== 'object') return input;
+    const entries = Object.entries(input as Record<string, unknown>).filter(([, field]) => field !== undefined);
+    return Object.fromEntries(entries.toSorted(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([name, field]) => [name, sort(field)]));
+  };
+  return JSON.stringify(sort(value ?? null));
+}

@@ -219,6 +219,17 @@ export class CharacterEntity {
   @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
   purchasedTotal: number;
 
+  /**
+   * Owed from a refunded (or charged-back) top-up whose coins were already spent or moved out of reach. Repaid
+   * automatically from money that comes in, before it can be spent; nothing can be sent to players meanwhile.
+   */
+  @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
+  debt: number;
+
+  /** Everything repaid towards `debt` so far (keys each repayment posting uniquely). */
+  @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
+  debtRepaid: number;
+
   /** Cached net worth for leaderboards (refreshed on settle). */
   @Column({ type: 'bigint', default: 0, transformer: bigintNumber })
   netWorth: number;

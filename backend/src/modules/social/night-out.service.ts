@@ -97,11 +97,10 @@ export class NightOutService {
     const venue = this.venue(venueId);
     const nowMs = Date.now();
     const night = sprayNightIndex(ctx.time);
-    const [tally, here, blocked] = await Promise.all([
-      this.tally(ctx, venueId, night),
-      this.venueNight(ctx, venueId, night, nowMs),
-      this.guard.blockedIds(ctx.character.id, ctx.manager),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const tally = await this.tally(ctx, venueId, night);
+    const here = await this.venueNight(ctx, venueId, night, nowMs);
+    const blocked = await this.guard.blockedIds(ctx.character.id, ctx.manager);
     const gate = checkNightOutVenue(this.venueInput(ctx, venue));
     const offers = NIGHT_OUT_ITEM_IDS.map((id) => this.offer(ctx, venue, NIGHT_OUT_ITEMS[id], tally, here));
     const mine = here.waiting.find((moment) => moment.fromId === ctx.character.id) ?? null;
@@ -136,7 +135,9 @@ export class NightOutService {
 
     const nowMs = Date.now();
     const night = sprayNightIndex(ctx.time);
-    const [tally, here] = await Promise.all([this.tally(ctx, venueId, night), this.venueNight(ctx, venueId, night, nowMs)]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const tally = await this.tally(ctx, venueId, night);
+    const here = await this.venueNight(ctx, venueId, night, nowMs);
     const offer = this.offerInput(ctx, venue, item, tally, here);
     assertRule(checkNightOutOffer(offer));
 
@@ -307,10 +308,9 @@ export class NightOutService {
   /** What's playing or queued at this place, the VIP holder and the shoutout queue. */
   private async venueNight(ctx: SimulationContext, venueId: string, night: number, nowMs: number): Promise<VenueNight> {
     const now = new Date(nowMs);
-    const [moments, shoutouts] = await Promise.all([
-      ctx.manager.find(NightMomentEntity, { where: { venueId, endsAt: MoreThan(now) }, order: { startsAt: 'ASC' }, take: LIST_LIMIT }),
-      ctx.manager.find(NightMomentEntity, { where: { venueId, kind: 'shoutout', endsAt: MoreThan(now) }, order: { startsAt: 'ASC' } }),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const moments = await ctx.manager.find(NightMomentEntity, { where: { venueId, endsAt: MoreThan(now) }, order: { startsAt: 'ASC' }, take: LIST_LIMIT });
+    const shoutouts = await ctx.manager.find(NightMomentEntity, { where: { venueId, kind: 'shoutout', endsAt: MoreThan(now) }, order: { startsAt: 'ASC' } });
     const vip =
       moments.find((moment) => moment.kind === 'vip-section' && moment.night === night) ??
       (await ctx.manager.findOne(NightMomentEntity, { where: { venueId, night, kind: 'vip-section', endsAt: MoreThan(now) } }));

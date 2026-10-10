@@ -172,10 +172,9 @@ export class PlayerLinksService {
   async list(ctx: SimulationContext): Promise<ProposalsDto> {
     await this.reconcile(ctx);
     const me = ctx.character.id;
-    const [incoming, outgoing] = await Promise.all([
-      ctx.manager.find(ProposalEntity, { where: { toCharacterId: me, status: 'pending' }, order: { createdAtGame: 'DESC' }, take: 50 }),
-      ctx.manager.find(ProposalEntity, { where: { fromCharacterId: me }, order: { createdAtGame: 'DESC' }, take: 20 }),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const incoming = await ctx.manager.find(ProposalEntity, { where: { toCharacterId: me, status: 'pending' }, order: { createdAtGame: 'DESC' }, take: 50 });
+    const outgoing = await ctx.manager.find(ProposalEntity, { where: { fromCharacterId: me }, order: { createdAtGame: 'DESC' }, take: 20 });
     const ids = [...new Set([...incoming.map((p) => p.fromCharacterId), ...outgoing.map((p) => p.toCharacterId)])];
     const hidden = await this.hidden(ctx, ids);
     const players = new Map(

@@ -109,13 +109,9 @@ export class ProfilesService {
     const credentials = await this.credentials.credentials(ctx);
     const family = await this.family.snapshot(ctx);
     const campusName = credentials.enrolled ? await this.currentCampus(ctx) : null;
-    const [friendCount, partiesHosted] = await Promise.all([
-      this.friends.friendCount(character.id, ctx.manager),
-      ctx.manager
-        .createQueryBuilder(PartyEntity, 'party')
-        .where('party.host_id = :id AND party.status = :status AND party.guest_count >= :min', { id: character.id, status: 'ended', min: HOSTED_PARTY_MIN_GUESTS })
-        .getCount(),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const friendCount = await this.friends.friendCount(character.id, ctx.manager);
+    const partiesHosted = await ctx.manager .createQueryBuilder(PartyEntity, 'party') .where('party.host_id = :id AND party.status = :status AND party.guest_count >= :min', { id: character.id, status: 'ended', min: HOSTED_PARTY_MIN_GUESTS }) .getCount();
     const selfMadeNetWorth = selfMadeNetWorthOf(character.netWorth, character.unearnedTotal);
     const degree = degreeSummary(credentials.degrees);
     const badges = computeBadges({ job, credentials, family, campusName, selfMadeNetWorth, generation: character.generation, friendCount, partiesHosted });

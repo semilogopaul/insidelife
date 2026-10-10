@@ -1,5 +1,6 @@
 import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { MAX_PURCHASE_QUANTITY, type ShopPurchaseRequest } from '@insidelife/shared';
+import { IsIdempotencyKey } from '../../../common/decorators/idempotency-key.decorator.js';
 
 export class ShopPurchaseDto implements ShopPurchaseRequest {
   @IsString()
@@ -11,4 +12,6 @@ export class ShopPurchaseDto implements ShopPurchaseRequest {
   @Min(1)
   @Max(MAX_PURCHASE_QUANTITY)
   readonly quantity?: number;
+  @IsIdempotencyKey()
+  readonly idempotencyKey?: string;
 }

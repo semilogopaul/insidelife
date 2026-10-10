@@ -20,7 +20,15 @@
     "dev:frontend": "npm run dev -w @insidelife/frontend",
     "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run test:e2e -w @insidelife/backend",
+    "mutation": "npm run mutation:shared && npm run mutation:backend",
+    "mutation:shared": "npm exec -w @insidelife/shared -- stryker run stryker.config.mjs",
+    "mutation:backend": "npm exec -w @insidelife/backend -- stryker run stryker.config.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "postinstall": "npm run build:shared"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^10.0.0",
+    "@stryker-mutator/vitest-runner": "^10.0.0"
   }
 }

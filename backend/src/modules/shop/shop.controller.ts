@@ -24,6 +24,11 @@ export class ShopController {
   @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Post('purchases')
   purchase(@CurrentUser() user: AuthUser, @Body() body: ShopPurchaseDto): Promise<ShopPurchaseResultDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.shop.purchase(ctx, body.itemId, body.quantity ?? 1), { touch: true });
+    const { idempotencyKey, ...request } = body;
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('shop-purchase', idempotencyKey, request, () => this.shop.purchase(ctx, request.itemId, request.quantity ?? 1)),
+      { touch: true },
+    );
   }
 }

@@ -51,7 +51,9 @@ export class ApplicationsService {
     const current = await this.store.active(ctx);
     if (current?.jobId === job.id) throw new GameRuleException('ALREADY_EMPLOYED_HERE', `You already work at ${job.employer}`);
 
-    const [open, previous] = await Promise.all([this.store.openApplications(ctx), this.store.applicationsForJob(ctx, job.id)]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const open = await this.store.openApplications(ctx);
+    const previous = await this.store.applicationsForJob(ctx, job.id);
     if (open.some((application) => application.jobId === job.id)) {
       throw new ConflictException('ALREADY_APPLIED', `Your application to ${job.employer} is still being reviewed`);
     }

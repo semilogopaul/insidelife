@@ -25,6 +25,8 @@ export interface RentalListingsQuery {
 export interface SignLeaseRequest {
   /** Listing id from `GET /housing/listings` (valid for the current game week). */
   readonly listingId: string;
+  /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
+  readonly idempotencyKey?: string;
 }
 
 export interface MoveHomeRequest {
@@ -41,6 +43,8 @@ export interface BuyLandRequest {
   readonly title: LandTitleId;
   /** 1-4 plots of ~600 sqm (default 1). */
   readonly plots?: number;
+  /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
+  readonly idempotencyKey?: string;
 }
 
 export interface StartConstructionRequest {
@@ -288,6 +292,8 @@ export interface HouseListingsQuery {
 export interface BuyHouseRequest {
   /** Listing id from `GET /housing/houses` (valid for the current game week). */
   readonly listingId: string;
+  /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
+  readonly idempotencyKey?: string;
 }
 
 export interface HouseListingDto {
@@ -349,10 +355,14 @@ export interface ExteriorMakeoverRequest {
   readonly gate?: GateColourId;
   /** The name on the gate plate; null puts back the default (surname + house type). */
   readonly name?: string | null;
+  /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
+  readonly idempotencyKey?: string;
 }
 
 /** Repaint inside or lay a new floor in the home you live in (see `decorQuote`). */
 export interface DecorMakeoverRequest {
   readonly paint?: WallPaintId;
   readonly floor?: FloorFinishId;
+  /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
+  readonly idempotencyKey?: string;
 }

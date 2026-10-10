@@ -81,6 +81,8 @@ export class CharacterSession {
         hookProfiler.flush(`settle ${days.toFixed(1)} game days`, performance.now() - started);
       }
       ctx.time = Math.max(ctx.time, now);
+      // Money owed from a refunded top-up comes out of whatever just arrived (gifts, transfers) before anything else.
+      await ctx.wallet.collectDebt();
 
       const value = await command(ctx);
       await ctx.wallet.flush();

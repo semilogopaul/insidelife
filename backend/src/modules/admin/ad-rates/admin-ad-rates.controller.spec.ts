@@ -18,15 +18,23 @@ const rate = (currentKobo: number): AdRateDto => ({
   updatedAt: null,
   updatedBy: null,
 });
+const MANAGER = { transaction: 'price-change' };
 const actor = (role: AuditActor['role']): AuditActor => ({ userId: 'u-1', email: 'boss@example.com', role, ip: null, userAgent: null, traceId: null });
 
 function setup(current = 10_000_000) {
   const rates = {
     list: vi.fn(async () => [rate(current)]),
-    setRate: vi.fn(async (_key: string, priceKobo: number) => rate(priceKobo)),
-    resetRate: vi.fn(async () => rate(10_000_000)),
+    // The service runs the audit hook inside its transaction; here with a stand-in manager.
+    setRate: vi.fn(async (_key: string, priceKobo: number, _actor: string | null, _reason: string, hook?: (manager: unknown, dto: AdRateDto) => Promise<void>) => {
+      await hook?.(MANAGER, rate(priceKobo));
+      return rate(priceKobo);
+    }),
+    resetRate: vi.fn(async (_key: string, hook?: (manager: unknown, dto: AdRateDto) => Promise<void>) => {
+      await hook?.(MANAGER, rate(10_000_000));
+      return rate(10_000_000);
+    }),
   };
-  const audit = { recordNow: vi.fn(async () => 'audit-1') };
+  const audit = { record: vi.fn(async () => 'audit-1') };
   const controller = new AdminAdRatesController(rates as unknown as AdRatesService, audit as unknown as AuditService);
   return { controller, rates, audit };
 }
@@ -44,8 +52,10 @@ describe('admin ad prices', () => {
 
     const updated = await controller.update('phone-app', { priceKobo: 15_000_000, reason: '  Demand is high ' }, actor('owner'));
     expect(updated.currentKobo).toBe(15_000_000);
-    expect(rates.setRate).toHaveBeenCalledWith('phone-app', 15_000_000, 'u-1', 'Demand is high');
-    expect(audit.recordNow).toHaveBeenCalledWith(
+    expect(rates.setRate).toHaveBeenCalledWith('phone-app', 15_000_000, 'u-1', 'Demand is high', expect.any(Function));
+    // Written with the price change's own transaction manager, not separately afterwards.
+    expect(audit.record).toHaveBeenCalledWith(
+      MANAGER,
       expect.objectContaining({ role: 'owner' }),
       expect.objectContaining({ action: 'ad-rate.update', target: expect.objectContaining({ type: 'ad-rate', id: 'phone-app' }), before: { priceKobo: 10_000_000 }, reason: 'Demand is high' }),
     );
@@ -54,7 +64,7 @@ describe('admin ad prices', () => {
   it('setting the default price back removes the override', async () => {
     const { controller, rates } = setup(15_000_000);
     await controller.update('phone-app', { priceKobo: 10_000_000, reason: 'Back to normal' }, actor('owner'));
-    expect(rates.resetRate).toHaveBeenCalledWith('phone-app');
+    expect(rates.resetRate).toHaveBeenCalledWith('phone-app', expect.any(Function));
     expect(rates.setRate).not.toHaveBeenCalled();
   });
 });

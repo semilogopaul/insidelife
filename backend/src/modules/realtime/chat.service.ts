@@ -193,12 +193,11 @@ export class ChatService {
     const counterpartId = dmCounterpart(channel, characterId);
     if (!counterpartId) throw new ForbiddenActionException('You’re not in that chat');
     const manager = this.messages.manager;
-    const [mine, theirs, friends, blocked] = await Promise.all([
-      manager.findOne(ChatDmThreadEntity, { where: { characterId, channel } }),
-      manager.findOne(ChatDmThreadEntity, { where: { characterId: counterpartId, channel } }),
-      this.social.areFriends(characterId, counterpartId, manager),
-      this.social.isBlocked(characterId, counterpartId, manager),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const mine = await manager.findOne(ChatDmThreadEntity, { where: { characterId, channel } });
+    const theirs = await manager.findOne(ChatDmThreadEntity, { where: { characterId: counterpartId, channel } });
+    const friends = await this.social.areFriends(characterId, counterpartId, manager);
+    const blocked = await this.social.isBlocked(characterId, counterpartId, manager);
     if (friends && !blocked)
       return { channel, request: 'none', canSendMedia: true, requestMessagesLeft: null };
     if (mine && !mine.accepted && !mine.declinedAt)
@@ -337,10 +336,9 @@ export class ChatService {
     if (await this.social.isBlocked(sender.id, counterpartId, manager))
       throw new ForbiddenActionException('You can’t message this player');
 
-    const [mine, theirs] = await Promise.all([
-      manager.findOne(ChatDmThreadEntity, { where: { characterId: sender.id, channel } }),
-      manager.findOne(ChatDmThreadEntity, { where: { characterId: counterpartId, channel } }),
-    ]);
+    // One at a time: these share the session's transaction connection (pg runs one query at a time).
+    const mine = await manager.findOne(ChatDmThreadEntity, { where: { characterId: sender.id, channel } });
+    const theirs = await manager.findOne(ChatDmThreadEntity, { where: { characterId: counterpartId, channel } });
     if (await this.social.areFriends(sender.id, counterpartId, manager)) {
       if (theirs && !theirs.accepted)
         await manager.update(

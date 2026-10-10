@@ -60,6 +60,25 @@ export class TopupCreditor {
       await ctx.wallet.pay(fromSavings, 'adjustment', memo, `topup-clawback-savings:${reference}:${refundId}`, { sink: 'topup', account: 'savings', metadata });
       const tookSavings = savingsBefore - (await this.ledger.balances(ctx.manager, characterId)).savings;
       const taken = tookCash + tookSavings;
+      // What couldn't be taken back becomes a debt, once per refund (a retried claw-back finds the row and adds nothing).
+      const shortfall = Math.max(0, amount - taken);
+      if (shortfall > 0) {
+        const recorded = await ctx.manager.query<Array<{ id: string }>>(
+          `INSERT INTO character_debts (character_id, reference, refund_id, amount) VALUES ($1, $2, $3, $4)
+           ON CONFLICT (reference, refund_id) DO NOTHING RETURNING id`,
+          [characterId, reference, refundId, shortfall],
+        );
+        if (recorded.length > 0) {
+          ctx.character.debt = Number(ctx.character.debt) + shortfall;
+          ctx.notify({
+            kind: 'bill',
+            title: 'You owe money from a refunded top-up',
+            body: `${formatNaira(shortfall)} of the refunded coins had already been spent. It will be taken from money you receive, and you can’t send money to players until it’s repaid.`,
+            tone: 'bad',
+            amount: -shortfall,
+          });
+        }
+      }
       if (taken > 0) {
         const character = ctx.character;
         character.purchasedTotal = Math.max(0, Number(character.purchasedTotal) - taken);
