@@ -56,11 +56,13 @@ export interface PlayLayerProps {
   readonly sandbox?: SandboxStart | null;
 }
 
-const TRAFFIC = { low: 6, medium: 14, high: 24 } as const;
-const PEDESTRIANS = { low: 3, medium: 6, high: 10 } as const;
+// Ambient crowd and traffic are about half of the single-player numbers: real players now fill the streets (and the
+// phones draw less). Rides, interior staff and anything an action depends on are separate and unchanged.
+const TRAFFIC = { low: 3, medium: 7, high: 12 } as const;
+const PEDESTRIANS = { low: 2, medium: 3, high: 5 } as const;
 const REMOTE_AVATARS = { low: 4, medium: 8, high: 12 } as const;
 /** Conductors drawn hanging off the nearest traffic danfos. */
-const CONDUCTORS = { low: 2, medium: 3, high: 4 } as const;
+const CONDUCTORS = { low: 1, medium: 2, high: 2 } as const;
 const REMOTE_BLOBS = 12;
 
 function prefersReducedMotion(): boolean {

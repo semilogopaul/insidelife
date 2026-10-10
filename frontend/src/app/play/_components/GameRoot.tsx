@@ -15,7 +15,7 @@ import { useSnapshot, useSnapshotConsistency } from '@/common/game/snapshot';
 import { PHONE_APPS as ALL_PHONE_APPS, useUi, type PhoneApp } from '@/common/game/ui-store';
 import { usePaymentRecovery } from '@/common/payments';
 import { useClockSync } from '@/common/game/use-game-clock';
-import { connectSocket, disconnectSocket } from '@/common/realtime/socket';
+import { connectSocket, disconnectSocket, useConnection } from '@/common/realtime/socket';
 import { useRealtimeEvent } from '@/common/realtime/use-realtime';
 import { useSpeechFeed } from '@/common/speech';
 import { visitsKey } from '@/common/visits';
@@ -35,6 +35,7 @@ import { VisitCards } from '@/modules/visits';
 import { WelcomeFlow } from '@/modules/welcome';
 import { LoadingScreen } from './LoadingScreen';
 import { PHONE_APPS } from './phone-apps';
+import { WorldFullScreen } from './WorldFullScreen';
 
 /** The 3D world is the heaviest chunk: load it lazily and never on the server. */
 const WorldCanvas = dynamic(() => import('@/modules/world').then((module) => module.WorldCanvas), {
@@ -54,6 +55,7 @@ export function GameRoot() {
   const status = useSession((state) => state.status);
   const unreachable = useSession((state) => state.unreachable);
   const mustVerifyEmail = useSession((state) => state.user?.mustVerifyEmail ?? false);
+  const full = useConnection((state) => state.full);
   const clockReady = useClockSync();
   const snapshot = useSnapshot();
   // After a death the player continues as their heir: a new character id means new private realtime rooms.
@@ -117,6 +119,9 @@ export function GameRoot() {
     const retrying = ((snapshot.isError || snapshot.failureCount > 0) && !unverified) || (status === 'unknown' && unreachable);
     return <LoadingScreen message={retrying ? 'Can’t reach Lagos right now. Retrying…' : undefined} />;
   }
+
+  // At the players-online cap: nothing of the game underneath, just the waiting screen (the socket retries by itself).
+  if (full) return <WorldFullScreen />;
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-ink touch-none select-none">

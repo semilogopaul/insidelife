@@ -1,6 +1,8 @@
 import type { WealthClassService } from '../social/wealth-class.service.js';
+import type { ConfigService } from '@nestjs/config';
+import type { AppConfig } from '../../config/configuration.js';
 import { describe, expect, it, vi } from 'vitest';
-import type { ChatSaidDto, RealtimeAck } from '@insidelife/shared';
+import { decodeWorldBatch, type ChatSaidDto, type RealtimeAck } from '@insidelife/shared';
 import { RateLimitedException } from '../../common/exceptions/domain.exception.js';
 import type { MetricsService } from '../../metrics/metrics.service.js';
 import type { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
@@ -18,7 +20,14 @@ type Handler = (...args: unknown[]) => void;
 const line: ChatSaidDto = { id: 'l1', characterId: 'ada', handle: 'ada_b', firstName: 'Ada', text: 'How far?', at: 1, scope: 'street', locationId: 'street:yaba' };
 
 /** A connected socket for the gateway, with its event handlers captured, and a server that records emits. */
-async function connect(say: SpeechService['say']) {
+interface ConnectOptions {
+  readonly maxOnline?: number;
+  readonly online?: number;
+  readonly alreadyOnline?: boolean;
+  readonly characterId?: string;
+}
+
+async function connect(say: SpeechService['say'], options: ConnectOptions = {}) {
   const handlers = new Map<string, Handler>();
   const emitted: Array<{ rooms: unknown; except: unknown; event: string; payload: unknown }> = [];
   const broadcast = (rooms: unknown, except: unknown = []) => ({
@@ -42,8 +51,8 @@ async function connect(say: SpeechService['say']) {
   const speech = { say: vi.fn(say) } as unknown as SpeechService;
   const gateway = new RealtimeGateway(
     { verifyPlayer: async () => ({ userId: 'u-ada' }) } as unknown as JwtAuthGuard,
-    { findLivingByUser: async () => ({ id: 'ada', handle: 'ada_b', firstName: 'Ada', locationId: 'street:yaba', activity: null, status: 0 }) } as unknown as CharacterDirectory,
-    { markOnline: async () => undefined, players: async () => [], onlineCount: async () => 1 } as unknown as PresenceService,
+    { findLivingByUser: async () => ({ id: options.characterId ?? 'ada', handle: 'ada_b', firstName: 'Ada', locationId: 'street:yaba', activity: null, status: 0 }) } as unknown as CharacterDirectory,
+    { markOnline: vi.fn(async () => undefined), players: async () => [], onlineCount: async () => options.online ?? 1, isOnline: async () => options.alreadyOnline ?? false } as unknown as PresenceService,
     {} as ChatService,
     { attach: vi.fn() } as unknown as RealtimeBus,
     { onlinePlayers: { inc: vi.fn(), dec: vi.fn() } } as unknown as MetricsService,
@@ -51,6 +60,7 @@ async function connect(say: SpeechService['say']) {
     { friendIds: async () => [] } as unknown as SocialGuard,
     speech,
     { classOf: async () => 'lapo' } as unknown as WealthClassService,
+    { get: () => ({ maxOnlinePlayers: options.maxOnline ?? 0 }) } as unknown as ConfigService<AppConfig, true>,
   );
   (gateway as unknown as { server: unknown }).server = server;
   await gateway.handleConnection(socket as never);
@@ -103,5 +113,56 @@ describe('RealtimeGateway chat:say', () => {
     } finally {
       process.off('unhandledRejection', unhandled);
     }
+  });
+});
+
+describe('RealtimeGateway players-online cap', () => {
+  const idle = async () => ({ line, audience: { kind: 'street' as const, cellRoom: 'x', blockedIds: [] } });
+
+  it('turns a newcomer away with world:full and disconnects when the cap is reached', async () => {
+    const { socket } = await connect(idle, { maxOnline: 100, online: 100 });
+    expect(socket.emit).toHaveBeenCalledWith('world:full', { retryAfterSeconds: expect.any(Number) });
+    expect(socket.disconnect).toHaveBeenCalledWith(true);
+    expect(socket.emit).not.toHaveBeenCalledWith('presence:snapshot', expect.anything());
+    expect((socket.data as { characterId: string }).characterId).toBe('');
+  });
+
+  it('lets a reconnect (already online) back in even at the cap', async () => {
+    const { socket } = await connect(idle, { maxOnline: 100, online: 100, alreadyOnline: true });
+    expect(socket.emit).not.toHaveBeenCalledWith('world:full', expect.anything());
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    expect(socket.emit).toHaveBeenCalledWith('presence:snapshot', []);
+  });
+
+  it('admits newcomers below the cap, and everyone when the cap is 0 (unlimited)', async () => {
+    const below = await connect(idle, { maxOnline: 100, online: 99 });
+    expect(below.socket.disconnect).not.toHaveBeenCalled();
+    const unlimited = await connect(idle, { maxOnline: 0, online: 1_000_000 });
+    expect(unlimited.socket.disconnect).not.toHaveBeenCalled();
+  });
+});
+
+describe('RealtimeGateway position batches', () => {
+  const idle = async () => ({ line, audience: { kind: 'street' as const, cellRoom: 'x', blockedIds: [] } });
+  const id = '3f2b8c1e-5d4a-4e7b-9a60-1c2d3e4f5a6b';
+
+  it('relays compact batches: handle on the first position, then only now and then', async () => {
+    const { fire, emitted, gateway, socket } = await connect(idle, { characterId: id });
+    const flush = () => (gateway as unknown as { flushPositions(): void }).flushPositions();
+    const batches = () => emitted.filter((e) => e.event === 'world:players').map((e) => decodeWorldBatch(e.payload as never));
+
+    fire('world:move', { x: 10, z: 12, heading: 0.5, mode: 'walk', speed: 1.4 });
+    await settle();
+    flush();
+    (socket.data as { lastMoveAt: number }).lastMoveAt = 0;
+    fire('world:move', { x: 11, z: 12, heading: 0.5, mode: 'walk', speed: 1.4 });
+    await settle();
+    flush();
+
+    const [first, second] = batches();
+    expect(first).toHaveLength(1);
+    expect(first![0]).toMatchObject({ characterId: id, handle: 'ada_b', mode: 'walk' });
+    expect(second![0]).toMatchObject({ characterId: id, handle: '' });
+    expect(second![0]!.x).toBeCloseTo(11, 1);
   });
 });

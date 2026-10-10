@@ -26,6 +26,7 @@ export * from './catalog/habits.js';
 // API contracts
 export * from './contracts/core.js';
 export * from './contracts/realtime.js';
+export * from './contracts/world-positions.js';
 export * from './contracts/movement.js';
 
 // Open-world geometry

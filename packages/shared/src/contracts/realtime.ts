@@ -4,6 +4,7 @@ import type { NotificationDto } from './core.js';
 import type { SocialMomentDto } from './family.js';
 import type { MilestoneMomentDto } from './progression.js';
 import type { VehicleModel } from '../catalog/vehicles.js';
+import type { WorldPositionBatch } from './world-positions.js';
 
 /**
  * Socket.IO contract for the `/realtime` namespace. Authentication: `auth: { token: <accessToken> }` in the
@@ -239,8 +240,10 @@ export interface ServerToClientEvents {
   'world:online-count': (payload: { readonly count: number }) => void;
   /** Your Lagos instance (who you see on the streets and in Lagos chat): its id and how many are in it. */
   'world:instance': (payload: { readonly id: string; readonly players: number }) => void;
-  /** Batched positions of players in your district (and neighbours), ~4 Hz. */
-  'world:players': (positions: readonly WorldPlayerPositionDto[]) => void;
+  /** Batched positions of players in your district (and neighbours), ~4 Hz, in the compact format of `world-positions.ts`. */
+  'world:players': (batch: WorldPositionBatch) => void;
+  /** The server is at its players-online cap and you are not already in: it closes the socket; retry after about this long. */
+  'world:full': (payload: { readonly retryAfterSeconds: number }) => void;
   /** A milestone moment (first salary, graduation, wedding…) is ready to celebrate full-screen. */
   'progression:milestone': (moment: MilestoneMomentDto) => void;
   /** A billboard ad was approved or removed: refetch the live billboard feed. */
