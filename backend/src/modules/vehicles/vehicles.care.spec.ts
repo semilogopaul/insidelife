@@ -87,6 +87,15 @@ describe('the fuel tank', () => {
     expect(notes.filter((title) => title === 'Fuel light is on ⛽')).toHaveLength(1);
   });
 
+  it('keeps your daily ride with you when it is empty, even with a full second car at home', async () => {
+    const { service, ctx, row } = harness({ fuelLitres: 0 });
+    const spare = { ...row, id: 'car-2', isPrimary: false, fuelLitres: 45 } as OwnedVehicleEntity;
+    (ctx.manager as unknown as { find: () => Promise<OwnedVehicleEntity[]> }).find = async () => [row, spare];
+    expect((await service.withYou(ctx))?.row.id).toBe('car-1');
+    // The planner may still commute in the one that starts.
+    expect((await service.driving(ctx))?.row.id).toBe('car-2');
+  });
+
   it('treats cars from before tanks existed as full', () => {
     const { service, car } = harness({ fuelLitres: null });
     expect(service.fuel(car)).toBe(fuelTankLitres(PEUGEOT!));

@@ -19,10 +19,12 @@ type Pending = { readonly kind: 'repair' | 'roadside' | 'sell'; readonly car: Ow
 
 /** GPS to the nearest filling station or mechanic from where you are on the street (null when you're not outside). */
 function useNearestService(kind: ServicePointKind) {
-  const position = useWorld((state) => (state.mode === 'walking' || state.mode === 'driving' ? state.position : null));
-  const point = position ? nearestServicePoint(kind, position) : null;
-  if (!point) return null;
+  const outside = useWorld((state) => (state.mode === 'walking' || state.mode === 'driving') && state.position !== null);
+  if (!outside) return null;
   return () => {
+    const position = useWorld.getState().position;
+    const point = position ? nearestServicePoint(kind, position) : null;
+    if (!point) return;
     useNavigation.getState().setDestination(serviceLocationId(point), point.name);
     useUi.getState().closePhone();
     announce(`GPS: ${point.name}`, { sfx: 'ui-success' });

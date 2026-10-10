@@ -2,8 +2,9 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { DISTRICTS, ENTRY_RADIUS, districtAt, fuelRangeKm, servicePointAt, streetNameAt, vehicleWarnings, type OpenWorldMode } from '@insidelife/shared';
+import { DISTRICTS, ENTRY_RADIUS, MINUTES_PER_DAY, districtAt, fuelRangeKm, fuelStationDry, servicePointAt, streetNameAt, vehicleWarnings, type OpenWorldMode } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
+import { gameClock } from '@/common/game/game-clock';
 import { toast } from '@/common/components';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useWorld, type Interactable } from '@/common/game/world-store';
@@ -41,6 +42,8 @@ export interface WorldSyncOptions {
   /** ₦ per litre of petrol right now (scarcity included). */
   readonly fuelPrice: number;
   readonly priceIndex: number;
+  /** Fuel scarcity is on (some stations are dry today). */
+  readonly scarcity: boolean;
 }
 
 function privateDoors(options: WorldSyncOptions): readonly Door[] {
@@ -144,8 +147,9 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
   useEffect(() => {
     const world = useWorld.getState;
     const touchUi = isTouchDevice();
-    let lastX = Number.NaN;
-    let lastZ = Number.NaN;
+    // Infinity, not NaN: the first comparison must publish (NaN compares false, so the pose would never go out).
+    let lastX = Number.POSITIVE_INFINITY;
+    let lastZ = Number.POSITIVE_INFINITY;
     let lastSent = 0;
 
     // ≈5 Hz: pose for the HUD, the context button, the speedometer.
@@ -170,7 +174,9 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
       const atService = (x: number, z: number): Interactable | null => {
         if (!c.car) return null;
         const point = servicePointAt('fuel', { x, z }) ?? servicePointAt('mechanic', { x, z });
-        return point ? serviceOffer(point, c.car, prices) : null;
+        if (!point) return null;
+        const dry = point.kind === 'fuel' && fuelStationDry(gameClock.worldSeed, point.id, Math.floor(gameClock.now() / MINUTES_PER_DAY), optionsRef.current.scarcity);
+        return serviceOffer(point, c.car, { ...prices, dry });
       };
       if (runtime.mode === 'walk') {
         const destinationId = useNavigation.getState().destinationId;

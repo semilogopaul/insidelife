@@ -19,8 +19,9 @@ describe('service offers', () => {
     expect(parseServiceAction(offer.more?.[0]?.id ?? '')).toEqual({ pointId: station.id, litres: 10 });
   });
 
-  it('says so when the tank is full', () => {
+  it('says so when the tank is full, or the station is dry today (scarcity)', () => {
     expect(serviceOffer(station, car({ fuelLitres: 45 }), prices).disabled).toBe('Your tank is full');
+    expect(serviceOffer(station, car(), { ...prices, dry: true }).disabled).toMatch(/No fuel here today/);
   });
 
   it('prices the mechanic like the server, and fixes breakdowns first', () => {

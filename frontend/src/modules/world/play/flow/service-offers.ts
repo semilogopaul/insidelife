@@ -23,6 +23,8 @@ export interface ServicePrices {
   /** World petrol price per litre (₦, scarcity included). */
   readonly fuelPrice: number;
   readonly priceIndex: number;
+  /** This station has nothing to sell today (fuel scarcity; `fuelStationDry`). */
+  readonly dry?: boolean;
 }
 
 /** `play:service|<point id>` (+ `|<litres>` for a partial fill). */
@@ -42,7 +44,8 @@ export function serviceOffer(point: ServicePoint, car: RunningCar, prices: Servi
   if (point.kind === 'fuel') {
     const pump = pumpPricePerLitre(prices.fuelPrice, car.vehicle.fuelType);
     const room = Math.max(0, car.running.tankLitres - car.running.fuelLitres);
-    if (room < 0.5) return { id: serviceActionId(point.id), kind: 'car', emoji: '⛽', label: `${point.name}`, disabled: 'Your tank is full' };
+    if (prices.dry) return { id: serviceActionId(point.id), kind: 'car', emoji: '⛽', label: point.name, disabled: 'No fuel here today (scarcity): try another station' };
+    if (room < 0.5) return { id: serviceActionId(point.id), kind: 'car', emoji: '⛽', label: point.name, disabled: 'Your tank is full' };
     const more =
       room > FUEL_TOP_UP_LITRES + 2
         ? [{ id: serviceActionId(point.id, FUEL_TOP_UP_LITRES), emoji: '⛽', label: `Buy ${FUEL_TOP_UP_LITRES} L · ${formatNaira(Math.round(FUEL_TOP_UP_LITRES * pump))}` }]

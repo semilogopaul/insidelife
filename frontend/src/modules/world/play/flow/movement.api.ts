@@ -28,11 +28,11 @@ export const movementApi = {
 
 export { adTrackingApi as promotionsApi } from '@/common/promotions/ad-tracking';
 
-/** The car with you from the garage (the primary one, else any delivered car), in the shape the spawn uses. */
+/** The car with you from the garage (the primary one, whatever its state, else any delivered car), as the spawn has it. */
 export async function primaryCar(): Promise<DrivenVehicleDto | null> {
   const garage = await movementApi.garage();
   const owned = garage.mine.filter((entry) => entry.status === 'owned');
-  const car = owned.find((entry) => entry.isPrimary && entry.canDrive) ?? owned.find((entry) => entry.canDrive) ?? owned.find((entry) => entry.isPrimary) ?? owned[0];
+  const car = owned.find((entry) => entry.isPrimary) ?? owned[0];
   if (!car) return null;
   const catalog = garage.catalogue.find((entry) => entry.vehicle.id === car.vehicleId)?.vehicle;
   return {

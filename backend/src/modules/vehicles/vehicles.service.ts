@@ -109,12 +109,13 @@ export class VehiclesService {
   }
 
   /**
-   * The car with you out on the street, whatever state it's in (an empty or broken-down car still stands at the
-   * kerb): a car that starts (primary first), else the primary, else any delivered car.
+   * The car with you out on the street: your daily ride (the primary car) whatever state it's in — an empty or
+   * broken-down car still stands at the kerb, and the pump or the mechanic serves that one, never a car at home —
+   * else the first delivered car. Switch cars in Motors ("Drive this one").
    */
   async withYou(ctx: SimulationContext): Promise<GarageCar | null> {
     const owned = (await this.garage(ctx)).filter((car) => car.row.status === 'owned');
-    return (await this.driving(ctx)) ?? owned.find((car) => car.row.isPrimary) ?? owned[0] ?? null;
+    return owned.find((car) => car.row.isPrimary) ?? owned[0] ?? null;
   }
 
   async find(ctx: SimulationContext, id: string): Promise<GarageCar> {
