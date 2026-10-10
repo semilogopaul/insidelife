@@ -403,7 +403,7 @@ export const STREET_LATE_WINDOW: readonly [number, number] = [2 * 60, 4 * 60];
 /** Third Mainland "sunset" window (18:00-19:00). */
 export const SUNSET_WINDOW: readonly [number, number] = [18 * 60, 19 * 60];
 /** A trip this long (game minutes) within Lagos counts as a go-slow survival. */
-export const LONG_TRIP_MINUTES = 120;
+export const LONG_TRIP_MINUTES = 60;
 
 /** True if [start, end) overlaps the daily window [from, to) (minutes of day) on any day it spans. */
 export function overlapsDailyWindow(start: GameMinute, end: GameMinute, window: readonly [number, number]): boolean {

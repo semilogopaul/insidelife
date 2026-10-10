@@ -105,6 +105,7 @@ export class CharacterCreationService {
         activity: null,
         travel: null,
         settledAt: now,
+        lastSleptAt: now,
         seed,
         earnedTotal: 0,
         unearnedTotal: 0,

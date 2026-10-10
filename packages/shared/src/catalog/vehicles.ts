@@ -310,7 +310,7 @@ export const DRIVERS_LICENCE = {
   /** FRSC fee, before the price index. */
   fee: 25_000,
   actionId: 'driving-test',
-  testMinutes: 120,
+  testMinutes: 60,
   venueType: 'government',
 } as const;
 

@@ -8,7 +8,7 @@ import { WorldService } from '../world/world.service.js';
 import { SETTLEMENT_QUEUE } from './settlement.constants.js';
 
 /** Settle characters whose simulation lags more than this many game minutes (≈ 2 real minutes). */
-const STALE_AFTER_GAME_MINUTES = 240;
+const STALE_AFTER_GAME_MINUTES = 120;
 const BATCH_SIZE = 200;
 
 /**

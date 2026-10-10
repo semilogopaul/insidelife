@@ -123,7 +123,7 @@ export function schoolNextStep(overview: EducationOverviewDto, now: GameMinute):
 
 // ----- JAMB -------------------------------------------------------------------------------------------------------
 
-/** Hours of reading that get you about two-thirds of the prep benefit (returns diminish after). */
+/** Prep hours (effective: game hours of study × ACTION_PACE) that get you about two-thirds of the benefit (returns diminish after). */
 export const JAMB_PREP_SCALE_HOURS = 22;
 
 /** 0-1 preparation: 1 − e^(−hours / 22). */

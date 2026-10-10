@@ -137,7 +137,8 @@ export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runt
     // Arrived: ask the server (it settles the trip and puts us inside), politely and repeatedly until it does.
     if (gameClock.ready && now >= travel.arriveAt && t > state.refetchAt) {
       state.refetchAt = t + 3000;
-      void client.invalidateQueries({ queryKey: queryKeys.snapshot });
+      // Never cancel the request already on its way: a slow settle (> 3 s) would otherwise never land (livelock).
+      void client.invalidateQueries({ queryKey: queryKeys.snapshot }, { cancelRefetch: false });
     }
   }, -4.5);
 

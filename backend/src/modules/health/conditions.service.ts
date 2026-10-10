@@ -22,7 +22,7 @@ import { HealthConditionEntity } from './entities/health-condition.entity.js';
 import { HEALTH_MEMO } from './health.constants.js';
 import { MedicalHistoryService } from './medical-history.service.js';
 import { illnessModifierId, removeMoodModifier, setMoodModifier } from './mood-modifiers.js';
-import { isPlayerPresent } from './player-presence.js';
+import { isPlayerPresent } from '../simulation/player-presence.js';
 
 export interface InflictOptions {
   /** How it started (`season`, `street-food`, `okada`, `port`…). */

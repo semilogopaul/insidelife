@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { MINUTES_PER_HOUR, formatNaira, moodPerformanceMultiplier, type ActionDefinition } from '@insidelife/shared';
+import { actionHours, formatNaira, moodPerformanceMultiplier, type ActionDefinition } from '@insidelife/shared';
 import type { ActivityState } from '../characters/entities/character.entity.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationEngine } from '../simulation/simulation-engine.service.js';
@@ -20,7 +20,7 @@ export class FreelanceService {
       ctx.notify({ kind: 'career', title: 'Client don ghost you 👻', body: `You finished the work for ${client}, but they’ve stopped picking your calls.`, tone: 'bad' });
       return;
     }
-    const hours = (activity.endsAt - activity.startedAt) / MINUTES_PER_HOUR;
+    const hours = actionHours(activity);
     const amount = freelancePay(ctx.character.skills.tech, hours, moodPerformanceMultiplier(this.engine.mood(ctx)), rng.float(0.75, 1.25));
     if (amount <= 0) return;
     await ctx.wallet.receive(amount, 'hustle', `Freelance gig for ${client}`, `freelance:${activity.startedAt}`, { income: 'earned' });

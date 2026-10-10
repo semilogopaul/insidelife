@@ -196,6 +196,13 @@ export class CharacterEntity {
   @Column({ type: 'bigint', transformer: bigintNumber })
   settledAt: number;
 
+  /**
+   * End of the last real sleep (4+ game hours, or time in hospital or away). Ten game days past it the character
+   * collapses (see `simulation/rest.ts`). Null until the first settle, which starts the clock at `settledAt`.
+   */
+  @Column({ type: 'bigint', nullable: true, transformer: bigintNumber })
+  lastSleptAt: number | null;
+
   /** Seed for this character's deterministic rolls. */
   @Column({ type: 'varchar', length: 32 })
   seed: string;

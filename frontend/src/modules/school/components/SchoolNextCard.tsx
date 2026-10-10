@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { findInstitution, formatDate, type EducationOverviewDto, type GameMinute } from '@insidelife/shared';
+import { EXAM_DURATION_MINUTES, findInstitution, formatDate, formatGameDuration, type EducationOverviewDto, type GameMinute } from '@insidelife/shared';
 import { Button, Money } from '@/common/components';
 import { useEducationCommands } from '../hooks/use-education';
 import { useExamCentre } from '../hooks/use-exam-centre';
@@ -126,14 +126,14 @@ function NextStepFor({
       return (
         <NextStep
           title="Write JAMB"
-          body={`3 hours at ${step.exam.venueName}. Papers start between 7am and 3pm. Prep ${Math.round(jambReadiness(step.exam.prepHours) * 100)}%.`}
+          body={`${formatGameDuration(EXAM_DURATION_MINUTES)} at ${step.exam.venueName}. Papers start between 7am and 3pm. Prep ${Math.round(jambReadiness(step.exam.prepHours) * 100)}%.`}
           actions={
             here ? (
               <Button
                 loading={sitExam.isPending}
                 onClick={() =>
                   sitExam.mutate(step.exam.id, {
-                    onSuccess: () => announce('Exam started', { body: '3 hours in the hall. You go pass!' }),
+                    onSuccess: () => announce('Exam started', { body: `${formatGameDuration(EXAM_DURATION_MINUTES)} in the hall. You go pass!` }),
                     onError: (error) => complain('Couldn’t start the exam', error),
                   })
                 }

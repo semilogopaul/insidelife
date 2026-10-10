@@ -7,6 +7,7 @@ import {
   actionProfile,
   awayProfile,
   AUTOPILOT_TARGET,
+  COLLAPSE_TARGET,
   HABIT_TARGET,
   commuteProfile,
   driftNeed,
@@ -19,6 +20,7 @@ import {
   idleHomeProfile,
   idleOutProfile,
   isHomeLocation,
+  isStreetLocation,
   lectureProfile,
   streetDistrict,
   quoteTrip,
@@ -41,6 +43,8 @@ import type { Residence, ScheduleBlock, Segment } from './interfaces/simulation-
 import { unmetRequirement } from './action-requirements.js';
 import type { SimulationContext } from './simulation-context.js';
 import { hookProfiler } from './hook-profiler.js';
+import { presentUntil } from './player-presence.js';
+import { COLLAPSE_SLEEP_MINUTES, collapseDueAt, restedThrough } from './rest.js';
 import { SimulationRegistry } from './simulation-registry.service.js';
 
 /** Sleep window: 23:00 → 06:30. */
@@ -58,7 +62,7 @@ const MEAL_MINUTES = 30;
 /** A meal squeezed in before leaving must be at least this long to be worth it. */
 const MIN_MEAL_MINUTES = 10;
 /** A routine commute never takes longer than this (the character finds a faster way or gives up waiting). */
-const MAX_LOCAL_COMMUTE_MINUTES = 150;
+const MAX_LOCAL_COMMUTE_MINUTES = 75;
 /** A shift that covers 01:00–04:00 is a night shift; the worker then sleeps this long once home. */
 const NIGHT_SHIFT_CORE_START = 1 * MINUTES_PER_HOUR;
 const NIGHT_SHIFT_CORE_END = 4 * MINUTES_PER_HOUR;
@@ -79,14 +83,22 @@ export interface PlanState {
   /** Energy and hunger at the planning instant (exhaustion → bed, hunger → a meal at home). */
   energy: number;
   hunger: number;
+  /** End of the last real sleep: ten game days past it the character collapses (see `rest.ts`). */
+  lastSleptAt: GameMinute;
+  /**
+   * First game minute the player is no longer at the controls (`player-presence.ts`). Before it the autopilot starts
+   * nothing: no routine sleep, meals, habits or trips; the player decides. +∞ in a dry run for a player who's present.
+   */
+  presentUntil: GameMinute;
 }
 
 export type PlanStep =
   | { readonly type: 'segment'; readonly segment: Segment }
   | { readonly type: 'depart'; readonly travel: TravelState; readonly reason: string }
   /**
-   * Start an autopilot activity: sleep (until the alarm), a meal or a habit session. Running them as activities means
-   * a decision sticks until it's done (no waking up because energy recovered mid-sleep). Players can replace them.
+   * Start an autopilot activity: sleep (until the alarm), a meal or a habit session, or a collapse. Running them as
+   * activities means a decision sticks until it's done (no waking up because energy recovered mid-sleep). Players can
+   * replace the routine ones; a collapse can't be cut short.
    */
   | { readonly type: 'begin'; readonly activity: ActivityState };
 
@@ -108,12 +120,19 @@ export interface CommuteQuote {
 /**
  * Decides what the character is doing at any moment: an explicit action, a trip, a routine block (work, lectures,
  * hospital, trip abroad), sleep, or idling — and when a routine commute must start.
+ *
+ * Two modes, by `PlanState.presentUntil`: while the player is at the controls nothing starts on its own and the
+ * character never moves by itself (they work a shift only if they're at the workplace); once they're away the
+ * autopilot runs the routine (commutes, meals, bed, habits). In both, ten game days without a real sleep end in a
+ * collapse (`rest.ts`). Every decision depends only on the state and `t`, and every segment ends at the next moment a
+ * decision could change, so settling a span in one go or in chunks gives the same result.
  */
 @Injectable()
 export class TimelinePlanner {
   constructor(private readonly registry: SimulationRegistry) {}
 
-  stateOf(character: CharacterEntity): PlanState {
+  stateOf(ctx: SimulationContext): PlanState {
+    const character = ctx.character;
     return {
       locationId: character.locationId,
       regionId: character.regionId,
@@ -121,6 +140,8 @@ export class TimelinePlanner {
       activity: character.activity,
       energy: character.needs.energy,
       hunger: character.needs.hunger,
+      lastSleptAt: character.lastSleptAt ?? character.settledAt,
+      presentUntil: presentUntil(character, ctx.world.clock),
     };
   }
 
@@ -132,16 +153,37 @@ export class TimelinePlanner {
       return this.segment('commute', t, Math.min(state.travel.arriveAt, horizon), state.travel.toLocationId, `Heading to ${destination}`, true, commuteProfile(profiles, state.travel.mode));
     }
 
+    // Ten days without a real sleep: the body takes over, indoors, as soon as nothing you chose is running.
+    const collapseAt = collapseDueAt(state.lastSleptAt);
+    if (t >= collapseAt && this.canCollapse(state, t) && !(await this.restingBlockAt(ctx, t))) {
+      return { type: 'begin', activity: { actionId: 'sleep', startedAt: t, endsAt: t + COLLAPSE_SLEEP_MINUTES, locationId: state.locationId, targetId: COLLAPSE_TARGET, cost: 0 } };
+    }
+    /** Segments a collapse may cut short end when it's due. */
+    const collapseBoundary = collapseAt > t ? collapseAt : Number.POSITIVE_INFINITY;
+
     if (state.activity && state.activity.endsAt > t) {
       const activity = state.activity;
       const action = findAction(activity.actionId);
       const end = Math.min(activity.endsAt, horizon);
+      if (action && activity.targetId === COLLAPSE_TARGET) {
+        return this.segment('sleep', t, end, activity.locationId, 'Collapsed from exhaustion', false, sleepProfile(profiles));
+      }
       if (action && activity.targetId === AUTOPILOT_TARGET) {
         if (action.id === 'sleep') {
           const afterNightShift = this.nightShiftRecovery(await this.blocksAround(ctx, t), t) !== null;
           return this.segment('sleep', t, end, activity.locationId, afterNightShift ? 'Sleeping after the night shift' : 'Sleeping', false, sleepProfile(profiles));
         }
         return this.segment('action', t, end, activity.locationId, 'Eating at home', false, homeMealProfile(profiles), action.id);
+      }
+      if (action?.id === 'hang-around') {
+        // Just arrived somewhere: a shift or lecture here takes over (you came to work), and a collapse cuts it short.
+        const blocks = await this.blocksAround(ctx, t);
+        const here = blocks.filter((block) => block.commute && block.locationId === state.locationId && block.endsAt > t);
+        const running = here.find((block) => block.startsAt <= t);
+        if (running) return this.routineSegment(running, blocks, t, Math.min(horizon, activity.endsAt, collapseBoundary), profiles);
+        const nextHere = Math.min(...here.map((block) => block.startsAt));
+        const atHome = state.locationId === (await this.residence(ctx, t)).locationId;
+        return this.segment('action', t, Math.min(end, nextHere, collapseBoundary), activity.locationId, action.verb, true, actionProfile(action, atHome, profiles), action.id);
       }
       if (action) {
         const atHome = state.locationId === (await this.residence(ctx, t)).locationId;
@@ -158,18 +200,28 @@ export class TimelinePlanner {
       return this.segment(current.kind, t, Math.min(current.endsAt, horizon), current.locationId, current.label, false, current.kind === 'hospital' ? hospitalProfile() : awayProfile(profiles));
     }
 
-    // Heading to (or already at) the next routine block.
+    // Heading to (or already at) the next routine block. A player at the controls makes their own way there.
+    const present = t < state.presentUntil;
     const upcoming = blocks.find((block) => block.commute && block.endsAt > t);
     if (upcoming) {
       if (state.locationId !== upcoming.locationId) {
-        const quote = await this.quote(ctx, state.locationId, upcoming.locationId, ctx.character.defaultTransport, t);
-        const leaveAt = upcoming.startsAt - quote.minutes;
-        if (t >= leaveAt) return this.depart(state, upcoming.locationId, quote, t, `Commute to ${upcoming.label}`);
+        if (!present) {
+          const quote = await this.quote(ctx, state.locationId, upcoming.locationId, ctx.character.defaultTransport, t);
+          const leaveAt = upcoming.startsAt - quote.minutes;
+          if (t >= leaveAt) return this.depart(state, upcoming.locationId, quote, t, `Commute to ${upcoming.label}`);
+        }
       } else if (upcoming.startsAt <= t) {
-        const profile = upcoming.kind === 'work' ? workProfile(profiles) : lectureProfile(profiles);
-        const end = Math.min(upcoming.endsAt, horizon, this.nextBlockStart(blocks, upcoming, t) ?? Number.POSITIVE_INFINITY);
-        return this.segment(upcoming.kind, t, end, upcoming.locationId, upcoming.label, false, profile);
+        return this.routineSegment(upcoming, blocks, t, Math.min(horizon, collapseBoundary), profiles);
       }
+    }
+
+    const atHome = state.locationId === residence.locationId;
+    if (present) {
+      // At the controls: nothing starts on its own and nobody moves you — no bed, meals, habits or trips. Needs keep
+      // drifting and the HUD nudges; the autopilot picks up from the moment the player is away.
+      const profile = atHome ? idleHomeProfile(profiles) : idleOutProfile(profiles);
+      const end = Math.max(t + 1, Math.min(horizon, state.presentUntil, collapseBoundary, this.nextBlockBoundary(blocks, t)));
+      return this.segment('idle', t, end, state.locationId, atHome ? 'Chilling at home' : 'Hanging around', false, profile);
     }
 
     const dayStart = startOfDay(t);
@@ -196,8 +248,6 @@ export class TimelinePlanner {
       return this.depart(state, residence.locationId, quote, t, 'Going home');
     }
 
-    const atHome = state.locationId === residence.locationId;
-
     // Home and hungry: eat first — breakfast before an early commute, dinner after a late one, a bite before bed.
     if (atHome && state.hunger < HUNGRY) {
       const endsAt = Math.min(t + MEAL_MINUTES, nextLeave);
@@ -213,7 +263,7 @@ export class TimelinePlanner {
       const meal = MEAL_WINDOWS.find((window) => minuteOfDay >= window.start && minuteOfDay < window.start + window.minutes);
       if (meal) {
         const mealEnd = startOfDay(t) + meal.start + meal.minutes;
-        return this.segment('action', t, Math.min(mealEnd, horizon, nextLeave), residence.locationId, meal.label, false, homeMealProfile(profiles), 'home-meal');
+        return this.segment('action', t, Math.min(mealEnd, horizon, nextLeave, collapseBoundary), residence.locationId, meal.label, false, homeMealProfile(profiles), 'home-meal');
       }
       const habit = await this.habitSession(ctx, state, t, Math.min(bedtime, nextLeave));
       if (habit) return { type: 'begin', activity: habit };
@@ -227,13 +277,17 @@ export class TimelinePlanner {
     const nextHabit = atHome ? this.nextHabitStart(ctx.character, t) : Number.POSITIVE_INFINITY;
     const hungry = atHome ? this.crossesBelow(state.hunger, profile.hunger, HUNGRY, t) : Number.POSITIVE_INFINITY;
     const nextHunger = hungry > t ? hungry : Number.POSITIVE_INFINITY;
-    const end = Math.max(t + 1, Math.min(horizon, nextLeave, nextBedtime, nextMeal, nextHabit, nextHunger, this.nextBlockBoundary(blocks, t)));
+    const end = Math.max(t + 1, Math.min(horizon, nextLeave, nextBedtime, nextMeal, nextHabit, nextHunger, collapseBoundary, this.nextBlockBoundary(blocks, t)));
     return this.segment('idle', t, end, state.locationId, atHome ? 'Chilling at home' : 'Hanging around', false, profile);
   }
 
-  /** Plan the next `minutes` without side effects (for the snapshot timeline the client animates). */
+  /**
+   * Plan the next `minutes` without side effects (for the snapshot timeline the client animates). A player at the
+   * controls is assumed to keep playing: the client keeps reporting in, and refetches when it stops.
+   */
   async plan(ctx: SimulationContext, from: GameMinute, minutes: number): Promise<Segment[]> {
-    const state = this.stateOf(ctx.character);
+    const state = this.stateOf(ctx);
+    if (state.presentUntil > from) state.presentUntil = Number.POSITIVE_INFINITY;
     const until = from + minutes;
     const segments: Segment[] = [];
     let t = from;
@@ -256,6 +310,7 @@ export class TimelinePlanner {
       } else {
         segments.push(segment);
       }
+      state.lastSleptAt = restedThrough(segment, state.activity, state.lastSleptAt);
       const hours = (segment.endsAt - segment.startsAt) / MINUTES_PER_HOUR;
       state.energy = driftNeed(state.energy, segment.profile.energy, hours);
       state.hunger = driftNeed(state.hunger, segment.profile.hunger, hours);
@@ -349,7 +404,7 @@ export class TimelinePlanner {
       const trip = quoteTrip(a.districtId, b.districtId, mode, conditions);
       if (trip.allowed) return { mode, minutes: Math.min(trip.minutes, MAX_LOCAL_COMMUTE_MINUTES), fare: trip.fare, intercity: false };
     }
-    return { mode: 'walk', minutes: 30, fare: 0, intercity: false };
+    return { mode: 'walk', minutes: 15, fare: 0, intercity: false };
   }
 
   async itemTags(ctx: SimulationContext): Promise<readonly string[]> {
@@ -462,6 +517,26 @@ export class TimelinePlanner {
       if (t < until) return until;
     }
     return null;
+  }
+
+  /** A collapse needs a place to fall (not the street, where the client drives the avatar) and nothing chosen running. */
+  private canCollapse(state: PlanState, t: GameMinute): boolean {
+    if (isStreetLocation(state.locationId)) return false;
+    const activity = state.activity && state.activity.endsAt > t ? state.activity : null;
+    return activity === null || activity.actionId === 'hang-around';
+  }
+
+  /** In hospital or away on a trip: resting already (those segments count as sleep). */
+  private async restingBlockAt(ctx: SimulationContext, t: GameMinute): Promise<boolean> {
+    const current = this.blockAt(await this.blocksAround(ctx, t), t);
+    return current !== undefined && !current.commute;
+  }
+
+  /** Working the shift (or sitting the lectures) you're at, until it ends, a higher-priority block or `limit`. */
+  private routineSegment(block: ScheduleBlock, blocks: readonly ScheduleBlock[], t: GameMinute, limit: GameMinute, profiles: ProfileContext): PlanStep {
+    const profile = block.kind === 'work' ? workProfile(profiles) : lectureProfile(profiles);
+    const end = Math.min(block.endsAt, limit, this.nextBlockStart(blocks, block, t) ?? Number.POSITIVE_INFINITY);
+    return this.segment(block.kind, t, end, block.locationId, block.label, false, profile);
   }
 
   private blockAt(blocks: readonly ScheduleBlock[], t: GameMinute): ScheduleBlock | undefined {

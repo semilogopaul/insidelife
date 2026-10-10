@@ -167,7 +167,7 @@ async function scholar(ctx: SimulationContext, day: number, services: Services):
   const education = await services.education.overview(ctx);
   const enrolled = education.enrolment && education.enrolment.status !== 'graduated' && education.enrolment.status !== 'withdrawn';
   const exam = education.jamb.current;
-  if (day === 0) await quietly(() => services.settings.update(ctx, { habits: [habit('study', 20, 2)] }), 'set study habit');
+  if (day === 0) await quietly(() => services.settings.update(ctx, { habits: [habit('study', 20, 1)] }), 'set study habit');
   if (VERBOSE && day % 15 === 0) {
     const examState = exam ? `${exam.status} sit-from d+${Math.round((exam.canSitFrom - ctx.time) / 1440)}` : 'none';
     print(`      · d${day} ${ctx.character.firstName} ${ctx.character.lastName}: ${education.headline} | JAMB ${examState} score ${education.jamb.score ?? '-'} | apps ${education.applications.map((a) => `${a.institutionId}:${a.status}`).join(',') || '-'} | enrol ${education.enrolment?.status ?? '-'}`);
@@ -241,7 +241,7 @@ async function act(bot: Bot, day: number, phase: Phase, ctx: SimulationContext, 
     case 'techie':
       if (day === 0) await quietly(() => services.shop.purchase(ctx, 'laptop-hp-uk'), 'buy laptop');
       // The laptop is delivered a few days after an online order; set the routine once it's here.
-      if (character.habits.length === 0) await quietly(() => services.settings.update(ctx, { habits: [habit('learn-code', 20, 2)] }), 'set coding habit');
+      if (character.habits.length === 0) await quietly(() => services.settings.update(ctx, { habits: [habit('learn-code', 20, 1)] }), 'set coding habit');
       if (day === 30) await quietly(() => services.shop.purchase(ctx, 'inverter'), 'buy inverter');
       if (day % 5 === 0) await applyBestJob(ctx, services, STUDY_FRIENDLY_SHIFT_HOURS);
       return;
@@ -270,7 +270,7 @@ async function act(bot: Bot, day: number, phase: Phase, ctx: SimulationContext, 
       return;
 
     case 'entrepreneur':
-      if (day % 2 === 0) startAction(ctx, services, 'manage-business', 180);
+      if (day % 2 === 0) startAction(ctx, services, 'manage-business', 120);
       if (day === 0) {
         await quietly(
           () => services.businesses.start(ctx, { typeId: 'pos-kiosk', name: `${character.firstName}'s POS`, districtId: character.homeDistrictId }),

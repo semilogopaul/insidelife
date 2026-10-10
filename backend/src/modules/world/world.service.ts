@@ -1,15 +1,19 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   activeWorldEvents,
+  clockAt,
   economyAt,
   formatNaira,
   fromDateParts,
   isWorldEventActive,
+  nextRescaleAfter,
   rngFor,
   dayIndexOf,
+  TUNED_TIME_SCALE,
   weatherAt,
   wholeGameMinuteAt,
+  type ClockRescale,
   type EconomyState,
   type GameClockConfig,
   type GameMinute,
@@ -20,26 +24,47 @@ import {
 import type { AppConfig } from '../../config/configuration.js';
 
 /** The game clock reads 1 Jan 2027, 06:00 at GAME_EPOCH. */
-const EPOCH_GAME_MINUTE = fromDateParts({ year: 2027, month: 1, day: 1, hour: 6 });
+export const EPOCH_GAME_MINUTE = fromDateParts({ year: 2027, month: 1, day: 1, hour: 6 });
 
 /**
- * Authoritative world clock and world model. Everything is derived from configuration (epoch, scale, seed), so any
- * number of server instances agree without coordination.
+ * Authoritative world clock and world model. Everything is derived from configuration (epoch, scale, speed changes,
+ * seed), so any number of server instances agree without coordination.
+ *
+ * The clock runs at GAME_TIME_SCALE from GAME_EPOCH, then at each GAME_TIME_RESCALES entry it re-anchors to the minute
+ * reached so far and runs at the new speed: changing the pace never makes the game minute jump (docs/DEPLOY.md).
  */
 @Injectable()
 export class WorldService {
-  readonly clock: GameClockConfig;
   readonly seed: string;
+  private readonly base: GameClockConfig;
+  private readonly rescales: readonly ClockRescale[];
 
   constructor(config: ConfigService<AppConfig, true>) {
     const game = config.get('game', { infer: true });
-    this.clock = { epochRealMs: game.epochRealMs, epochGameMinute: EPOCH_GAME_MINUTE, scale: game.timeScale };
+    this.base = { epochRealMs: game.epochRealMs, epochGameMinute: EPOCH_GAME_MINUTE, scale: game.timeScale };
+    this.rescales = game.rescales;
     this.seed = game.worldSeed;
+    const scale = (this.nextRescale ?? this.clock).scale;
+    if (scale !== TUNED_TIME_SCALE) {
+      new Logger(WorldService.name).warn(
+        `The game clock runs at ×${scale} but actions, rides and sleep are tuned for ×${TUNED_TIME_SCALE}. See docs/DEPLOY.md ("Game speed").`,
+      );
+    }
+  }
+
+  /** The clock running now (a single linear piece; it changes at a scheduled speed change). */
+  get clock(): GameClockConfig {
+    return clockAt(this.base, this.rescales, Date.now());
+  }
+
+  /** The next scheduled speed change, or null. */
+  get nextRescale(): ClockRescale | null {
+    return nextRescaleAfter(this.rescales, Date.now());
   }
 
   /** Current whole game minute. */
   now(realMs: number = Date.now()): GameMinute {
-    return wholeGameMinuteAt(this.clock, realMs);
+    return wholeGameMinuteAt(clockAt(this.base, this.rescales, realMs), realMs);
   }
 
   economy(t: GameMinute): EconomyState {

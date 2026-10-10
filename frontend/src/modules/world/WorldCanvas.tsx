@@ -28,6 +28,7 @@ import { InteriorOverlay, InteriorScene } from './interiors';
 import { useVenueGuests } from './interiors/use-venue-guests';
 import { NavigationLayer } from './navigation/NavigationLayer';
 import { InteriorMoments, InteriorSpray, PLAY_LAYER_OWNS_CAMERA, PlayLayer, PlayOverlay, usePlayBridge, type SandboxStart } from './play';
+import { STREET_CAMERA } from './play/camera-defaults';
 import { SpeechBubbles } from './speech/SpeechBubbles';
 import { SpeechProjector } from './speech/SpeechProjector';
 
@@ -146,7 +147,7 @@ function WorldStage({ children, graphics: forced }: { readonly children: ReactNo
       className="!absolute inset-0"
       dpr={[quality.dpr[0], quality.dpr[1]]}
       shadows={quality.shadows ? 'percentage' : false}
-      camera={{ fov: 50, near: 0.5, far: 2000, position: [0, 80, 120] }}
+      camera={{ ...STREET_CAMERA, position: [0, 80, 120] }}
       gl={{ antialias: quality.tier !== 'low', powerPreference: 'high-performance', stencil: false }}
     >
       <PerformanceMonitor onDecline={() => setDeclines((count) => Math.min(2, count + 1))} flipflops={3} />

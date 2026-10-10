@@ -2,10 +2,13 @@
 
 import { PenLine } from 'lucide-react';
 import {
+  ACTION_PACE,
+  EXAM_DURATION_MINUTES,
   JAMB_MAX_SCORE,
   JAMB_MIN_POLYTECHNIC,
   JAMB_MIN_UNIVERSITY,
   formatDate,
+  formatGameDuration,
   type EducationOverviewDto,
   type GameMinute,
 } from '@insidelife/shared';
@@ -19,7 +22,7 @@ import { jambReadiness, jambVerdict, latestExam } from '../../services/school-ru
 import { ExamCentreGate } from './ExamCentreGate';
 import { StudyButton } from './StudyButton';
 
-/** JAMB: register at a CBT centre → read → write (3 hours) → result at midnight. */
+/** JAMB: register at a CBT centre → read → write (1½ hours) → result at midnight. */
 export function JambStage({
   overview,
   now,
@@ -33,6 +36,8 @@ export function JambStage({
 
   if (exam && exam.status !== 'released') {
     const readiness = jambReadiness(exam.prepHours);
+    // Prep counts effective hours (an hour at the books counts ACTION_PACE times); players see the hours they studied.
+    const studiedHours = Math.round((exam.prepHours / ACTION_PACE) * 10) / 10;
     const canSit = now >= exam.canSitFrom;
     return (
       <div className="flex flex-col gap-3">
@@ -65,7 +70,8 @@ export function JambStage({
                 tone={readiness >= 0.6 ? 'naira' : 'danfo'}
               />
               <p className="mt-1.5 text-xs text-text-soft">
-                {exam.prepHours}h of study since you registered. Around 20–40 hours makes a real difference.
+                {studiedHours}h of study since you registered. Around 10–20 hours of
+                study makes a real difference.
               </p>
             </>
           )}
@@ -89,13 +95,13 @@ export function JambStage({
                     sitExam.mutate(exam.id, {
                       onSuccess: () =>
                         announce('Exam started', {
-                          body: '3 hours in the hall. Read the questions well. You go pass!',
+                          body: `${formatGameDuration(EXAM_DURATION_MINUTES)} in the hall. Read the questions well. You go pass!`,
                         }),
                       onError: (error) => complain('Couldn’t start the exam', error),
                     })
                   }
                 >
-                  Write JAMB now · 3 hours
+                  Write JAMB now · {formatGameDuration(EXAM_DURATION_MINUTES)}
                 </Button>
               </ExamCentreGate>
             ) : (

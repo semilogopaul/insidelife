@@ -547,7 +547,7 @@ describe('things you can tap', () => {
       id: 'hotspot:lounge',
       label: 'Drinks at the lounge',
       priceNote: '₦18,000',
-      durations: [120, 180],
+      durations: [60, 90],
       disabled: 'Not enough money (₦18,000)',
       opens: null,
     });
