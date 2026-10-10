@@ -141,7 +141,6 @@ export function OrderForm({ track, offer, rules, usd, onCancel }: OrderFormProps
               ? `Pay ${formatUsdCents(dollarPrice.cents)}${payment.method !== 'card' ? ` with ${PAYMENT_METHOD_LABELS[payment.method]}` : ''}`
               : `Pay ${formatNaira(quote?.totalNaira ?? koboToNaira(weekPriceKobo))}`}
         </Button>
-        <p className="mt-1.5 text-center text-xs text-text-soft">Flutterwave adds its small processing fee at checkout.</p>
       </div>
     </div>
   );

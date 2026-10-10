@@ -190,7 +190,7 @@ export function DetailsStep({ slot, catalog, creative, prefill }: DetailsStepPro
               : 'Pay'}
         </Button>
         <p className="mt-1.5 text-center text-xs text-text-soft">
-          {!titleCheck.ok || !linkCheck.ok ? 'Add a title and an https link to continue.' : !accepted ? 'Tick the rules box to continue.' : 'Your spot is held for 30 minutes while you pay (Flutterwave adds its small processing fee). Full refund if it isn’t approved.'}
+          {!titleCheck.ok || !linkCheck.ok ? 'Add a title and an https link to continue.' : !accepted ? 'Tick the rules box to continue.' : 'Your spot is held for 30 minutes while you pay. Full refund if it isn’t approved.'}
         </p>
       </div>
     </div>
