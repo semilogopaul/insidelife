@@ -12,6 +12,9 @@ const rate = (currentKobo: number): AdRateDto => ({
   byDistrict: false,
   defaultKobo: 10_000_000,
   currentKobo,
+  blockDays: 3,
+  blockPriceKobo: 4_300_000,
+  summary: '₦100,000 per 7 days · sold in 3-day blocks of ₦43,000',
   updatedAt: null,
   updatedBy: null,
 });

@@ -1,18 +1,22 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Req, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
+import type { Request } from 'express';
 import {
   CREATIVE_MAX_BYTES,
   PROMOTION_UPLOAD_FIELD,
   TRACK_MAX_BYTES,
+  type AdCampaignDetailDto,
   type AdCampaignDto,
   type BillboardSlotsDto,
   type CampaignCheckoutDto,
   type ClubOrderCheckoutDto,
+  type ClubOrderDetailDto,
   type ClubTrackDto,
   type CreativeDto,
 } from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
+import { requestOrigin } from '../../common/http/request-origin.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CampaignsService } from './campaigns.service.js';
 import { CreativeService } from './creative.service.js';
@@ -45,15 +49,22 @@ export class PromotionsController {
     return this.creatives.upload(user.userId, body.slotId, file);
   }
 
+  /** Checkout returns the player to the origin they're using when it's one of ours (see `checkoutReturnUrl`). */
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('campaigns')
-  createCampaign(@CurrentUser() user: AuthUser, @Body() body: CreateCampaignDto): Promise<CampaignCheckoutDto> {
-    return this.campaigns.create(user, body);
+  createCampaign(@CurrentUser() user: AuthUser, @Body() body: CreateCampaignDto, @Req() request: Request): Promise<CampaignCheckoutDto> {
+    return this.campaigns.create(user, body, requestOrigin(request));
   }
 
   @Get('campaigns')
   myCampaigns(@CurrentUser() user: AuthUser): Promise<AdCampaignDto[]> {
     return this.campaigns.listMine(user.userId);
+  }
+
+  /** "What you paid for": the campaign with its timeline and receipt. */
+  @Get('campaigns/:id')
+  campaign(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string): Promise<AdCampaignDetailDto> {
+    return this.campaigns.detail(user.userId, id);
   }
 
   @Delete('campaigns/:id')
@@ -76,7 +87,13 @@ export class PromotionsController {
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('tracks/:id/orders')
-  orderRotation(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: CreateClubOrderDto): Promise<ClubOrderCheckoutDto> {
-    return this.tracks.order(user, id, body);
+  orderRotation(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string, @Body() body: CreateClubOrderDto, @Req() request: Request): Promise<ClubOrderCheckoutDto> {
+    return this.tracks.order(user, id, body, requestOrigin(request));
+  }
+
+  /** A song order's page: timeline, receipt, plays and listeners, and when and where it plays next. */
+  @Get('club-orders/:id')
+  clubOrder(@CurrentUser() user: AuthUser, @Param('id', new ParseUUIDPipe()) id: string): Promise<ClubOrderDetailDto> {
+    return this.tracks.detail(user.userId, id);
   }
 }

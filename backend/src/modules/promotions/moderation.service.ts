@@ -121,6 +121,8 @@ export class ModerationService {
       if (!decided.ok) throw new PromotionStateException(decided.message);
       const from = entity.status;
       entity.status = decided.to;
+      // Approved after its first day: the approval notice already says it is live (the lifecycle sweep stays quiet).
+      if (decided.to === 'live' && entity.liveNotifiedAt === null) entity.liveNotifiedAt = clock.now;
       if (decision.action === 'mark-refunded') {
         entity.holdExpiresAt = null;
       } else {
@@ -174,6 +176,8 @@ export class ModerationService {
       if (!decided.ok) throw new PromotionStateException(decided.message);
       const from = entity.status;
       entity.status = decided.to;
+      // Approved after its first day: the approval notice already says it is live (the lifecycle sweep stays quiet).
+      if (decided.to === 'live' && entity.liveNotifiedAt === null) entity.liveNotifiedAt = clock.now;
       if (decision.action === 'mark-refunded') {
         entity.holdExpiresAt = null;
       } else {

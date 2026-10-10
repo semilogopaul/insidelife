@@ -5,7 +5,7 @@ import {
   BILLBOARD_FORMAT_SPECS,
   BILLBOARD_SLOT_IDS,
   BILLBOARD_SLOTS,
-  CLUB_TRACK_PRICE_KOBO,
+  CLUB_SONG_WEEK_PRICE_KOBO,
   PHONE_APP_WEEK_PRICE_KOBO,
   friendlyWeekPriceKobo,
   type BillboardFormat,
@@ -90,7 +90,10 @@ export type AdRateKey = (typeof AD_RATE_KEYS)[number];
 export interface AdRateDefinition {
   readonly key: AdRateKey;
   readonly label: string;
-  /** `week`: per 7-day block of an ad; `song`: per club song (7 days in every club). */
+  /**
+   * `week`: per 7-day block, for every rate including the club song (₦5,000 a day = ₦35,000 a week since Oct 2026).
+   * `song` (a flat price per song) is no longer used; it stays in the type for older admin clients.
+   */
   readonly unit: 'week' | 'song';
   /** The stored rate is a base weekly price, scaled by each spot's district prestige. */
   readonly byDistrict: boolean;
@@ -105,7 +108,7 @@ export const AD_RATE_DEFINITIONS: Readonly<Record<AdRateKey, AdRateDefinition>> 
   ['lagos-tv', { key: 'lagos-tv', label: AD_SLOT_KIND_LABELS['lagos-tv'], unit: 'week', byDistrict: false, defaultKobo: LAGOS_TV_WEEK_PRICE_KOBO }],
   ['phone-app', { key: 'phone-app', label: AD_SLOT_KIND_LABELS['phone-app'], unit: 'week', byDistrict: false, defaultKobo: PHONE_APP_WEEK_PRICE_KOBO }],
   ...BILLBOARD_SLOTS.map((board) => [board.id, { key: board.id, label: `Premium billboard: ${board.name}`, unit: 'week', byDistrict: false, defaultKobo: board.weekPriceKobo }]),
-  ['club-song', { key: 'club-song', label: 'Club DJ song (7 days, every club)', unit: 'song', byDistrict: false, defaultKobo: CLUB_TRACK_PRICE_KOBO }],
+  ['club-song', { key: 'club-song', label: 'Club DJ song (per week, every club and lounge)', unit: 'week', byDistrict: false, defaultKobo: CLUB_SONG_WEEK_PRICE_KOBO }],
 ]) as Record<AdRateKey, AdRateDefinition>;
 
 export function isAdRateKey(key: string): key is AdRateKey {

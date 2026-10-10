@@ -1,17 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import type { DataSource } from 'typeorm';
+import type { NotificationLinkDto } from '@insidelife/shared';
 import { withTransaction } from '../../database/transaction.js';
 import { CharacterDirectory } from '../characters/character-directory.service.js';
 import { NotificationsService, type NotificationDraft } from '../notifications/notifications.service.js';
 import { WorldService } from '../world/world.service.js';
 
-export type PromotionNotice = Pick<NotificationDraft, 'title' | 'body' | 'tone'>;
+export interface PromotionNotice extends Pick<NotificationDraft, 'title' | 'body' | 'tone'> {
+  /** A button on the live alert ("Take me there", "Run it again"); not stored with the notification. */
+  readonly link?: NotificationLinkDto;
+}
 
 /**
  * Tells a buyer what happened to their ad or track: an in-game notification on their living character (own short
- * transaction) pushed to their sockets. Buyers without a character (brands) simply get none. Never throws — a missed
- * notification must not undo a payment or a moderation decision.
+ * transaction) pushed to their sockets, with an optional button on the live alert. Buyers without a character (brands)
+ * simply get none. Never throws — a missed notification must not undo a payment or a moderation decision.
  */
 @Injectable()
 export class PromotionsNotifier {
@@ -30,7 +34,7 @@ export class PromotionsNotifier {
       if (!character) return;
       const draft: NotificationDraft = { kind: 'system', title: notice.title, body: notice.body, tone: notice.tone, gameMinute: this.world.now() };
       const created = await withTransaction(this.dataSource, (manager) => this.notifications.create(manager, character.id, [draft]));
-      this.notifications.push(character.id, created);
+      this.notifications.push(character.id, notice.link ? created.map((dto) => ({ ...dto, link: notice.link })) : created);
     } catch (error) {
       this.logger.warn({ err: error, ownerUserId }, 'Promotion notification failed');
     }

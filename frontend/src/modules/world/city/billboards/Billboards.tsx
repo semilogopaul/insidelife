@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef } from 'react';
 import { BoxGeometry, CanvasTexture, Color, Matrix4, MeshStandardMaterial, PlaneGeometry, SRGBColorSpace, TextureLoader, type BufferGeometry, type Texture } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { atmosphereFrame } from '../lib/atmosphere-frame';
+import { AdHighlight, highlightGlow } from './AdHighlight';
 import { createCityMaterial } from '../materials/city-materials';
 import { WATER_Y } from '../render/ground-geometry';
 import { paint } from '../render/paint';
@@ -17,6 +18,8 @@ import { setProps } from '../lib/mutate';
  * Billboard structures at the promotions slots (poles, gantries, wall and rooftop frames — one draw call) and their
  * faces (one mesh per board, frustum-culled), showing live creatives in rotation or a Danfo-yellow house ad.
  * Faces carry `userData.billboardSlotId` for the play layer's tap raycasts; the world never handles taps itself.
+ * The "See it in Lagos" highlight (`AdHighlight`, one mesh for every board and street spot) is mounted here; a premium
+ * board in focus also glows.
  */
 
 const STEEL = 0x3b3f44;
@@ -218,10 +221,10 @@ export function Billboards({ shadows }: { readonly shadows: boolean }) {
   }, [frame, boards]);
 
   const elapsed = useRef(1);
-  useFrame((_, delta) => {
+  useFrame(({ clock }, delta) => {
     const night = atmosphereFrame.night;
     elapsed.current += delta;
-    for (const board of boards) setProps(board.material, { emissiveIntensity: 0.12 + night * 0.85 });
+    for (const board of boards) setProps(board.material, { emissiveIntensity: 0.12 + night * 0.85 + highlightGlow(board.placement.slotId, clock.elapsedTime) });
     if (elapsed.current < 0.5) return;
     elapsed.current = 0;
     const now = Date.now();
@@ -235,6 +238,7 @@ export function Billboards({ shadows }: { readonly shadows: boolean }) {
   return (
     <>
       <mesh geometry={frame.geometry} material={frame.material} castShadow={shadows} receiveShadow />
+      <AdHighlight />
       {boards.map((board) => (
         <mesh
           key={board.placement.slotId}

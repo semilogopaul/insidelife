@@ -10,7 +10,10 @@ import {
   formatRunDays,
   minimumImageSize,
   nextFreeLabel,
+  blocksLabel,
+  quoteBlocks,
   quoteWeeks,
+  runSummary,
   trackDurationProblem,
   validateDisplayText,
   validateLink,
@@ -74,11 +77,21 @@ describe('display text', () => {
   });
 });
 
-describe('quoteWeeks (shared adQuote in naira)', () => {
+describe('quoteBlocks (shared adQuote in naira)', () => {
   it('charges whole consecutive weeks at the weekly price, no discount', () => {
-    expect(quoteWeeks(17_500_000, 1)).toMatchObject({ weeks: 1, days: 7, weekNaira: 175_000, totalNaira: 175_000 });
-    expect(quoteWeeks(17_500_000, 4)).toMatchObject({ days: 28, totalNaira: 700_000 });
-    expect(quoteWeeks(10_000_000, 2)?.totalNaira).toBe(200_000);
+    expect(quoteWeeks(8_400_000, 1)).toMatchObject({ blocks: 1, blockDays: 7, days: 7, blockNaira: 84_000, totalNaira: 84_000 });
+    expect(quoteBlocks(8_400_000, 4, 7)).toMatchObject({ days: 28, totalNaira: 336_000 });
+    expect(quoteBlocks(5_000_000, 2, 7)?.totalNaira).toBe(100_000);
+  });
+
+  it('charges 3-day blocks on expensive slots (₦100,000 a week → ₦43,000 for 3 days)', () => {
+    expect(quoteBlocks(10_000_000, 1, 3)).toMatchObject({ blocks: 1, days: 3, blockNaira: 43_000, totalNaira: 43_000 });
+    expect(quoteBlocks(17_500_000, 9, 3)).toMatchObject({ days: 27, totalNaira: 675_000 });
+    expect(quoteBlocks(17_500_000, 10, 3)).toBeNull();
+    expect(blocksLabel(3, 3)).toBe('9 days');
+    expect(blocksLabel(2, 7)).toBe('2 weeks');
+    expect(runSummary('2026-10-09', 3)).toBe('Runs Fri 9 Oct – Sun 11 Oct · 3 days');
+    expect(runSummary('2026-10-09', 7)).toBe('Runs Fri 9 Oct – Thu 15 Oct · 1 week');
   });
 
   it('returns null for lengths the server refuses and prices under ₦2,000', () => {

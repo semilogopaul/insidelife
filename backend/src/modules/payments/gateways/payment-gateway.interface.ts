@@ -31,6 +31,11 @@ export interface GatewayInitializeInput {
   readonly customerName: string;
   readonly amountKobo: number;
   readonly description: string;
+  /**
+   * Where the hosted checkout sends the browser back: the callback page on the player's own origin when it is one of
+   * ours, else PAYMENT_CALLBACK_URL (`checkoutReturnUrl`). The sandbox's checkout is relative and ignores it.
+   */
+  readonly redirectUrl: string;
   readonly metadata: Readonly<Record<string, string | null>>;
 }
 

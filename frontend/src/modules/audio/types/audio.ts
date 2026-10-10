@@ -21,6 +21,14 @@ export interface ClubTrack {
   readonly durationSeconds: number;
 }
 
+/** A paid track at its scheduled time in one club (the server's club schedule). */
+export interface ScheduledClubTrack extends ClubTrack {
+  /** The schedule slot (unique across Lagos). */
+  readonly slotIndex: number;
+  /** Server-clock ms the song starts; joining later seeks into it. */
+  readonly startsAtMs: number;
+}
+
 /** What the "Now playing" chip shows while a paid club track plays. */
 export interface NowPlayingTrack {
   readonly trackId: string;

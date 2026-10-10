@@ -4,7 +4,8 @@ import type { AudioEngineStats, AudioSettings, BusId, CelebrationKind, ClubTrack
 import { AmbienceMixer } from '../ambience/ambience-mixer';
 import { SILENT_AMBIENCE, type AmbienceTargets } from '../ambience/ambience-state';
 import { EngineSound, type EngineMode } from '../ambience/engine-sound';
-import { fetchClubRotation, reportClubPlay } from '../club/club-rotation';
+import { gameClock } from '@/common/game/game-clock';
+import { fetchClubSchedule } from '../club/club-rotation';
 import { MusicDirector, type MusicRequest } from '../music/music-director';
 import { SampleBank } from '../sfx/sample-bank';
 import { CORE_SAMPLES, SFX_RECIPES, STINGERS, recipeSamples, type SfxBus, type SfxRecipe } from '../sfx/sfx-catalog';
@@ -246,10 +247,9 @@ export class AudioEngine {
       buses.music,
       this.seed,
       {
-        fetchRotation: fetchClubRotation,
-        reportPlay: reportClubPlay,
+        fetchSchedule: fetchClubSchedule,
+        serverNow: () => gameClock.serverNow(),
         onNowPlaying: (track) => this.callbacks?.onNowPlaying(track),
-        random: this.random,
         fallbackVolume: () => {
           if (!this.settings) return 0.3;
           const levels = busLevelsFor(this.settings);

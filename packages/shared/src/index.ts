@@ -63,3 +63,5 @@ export * from './contracts/progression.js';
 export * from './world-map/interest.js';
 export * from './world-map/ad-placements.js';
 export * from './catalog/ad-inventory.js';
+export * from './catalog/ad-views.js';
+export * from './catalog/club-schedule.js';

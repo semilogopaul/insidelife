@@ -48,6 +48,10 @@ export class AdCampaignEntity {
   @Column({ type: 'smallint' })
   days: number;
 
+  /** Days per block it was sold in (7, or 3 for slots of ₦100,000 a week or more at booking time). */
+  @Column({ type: 'smallint', default: 7 })
+  blockDays: number;
+
   /** Real money charged, kobo. */
   @Column({ type: 'bigint', transformer: bigintNumber })
   amountKobo: number;
@@ -77,11 +81,23 @@ export class AdCampaignEntity {
   @Column({ type: 'uuid', nullable: true })
   reviewedBy: string | null;
 
+  /** Views: a player who saw it (see shared `ad-views.ts`), once per game hour each. */
   @Column({ type: 'bigint', transformer: bigintNumber, default: 0 })
   impressions: number;
 
+  /** Different players who saw it. */
+  @Column({ type: 'integer', default: 0 })
+  uniqueViewers: number;
+
   @Column({ type: 'bigint', transformer: bigintNumber, default: 0 })
   clicks: number;
+
+  /** The "now live" / "has ended" notices went out (each exactly once). */
+  @Column({ type: 'timestamptz', nullable: true })
+  liveNotifiedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  endedNotifiedAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

@@ -55,11 +55,11 @@ describe('CachedValue', () => {
 
 describe('expected price and dates', () => {
   it('refuses a booking whose price changed since the buyer saw it, with the new quote', () => {
-    expect(() => assertExpectedPrice(undefined, { weekPriceKobo: 1_750_000, totalKobo: 3_500_000 }, 'week')).not.toThrow();
-    expect(() => assertExpectedPrice(3_500_000, { weekPriceKobo: 1_750_000, totalKobo: 3_500_000 }, 'week')).not.toThrow();
+    expect(() => assertExpectedPrice(undefined, { weekPriceKobo: 1_750_000, totalKobo: 3_500_000, blockPriceKobo: 1_750_000, blockDays: 7 })).not.toThrow();
+    expect(() => assertExpectedPrice(3_500_000, { weekPriceKobo: 1_750_000, totalKobo: 3_500_000, blockPriceKobo: 1_750_000, blockDays: 7 })).not.toThrow();
     let refused: unknown = null;
     try {
-      assertExpectedPrice(3_500_000, { weekPriceKobo: 2_000_000, totalKobo: 4_000_000 }, 'week');
+      assertExpectedPrice(3_500_000, { weekPriceKobo: 2_000_000, totalKobo: 4_000_000, blockPriceKobo: 2_000_000, blockDays: 7 });
     } catch (error) {
       refused = error;
     }
@@ -68,6 +68,12 @@ describe('expected price and dates', () => {
       message: 'The price just changed to ₦40,000 (₦20,000 a week). Check it and pay again',
       details: ['weekPriceKobo=2000000', 'totalKobo=4000000'],
     });
+  });
+
+  it('quotes 3-day blocks in the price-changed message', () => {
+    expect(() => assertExpectedPrice(4_300_000, { weekPriceKobo: 12_000_000, totalKobo: 5_150_000, blockPriceKobo: 5_150_000, blockDays: 3 })).toThrow(
+      'The price just changed to ₦51,500 (₦51,500 per 3 days). Check it and pay again',
+    );
   });
 
   it('refuses a booking whose start moved since the buyer saw it', () => {

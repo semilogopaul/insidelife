@@ -64,6 +64,11 @@ export class CreativeService {
     return creative;
   }
 
+  /** Is this creative still stored for this owner (it's deleted when an ad is rejected)? */
+  exists(userId: string, key: string): Promise<boolean> {
+    return this.creatives.exists({ where: { key, ownerUserId: userId } });
+  }
+
   private requireSlot(slotId: string): BillboardSlot {
     const slot = findAdSlot(slotId);
     if (!slot) throw new ResourceNotFoundException('Billboard');

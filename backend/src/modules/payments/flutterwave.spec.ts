@@ -121,6 +121,7 @@ describe('FlutterwaveClient', () => {
       customerName: '@ada',
       amountKobo: 30_000_000,
       description: 'Inside Life billboard: Lekki Toll Gate, 7 days',
+      redirectUrl: 'https://insidelife.online/payments/callback',
       metadata: { purpose: 'billboard', subjectId: 'c-1', characterId: null },
     });
     expect(session.authorizationUrl).toBe('https://checkout.flutterwave.com/v3/hosted/pay/abc');
@@ -138,9 +139,25 @@ describe('FlutterwaveClient', () => {
     });
   });
 
+  it('returns the player to the redirect it is given (their own origin), with the logo from that site when it is https', async () => {
+    const link = { status: 200, body: { status: 'success', message: 'Hosted Link', data: { link: 'https://checkout.flutterwave.com/v3/hosted/pay/abc' } } };
+    responses.push(link, link);
+    const input = { reference: 'r', paymentId: 'p', email: 'a@b.c', customerName: 'x', amountKobo: 50_000, description: 'd', metadata: {} };
+    await client().initialize({ ...input, redirectUrl: 'https://x7k2p9-3100.uks1.devtunnels.ms/payments/callback' });
+    expect(sentBody(0)).toMatchObject({
+      redirect_url: 'https://x7k2p9-3100.uks1.devtunnels.ms/payments/callback',
+      customizations: { logo: 'https://x7k2p9-3100.uks1.devtunnels.ms/icons/icon-512.png' },
+    });
+    // An http return (local dev) can't serve Flutterwave's https page a logo: the configured site's is used instead.
+    await client().initialize({ ...input, redirectUrl: 'http://localhost:3100/payments/callback' });
+    expect(sentBody(1)).toMatchObject({ redirect_url: 'http://localhost:3100/payments/callback', customizations: { logo: 'https://insidelife.online/icons/icon-512.png' } });
+  });
+
   it('fails cleanly (502) when Flutterwave refuses the checkout', async () => {
     responses.push({ status: 400, body: { status: 'error', message: 'Invalid currency', data: null } });
-    await expect(client().initialize({ reference: 'r', paymentId: 'p', email: 'a@b.c', customerName: 'x', amountKobo: 50_000, description: 'd', metadata: {} })).rejects.toMatchObject({
+    await expect(
+      client().initialize({ reference: 'r', paymentId: 'p', email: 'a@b.c', customerName: 'x', amountKobo: 50_000, description: 'd', redirectUrl: 'https://insidelife.online/payments/callback', metadata: {} }),
+    ).rejects.toMatchObject({
       errorCode: 'EXTERNAL_SERVICE_ERROR',
     });
   });

@@ -126,16 +126,60 @@ export function decideRefundReport(record: RefundRecord, report: RefundReport): 
   }
 }
 
+// ----- Where checkout sends the player back -----------------------------------------------------------------------
+
+/** `scheme://authority` and nothing else: no userinfo (`@`), path, query, fragment, backslash or whitespace. */
+const BARE_ORIGIN = /^https?:\/\/[^/?#@\\\s]+$/i;
+const DEFAULT_CALLBACK_PATH = '/payments/callback';
+
+/**
+ * The canonical form of a bare http(s) origin (scheme and host lower-cased, default port dropped, trailing slashes
+ * ignored), or null for anything else: a path, query, fragment, credentials, another scheme, junk. `httpsOnly`
+ * refuses http too (the live site).
+ */
+export function canonicalOrigin(value: string | null | undefined, httpsOnly = false): string | null {
+  if (typeof value !== 'string' || value.length > 255) return null;
+  const trimmed = value.trim().replace(/\/+$/, '');
+  if (!BARE_ORIGIN.test(trimmed) || !URL.canParse(trimmed)) return null;
+  const url = new URL(trimmed);
+  if (url.protocol !== 'https:' && (httpsOnly || url.protocol !== 'http:')) return null;
+  if (url.username || url.password || url.pathname !== '/' || url.search || url.hash) return null;
+  return url.origin;
+}
+
+/**
+ * Flutterwave's `redirect_url` for a checkout: the callback page (PAYMENT_CALLBACK_URL's path) on the origin the player
+ * is using, when that origin is exactly one of ours (`allowedOrigins` = CORS_ORIGINS, compared canonically), so a
+ * player on a phone, a second domain or a dev tunnel comes back to a page they can reach. Anything else (missing,
+ * malformed, not listed, http when `httpsOnly`) gets `callbackUrl` unchanged: a checkout can never be pointed at
+ * someone else's site.
+ */
+export function checkoutReturnUrl(
+  origin: string | null | undefined,
+  allowedOrigins: readonly string[],
+  callbackUrl: string,
+  options: { readonly httpsOnly: boolean } = { httpsOnly: false },
+): string {
+  const candidate = canonicalOrigin(origin, options.httpsOnly);
+  if (!candidate || !allowedOrigins.some((allowed) => canonicalOrigin(allowed) === candidate)) return callbackUrl;
+  const callback = URL.canParse(callbackUrl) ? new URL(callbackUrl) : null;
+  return `${candidate}${callback ? `${callback.pathname}${callback.search}` : DEFAULT_CALLBACK_PATH}`;
+}
+
 // ----- Reconciler schedule ----------------------------------------------------------------------------------------
 
 const MINUTE_MS = 60_000;
+/** The first gateway check of an unconfirmed checkout: most payments are done by then (lost webhook, player gone). */
+const FIRST_CHECK_MINUTES = 2;
+export const FIRST_CHECK_AFTER_MS = FIRST_CHECK_MINUTES * MINUTE_MS;
 
 /**
- * When an unconfirmed checkout is next checked with the gateway, by age: 10 min, 30 min, 2 h, 6 h and 23 h after it
- * started; null after the fifth check (the 24 h expiry does one last check before abandoning it). Spreading the checks
- * keeps the oldest unpaid rows from hogging every sweep.
+ * When an unconfirmed checkout is checked with the gateway, by age: 2 min, 10 min, 30 min, 2 h, 6 h and 23 h after it
+ * started (`start()` schedules the first; entry n is the next look after n checks); null after the sixth check (the
+ * 24 h expiry does one last check before abandoning it). Spreading the checks keeps the oldest unpaid rows from
+ * hogging every sweep. The player can also ask at any time ("I've paid: check now").
  */
-export const CHECK_SCHEDULE_MINUTES: readonly number[] = [10, 30, 120, 360, 1_380];
+export const CHECK_SCHEDULE_MINUTES: readonly number[] = [FIRST_CHECK_MINUTES, 10, 30, 120, 360, 1_380];
 
 export function nextCheckAt(createdAt: Date, attemptsDone: number): Date | null {
   const minutes = CHECK_SCHEDULE_MINUTES[attemptsDone];

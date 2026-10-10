@@ -68,8 +68,35 @@ export class ClubPlayOrderEntity {
   @Column({ type: 'uuid', nullable: true })
   reviewedBy: string | null;
 
+  /**
+   * The schedule lane this song holds for its whole run (0…CLUB_ROTATION_CAPACITY-1; see shared `club-schedule.ts`):
+   * every slot of the lane in every club plays it. Taken when the booking is made (a hold), re-checked on payment.
+   */
+  @Column({ type: 'smallint', nullable: true })
+  lane: number | null;
+
+  /** Plays so far (scheduled slots that started while it ran). */
   @Column({ type: 'bigint', transformer: bigintNumber, default: 0 })
   plays: number;
+
+  /** Different players who were in the club during at least one play (the artist not counted). */
+  @Column({ type: 'integer', default: 0 })
+  listeners: number;
+
+  /** Sum of every play's audience. */
+  @Column({ type: 'integer', default: 0 })
+  audience: number;
+
+  /** "Your song is on at …" was last sent then (they're throttled). */
+  @Column({ type: 'timestamptz', nullable: true })
+  playNoticeAt: Date | null;
+
+  /** The "now live" / "has ended" notices went out (each exactly once). */
+  @Column({ type: 'timestamptz', nullable: true })
+  liveNotifiedAt: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  endedNotifiedAt: Date | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

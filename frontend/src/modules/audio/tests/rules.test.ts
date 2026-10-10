@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { fromDateParts } from '@insidelife/shared';
 import { deriveAmbience, hasGridPower, isRushHour, SILENT_AMBIENCE } from '../services/ambience/ambience-state';
 import { engineRpm } from '../services/ambience/engine-sound';
-import { parseClubRotation, safeMediaUrl } from '../services/club/club-rotation';
+import { nextPlayAfter, parseClubSchedule, playAt, safeMediaUrl } from '../services/club/club-rotation';
 import { CooldownGate, VariantPicker, VoiceLimiter } from '../services/engine/limits';
 import { resolveScene, sceneKey, type SceneInputs } from '../services/scene/audio-scene';
 import { AUDIO_ASSETS } from '../services/sfx/audio-assets.generated';
@@ -89,28 +89,47 @@ describe('sfx catalog', () => {
   });
 });
 
-describe('club rotation parsing', () => {
+describe('club schedule parsing', () => {
   const origin = 'https://insidelife.ng';
+  const play = (patch: Record<string, unknown> = {}) => ({
+    slotIndex: 7,
+    venueId: 'the-vault',
+    trackId: 't1',
+    audioUrl: '/media/t1.mp3',
+    artistName: 'Ayo',
+    title: 'Lagos Love',
+    durationSeconds: 150,
+    contentType: 'audio/mpeg',
+    startsAtMs: 1_000_000,
+    gameMinute: 900,
+    ...patch,
+  });
 
-  it('accepts the contract shape and alternatives', () => {
-    const contract = {
-      venueId: 'the-vault',
-      tracks: [{ trackId: 't1', audioUrl: '/media/t1.mp3', artistName: 'Ayo', title: 'Lagos Love', durationSeconds: 182, contentType: 'audio/mpeg' }],
-    };
-    expect(parseClubRotation(contract, origin)).toEqual([
-      { trackId: 't1', url: 'https://insidelife.ng/media/t1.mp3', artist: 'Ayo', title: 'Lagos Love', durationSeconds: 182 },
+  it('accepts the contract shape, in time order', () => {
+    const schedule = parseClubSchedule({ venueId: 'the-vault', untilMs: 2_000_000, plays: [play({ slotIndex: 9, startsAtMs: 1_500_000 }), play()] }, 'the-vault', origin);
+    expect(schedule?.untilMs).toBe(2_000_000);
+    expect(schedule?.plays).toEqual([
+      { slotIndex: 7, startsAtMs: 1_000_000, trackId: 't1', url: 'https://insidelife.ng/media/t1.mp3', artist: 'Ayo', title: 'Lagos Love', durationSeconds: 150 },
+      expect.objectContaining({ slotIndex: 9, startsAtMs: 1_500_000 }),
     ]);
-    const items = { items: [{ id: 't2', url: 'https://cdn.example.com/t2.ogg', artist: 'Bisi', title: 'Owambe' }] };
-    expect(parseClubRotation(items, origin)[0]).toMatchObject({ trackId: 't2', artist: 'Bisi', durationSeconds: 180 });
-    expect(parseClubRotation([{ trackId: 't3', url: 'https://cdn.example.com/t3.mp3' }], origin)[0]).toMatchObject({ artist: 'Unknown artist', title: 'Untitled' });
   });
 
   it('tolerates empty, malformed and hostile payloads', () => {
-    expect(parseClubRotation(null, origin)).toEqual([]);
-    expect(parseClubRotation({ message: 'Not found' }, origin)).toEqual([]);
-    expect(parseClubRotation([1, 'x', { trackId: 'no-url' }], origin)).toEqual([]);
-    expect(parseClubRotation([{ trackId: 'x', url: 'javascript:alert(1)' }], origin)).toEqual([]);
-    expect(parseClubRotation([{ trackId: 'dup', url: '/a.mp3' }, { trackId: 'dup', url: '/b.mp3' }], origin)).toHaveLength(1);
+    expect(parseClubSchedule(null, 'the-vault', origin)).toBeNull();
+    expect(parseClubSchedule({ message: 'Not found' }, 'the-vault', origin)).toBeNull();
+    expect(parseClubSchedule({ untilMs: 5, plays: [1, 'x', play({ audioUrl: 'javascript:alert(1)' }), play({ startsAtMs: 'soon' })] }, 'the-vault', origin)?.plays).toEqual([]);
+    // Another club's plays and duplicate slots are dropped.
+    expect(parseClubSchedule({ untilMs: 5, plays: [play(), play(), play({ slotIndex: 8, venueId: 'quilox' })] }, 'the-vault', origin)?.plays).toHaveLength(1);
+  });
+
+  it('knows what should be sounding now and what comes next (exact times)', () => {
+    const plays = parseClubSchedule({ untilMs: 5, plays: [play(), play({ slotIndex: 9, startsAtMs: 1_500_000 })] }, 'the-vault', origin)?.plays ?? [];
+    expect(playAt(plays, 999_999)).toBeNull();
+    expect(playAt(plays, 1_000_000)?.slotIndex).toBe(7);
+    expect(playAt(plays, 1_100_000)?.slotIndex).toBe(7); // mid-song: join it
+    expect(playAt(plays, 1_000_000 + 150_000 - 1_000)).toBeNull(); // its last second: let it go
+    expect(nextPlayAfter(plays, 1_100_000)?.slotIndex).toBe(9);
+    expect(nextPlayAfter(plays, 1_600_000)).toBeNull();
   });
 
   it('only allows http(s) media and no https→http downgrade', () => {

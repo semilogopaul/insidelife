@@ -25,6 +25,13 @@ const REFUND_PAGES = 5;
 /** `YYYY-MM-DD` (UTC) for the refunds list filters. */
 const day = (date: Date): string => date.toISOString().slice(0, 10);
 
+/** Our logo on the site at `url`; only over https (Flutterwave's page is https and would block anything else). */
+const logoOn = (url: string): string | null => {
+  if (!URL.canParse(url)) return null;
+  const { protocol, origin } = new URL(url);
+  return protocol === 'https:' ? `${origin}/icons/icon-512.png` : null;
+};
+
 interface CallResult {
   readonly httpStatus: number;
   readonly envelope: FlutterwaveEnvelope | null;
@@ -40,26 +47,26 @@ export class FlutterwaveClient implements PaymentGateway {
   readonly provider = 'flutterwave' as const;
   private readonly logger = new Logger(FlutterwaveClient.name);
   private readonly secretKey: string;
+  /** PAYMENT_CALLBACK_URL: the return address when no other is given. */
   private readonly callbackUrl: string;
-  /** Our logo on the hosted page; only over https (Flutterwave's page is https and would block anything else). */
-  private readonly logoUrl: string | null;
 
   constructor(config: ConfigService<AppConfig, true>) {
     const payments = config.get('payments', { infer: true });
     this.secretKey = payments.flutterwave.secretKey;
     this.callbackUrl = payments.callbackUrl;
-    const origin = URL.canParse(payments.callbackUrl) ? new URL(payments.callbackUrl).origin : '';
-    this.logoUrl = origin.startsWith('https://') ? `${origin}/icons/icon-512.png` : null;
   }
 
   async initialize(input: GatewayInitializeInput): Promise<{ readonly authorizationUrl: string }> {
+    const redirectUrl = input.redirectUrl || this.callbackUrl;
+    // The logo comes from the site the player returns to (same page they are on), else from the configured one.
+    const logo = logoOn(redirectUrl) ?? logoOn(this.callbackUrl);
     const { envelope } = await this.call('POST', '/payments', {
       tx_ref: input.reference,
       amount: input.amountKobo / 100,
       currency: 'NGN',
-      redirect_url: this.callbackUrl,
+      redirect_url: redirectUrl,
       customer: { email: input.email, name: input.customerName },
-      customizations: { title: 'Inside Life', description: input.description, ...(this.logoUrl ? { logo: this.logoUrl } : {}) },
+      customizations: { title: 'Inside Life', description: input.description, ...(logo ? { logo } : {}) },
       meta: { ...input.metadata, paymentId: input.paymentId, kind: input.metadata.purpose ?? null },
       session_duration: SESSION_MINUTES,
     });

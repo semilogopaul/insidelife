@@ -4,7 +4,8 @@ import { In, IsNull, LessThan, LessThanOrEqual, MoreThan, type FindOptionsWhere,
 import { CheckoutService } from './checkout.service.js';
 import { PaymentEntity } from './entities/payment.entity.js';
 
-const SWEEP_EVERY_MS = 2 * 60_000;
+/** Every minute, so a checkout's first check (2 min after it started) lands 2–3 minutes in. */
+const SWEEP_EVERY_MS = 60_000;
 const BATCH = 20;
 const MINUTE_MS = 60_000;
 const ABANDON_AFTER_MS = 24 * 60 * MINUTE_MS;
@@ -15,16 +16,18 @@ const STALE_SENDING_MS = 5 * MINUTE_MS;
 const PENDING_REFUND_RECHECK_MS = 30 * MINUTE_MS;
 
 /**
- * Safety net for lost webhooks, closed tabs and failed fulfilments. Every two minutes, for the active gateway's rows
- * only (Flutterwave in production; rows from another provider, e.g. old Paystack test rows, are never touched):
+ * Safety net for lost webhooks, closed tabs, unreachable redirects and failed fulfilments. Every minute, for the active
+ * gateway's rows only (Flutterwave in production; rows from another provider, e.g. old Paystack test rows, are never
+ * touched):
  *
  * 1. retries paid-but-undelivered payments that are due (each failure backs off: 1, 5, 15, 60 min, then 6 h, so a
  *    payment that keeps failing can't block the others);
  * 2. sends refunds that were owed but never sent, resolves claims left `sending` by a dead process (re-checked with
  *    the gateway first) and re-reads refunds still processing;
  * 3. checks unconfirmed checkouts (`initialized`, and `failed`/`abandoned` ones that may still be paid) with the
- *    gateway on a schedule by age — 10 min, 30 min, 2 h, 6 h, 23 h — least recently due first, so the oldest unpaid
- *    rows can't starve a paid one whose webhook was lost;
+ *    gateway on a schedule by age — 2 min, 10 min, 30 min, 2 h, 6 h, 23 h (`CHECK_SCHEDULE_MINUTES`) — least recently
+ *    due first, so the oldest unpaid rows can't starve a paid one whose webhook was lost (the player can also check
+ *    at any time: "I've paid: check now");
  * 4. after a day, checks each still-unconfirmed checkout one last time and only then marks it abandoned.
  *
  * Everything it calls is idempotent and row-locked, so several instances sweeping at once is harmless.

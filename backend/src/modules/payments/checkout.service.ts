@@ -1,4 +1,5 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'node:crypto';
 import { LessThan, type DataSource, type EntityManager, type Repository } from 'typeorm';
@@ -15,11 +16,14 @@ import {
   type RefundOutcome,
 } from '../../common/ports/checkout.port.js';
 import { DomainException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import type { AppConfig } from '../../config/configuration.js';
 import { withTransaction } from '../../database/transaction.js';
 import {
+  checkoutReturnUrl,
   claimRefund,
   decideCharge,
   decideRefundReport,
+  FIRST_CHECK_AFTER_MS,
   fulfilmentRetryAt,
   nextCheckAt,
   type ChargeDecision,
@@ -30,12 +34,11 @@ import { PaymentEntity } from './entities/payment.entity.js';
 import { refundStateOf } from './gateways/flutterwave.parsers.js';
 import { PAYMENT_GATEWAY, type GatewayCharge, type GatewayRefund, type PaymentGateway } from './gateways/payment-gateway.interface.js';
 import { SandboxGateway } from './gateways/sandbox.gateway.js';
+import { PaymentCheckLimiter } from './payment-check-limiter.service.js';
 
 const MINUTE_MS = 60_000;
-/** The reconciler's first gateway check of an unconfirmed checkout (then `CHECK_SCHEDULE_MINUTES`). */
-const FIRST_CHECK_AFTER_MS = 10 * MINUTE_MS;
 /** When the gateway can't be asked, look again this much later (without using up one of the scheduled checks). */
-const CHECK_RETRY_MS = 10 * MINUTE_MS;
+const CHECK_RETRY_MS = 5 * MINUTE_MS;
 /** A purchase whose refund is still processing isn't delivered; look again this much later. */
 const REFUND_HOLD_MS = 30 * MINUTE_MS;
 
@@ -93,6 +96,24 @@ class InvalidCheckoutException extends DomainException {
   }
 }
 
+/** A player's check couldn't reach Flutterwave. Never "not paid": we simply don't know yet. */
+export class PaymentCheckUnavailableException extends DomainException {
+  constructor() {
+    super(
+      'PAYMENT_CHECK_UNAVAILABLE',
+      'We couldn’t reach Flutterwave to check this payment. If you paid, it’s safe: try again in a moment, and we keep checking for you.',
+      HttpStatus.BAD_GATEWAY,
+    );
+  }
+}
+
+/** Where Flutterwave may send players back (see `checkoutReturnUrl`). */
+interface ReturnPolicy {
+  readonly allowedOrigins: readonly string[];
+  readonly callbackUrl: string;
+  readonly httpsOnly: boolean;
+}
+
 const errorText = (error: unknown): string => (error instanceof Error ? error.message : 'Unknown error').slice(0, 200);
 
 /**
@@ -118,13 +139,22 @@ const errorText = (error: unknown): string => (error instanceof Error ? error.me
 export class CheckoutService implements CheckoutPort {
   private readonly logger = new Logger(CheckoutService.name);
   private readonly fulfillers = new Map<CheckoutPurpose, CheckoutFulfiller>();
+  private readonly returnPolicy: ReturnPolicy;
 
   constructor(
     @InjectDataSource() private readonly dataSource: DataSource,
     @InjectRepository(PaymentEntity) private readonly payments: Repository<PaymentEntity>,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGateway,
     private readonly sandboxGateway: SandboxGateway,
-  ) {}
+    private readonly checkLimiter: PaymentCheckLimiter,
+    config: ConfigService<AppConfig, true>,
+  ) {
+    this.returnPolicy = {
+      allowedOrigins: config.get('corsOrigins', { infer: true }),
+      callbackUrl: config.get('payments', { infer: true }).callbackUrl,
+      httpsOnly: config.get('env', { infer: true }) === 'production',
+    };
+  }
 
   get sandbox(): boolean {
     return this.gateway.provider === 'sandbox';
@@ -163,6 +193,8 @@ export class CheckoutService implements CheckoutPort {
       return String(inserted.identifiers[0]?.id ?? '');
     });
 
+    const { allowedOrigins, callbackUrl, httpsOnly } = this.returnPolicy;
+    const redirectUrl = checkoutReturnUrl(request.returnOrigin, allowedOrigins, callbackUrl, { httpsOnly });
     try {
       const { authorizationUrl } = await this.gateway.initialize({
         reference,
@@ -171,9 +203,10 @@ export class CheckoutService implements CheckoutPort {
         customerName: request.customerName?.trim() || 'Inside Life player',
         amountKobo: request.amountKobo,
         description: request.description,
+        redirectUrl,
         metadata: { purpose: request.purpose, subjectId: request.subjectId, characterId: request.characterId },
       });
-      this.logger.log({ reference, purpose: request.purpose, provider: this.gateway.provider }, 'Checkout started');
+      this.logger.log({ reference, purpose: request.purpose, provider: this.gateway.provider, redirectUrl }, 'Checkout started');
       return { reference, authorizationUrl };
     } catch (error) {
       // No hosted checkout was handed out, so there is nothing to re-check.
@@ -183,15 +216,19 @@ export class CheckoutService implements CheckoutPort {
   }
 
   /**
-   * Player-initiated verification after the redirect back from checkout. The redirect's `transaction_id` is only a
-   * hint: the charge is read back from the gateway and must carry this payment's reference. Idempotent.
+   * Player-initiated check: the redirect back from checkout, "I've paid: check now", the game's recovery check. The
+   * redirect's `transaction_id` is only a hint: the charge is read back from the gateway and must carry this payment's
+   * reference. Every unconfirmed row is asked about, `failed` and `abandoned` ones included (a late payment still
+   * counts); a paid one is delivered at once if it isn't yet. Idempotent and safe to call often: the gateway is asked
+   * at most once every 5 s per payment (a repeat gets the stored state) and 15 times a minute per account
+   * (`PaymentCheckLimiter`). An unreachable gateway is `PaymentCheckUnavailableException`, never "not paid".
    */
   async verify(userId: string, reference: string, transactionId?: string): Promise<VerifiedPayment> {
     const payment = await this.payments.findOne({ where: { reference, userId } });
     if (!payment) throw new ResourceNotFoundException('Payment');
-    if (payment.status !== 'success') {
-      const charge = await this.lookUp(reference, transactionId);
-      if (charge) await this.applyCharge(charge);
+    // A confirmed payment is final: there is nothing more to ask the gateway, only to deliver it.
+    if (payment.status !== 'success' && (await this.checkLimiter.claim(userId, reference)) === 'check') {
+      await this.askGateway(reference, transactionId);
     }
     const fulfilledNow = await this.fulfill(reference);
     return { payment: await this.payments.findOneOrFail({ where: { reference } }), fulfilledNow };
@@ -472,9 +509,9 @@ export class CheckoutService implements CheckoutPort {
   }
 
   /**
-   * Reconciler: check an unconfirmed checkout with the gateway and schedule the next look (10 min, 30 min, 2 h, 6 h,
-   * 23 h after it started; nothing after the fifth). When the gateway can't be asked, look again in 10 minutes without
-   * using up a scheduled check.
+   * Reconciler: check an unconfirmed checkout with the gateway and schedule the next look (`CHECK_SCHEDULE_MINUTES`:
+   * 2 min, 10 min, 30 min, 2 h, 6 h and 23 h after it started; nothing after the sixth). When the gateway can't be
+   * asked, look again in 5 minutes without using up a scheduled check.
    */
   async recheckCheckout(reference: string, now: Date): Promise<void> {
     let asked = true;
@@ -526,10 +563,30 @@ export class CheckoutService implements CheckoutPort {
 
   // ----- Internals --------------------------------------------------------------------------------------------------
 
+  /** A player's check: read the charge back and record it. The gateway unreachable → "try again", never "not paid". */
+  private async askGateway(reference: string, transactionId: string | undefined): Promise<void> {
+    let charge: GatewayCharge | null;
+    try {
+      charge = await this.lookUp(reference, transactionId);
+    } catch (error) {
+      // Nothing was learned, so the next tap may ask again straight away (the account limit still applies).
+      await this.checkLimiter.release(reference);
+      this.logger.warn({ reference, err: error }, 'Player payment check could not reach the gateway');
+      throw new PaymentCheckUnavailableException();
+    }
+    if (charge) await this.applyCharge(charge);
+  }
+
+  /** By the redirect's transaction id first (when it is this payment's), else by our reference. */
   private async lookUp(reference: string, transactionId: string | undefined): Promise<GatewayCharge | null> {
     if (transactionId) {
-      const charge = await this.gateway.verifyTransaction(transactionId);
-      if (charge?.reference === reference) return charge;
+      try {
+        const charge = await this.gateway.verifyTransaction(transactionId);
+        if (charge?.reference === reference) return charge;
+      } catch (error) {
+        // The reference lookup below still settles it (and throws if the gateway is really down).
+        this.logger.warn({ reference, err: error }, 'Transaction id lookup failed; checking by reference');
+      }
     }
     return this.gateway.verify(reference);
   }

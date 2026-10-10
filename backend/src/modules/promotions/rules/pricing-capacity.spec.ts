@@ -1,7 +1,11 @@
 import {
+  AD_MAX_RUN_DAYS,
   AD_MAX_WEEKS,
   AD_MIN_PRICE_KOBO,
   AD_SLOTS,
+  adBlockDays,
+  adBlockPriceKobo,
+  adMaxBlocks,
   BILLBOARD_FORMAT_SPECS,
   BILLBOARD_SLOT_IDS,
   BILLBOARD_SLOTS,
@@ -51,8 +55,8 @@ describe('billboard catalog', () => {
     expect(BILLBOARD_FORMAT_SPECS.square.width).toBe(BILLBOARD_FORMAT_SPECS.square.height);
   });
 
-  it('sells club plays as one ₦5,000 product: 7 days in every club and lounge', () => {
-    expect(CLUB_PLAY_PRODUCTS).toEqual([expect.objectContaining({ id: 'all-clubs-7d', days: 7, priceKobo: 5_000 * NAIRA })]);
+  it('sells club plays as one product: ₦5,000 a day, by the week (₦35,000), in every club and lounge', () => {
+    expect(CLUB_PLAY_PRODUCTS).toEqual([expect.objectContaining({ id: 'all-clubs-7d', days: 7, priceKobo: 35_000 * NAIRA })]);
     expect(clubPlayVenues().map((venue) => venue.id)).toEqual(expect.arrayContaining(['the-vault', 'vi-lounge', 'bourdillon-lounge']));
     expect(isClubPlayVenue('the-vault')).toBe(true);
     expect(isClubPlayVenue('unilag')).toBe(false);
@@ -60,12 +64,14 @@ describe('billboard catalog', () => {
 });
 
 describe('adQuote', () => {
-  it('charges whole weeks at the weekly price, at least ₦2,000 (default rates stay under ₦2.5m a booking)', () => {
+  it('charges whole blocks at the block price, at least ₦2,000, never more than 28 days (default rates stay under ₦2.5m)', () => {
     for (const slot of AD_SLOTS) {
-      for (let weeks = 1; weeks <= AD_MAX_WEEKS; weeks++) {
-        const quote = adQuote(slot.weekPriceKobo, weeks);
-        expect(quote).toMatchObject({ weeks, days: 7 * weeks, weekPriceKobo: slot.weekPriceKobo });
-        expect(quote.totalKobo).toBe(slot.weekPriceKobo * weeks);
+      const blockDays = adBlockDays(slot.weekPriceKobo);
+      for (let blocks = 1; blocks <= adMaxBlocks(blockDays); blocks++) {
+        const quote = adQuote(slot.weekPriceKobo, blocks);
+        expect(quote).toMatchObject({ blocks, blockDays, days: blockDays * blocks, weekPriceKobo: slot.weekPriceKobo });
+        expect(quote.totalKobo).toBe(adBlockPriceKobo(slot.weekPriceKobo, blockDays) * blocks);
+        expect(quote.days).toBeLessThanOrEqual(AD_MAX_RUN_DAYS);
         expect(quote.totalKobo % NAIRA).toBe(0);
         expect(quote.totalKobo).toBeGreaterThanOrEqual(AD_MIN_PRICE_KOBO);
         expect(quote.totalKobo).toBeLessThanOrEqual(250_000_000);
@@ -73,8 +79,36 @@ describe('adQuote', () => {
     }
   });
 
-  it('refuses lengths other than 1–4 weeks', () => {
+  it('sells the expensive slots in 3-day blocks (₦100,000 a week or more), the rest by the week', () => {
+    expect(adQuote(findBillboardSlot('mmia-arrivals')!.weekPriceKobo, 1)).toMatchObject({ blockDays: 3, days: 3, totalKobo: 75_000 * NAIRA });
+    expect(adQuote(findBillboardSlot('ozumba-mbadiwe')!.weekPriceKobo, 1)).toMatchObject({ blockDays: 7, days: 7, totalKobo: 84_000 * NAIRA });
+  });
+
+  it('refuses lengths other than 1–4 weeks, or 1–9 three-day blocks', () => {
     for (const weeks of [0, 5, 2.5, -1]) expect(() => adQuote(17_500 * NAIRA, weeks)).toThrow(RangeError);
+    for (const blocks of [0, 10, 1.5]) expect(() => adQuote(175_000 * NAIRA, blocks)).toThrow(RangeError);
+    expect(AD_MAX_WEEKS).toBe(4);
+  });
+});
+
+describe('next free start with mixed block lengths', () => {
+  it('works by day, whatever block length each booking was sold in', () => {
+    // A board that was sold by the week (two 7-day bookings) is now sold in 3-day blocks (its rate went up).
+    const bookings = [booking('2026-10-05', 7), booking('2026-10-12', 7), booking('2026-10-19', 3)];
+    // 1-ad board: the 3-day run starts the day the last booking ends; a 9-day run too.
+    expect(nextFreeStart(bookings, TODAY, 3, 1, LEAD)).toBe('2026-10-22');
+    expect(nextFreeStart(bookings, TODAY, 9, 1, LEAD)).toBe('2026-10-22');
+    // A gap of exactly 3 days between bookings takes a 3-day block but not a week.
+    const gap = [booking('2026-10-05', 7), booking('2026-10-15', 7)];
+    expect(nextFreeStart(gap, TODAY, 3, 1, LEAD)).toBe('2026-10-12');
+    expect(nextFreeStart(gap, TODAY, 7, 1, LEAD)).toBe('2026-10-22');
+    // On a 2-ad board a 3-day booking overlapping a week leaves room only where at most one is running.
+    const shared = [booking(TODAY, 7), booking('2026-10-10', 3)];
+    expect(nextFreeStart(shared, TODAY, 3, 2, LEAD)).toBe('2026-10-13');
+    for (const days of [3, 6, 9, 27]) {
+      const run = rangeOf(nextFreeStart(shared, TODAY, days, 2, LEAD) ?? TODAY, days);
+      expect(firstFullDay(shared, run, 2), `${days} days`).toBeNull();
+    }
   });
 });
 

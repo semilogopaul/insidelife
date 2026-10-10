@@ -7,37 +7,47 @@ import { errorMessage } from '@/common/api/api-error';
 import { Button, Money, TextField } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { useCreateCampaign } from '../../hooks/use-promote';
-import { addDays, formatRunDays, quoteWeeks, validateDisplayText, validateLink, validateTitle } from '../../services/rules';
+import { blocksLabel, quoteBlocks, runSummary, validateDisplayText, validateLink, validateTitle } from '../../services/rules';
 import type { SlotCatalog } from '../../services/slot-views';
 import { ContentRules } from '../shared';
 
 /** Phone apps: the one-line pitch on the app page (the server allows the same). */
 const TAGLINE_MAX = 60;
 
-const weeksLabel = (weeks: number): string => (weeks === 1 ? '1 week' : `${weeks} weeks`);
+/** Words from an earlier booking ("Run it again"). */
+export interface DetailsPrefill {
+  readonly title: string;
+  readonly linkUrl: string;
+  readonly tagline: string | null;
+}
 
 export interface DetailsStepProps {
   readonly slot: BillboardSlotDto;
   readonly catalog: SlotCatalog;
   readonly creative: CreativeDto;
+  readonly prefill?: DetailsPrefill;
 }
 
-/** Title, https link, how many weeks (the run starts on the slot's next free day), the rules, then pay. */
-export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
+/**
+ * Title, https link, how long (in the slot's blocks: weeks, or 3-day blocks for premium spots; the run starts on its
+ * next free day), the rules, then pay.
+ */
+export function DetailsStep({ slot, catalog, creative, prefill }: DetailsStepProps) {
   const isApp = slot.kind === 'phone-app';
-  const [title, setTitle] = useState('');
-  const [tagline, setTagline] = useState('');
-  const [link, setLink] = useState('https://');
+  const [title, setTitle] = useState(prefill?.title ?? '');
+  const [tagline, setTagline] = useState(prefill?.tagline ?? '');
+  const [link, setLink] = useState(prefill?.linkUrl ?? 'https://');
   const [touched, setTouched] = useState({ title: false, tagline: false, link: false });
-  const [weeks, setWeeks] = useState(1);
+  const [blocks, setBlocks] = useState(1);
   const [accepted, setAccepted] = useState(false);
   const create = useCreateCampaign();
+  const weekly = slot.blockDays === 7;
 
   const titleCheck = validateTitle(title);
   const taglineCheck = isApp ? validateDisplayText(tagline, 'Tagline', 3, TAGLINE_MAX) : null;
   const linkCheck = validateLink(link);
-  const quote = quoteWeeks(slot.weekPriceKobo, weeks);
-  const start = slot.nextStarts[weeks - 1] ?? null;
+  const quote = quoteBlocks(slot.weekPriceKobo, blocks, slot.blockDays);
+  const start = slot.nextStarts[blocks - 1] ?? null;
   const ready = titleCheck.ok && (taglineCheck?.ok ?? true) && linkCheck.ok && quote !== null && start !== null && accepted;
   const leaving = create.isPending || create.isSuccess;
 
@@ -49,7 +59,7 @@ export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
       title: titleCheck.value,
       ...(taglineCheck?.ok ? { tagline: taglineCheck.value } : {}),
       linkUrl: linkCheck.value,
-      weeks,
+      blocks,
       expectedStartDate: start,
       ...(quote ? { expectedPriceKobo: quote.totalKobo } : {}),
     });
@@ -98,31 +108,31 @@ export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
 
       <fieldset className="flex flex-col gap-2.5">
         <legend className="mb-1 flex items-center gap-1.5 text-sm font-bold">
-          <CalendarDays size={16} aria-hidden /> How many weeks?
+          <CalendarDays size={16} aria-hidden /> {weekly ? 'How many weeks?' : `How long? Sold in ${slot.blockDays}-day blocks`}
         </legend>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Number of weeks">
-          {Array.from({ length: catalog.maxWeeks }, (_, index) => index + 1).map((length) => (
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={weekly ? 'Number of weeks' : `Number of ${slot.blockDays}-day blocks`}>
+          {Array.from({ length: slot.maxBlocks }, (_, index) => index + 1).map((length) => (
             <button
               key={length}
               type="button"
-              aria-pressed={weeks === length}
-              onClick={() => setWeeks(length)}
-              className={cn('h-9 rounded-full px-3 text-sm font-bold ring-1', weeks === length ? 'bg-ink text-on-ink ring-ink' : 'bg-paper ring-line hover:bg-paper-2')}
+              aria-pressed={blocks === length}
+              onClick={() => setBlocks(length)}
+              className={cn('h-9 rounded-full px-3 text-sm font-bold ring-1', blocks === length ? 'bg-ink text-on-ink ring-ink' : 'bg-paper ring-line hover:bg-paper-2')}
             >
-              {weeksLabel(length)}
+              {blocksLabel(length, slot.blockDays)}
             </button>
           ))}
         </div>
         <p className={cn('flex gap-1.5 text-sm', start ? 'font-bold' : 'font-bold text-okada')} aria-live="polite">
           {!start && <TriangleAlert size={16} aria-hidden className="mt-0.5 shrink-0" />}
           {start
-            ? `Runs ${formatRunDays(start, addDays(start, weeks * 7))}`
-            : `No room for ${weeksLabel(weeks)} in the next two months. Try fewer weeks or another board.`}
+            ? runSummary(start, blocks * slot.blockDays)
+            : `No room for ${blocksLabel(blocks, slot.blockDays)} in the next two months. Try a shorter run or another spot.`}
         </p>
         {start && (
           <p className="text-xs text-text-soft">
-            Your ad starts on this board’s next free day ({start === catalog.today ? 'today' : 'the day the earlier booking ends'}) and runs for the
-            weeks you pick, back to back.
+            Your ad starts on this spot’s next free day ({start === catalog.today ? 'today' : 'the day the earlier booking ends'}) and runs for the
+            {weekly ? ' weeks' : ' days'} you pick, back to back.
           </p>
         )}
       </fieldset>
@@ -130,7 +140,7 @@ export function DetailsStep({ slot, catalog, creative }: DetailsStepProps) {
       {quote && (
         <dl className="grid grid-cols-[1fr_auto] gap-y-1 rounded-card bg-paper p-3.5 text-sm ring-1 ring-line">
           <dt className="text-text-soft">
-            <Money amount={quote.weekNaira} /> × {weeksLabel(quote.weeks)}
+            <Money amount={quote.blockNaira} /> {weekly ? 'a week' : `per ${slot.blockDays} days`} × {quote.blocks}
           </dt>
           <dd className="tabular text-right">
             <Money amount={quote.totalNaira} />

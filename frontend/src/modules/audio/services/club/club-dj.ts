@@ -1,11 +1,13 @@
 import type { AudioResources } from '../engine/resources';
-import type { ClubTrack, NowPlayingTrack } from '../../types/audio';
-import { PLAY_REPORT_AFTER_SEC } from './club-rotation';
+import type { ClubTrack, NowPlayingTrack, ScheduledClubTrack } from '../../types/audio';
+import { nextPlayAfter, playAt, type ClubSchedule } from './club-rotation';
 
 /**
- * Interleaves player-paid tracks with the club's procedural groove: groove for a while → crossfade into the next
- * paid track (HTMLAudioElement → MediaElementSource → music bus, so settings and ducking apply) → back to the groove.
- * The file is only requested when its turn comes (no prefetching of multi-MB tracks).
+ * Plays a club's paid songs exactly on the server's schedule (`GET /promotions/club-schedule`): each song starts at its
+ * published time (server clock) and plays in full; walking in mid-song joins it where it is, like a real sound system.
+ * Between songs, and when nothing is booked, the club's procedural game music plays. The file is only fetched shortly
+ * before its turn (no prefetching of multi-MB tracks). Played through the music bus (HTMLAudioElement →
+ * MediaElementSource), so volume settings and ducking apply.
  */
 
 export interface ClubDjDeps {
@@ -13,52 +15,62 @@ export interface ClubDjDeps {
   readonly res: AudioResources;
   /** Music bus input. */
   readonly output: AudioNode;
-  readonly fetchRotation: (venueId: string, signal: AbortSignal) => Promise<ClubTrack[]>;
-  readonly reportPlay: (trackId: string, venueId: string) => void;
+  readonly fetchSchedule: (venueId: string, signal: AbortSignal) => Promise<ClubSchedule | null>;
+  /** Server-corrected wall clock (ms): the schedule's clock. */
+  readonly serverNow: () => number;
   readonly onNowPlaying: (track: NowPlayingTrack | null) => void;
   /** Fade the procedural groove out (false) while a paid track plays, back in (true) after. */
   readonly setGrooveActive: (active: boolean) => void;
-  readonly random: () => number;
   /** Linear volume for the un-routed fallback element (cross-origin media without CORS). */
   readonly fallbackVolume: () => number;
 }
 
-type DjState = 'idle' | 'groove' | 'loading' | 'playing' | 'ending';
+type DjState = 'idle' | 'groove' | 'loading' | 'playing';
 
 interface ActiveTrack {
-  readonly track: ClubTrack;
+  readonly play: ScheduledClubTrack;
   readonly venueId: string;
   readonly element: HTMLAudioElement;
   readonly routed: boolean;
   readonly listeners: AbortController;
-  reported: boolean;
 }
 
-const FIRST_GROOVE_SEC: readonly [number, number] = [18, 35];
-const GROOVE_SEC: readonly [number, number] = [80, 150];
-const LOAD_TIMEOUT_MS = 12_000;
-const FADE_IN_SEC = 1.6;
+/** Start fetching a song this long before its slot, so it starts on time. */
+const PRELOAD_MS = 8_000;
+const LOAD_TIMEOUT_MS = 15_000;
+/** Ask for the schedule again at least this often (new approvals, take-downs), and well before it runs out. */
+const REFRESH_MS = 3 * 60_000;
+const RETRY_MS = 30_000;
+const FADE_IN_SEC = 1.2;
 const FADE_OUT_SEC = 1.2;
+/** Seek again if the element has drifted this far from the schedule (tab throttling, a slow start). */
+const DRIFT_SEC = 1.5;
 
 export class ClubDj {
   private venueId: string | null = null;
-  private tracks: ClubTrack[] = [];
-  private nextIndex = 0;
+  private plays: readonly ScheduledClubTrack[] = [];
   private state: DjState = 'idle';
   private timer: number | null = null;
+  private refreshTimer: number | null = null;
   private fetchAbort: AbortController | null = null;
   private routedPlayer: { readonly element: HTMLAudioElement; readonly source: MediaElementAudioSourceNode; readonly gain: GainNode } | null = null;
   private active: ActiveTrack | null = null;
   private paused = false;
+  private doneSlots = new Set<number>();
 
   constructor(private readonly deps: ClubDjDeps) {}
 
   get nowPlaying(): ClubTrack | null {
-    return this.state === 'playing' ? (this.active?.track ?? null) : null;
+    return this.state === 'playing' ? (this.active?.play ?? null) : null;
   }
 
   get currentVenue(): string | null {
     return this.venueId;
+  }
+
+  /** The schedule the DJ is following (for tests and the dev audio lab). */
+  get schedule(): readonly ScheduledClubTrack[] {
+    return this.plays;
   }
 
   enter(venueId: string): void {
@@ -66,39 +78,30 @@ export class ClubDj {
     this.leave();
     this.venueId = venueId;
     this.state = 'groove';
-    const abort = new AbortController();
-    this.fetchAbort = abort;
-    void this.deps.fetchRotation(venueId, abort.signal).then((tracks) => {
-      if (abort.signal.aborted || this.venueId !== venueId) return;
-      this.tracks = tracks;
-      if (!tracks.length) return;
-      // Start somewhere random in the rotation so artists share first slots fairly.
-      this.nextIndex = Math.floor(this.deps.random() * tracks.length);
-      this.scheduleNext(FIRST_GROOVE_SEC);
-    });
+    this.load();
   }
 
-  /** Dev/test hook: play a specific track now (skips the rotation fetch). */
+  /** Dev/test hook: play a specific track now, as if the schedule said so. */
   playNow(venueId: string, track: ClubTrack): void {
     if (this.venueId !== venueId) {
       this.leave();
       this.venueId = venueId;
     }
-    this.tracks = [track];
-    this.nextIndex = 0;
-    this.clearTimer();
+    this.clearTimers();
     this.stopActive(0.3);
-    this.startTrack();
+    this.plays = [{ ...track, slotIndex: -1, startsAtMs: this.deps.serverNow() }];
+    this.plan();
   }
 
   leave(): void {
     this.fetchAbort?.abort();
     this.fetchAbort = null;
-    this.clearTimer();
-    const wasPlaying = this.state === 'playing' || this.state === 'loading' || this.state === 'ending';
+    this.clearTimers();
+    const wasPlaying = this.active !== null;
     this.stopActive(0.6);
     this.venueId = null;
-    this.tracks = [];
+    this.plays = [];
+    this.doneSlots = new Set();
     this.state = 'idle';
     if (wasPlaying) this.deps.setGrooveActive(true);
   }
@@ -107,18 +110,15 @@ export class ClubDj {
   pause(): void {
     if (this.paused) return;
     this.paused = true;
-    this.clearTimer();
+    this.clearTimers();
     this.active?.element.pause();
   }
 
+  /** Tab visible again: back in step with the schedule (the song may have moved on, or ended, meanwhile). */
   resume(): void {
     if (!this.paused) return;
     this.paused = false;
-    if (this.state === 'playing' && this.active) {
-      void this.active.element.play().catch(() => this.finishTrack());
-    } else if (this.state === 'groove' && this.tracks.length) {
-      this.scheduleNext([20, 45]);
-    }
+    if (this.venueId) this.load();
   }
 
   /** Keeps the un-routed fallback element in step with the settings. */
@@ -136,20 +136,74 @@ export class ClubDj {
     }
   }
 
-  // ----- internals ---------------------------------------------------------------------------------------------
+  // ----- schedule ----------------------------------------------------------------------------------------------
 
-  private scheduleNext([min, max]: readonly [number, number]): void {
-    this.clearTimer();
-    if (this.paused || !this.tracks.length) return;
-    this.state = 'groove';
-    const seconds = min + this.deps.random() * (max - min);
-    this.timer = window.setTimeout(() => this.startTrack(), seconds * 1000);
+  private load(): void {
+    const venueId = this.venueId;
+    if (!venueId) return;
+    this.fetchAbort?.abort();
+    const abort = new AbortController();
+    this.fetchAbort = abort;
+    void this.deps.fetchSchedule(venueId, abort.signal).then((schedule) => {
+      if (abort.signal.aborted || this.venueId !== venueId) return;
+      if (schedule) {
+        this.plays = schedule.plays;
+        // A song taken off the schedule (moderation) stops; everything else carries on.
+        if (this.active && this.active.play.slotIndex >= 0 && !schedule.plays.some((play) => play.slotIndex === this.active?.play.slotIndex)) this.finishTrack();
+      }
+      const now = this.deps.serverNow();
+      const refreshIn = schedule ? Math.max(5_000, Math.min(REFRESH_MS, schedule.untilMs - now - 60_000)) : RETRY_MS;
+      this.scheduleRefresh(refreshIn);
+      this.plan();
+    });
   }
 
-  private clearTimer(): void {
+  private scheduleRefresh(ms: number): void {
+    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = window.setTimeout(() => {
+      this.refreshTimer = null;
+      if (!this.paused) this.load();
+    }, ms);
+  }
+
+  /** Line up with the schedule: join the song that should be playing now, or wait for the next one. */
+  private plan(): void {
     if (this.timer !== null) window.clearTimeout(this.timer);
     this.timer = null;
+    if (this.paused || !this.venueId) return;
+    const now = this.deps.serverNow();
+    if (this.active) {
+      this.keepInStep(now);
+      return;
+    }
+    const current = playAt(this.plays, now);
+    if (current && !this.doneSlots.has(current.slotIndex)) {
+      this.startTrack(current);
+      return;
+    }
+    const next = nextPlayAfter(this.plays, now);
+    if (!next) return;
+    this.timer = window.setTimeout(() => this.startTrack(next), Math.max(0, next.startsAtMs - now - PRELOAD_MS));
   }
+
+  /** While a song plays: correct drift; end it when its time is up. */
+  private keepInStep(now: number): void {
+    const active = this.active;
+    if (!active) return;
+    const endsAt = active.play.startsAtMs + active.play.durationSeconds * 1000;
+    if (now >= endsAt) {
+      this.finishTrack();
+      return;
+    }
+    if (this.state === 'playing') {
+      const should = (now - active.play.startsAtMs) / 1000;
+      if (Math.abs(active.element.currentTime - should) > DRIFT_SEC) active.element.currentTime = should;
+      if (active.element.paused) void active.element.play().catch(() => this.finishTrack());
+    }
+    this.timer = window.setTimeout(() => this.finishTrack(), endsAt - now + 500);
+  }
+
+  // ----- playback ----------------------------------------------------------------------------------------------
 
   private ensureRoutedPlayer(): NonNullable<ClubDj['routedPlayer']> {
     if (!this.routedPlayer) {
@@ -164,18 +218,15 @@ export class ClubDj {
     return this.routedPlayer;
   }
 
-  private startTrack(attemptFallback = false): void {
+  private startTrack(play: ScheduledClubTrack, attemptFallback = false): void {
     const venueId = this.venueId;
-    if (!venueId || !this.tracks.length || this.paused) return;
-    const track = this.tracks[this.nextIndex % this.tracks.length];
-    if (!track) return;
-    if (!attemptFallback) this.nextIndex += 1;
+    if (!venueId || this.paused) return;
+    this.clearTimer();
     this.state = 'loading';
-
     const routed = !attemptFallback;
     const element = routed ? this.ensureRoutedPlayer().element : new Audio();
     const listeners = new AbortController();
-    const active: ActiveTrack = { track, venueId, element, routed, listeners, reported: false };
+    const active: ActiveTrack = { play, venueId, element, routed, listeners };
     this.active = active;
     const opts = { signal: listeners.signal };
 
@@ -183,11 +234,14 @@ export class ClubDj {
     const fail = (): void => {
       window.clearTimeout(loadTimeout);
       if (this.active !== active) return;
-      const crossOrigin = new URL(track.url, window.location.href).origin !== window.location.origin;
+      const crossOrigin = new URL(play.url, window.location.href).origin !== window.location.origin;
       this.detachActive();
       // Cross-origin media without CORS headers can't be routed through Web Audio: retry as a plain element once.
-      if (routed && crossOrigin && this.state === 'loading') this.startTrack(true);
-      else this.afterTrack();
+      if (routed && crossOrigin) this.startTrack(play, true);
+      else {
+        this.doneSlots.add(play.slotIndex);
+        this.afterTrack();
+      }
     };
 
     element.addEventListener('error', fail, opts);
@@ -196,28 +250,32 @@ export class ClubDj {
       () => {
         window.clearTimeout(loadTimeout);
         if (this.active !== active || this.state !== 'loading') return;
-        if (!routed) element.volume = this.deps.fallbackVolume();
-        element.play().then(
-          () => this.onStarted(active),
-          () => fail(),
-        );
+        const wait = play.startsAtMs - this.deps.serverNow();
+        // Loaded early: wait for the slot. Loaded late (or walked in mid-song): join where it is.
+        window.setTimeout(() => this.beginPlayback(active, fail), Math.max(0, wait));
       },
       { ...opts, once: true },
     );
     element.addEventListener('ended', () => this.finishTrack(), opts);
-    element.addEventListener(
-      'timeupdate',
-      () => {
-        if (!active.reported && element.currentTime >= PLAY_REPORT_AFTER_SEC) {
-          active.reported = true;
-          this.deps.reportPlay(track.trackId, venueId);
-        }
-      },
-      opts,
-    );
     element.preload = 'auto';
-    element.src = track.url;
+    element.src = play.url;
     element.load();
+  }
+
+  private beginPlayback(active: ActiveTrack, fail: () => void): void {
+    if (this.active !== active || this.paused) return;
+    const { element, play, routed } = active;
+    const offset = (this.deps.serverNow() - play.startsAtMs) / 1000;
+    if (offset >= play.durationSeconds - 1) {
+      this.finishTrack();
+      return;
+    }
+    if (offset > 0.25) element.currentTime = offset;
+    if (!routed) element.volume = this.deps.fallbackVolume();
+    element.play().then(
+      () => this.onStarted(active),
+      () => fail(),
+    );
   }
 
   private onStarted(active: ActiveTrack): void {
@@ -231,17 +289,15 @@ export class ClubDj {
       gain.linearRampToValueAtTime(1, now + FADE_IN_SEC);
     }
     this.deps.setGrooveActive(false);
-    this.deps.onNowPlaying({ trackId: active.track.trackId, artist: active.track.artist, title: active.track.title, venueId: active.venueId });
-    // Safety net if `ended` never fires (stalled stream): the declared duration plus slack.
-    const maxMs = Math.min(active.track.durationSeconds + 10, 610) * 1000;
-    this.clearTimer();
-    this.timer = window.setTimeout(() => this.finishTrack(), maxMs);
+    this.deps.onNowPlaying({ trackId: active.play.trackId, artist: active.play.artist, title: active.play.title, venueId: active.venueId });
+    this.keepInStep(this.deps.serverNow());
   }
 
   private finishTrack(): void {
-    if (this.state !== 'playing' && this.state !== 'loading') return;
+    if (!this.active) return;
+    // Never restart a slot that has played (a file a little shorter than its declared length ends early).
+    this.doneSlots.add(this.active.play.slotIndex);
     this.clearTimer();
-    this.state = 'ending';
     this.stopActive(FADE_OUT_SEC);
     this.afterTrack();
   }
@@ -249,8 +305,8 @@ export class ClubDj {
   private afterTrack(): void {
     this.deps.onNowPlaying(null);
     this.deps.setGrooveActive(true);
-    if (this.venueId) this.scheduleNext(GROOVE_SEC);
-    else this.state = 'idle';
+    this.state = this.venueId ? 'groove' : 'idle';
+    this.plan();
   }
 
   /** Fade the current element out and release its media resource. */
@@ -287,5 +343,16 @@ export class ClubDj {
     active.element.removeAttribute('src');
     active.element.load();
     this.active = null;
+  }
+
+  private clearTimer(): void {
+    if (this.timer !== null) window.clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  private clearTimers(): void {
+    this.clearTimer();
+    if (this.refreshTimer !== null) window.clearTimeout(this.refreshTimer);
+    this.refreshTimer = null;
   }
 }
