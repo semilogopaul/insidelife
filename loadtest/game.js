@@ -12,7 +12,8 @@ const API = `${BASE_URL}/api/v1`;
 const PEAK_VUS = Number(__ENV.PEAK_VUS || 10);
 const RAMP_MIN = Number(__ENV.RAMP || 1);
 const HOLD_MIN = Number(__ENV.HOLD || 2);
-const RUN_ID = __ENV.RUN_ID || Date.now().toString(36);
+// Parallel generators start VUs in the same millisecond: a random tail keeps their accounts apart.
+const RUN_ID = __ENV.RUN_ID || Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const PASSWORD = 'LoadTest-2026-pw1';
 const NS = '/realtime';
 
