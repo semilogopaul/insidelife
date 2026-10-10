@@ -1,4 +1,4 @@
-import { CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, findVenue } from '@insidelife/shared';
+import { CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, SERVICE_POINTS, findVenue } from '@insidelife/shared';
 import { placeKindOfArchetype, propertyPlaceKind, venuePlaceKind, type PlaceKind } from '@/common/brand/place-icons';
 
 /**
@@ -118,6 +118,10 @@ export function venueIcons(): readonly MapIcon[] {
       kind: venue ? venuePlaceKind(venue) : placeKindOfArchetype(lot.archetype ?? 'shop'),
       name: venue?.name ?? lot.venueId,
     });
+  }
+  // Filling stations and mechanic workshops on the streets.
+  for (const point of SERVICE_POINTS) {
+    icons.push({ x: point.entrance.position.x, z: point.entrance.position.z, kind: point.kind === 'fuel' ? 'fuel-station' : 'mechanic', name: point.name });
   }
   return icons;
 }

@@ -6,7 +6,7 @@ import { useState, type ReactNode } from 'react';
 import type { CharacterSnapshotDto } from '@insidelife/shared';
 import { api } from '@/common/api/http';
 import { errorMessage } from '@/common/api/api-error';
-import { toast } from '@/common/components';
+import { PressButton, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useSnapshotMutation } from '@/common/game/snapshot';
@@ -21,6 +21,7 @@ import { useSuggestions } from '../hooks/use-suggestions';
 import { isRoutineDue } from '../services/suggestions';
 import { ActivityBanner } from './ActivityBanner';
 import { ClockCard } from './ClockCard';
+import { DriveAlert } from './DriveAlert';
 import { DrivePanel } from './DrivePanel';
 import { GpsBanner } from './GpsBanner';
 import { RoutinePrompt } from './RoutinePrompt';
@@ -60,18 +61,18 @@ const SHEET_LIFT_PX = 76;
 
 /**
  * The context button (and, at a hotspot with several things to do, the others as smaller buttons above it, keys 1–4).
- * Something that can't be done right now stays visible, greyed out with the reason; pressing it explains.
+ * Something that can't be done right now stays visible, greyed out with the reason; pressing it explains. They act on
+ * pointer release (`PressButton`), so "Park & enter …" works while the other thumb is still on the brake.
  */
 function ContextActions({ nearby, alignStart }: { readonly nearby: Interactable; readonly alignStart: boolean }) {
   return (
     <div className={cn('flex flex-col gap-1.5', alignStart ? 'items-start' : 'items-end')} data-testid="context-actions">
       {nearby.more?.map((option, index) => (
-        <button
+        <PressButton
           key={option.id}
-          type="button"
           aria-disabled={option.disabled ? true : undefined}
           aria-label={option.disabled ? `${option.label}. Not now: ${option.disabled}` : undefined}
-          onClick={() => gameEvents.emit('interact', { interactableId: option.id })}
+          onPress={() => gameEvents.emit('interact', { interactableId: option.id })}
           className={cn(
             'glass flex min-h-10 max-w-[17rem] items-center gap-1.5 rounded-card px-3 py-1 text-left text-sm font-bold text-on-ink',
             option.disabled && 'opacity-80',
@@ -83,13 +84,12 @@ function ContextActions({ nearby, alignStart }: { readonly nearby: Interactable;
             {option.disabled && <span className="block truncate text-2xs font-normal text-danfo">{option.disabled}</span>}
           </span>
           {index < 4 && <kbd className="ml-auto rounded bg-white/15 px-1.5 py-0.5 text-2xs pointer-coarse:hidden">{index + 1}</kbd>}
-        </button>
+        </PressButton>
       ))}
-      <button
-        type="button"
+      <PressButton
         aria-disabled={nearby.disabled ? true : undefined}
         aria-label={nearby.disabled ? `${nearby.label}. Not now: ${nearby.disabled}` : undefined}
-        onClick={() => gameEvents.emit('interact', { interactableId: nearby.id })}
+        onPress={() => gameEvents.emit('interact', { interactableId: nearby.id })}
         className={cn(
           'flex min-h-12 max-w-[19rem] items-center gap-2 rounded-card px-4 py-1 text-left font-bold shadow-[var(--shadow-lift)]',
           nearby.disabled ? 'bg-paper-2 text-text-soft' : 'bg-paper text-ink',
@@ -105,7 +105,7 @@ function ContextActions({ nearby, alignStart }: { readonly nearby: Interactable;
           {nearby.disabled && <span className="block truncate text-xs font-bold text-ink">⛔ {nearby.disabled}</span>}
         </span>
         <kbd className="rounded bg-paper-3 px-1.5 py-0.5 text-xs pointer-coarse:hidden">E</kbd>
-      </button>
+      </PressButton>
     </div>
   );
 }
@@ -147,10 +147,12 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const contextLift = !wide && nearby ? CONTEXT_BASE_PX + (talkButton ? TALK_PX : 0) + (nearby.disabled ? 14 : 0) + (nearby.more?.length ?? 0) * CONTEXT_OPTION_PX : 0;
   // On phones the stick's corner is the walking/steering thumb zone: keep it clear while moving around outside.
   const thumbZoneBusy = !wide && (mode === 'walking' || mode === 'driving');
+  // Out on the street the planned timeline runs ahead of you (the commute you're not taking): on phones only an
+  // action you chose yourself may sit in the stick's corner, never over the steering or the walking thumb.
   const showActivity =
     data.segment &&
     (data.segment.kind === 'action' || data.segment.kind === 'commute' || data.segment.kind === 'work' || data.segment.kind === 'lecture' || data.segment.kind === 'sleep') &&
-    !(thumbZoneBusy && data.action?.id === 'explore');
+    !(thumbZoneBusy && (data.segment.kind !== 'action' || data.action?.id === 'explore'));
 
   const outdoorMap = map && !data.inside ? map : null;
   const all = suggestions.data ?? [];
@@ -168,6 +170,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const routinePrompt = routine ? <RoutinePrompt suggestion={routine} now={data.minute} onSkip={() => setSkipped((current) => new Set(current).add(routine.id))} /> : null;
   const centre = (
     <>
+      {drive?.warning && <DriveAlert warning={drive.warning} />}
       {gps}
       {routinePrompt}
       {notices}
@@ -186,8 +189,9 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
           {feed && !phoneOpen ? feed : null}
         </div>
         {wide && <div className="pointer-events-auto flex max-w-md flex-1 flex-col gap-2 empty:hidden">{centre}</div>}
-        <div className="pointer-events-auto flex shrink-0 flex-col items-end gap-2">
-          <div className="flex items-center gap-2">
+        {/* The column is as wide as its widest row: only its controls take taps, the gaps go through to the world. */}
+        <div className="pointer-events-none flex shrink-0 flex-col items-end gap-2">
+          <div className="pointer-events-auto flex items-center gap-2">
             <button
               type="button"
               onClick={toggleHud}
@@ -200,7 +204,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
             </button>
             <WalletChip balance={data.snapshot.wallet.balance} />
           </div>
-          {tray && <div className="flex flex-col items-end gap-2">{tray}</div>}
+          {tray && <div className="pointer-events-none flex flex-col items-end gap-2 *:pointer-events-auto">{tray}</div>}
           {!wide && outdoorMap}
         </div>
       </div>

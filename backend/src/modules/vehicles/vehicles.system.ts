@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { BACKGROUNDS, DRIVERS_LICENCE, quoteTrip, type ActionDefinition } from '@insidelife/shared';
+import { BACKGROUNDS, DRIVERS_LICENCE, quoteTrip, toDateParts, trafficFuelFactor, trafficMultiplier, type ActionDefinition } from '@insidelife/shared';
 import type { ActivityState, TravelState } from '../characters/entities/character.entity.js';
 import { LifeEventsRegistry } from '../events/life-events.registry.js';
 import type { SimulationSystem } from '../simulation/interfaces/simulation-system.interface.js';
@@ -7,7 +7,6 @@ import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
 import { TimelinePlanner } from '../simulation/timeline-planner.service.js';
 import { LicenceService } from './licence.service.js';
-import { WEAR_PER_KM } from './rules/vehicle.rules.js';
 import { vehicleLifeEvents } from './vehicles.events.js';
 import { VehiclesService } from './vehicles.service.js';
 
@@ -17,7 +16,8 @@ const NEPO_BABY_CAR = 'toyota-corolla-2017';
 const SECONDARY_CAR_STATUS = 0.25;
 
 /**
- * Vehicles in the simulation: the `car` capability tag (unlocks driving and car commutes), wear from trips,
+ * Vehicles in the simulation: the `car` capability tag (a car that starts: fuel in the tank, not broken down —
+ * unlocks driving and car commutes), fuel, wear and breakdowns from trips,
  * remote-purchase deliveries, month-end maintenance, the driving-test result, and cars in net worth and status.
  * Depreciation is closed-form (age in days × yearly rate), so value is always current without daily writes.
  */
@@ -63,9 +63,10 @@ export class VehiclesSystem implements SimulationSystem, OnModuleInit {
     const to = await this.planner.place(ctx, travel.toLocationId);
     if (from.regionId !== to.regionId) return;
     const { distance } = quoteTrip(from.districtId, to.districtId, 'car', { hour: 12, weekend: false, raining: false, priceIndex: 1 });
-    car.row.mileageKm += distance;
-    car.row.lastDrivenAt = ctx.time;
-    await this.vehicles.setCondition(ctx, car, this.vehicles.condition(ctx, car) - distance * WEAR_PER_KM);
+    // Go-slow burns fuel: the traffic when you set off sets how much more per km.
+    const departed = toDateParts(travel.departAt);
+    const traffic = trafficMultiplier(departed.hour, departed.weekday >= 5, ctx.world.weather(travel.departAt).raining);
+    await this.vehicles.drive(ctx, car, distance, { trafficFactor: trafficFuelFactor(traffic) });
   }
 
   async onDayEnd(ctx: SimulationContext): Promise<void> {

@@ -1,4 +1,5 @@
 import { Vector3, type Camera } from 'three';
+import { gameEvents } from '@/common/game/game-events';
 import { useNavigation } from '@/common/game/navigation-store';
 import { livePose } from '../../navigation/live-pose';
 import { activeRoute } from '../../navigation/route-state';
@@ -14,13 +15,27 @@ export interface PlayDevHook {
   setDestination(id: string | null, name?: string): void;
   /** Screen position (CSS px) of a world point with the current camera, or null when behind it. */
   project(x: number, y: number, z: number): { x: number; y: number } | null;
+  /** The last game events the world reacted to (`sfx:horn`, `exit-car`, `interact:play:door:…`), newest last. */
+  readonly events: string[];
 }
 
 type DevWindow = Window & { __IL_PLAY__?: PlayDevHook };
 
 export function exposeDevHook(runtime: PlayRuntime, camera: () => Camera, size: () => { width: number; height: number }): () => void {
   if (process.env.NODE_ENV === 'production' || typeof window === 'undefined') return () => undefined;
+  const events: string[] = [];
+  const log = (entry: string): void => {
+    events.push(entry);
+    if (events.length > 40) events.shift();
+  };
+  const offs = [
+    gameEvents.on('sfx', ({ id }) => log(`sfx:${id}`)),
+    gameEvents.on('interact', ({ interactableId }) => log(`interact:${interactableId}`)),
+    gameEvents.on('exit-car', () => log('exit-car')),
+    gameEvents.on('enter-car', () => log('enter-car')),
+  ];
   const hook: PlayDevHook = {
+    events,
     runtime,
     controls,
     livePose,
@@ -34,6 +49,7 @@ export function exposeDevHook(runtime: PlayRuntime, camera: () => Camera, size: 
   };
   (window as DevWindow).__IL_PLAY__ = hook;
   return () => {
+    for (const off of offs) off();
     if ((window as DevWindow).__IL_PLAY__ === hook) delete (window as DevWindow).__IL_PLAY__;
   };
 }

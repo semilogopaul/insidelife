@@ -128,7 +128,11 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
   const online = sandbox === null && snapshot !== undefined;
   const character = snapshot?.character;
   const characterId = character?.id ?? null;
-  const fuelPrice = useWorldState().data?.economy.fuelPrice ?? 1350;
+  const worldState = useWorldState().data;
+  const economy = worldState?.economy;
+  const scarcity = worldState?.events.some((event) => event.kind === 'fuel-scarcity') ?? false;
+  const fuelPrice = economy?.fuelPrice ?? 1350;
+  const priceIndex = economy?.priceIndex ?? 1;
   const invertSteering = useUi((state) => state.settings.invertSteering);
   const travel = snapshot?.travel ?? null;
   const plan = useCityPlan();
@@ -237,7 +241,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
     else if (useWorld.getState().mode === 'riding') useWorld.getState().setMode(runtime.mode === 'drive' ? 'driving' : 'walking');
   }, [runtime, riding]);
 
-  const heartbeats = useWorldSync(runtime, { online, characterId, homeDoor, visitDoors, fuelPrice });
+  const heartbeats = useWorldSync(runtime, { online, characterId, homeDoor, visitDoors, fuelPrice, priceIndex, scarcity });
   useWorldActions(runtime, { online, heartbeats });
 
   const look: PlayerLook = character ? { appearance: character.appearance, outfit: character.outfit, gender: character.gender, mood: character.mood } : sandboxLook;

@@ -1,36 +1,36 @@
 import { Injectable } from '@nestjs/common';
-import { VEHICLE_PAINTS } from '@insidelife/shared';
 import type { DrivenVehicle, VehiclePort } from '../../common/ports/vehicle.port.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
-import { WEAR_PER_KM } from './rules/vehicle.rules.js';
 import { VehiclesService } from './vehicles.service.js';
 
-/** VEHICLE_PORT for the movement layer: which car you drive, and wear from open-world driving. */
+/** VEHICLE_PORT for the movement layer: the car with you, the fuel and wear of open-world driving, pumps and workshops. */
 @Injectable()
 export class VehiclePortAdapter implements VehiclePort {
   constructor(private readonly vehicles: VehiclesService) {}
 
   async driving(ctx: SimulationContext): Promise<DrivenVehicle | null> {
-    const car = await this.vehicles.driving(ctx);
-    if (!car) return null;
-    return {
-      ownedVehicleId: car.row.id,
-      vehicleId: car.def.id,
-      name: car.def.name,
-      model: car.def.model,
-      color: VEHICLE_PAINTS[car.row.paint]?.hex ?? car.def.color,
-      plate: car.row.plate,
-      fuelType: car.def.fuelType,
-      fuelEconomyKmPerLitre: car.def.fuelEconomyKmPerLitre,
-    };
+    const car = await this.vehicles.withYou(ctx);
+    return car ? this.vehicles.driven(ctx, car) : null;
   }
 
-  async recordDistance(ctx: SimulationContext, km: number): Promise<void> {
-    if (km <= 0) return;
-    const car = await this.vehicles.driving(ctx);
-    if (!car) return;
-    car.row.mileageKm += km;
-    car.row.lastDrivenAt = ctx.time;
-    await this.vehicles.setCondition(ctx, car, this.vehicles.condition(ctx, car) - km * WEAR_PER_KM);
+  async drive(ctx: SimulationContext, km: number, bumps = 0): Promise<DrivenVehicle | null> {
+    const car = await this.vehicles.withYou(ctx);
+    if (!car) return null;
+    if (km > 0 || bumps > 0) await this.vehicles.drive(ctx, car, km, { bumps });
+    return this.vehicles.driven(ctx, car);
+  }
+
+  async refuel(ctx: SimulationContext, litres: number | null, stationName: string, key: string): Promise<{ litres: number; pricePerLitre: number; cost: number; car: DrivenVehicle } | null> {
+    const car = await this.vehicles.withYou(ctx);
+    if (!car) return null;
+    const sale = await this.vehicles.refuel(ctx, car, litres, `Fuel at ${stationName}`, key);
+    return { ...sale, car: this.vehicles.driven(ctx, car) };
+  }
+
+  async workshopRepair(ctx: SimulationContext, workshopName: string, key: string): Promise<{ cost: number; car: DrivenVehicle } | null> {
+    const car = await this.vehicles.withYou(ctx);
+    if (!car) return null;
+    const cost = await this.vehicles.workshopRepair(ctx, car, `Mechanic at ${workshopName}: ${car.def.name} (${car.row.plate})`, key);
+    return { cost, car: this.vehicles.driven(ctx, car) };
   }
 }

@@ -1,25 +1,22 @@
-import type { VehicleModel } from '@insidelife/shared';
+import type { DrivenVehicleDto } from '@insidelife/shared';
 import type { SimulationContext } from '../../modules/simulation/simulation-context.js';
 
-/** The car the character is driving (primary drivable car). */
-export interface DrivenVehicle {
-  readonly ownedVehicleId: string;
-  readonly vehicleId: string;
-  readonly name: string;
-  /** Kenney car-kit model key the client renders (sedan, suv, suv-luxury…). */
-  readonly model: VehicleModel;
-  /** Paint hex. */
-  readonly color: string;
-  readonly plate: string;
-  readonly fuelType: 'petrol' | 'diesel';
-  readonly fuelEconomyKmPerLitre: number;
-}
+/** The car with you on the street: what the 3D client renders plus its running state (fuel, condition, breakdown). */
+export type DrivenVehicle = DrivenVehicleDto;
 
-/** Implemented by the vehicles module. */
+/** Implemented by the vehicles module (the movement layer owns positions; vehicles own tanks and bills). */
 export interface VehiclePort {
+  /** The car with you out on the street, whatever state it's in (empty or broken down too); null without one. */
   driving(ctx: SimulationContext): Promise<DrivenVehicle | null>;
-  /** Add open-world mileage and wear to the driven car. */
-  recordDistance(ctx: SimulationContext, km: number): Promise<void>;
+  /**
+   * Open-world driving: burn fuel for `km` map km, add mileage, wear and crash damage (`bumps`, m/s lost in hard
+   * hits) and roll for a breakdown. Returns the car afterwards, or null without one.
+   */
+  drive(ctx: SimulationContext, km: number, bumps?: number): Promise<DrivenVehicle | null>;
+  /** Buy fuel at a pump (`litres` null = fill up). Null without a car. */
+  refuel(ctx: SimulationContext, litres: number | null, stationName: string, key: string): Promise<{ litres: number; pricePerLitre: number; cost: number; car: DrivenVehicle } | null>;
+  /** A proper repair at a workshop. Null without a car. */
+  workshopRepair(ctx: SimulationContext, workshopName: string, key: string): Promise<{ cost: number; car: DrivenVehicle } | null>;
 }
 
 export const VEHICLE_PORT = Symbol('VEHICLE_PORT');

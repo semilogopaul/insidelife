@@ -7,10 +7,12 @@ import {
   cellCentreX,
   cellCentreZ,
   findVenue,
+  servicePointOnLot,
   type CityLot,
   type CityRoadTile,
   type CompassSide,
   type DistrictId,
+  type ServicePoint,
 } from '@insidelife/shared';
 import { KIT_MANIFEST } from '../assets/kit-manifest';
 import { PROC_MODELS, type ProcModelId } from './proc-models';
@@ -334,7 +336,47 @@ function lotCentre(lot: CityLot): readonly [number, number] {
   return [(lot.footprint.minX + lot.footprint.maxX) / 2, (lot.footprint.minZ + lot.footprint.maxZ) / 2];
 }
 
+/**
+ * A filling station or mechanic workshop (`SERVICE_POINTS`) instead of the lot's building: a concrete forecourt with
+ * the pump canopy and a kiosk at the back, or a dirt yard with the shed and a customer's car waiting on parts.
+ */
+function serviceLot(plan: PlanBuilder, lot: CityLot, lotIndex: number, point: ServicePoint): void {
+  const frame = frameOf(lot);
+  const random = rng(lot.seed);
+  const face = yawFacing(frame.fx, frame.fz);
+  const frontLine = frame.depth / 2 - APRON;
+  const collide = (u: number, v: number, halfU: number, halfV: number, height: number): void => {
+    const [x, z] = at(frame, u, v);
+    const ex = Math.abs(frame.ax) * halfU + Math.abs(frame.fx) * halfV;
+    const ez = Math.abs(frame.az) * halfU + Math.abs(frame.fz) * halfV;
+    plan.colliders.push({ minX: x - ex, maxX: x + ex, minZ: z - ez, maxZ: z + ez, height });
+  };
+  if (point.kind === 'fuel') {
+    plan.lotGround.set(lotIndex, 0xa3a19b);
+    const [cx, cz] = at(frame, 0, frontLine - 2.6);
+    plan.proc('fuel-station', cx, 0, cz, face);
+    for (const u of [-1.5, 1.5]) collide(u, frontLine - 2.6, 0.5, 1.2, 3.6);
+    const [kx, kz] = at(frame, -2.2, -frame.depth / 2 + 1.4);
+    plan.proc('kiosk', kx, 0, kz, face, 1.15, 0xf2f0ea);
+    collide(-2.2, -frame.depth / 2 + 1.4, 1.3, 1.0, 2.6);
+    return;
+  }
+  plan.lotGround.set(lotIndex, 0x8f7d5f);
+  const [sx, sz] = at(frame, 0, -frame.depth / 2 + 2.6);
+  plan.proc('workshop', sx, 0, sz, face);
+  collide(0, -frame.depth / 2 + 0.6, 3.1, 0.2, 2.8);
+  const vu = (random() < 0.5 ? -1 : 1) * 1.6;
+  const [vx, vz] = at(frame, vu, frontLine - 2.2);
+  plan.vehicle(pick(['sedan', 'taxi', 'hatchback-sports', 'suv'], random), vx, vz, Math.atan2(frame.az, frame.ax));
+  collide(vu, frontLine - 2.2, 2.2, 1.0, 2.2);
+}
+
 function fillerLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
+  const service = servicePointOnLot(lot.id);
+  if (service) {
+    serviceLot(plan, lot, lotIndex, service);
+    return;
+  }
   const style = DISTRICT_STYLES[lot.districtId];
   const random = rng(lot.seed);
   const [cx, cz] = lotCentre(lot);

@@ -179,7 +179,8 @@ describe('production configuration (DEPLOYMENT=public)', () => {
         if (name === 'FLUTTERWAVE_WEBHOOK_SECRET_HASH') return `${name}=${randomBytes(32).toString('hex')}`;
         if (name === 'ADMIN_EMAILS') return `${name}=owner@insidelife.online`;
         if (name === 'ACME_EMAIL') return `${name}=ops@insidelife.online`;
-        if (value === '' && !['SMTP_URL', 'ADMIN_API_HOST'].includes(name!)) return `${name}=${randomBytes(36).toString('base64url')}`;
+        // Optional settings that are blank by design (not secrets) stay blank.
+        if (value === '' && !['SMTP_URL', 'ADMIN_API_HOST', 'GAME_TIME_RESCALES'].includes(name!)) return `${name}=${randomBytes(36).toString('base64url')}`;
         return line;
       })
       .join('\n');

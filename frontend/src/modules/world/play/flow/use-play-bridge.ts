@@ -27,6 +27,7 @@ import { isTypingTarget } from '../input/controls';
 import { ensurePresenceDirectory } from '../players/presence-directory';
 import { movementApi } from './movement.api';
 import { spawnHandoff } from './spawn-handoff';
+import { useRideArrival } from './use-ride-arrival';
 
 /** Context-button id while inside a building. */
 export const STEP_OUTSIDE_ID = 'world:step-outside';
@@ -44,8 +45,9 @@ function entranceOf(locationId: string, snapshot: CharacterSnapshotDto): Entranc
 
 /**
  * Always mounted with the world canvas (inside and outside). Owns the step-outside flow — `exit-building` from any
- * feature, the HUD context button while inside, the E key — and hands the spawn point to the play layer. Also routes
- * E to whatever the context button shows and M to the phone's map.
+ * feature, the HUD context button while inside, the E key — and hands the spawn point to the play layer, and brings
+ * a booked ride to its destination once the server has it there (`useRideArrival`). Also routes E to whatever the
+ * context button shows and M to the phone's map.
  */
 export function usePlayBridge(presence: WorldPresence): void {
   const client = useQueryClient();
@@ -57,6 +59,7 @@ export function usePlayBridge(presence: WorldPresence): void {
   useEffect(() => {
     ensurePresenceDirectory();
   }, []);
+  useRideArrival();
 
   useEffect(() => {
     if (locationId && !isStreetLocation(locationId)) lastInside.current = locationId;

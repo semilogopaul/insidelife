@@ -1,12 +1,17 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   MAP_KM_PER_WORLD_METRE,
+  MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
+  SERVICE_RADIUS,
   TRANSPORT,
   TRANSPORT_MODES,
   ENTRY_RADIUS,
+  canDriveVehicle,
   districtAt,
+  findServicePoint,
   findVenue,
+  fuelStationDry,
   formatGameDuration,
   homeEntrance,
   homeKey,
@@ -19,7 +24,9 @@ import {
   toDateParts,
   venueEntrance,
   type DistrictId,
+  type DrivenVehicleDto,
   type Entrance,
+  type HeartbeatRejection,
   type SpawnPoint,
   type TransportMode,
   type WorldPoint,
@@ -35,10 +42,14 @@ import { MovementTracker } from './movement-tracker.service.js';
 
 /** How long one heartbeat keeps the "exploring" state alive (game minutes ≈ 30 real seconds). */
 const EXPLORE_WINDOW = 30;
-/** Fallback fuel economy (map km per litre) if the car's own figure is unknown. */
-const DEFAULT_KM_PER_LITRE = 10;
-/** Diesel costs more than petrol at the pump (≈ ₦1,750 vs ₦1,350). */
-const DIESEL_PREMIUM = 1.3;
+
+export interface HeartbeatOutcome {
+  readonly accepted: boolean;
+  readonly reason?: HeartbeatRejection;
+  readonly car: DrivenVehicleDto | null;
+}
+
+const runs = (car: DrivenVehicleDto): boolean => canDriveVehicle(car);
 
 export interface TravelQuoteDto {
   readonly mode: TransportMode;
@@ -80,19 +91,60 @@ export class MovementService {
     return { locationId: character.locationId, entrance, hasCar: car !== null, car };
   }
 
-  /** Keep exploring alive and accept a plausible new position. Returns false if the move was rejected. */
-  async heartbeat(ctx: SimulationContext, position: WorldPoint, mode: 'walk' | 'car', heading = 0): Promise<boolean> {
+  /**
+   * Keep exploring alive and accept a plausible new position. Driving burns fuel from the tank for the road distance
+   * since the last fix (plus wear, the reported crash damage and a breakdown roll). A car that can't go — empty,
+   * broken down, won't start — is only ever pushed: the move must be plausible on foot and nothing is burnt.
+   */
+  async heartbeat(ctx: SimulationContext, position: WorldPoint, mode: 'walk' | 'car', heading = 0, bumps = 0): Promise<HeartbeatOutcome> {
     const character = ctx.character;
-    if (!isStreetLocation(character.locationId)) return false;
-    if (mode === 'car' && !(await this.vehicles.driving(ctx))) return false;
-    const check = await this.tracker.isPlausible(character.id, position, mode);
-    if (!check.ok) return false;
+    if (!isStreetLocation(character.locationId)) return { accepted: false, reason: 'not-outside', car: null };
+    let car = await this.vehicles.driving(ctx);
+    if (mode === 'car' && !car) return { accepted: false, reason: 'no-car', car: null };
+    const pushing = mode === 'car' && car !== null && !runs(car);
+    const check = await this.tracker.isPlausible(character.id, position, pushing ? 'walk' : mode);
+    if (!check.ok) return { accepted: false, reason: pushing ? 'car-disabled' : 'implausible', car };
 
-    if (mode === 'car' && check.from) await this.chargeFuel(ctx, check.distance, `fuel:${ctx.time}`);
-    await this.tracker.anchor(character.id, position, mode, heading);
+    if (mode === 'car' && !pushing && check.from) car = await this.vehicles.drive(ctx, check.distance * MAP_KM_PER_WORLD_METRE, Math.min(60, Math.max(0, bumps)));
+    await this.tracker.anchor(character.id, position, pushing ? 'walk' : mode, heading);
     character.locationId = streetLocationId(districtAt(position));
     character.activity = { actionId: 'explore', startedAt: character.activity?.startedAt ?? ctx.time, endsAt: ctx.time + EXPLORE_WINDOW, locationId: character.locationId, cost: 0 };
-    return true;
+    return { accepted: true, car };
+  }
+
+  /**
+   * Buy fuel at a filling station on the street: you (or your car at the kerb) must be at the forecourt, there by a
+   * plausible route since your last fix; during fuel scarcity some stations are dry that day.
+   */
+  async buyFuel(ctx: SimulationContext, stationId: string, position: WorldPoint, litres: number | null, idempotencyKey: string) {
+    const station = await this.assertAtService(ctx, stationId, 'fuel', position);
+    const dayIndex = Math.floor(ctx.time / MINUTES_PER_DAY);
+    if (fuelStationDry(ctx.world.seed, station.id, dayIndex, ctx.world.isActive(ctx.time, 'fuel-scarcity'))) {
+      throw new GameRuleException('STATION_DRY', `${station.name} has no fuel today (scarcity). Try another station, or order a jerrycan in Motors.`);
+    }
+    const sale = await this.vehicles.refuel(ctx, litres, station.name, `fuel:${station.id}:${idempotencyKey}`);
+    if (!sale) throw new GameRuleException('NO_CAR', 'You don’t have a car to fill');
+    return sale;
+  }
+
+  /** A proper repair at a mechanic workshop on the street (you must be there). */
+  async seeMechanic(ctx: SimulationContext, workshopId: string, position: WorldPoint, idempotencyKey: string) {
+    const workshop = await this.assertAtService(ctx, workshopId, 'mechanic', position);
+    const repair = await this.vehicles.workshopRepair(ctx, workshop.name, `mechanic:${workshop.id}:${idempotencyKey}`);
+    if (!repair) throw new GameRuleException('NO_CAR', 'You don’t have a car for the mechanic to look at');
+    return repair;
+  }
+
+  private async assertAtService(ctx: SimulationContext, id: string, kind: 'fuel' | 'mechanic', position: WorldPoint) {
+    const point = findServicePoint(id);
+    if (!point || point.kind !== kind) throw new ResourceNotFoundException(kind === 'fuel' ? 'Filling station' : 'Mechanic');
+    if (!isStreetLocation(ctx.character.locationId)) throw new GameRuleException('NOT_OUTSIDE', 'Step outside first');
+    if (straightDistance(position, point.entrance.position) > SERVICE_RADIUS) {
+      throw new GameRuleException('TOO_FAR', kind === 'fuel' ? 'Pull up at the pumps first' : 'Pull up at the workshop first');
+    }
+    const check = await this.tracker.isPlausible(ctx.character.id, position, 'car');
+    if (!check.ok) throw new GameRuleException('TELEPORT', 'You can’t be there yet — keep moving');
+    return point;
   }
 
   /** Walk through a door. The position must be at the entrance and reachable since the last accepted fix. */
@@ -116,9 +168,12 @@ export class MovementService {
       throw new GameRuleException('BOUNCER', `The bouncer looked you up and down. You need more clout to enter ${venue.name}.`);
     }
 
-    const check = await this.tracker.isPlausible(character.id, entrance.position, mode);
+    // A car that can't go was pushed (or left at the kerb): the last stretch must be plausible on foot, nothing burnt.
+    const car = mode === 'car' ? await this.vehicles.driving(ctx) : null;
+    const driving = car !== null && runs(car);
+    const check = await this.tracker.isPlausible(character.id, entrance.position, driving ? 'car' : 'walk');
     if (!check.ok) throw new GameRuleException('TELEPORT', 'You can’t be there yet — keep moving');
-    if (mode === 'car' && check.from) await this.chargeFuel(ctx, check.distance, `fuel:enter:${ctx.time}`);
+    if (driving && check.from) await this.vehicles.drive(ctx, check.distance * MAP_KM_PER_WORLD_METRE);
 
     await this.tracker.clear(character.id);
     const fromLocationId = character.locationId;
@@ -195,21 +250,6 @@ export class MovementService {
       fare: quote.fare,
       explicit: true,
     };
-  }
-
-  /** Fuel and wear for a stretch of open-world driving, using the driven car's real economy and fuel type. */
-  private async chargeFuel(ctx: SimulationContext, worldMetres: number, key: string): Promise<void> {
-    const car = await this.vehicles.driving(ctx);
-    const km = worldMetres * MAP_KM_PER_WORLD_METRE;
-    await this.vehicles.recordDistance(ctx, km);
-    const litres = km / (car?.fuelEconomyKmPerLitre ?? DEFAULT_KM_PER_LITRE);
-    const pump = ctx.world.economy(ctx.time).fuelPrice * (car?.fuelType === 'diesel' ? DIESEL_PREMIUM : 1);
-    const cost = Math.round(litres * pump);
-    if (cost < 50) return;
-    const paid = await ctx.wallet.tryPay(cost, 'transport', `Fuel (${litres.toFixed(1)}L)`, key);
-    if (!paid) {
-      ctx.notify({ kind: 'bill', title: 'Fuel light is blinking', body: 'You couldn’t afford fuel. Park and take a danfo.', tone: 'bad' });
-    }
   }
 
   /** A door: venues, your own home, or a host's home (to go in you need an accepted invite; leaving never does). */

@@ -1,4 +1,4 @@
-import { findVehicle, type DrivenVehicleDto } from '@insidelife/shared';
+import { MAP_KM_PER_WORLD_METRE, canDriveVehicle, findVehicle, litresForKm, type DrivenVehicleDto } from '@insidelife/shared';
 import type { ColliderGrid, MutablePoint, PushResult } from '../physics/collision';
 import { pushOutOfCircle } from '../physics/collision';
 import { damp } from '../physics/math';
@@ -24,7 +24,15 @@ export interface OwnCar {
   y: number;
   /** Wheel spin angle (rad). */
   spin: number;
+  /**
+   * Running state: the server's (spawn, then every heartbeat), with the fuel burnt since then estimated locally so the
+   * gauge moves and the engine dies on time. The server stays the judge (it refuses car moves it won't fuel).
+   */
+  readonly running: { fuelLitres: number; tankLitres: number; condition: number; brokenDown: boolean };
 }
+
+/** Pushing a dead car (no fuel, broken down): walking pace at most, forwards or back. */
+export const PUSH_SPEED = 1.4;
 
 /** How close (to the car centre) you must be to get in. */
 export const CAR_REACH = 4.4;
@@ -134,7 +142,10 @@ export class PlayerController {
     const spec = vehicleSpecFor(model, findVehicle(vehicle.vehicleId)?.performance);
     const spot = this.freeSpot(x, z, heading, spec);
     const state = createVehicle(spot.x, spot.z, heading);
-    this.car = { vehicle, model, spec, state, y: groundHeightAt(spot.x, spot.z), spin: 0 };
+    // A pose saved by an older client has no running state: assume it runs until the first heartbeat says otherwise.
+    const tankLitres = vehicle.tankLitres ?? 45;
+    const running = { fuelLitres: vehicle.fuelLitres ?? tankLitres, tankLitres, condition: vehicle.condition ?? 70, brokenDown: vehicle.brokenDown ?? false };
+    this.car = { vehicle, model, spec, state, y: groundHeightAt(spot.x, spot.z), spin: 0, running };
   }
 
   private carFits(x: number, z: number, heading: number, spec: VehicleSpec): boolean {
@@ -163,10 +174,45 @@ export class PlayerController {
 
   // ----- Car doors --------------------------------------------------------------------------------------------------
 
+  /** The engine won't run (out of fuel, broken down, too far gone): the car can only be pushed. */
+  get engineOff(): boolean {
+    return this.car !== null && !canDriveVehicle(this.car.running);
+  }
+
+  /** The server's view of the car after a heartbeat, a fill-up or a repair. */
+  applyCarStatus(status: Pick<DrivenVehicleDto, 'ownedVehicleId' | 'fuelLitres' | 'tankLitres' | 'condition' | 'brokenDown'>): void {
+    const car = this.car;
+    if (!car || car.vehicle.ownedVehicleId !== status.ownedVehicleId) return;
+    car.running.fuelLitres = status.fuelLitres;
+    car.running.tankLitres = status.tankLitres;
+    car.running.condition = status.condition;
+    car.running.brokenDown = status.brokenDown;
+  }
+
   /** Distance from the walker to the car centre (∞ without a car). */
   distanceToCar(): number {
     if (!this.car) return Number.POSITIVE_INFINITY;
     return Math.hypot(this.car.state.x - this.walker.x, this.car.state.z - this.walker.z);
+  }
+
+  /**
+   * Walk up to the car's nearer side (a tap on your car from a few metres away): the walker is put beside the door,
+   * within reach. Returns false without a car or when it's further than `maxDistance`.
+   */
+  stepBesideCar(maxDistance: number): boolean {
+    const car = this.car;
+    if (this.locomotion !== 'walk' || !car || this.distanceToCar() > maxDistance) return false;
+    if (this.distanceToCar() <= CAR_REACH) return true;
+    const s = car.state;
+    // Right of travel is (-sin, cos); pick the side the walker is on.
+    const rx = -Math.sin(s.heading);
+    const rz = Math.cos(s.heading);
+    const side = (this.walker.x - s.x) * rx + (this.walker.z - s.z) * rz >= 0 ? 1 : -1;
+    const offset = car.spec.halfWidth + 0.8;
+    const x = s.x + rx * offset * side;
+    const z = s.z + rz * offset * side;
+    this.placeWalker(x, z, Math.atan2(s.z - z, s.x - x));
+    return true;
   }
 
   canEnterCar(): boolean {
@@ -224,7 +270,9 @@ export class PlayerController {
     // Sub-step for stable collisions at speed.
     const steps = Math.max(1, Math.ceil(dt / (1 / 60)));
     for (let i = 0; i < steps; i++) stepVehicle(s, intent, car.spec, dt / steps, this.driveWorld);
-    this.driven += Math.hypot(s.x - x0, s.z - z0);
+    const moved = Math.hypot(s.x - x0, s.z - z0);
+    this.driven += moved;
+    car.running.fuelLitres = Math.max(0, car.running.fuelLitres - litresForKm(car.vehicle, moved * MAP_KM_PER_WORLD_METRE));
     car.y += (groundHeightAt(s.x, s.z) - car.y) * damp(12, dt);
     car.spin += (s.speed / (0.3 * 1.73)) * dt;
     // The walker rides along (hidden) so leaving the car and the GPS stay consistent.

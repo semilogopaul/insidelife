@@ -45,7 +45,7 @@ describe('CharacterWallet.pay with refuseRepeat', () => {
 
   it('keeps the old behaviour (a silent no-op) without it, for replays that must be harmless', async () => {
     const { wallet } = walletWith(['char-1:salary:12']);
-    await expect(wallet.pay(100, 'purchase', 'Replay', 'salary:12')).resolves.toBeUndefined();
+    await expect(wallet.pay(100, 'purchase', 'Replay', 'salary:12')).resolves.toBe(false);
     expect(wallet.cash).toBe(1_000);
   });
 });

@@ -328,7 +328,22 @@ const hardHat: Pictogram = [
   { d: rounded(1.6, 15.6, 20.8, 2.6, 1.1) },
 ];
 
+/** A petrol pump: the body with its window, and the nozzle hose hooked on the side. */
+const fuelPump: Pictogram = [
+  { d: rounded(3.4, 2.6, 11, 18.8, 1.6) + rect(5.6, 5, 6.6, 4.6), rule: 'evenodd' },
+  { d: rect(2, 19.8, 13.8, 2.2) + 'M14.4 7.2h2.2l3.4 3.4v7.8a2.1 2.1 0 0 1-4.2 0v-4.2h-1.4v-2h3.4v6.2h.2v-7l-2.4-2.4h-1.2z' },
+];
+
+/** A spanner, head up-left, handle down-right. */
+const wrench: Pictogram = [
+  {
+    d: 'M14.6 2.4a5.8 5.8 0 0 0-5.3 8.1L2.6 17.2a2.4 2.4 0 0 0 3.4 3.4l6.7-6.7a5.8 5.8 0 0 0 8.1-5.3l-3.4 3.4-3.4-.6-.6-3.4 3.4-3.4a5.8 5.8 0 0 0-2.2-.2z',
+  },
+];
+
 export const PICTOGRAMS = {
+  fuelPump,
+  wrench,
   plane,
   gradCap,
   schoolHouse,

@@ -1,31 +1,45 @@
 'use client';
 
 import { ArrowBigLeft, ArrowBigRight, DoorOpen, Megaphone } from 'lucide-react';
-import { useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEffect, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { PressButton } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
+import { useWorld } from '@/common/game/world-store';
 import { cn } from '@/common/utils/cn';
 import { controls } from '../input/controls';
+import { usePlayUi } from '../state/play-ui-store';
 
 type Axis = 'left' | 'right' | 'gas' | 'brake';
 
-function applyHeld(held: ReadonlySet<Axis>): void {
-  controls.touchSteer = (held.has('right') ? 1 : 0) - (held.has('left') ? 1 : 0);
-  controls.touchGas = held.has('gas') ? 1 : 0;
-  controls.touchBrake = held.has('brake') ? 1 : 0;
+function applyHeld(held: ReadonlyMap<number, Axis>): void {
+  const axes = new Set(held.values());
+  controls.touchSteer = (axes.has('right') ? 1 : 0) - (axes.has('left') ? 1 : 0);
+  controls.touchGas = axes.has('gas') ? 1 : 0;
+  controls.touchBrake = axes.has('brake') ? 1 : 0;
 }
 
-function Pedal({ axis, held, label, className, children }: { readonly axis: Axis; readonly held: Set<Axis>; readonly label: string; readonly className: string; readonly children: ReactNode }) {
+/**
+ * A hold control (steering, pedals): held while any finger is on it. Fingers are tracked by pointer id, so two
+ * thumbs on two controls (steer while on the gas) never release each other, and lifting one finger of two on the
+ * same pedal keeps it held.
+ */
+function Pedal({ axis, held, label, className, children }: { readonly axis: Axis; readonly held: Map<number, Axis>; readonly label: string; readonly className: string; readonly children: ReactNode }) {
   const press = (event: ReactPointerEvent<HTMLButtonElement>): void => {
-    event.currentTarget.setPointerCapture(event.pointerId);
-    held.add(axis);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Synthetic events (tests) have no active pointer to capture.
+    }
+    held.set(event.pointerId, axis);
     applyHeld(held);
     event.currentTarget.dataset.held = 'true';
   };
   const release = (event: ReactPointerEvent<HTMLButtonElement>): void => {
-    held.delete(axis);
+    if (held.get(event.pointerId) !== axis) return;
+    held.delete(event.pointerId);
     applyHeld(held);
-    delete event.currentTarget.dataset.held;
+    if (![...held.values()].includes(axis)) delete event.currentTarget.dataset.held;
   };
   return (
     <button
@@ -37,7 +51,7 @@ function Pedal({ axis, held, label, className, children }: { readonly axis: Axis
       onLostPointerCapture={release}
       onContextMenu={(event) => event.preventDefault()}
       className={cn(
-        'pointer-events-auto grid touch-none select-none place-items-center font-bold shadow-[var(--shadow-glass)] transition-transform duration-75 data-[held=true]:scale-95',
+        'pointer-events-auto grid touch-none select-none place-items-center font-bold shadow-[var(--shadow-glass)] transition-transform duration-75 [-webkit-touch-callout:none] data-[held=true]:scale-95',
         className,
       )}
     >
@@ -49,40 +63,87 @@ function Pedal({ axis, held, label, className, children }: { readonly axis: Axis
 /**
  * Thumb controls while driving on touch screens: steer left/right with the walking thumb (the `walkStick` side, right
  * by default), gas and brake/reverse with the other one (above the HUD's phone button, which sits on that side),
- * plus horn and get out next to the steering.
+ * plus the horn and "Get out" over the steering. The horn and "Get out" act on pointer events, so they work while
+ * the other thumb is on a pedal (a second finger never produces a `click`). Stopped at a door (or a filling station or
+ * mechanic) the offer ("Park & enter …") sits above them, so it works with the HUD hidden (clean screen) too.
  */
 export function DriveControls() {
-  const [held] = useState(() => new Set<Axis>());
+  const [held] = useState(() => new Map<number, Axis>());
   const side = useUi((state) => state.settings.walkStick);
+  const phoneOpen = useUi((state) => state.phoneOpen);
+  const offer = usePlayUi((state) => state.driveOffer);
+  // Engine dead (empty, broken down): say so where the thumbs are, even with the HUD hidden.
+  const stalled = useWorld((state) => (state.drive?.engineOff ? (state.drive.warning?.text ?? 'The engine won’t start') : null));
   const steerLeft = side === 'left';
+  // Nothing stays held when the phone covers the controls or they go away (got out, went inside).
+  useEffect(() => {
+    if (!phoneOpen) return;
+    held.clear();
+    applyHeld(held);
+  }, [held, phoneOpen]);
+  useEffect(
+    () => () => {
+      held.clear();
+      applyHeld(held);
+    },
+    [held],
+  );
   // The HUD keeps the bottom corners (activity banner and goals on the stick side; speedometer, context button and
   // phone on the other), so the thumb clusters sit just above them.
   return (
-    <>
+    <div data-testid="drive-controls" data-stick={side} className="pointer-events-none absolute inset-0">
       <div
         data-testid="steering"
         className={cn(
-          'pointer-events-none absolute bottom-[calc(max(env(safe-area-inset-bottom),0.75rem)+7.5rem)] flex flex-col gap-2',
+          'pointer-events-none absolute bottom-[calc(max(env(safe-area-inset-bottom),0.75rem)+7.5rem)] flex flex-col gap-2.5',
           steerLeft ? 'left-[max(env(safe-area-inset-left),0.75rem)] items-start' : 'right-[max(env(safe-area-inset-right),0.75rem)] items-end',
         )}
       >
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => gameEvents.emit('sfx', { id: 'horn' })}
-            className="pointer-events-auto grid size-12 place-items-center rounded-full bg-ink/70 text-on-ink shadow-[var(--shadow-glass)] backdrop-blur"
+        {stalled && (
+          <p role="status" className="pointer-events-none max-w-[15rem] rounded-full bg-okada px-3 py-1.5 text-xs font-bold text-white shadow-[var(--shadow-glass)]">
+            {stalled}
+          </p>
+        )}
+        {offer?.more?.slice(0, 2).map((option) => (
+          <PressButton
+            key={option.id}
+            onPress={() => gameEvents.emit('interact', { interactableId: option.id })}
+            className="pointer-events-auto flex min-h-11 max-w-[min(15rem,calc(100vw-7.5rem))] items-center gap-1.5 rounded-card bg-ink/75 px-3 text-xs font-bold text-on-ink shadow-[var(--shadow-glass)] backdrop-blur data-[pressed=true]:scale-95"
+          >
+            {option.emoji && <span aria-hidden>{option.emoji}</span>}
+            <span className="truncate">{option.label}</span>
+          </PressButton>
+        ))}
+        {offer && (
+          <PressButton
+            data-testid="drive-offer"
+            aria-disabled={offer.disabled ? true : undefined}
+            onPress={() => gameEvents.emit('interact', { interactableId: offer.id })}
+            className="pointer-events-auto flex min-h-14 max-w-[min(17rem,calc(100vw-7.5rem))] items-center gap-2 rounded-card bg-paper px-4 py-1.5 text-left text-sm font-bold text-ink shadow-[var(--shadow-lift)] transition-transform duration-75 data-[pressed=true]:scale-95"
+          >
+            {offer.emoji && <span aria-hidden>{offer.emoji}</span>}
+            <span className="min-w-0">
+              <span className="block truncate">{offer.label}</span>
+              {offer.disabled && <span className="block truncate text-xs text-text-soft">{offer.disabled}</span>}
+            </span>
+          </PressButton>
+        )}
+        <div className="flex gap-2.5">
+          <PressButton
+            pressOn="down"
+            onPress={() => gameEvents.emit('sfx', { id: 'horn' })}
+            className="pointer-events-auto grid size-14 place-items-center rounded-full bg-ink/70 text-on-ink shadow-[var(--shadow-glass)] backdrop-blur transition-transform duration-75 data-[pressed=true]:scale-90 data-[pressed=true]:bg-danfo data-[pressed=true]:text-ink"
             aria-label="Horn"
           >
-            <Megaphone size={20} aria-hidden />
-          </button>
-          <button
-            type="button"
-            onClick={() => gameEvents.emit('exit-car', {})}
-            className="pointer-events-auto flex h-12 items-center gap-1.5 rounded-full bg-ink/70 px-3.5 text-sm font-bold text-on-ink shadow-[var(--shadow-glass)] backdrop-blur"
+            <Megaphone size={22} aria-hidden />
+          </PressButton>
+          <PressButton
+            onPress={() => gameEvents.emit('exit-car', {})}
+            className="pointer-events-auto flex h-14 items-center gap-1.5 rounded-full bg-ink/70 px-4 text-sm font-bold text-on-ink shadow-[var(--shadow-glass)] backdrop-blur transition-transform duration-75 data-[pressed=true]:scale-95"
           >
             <DoorOpen size={18} aria-hidden />
             Get out
-          </button>
+          </PressButton>
         </div>
         <div className="flex gap-2.5">
           <Pedal axis="left" held={held} label="Steer left" className="size-[76px] rounded-[22px] bg-ink/70 text-on-ink backdrop-blur">
@@ -107,6 +168,6 @@ export function DriveControls() {
           Gas
         </Pedal>
       </div>
-    </>
+    </div>
   );
 }

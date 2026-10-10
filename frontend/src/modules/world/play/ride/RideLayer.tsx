@@ -13,11 +13,9 @@ import {
   type TravelDto,
   type WorldPoint,
 } from '@insidelife/shared';
-import { useQueryClient } from '@tanstack/react-query';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo, useRef } from 'react';
 import type { Group } from 'three';
-import { queryKeys } from '@/common/api/query-keys';
 import { gameClock } from '@/common/game/game-clock';
 import { gameEvents } from '@/common/game/game-events';
 import { Avatar, npcLook } from '@/common/three/avatar';
@@ -71,12 +69,12 @@ function entranceOf(locationId: string, snapshot: CharacterSnapshotDto): WorldPo
 /**
  * Plays a booked ride back along the GPS route, timed by the server (`departAt` → `arriveAt`, game minutes): the
  * right vehicle (danfo, Bolt taxi, BRT, keke, okada, or your own car on auto-drive), the camera riding along, the
- * danfo conductor hanging out of the door and shouting now and then. When the clock passes arrival it asks the server for the fresh snapshot
- * (which puts you inside the destination).
+ * danfo conductor hanging out of the door and shouting now and then. Arrival (the server puts you inside the
+ * destination) is reconciled by the play bridge's `useRideArrival`, not here, so it never depends on this layer's
+ * frame loop.
  */
 export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runtime: PlayRuntime; readonly snapshot: CharacterSnapshotDto; readonly travel: TravelDto; readonly ownCar: string | null }) {
   const kit = useKit();
-  const client = useQueryClient();
   const group = useRef<Group>(null);
   const model = modelFor(travel, ownCar);
 
@@ -96,7 +94,7 @@ export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runt
   const driver = useMemo(() => (model && DRIVERS[model] ? npcLook(`ride:${travel.departAt}`, 'street', 'male') : null), [model, travel.departAt]);
   const door = useDanfoDoor();
   const point = useRef<PathPoint>({ x: 0, z: 0, heading: 0 });
-  const last = useRef({ along: -1, at: 0, heading: 0, speed: 0, conductorAt: 0, refetchAt: 0 });
+  const last = useRef({ along: -1, at: 0, heading: 0, speed: 0, conductorAt: 0 });
 
   useEffect(() => {
     const first = pointAlong(path, 0, { x: 0, z: 0, heading: 0 });
@@ -133,12 +131,6 @@ export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runt
     if (travel.mode === 'danfo' && progress < 1 && t > state.conductorAt) {
       if (state.conductorAt > 0) gameEvents.emit('sfx', { id: 'danfo-conductor', volume: 0.8 });
       state.conductorAt = t + 9000 + rng.next() * 9000;
-    }
-    // Arrived: ask the server (it settles the trip and puts us inside), politely and repeatedly until it does.
-    if (gameClock.ready && now >= travel.arriveAt && t > state.refetchAt) {
-      state.refetchAt = t + 3000;
-      // Never cancel the request already on its way: a slow settle (> 3 s) would otherwise never land (livelock).
-      void client.invalidateQueries({ queryKey: queryKeys.snapshot }, { cancelRefetch: false });
     }
   }, -4.5);
 

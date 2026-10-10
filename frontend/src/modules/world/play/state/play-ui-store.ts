@@ -1,6 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
+import type { Interactable } from '@/common/game/world-store';
 
 /**
  * Low-rate UI state shared between the in-canvas play layer and its DOM overlay (never written per frame).
@@ -26,10 +27,16 @@ interface PlayUiState {
   readonly tags: readonly RemoteTag[];
   /** The play layer is mounted and accepting input (controls show only then). */
   readonly active: boolean;
+  /**
+   * At the wheel on a touch screen: what you can do where you've stopped ("Park & enter …", fill up, see the
+   * mechanic). The drive controls show it, so it works with the HUD hidden (clean screen) too.
+   */
+  readonly driveOffer: Interactable | null;
   setSponsor(sponsor: SponsorLink | null): void;
   setFading(fading: boolean): void;
   setTags(tags: readonly RemoteTag[]): void;
   setActive(active: boolean): void;
+  setDriveOffer(offer: Interactable | null): void;
 }
 
 export const usePlayUi = create<PlayUiState>()((set) => ({
@@ -37,10 +44,12 @@ export const usePlayUi = create<PlayUiState>()((set) => ({
   fading: false,
   tags: [],
   active: false,
+  driveOffer: null,
   setSponsor: (sponsor) => set({ sponsor }),
   setFading: (fading) => set({ fading }),
   setTags: (tags) => set({ tags }),
   setActive: (active) => set({ active }),
+  setDriveOffer: (driveOffer) => set({ driveOffer }),
 }));
 
 /** DOM elements of the name tags, positioned by the frame loop (no React re-render per frame). */

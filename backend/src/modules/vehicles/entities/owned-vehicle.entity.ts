@@ -58,6 +58,14 @@ export class OwnedVehicleEntity {
   @Column({ type: 'int', default: 0 })
   skippedServices: number;
 
+  /** Litres in the tank; null for cars bought before tanks existed (treated as full). */
+  @Column({ type: 'real', nullable: true })
+  fuelLitres: number | null;
+
+  /** Game minute it broke down (won't move until a mechanic sees it); null when it runs. */
+  @Column({ type: 'bigint', nullable: true, transformer: bigintNumber })
+  brokenDownAt: number | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }
