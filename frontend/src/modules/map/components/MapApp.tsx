@@ -126,8 +126,8 @@ export function MapApp() {
         ))}
       </div>
       <ul className="flex flex-col divide-y divide-line">
-        {venues.map((venue) => (
-          <li key={venue.id}>
+        {venues.map((venue, row) => (
+          <li key={venue.id} data-tour={row === 0 ? 'map-place' : undefined}>
             <button type="button" onClick={() => setSelected(venue)} className="flex w-full items-center gap-3 py-3 text-left">
               <PlaceIcon kind={venuePlaceKind(venue)} size={36} decorative />
               <span className="min-w-0 flex-1">
@@ -172,10 +172,10 @@ function Destination({ target, onBack, homeId }: { target: Target; onBack: () =>
           {target !== 'home' && <p className="text-sm text-text-soft">{target.blurb}</p>}
         </div>
       </div>
-      <Button icon={<Navigation size={18} aria-hidden />} onClick={startGps} block>
+      <Button icon={<Navigation size={18} aria-hidden />} onClick={startGps} block data-tour="map-gps">
         Start GPS — drive or walk there
       </Button>
-      <div>
+      <div data-tour="map-rides">
         <h4 className="mb-2 font-bold">Or book a ride</h4>
         {quotes.isPending && <Spinner className="text-text-soft" />}
         {quotes.isError && <p className="text-sm text-okada">{errorMessage(quotes.error)}</p>}
