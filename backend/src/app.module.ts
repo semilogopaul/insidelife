@@ -1,10 +1,12 @@
 import { BullModule } from '@nestjs/bullmq';
+import type { ConnectionOptions } from 'bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { LoggerModule } from 'nestjs-pino';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
+import { redisOptionsFromUrl } from './common/redis/redis-options.js';
 import { RedisThrottlerStorage } from './common/redis/redis-throttler.storage.js';
 import { REDIS, RedisModule } from './common/redis/redis.module.js';
 import type { Redis } from 'ioredis';
@@ -44,7 +46,8 @@ import { DOMAIN_MODULES } from './modules/domain-modules.js';
               res.setHeader(TRACE_HEADER, traceId);
               return traceId;
             },
-            customProps: (req) => ({ traceId: req.id }),
+            // `ip` is the real client (CLIENT_IP_HEADER / TRUST_PROXY_HOPS), not the proxy's socket address.
+            customProps: (req) => ({ traceId: req.id, clientIp: (req as { ip?: string }).ip }),
             redact: {
               paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]', '*.password', '*.passwordHash'],
               censor: '[redacted]',
@@ -63,7 +66,7 @@ import { DOMAIN_MODULES } from './modules/domain-modules.js';
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService<AppConfig, true>) => ({
-        connection: { url: config.get('redis', { infer: true }).url, maxRetriesPerRequest: null },
+        connection: redisOptionsFromUrl(config.get('redis', { infer: true }).url, { maxRetriesPerRequest: null }) as ConnectionOptions,
         prefix: 'il',
       }),
     }),

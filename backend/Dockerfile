@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Inside Life API — build context is the repo root (npm workspaces).
 
-FROM node:24-bookworm-slim AS deps
+FROM node:24.21.0-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
@@ -14,7 +14,7 @@ COPY packages/shared packages/shared
 COPY backend backend
 RUN npm run build -w @insidelife/shared && npm run build -w @insidelife/backend
 
-FROM node:24-bookworm-slim AS prod-deps
+FROM node:24.21.0-bookworm-slim AS prod-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
@@ -23,7 +23,7 @@ COPY frontend/package.json frontend/
 RUN npm ci --ignore-scripts --omit=dev -w @insidelife/shared -w @insidelife/backend --include-workspace-root \
  && npm cache clean --force
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:24.21.0-bookworm-slim AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules

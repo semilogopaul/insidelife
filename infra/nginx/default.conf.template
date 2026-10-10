@@ -1,0 +1,108 @@
+# Gateway for Azure Container Apps (infra/nginx/Dockerfile). Browser -> Cloudflare -> this gateway -> api / web.
+# The image's entrypoint renders this file with envsubst (only API_UPSTREAM, WEB_UPSTREAM and MEDIA_ORIGIN):
+#
+#   API_UPSTREAM  origin of the NestJS API,   e.g. http://api   or https://api.internal.<env>.<region>.azurecontainerapps.io
+#   WEB_UPSTREAM  origin of the Next.js app,  e.g. http://web
+#   MEDIA_ORIGIN  public URL of the R2 media bucket (custom domain or r2.dev), no trailing slash,
+#                 e.g. https://media.insidelife.online
+#
+# Upstreams are given as origins (scheme + host[:port], no path). Container Apps ingress routes by Host header, so the
+# upstream's own host is sent as Host ($proxy_host); the visitor's host travels as X-Forwarded-Host.
+# Single origin for the browser: UI, REST API and realtime socket, so the refresh-token cookie stays first-party.
+
+map $http_upgrade $upstream_connection {
+  default upgrade;
+  ''      '';
+}
+
+# Cloudflare puts the real visitor address in CF-Connecting-IP; without it (direct hit, probes) use the socket peer.
+map $http_cf_connecting_ip $client_ip {
+  default $http_cf_connecting_ip;
+  ''      $remote_addr;
+}
+
+# Cloudflare and the Container Apps ingress both terminate TLS and say so; locally it is this hop's scheme.
+map $http_x_forwarded_proto $forwarded_proto {
+  default $http_x_forwarded_proto;
+  ''      $scheme;
+}
+
+log_format gateway '$client_ip - [$time_local] "$request" $status $body_bytes_sent "$http_user_agent" rt=$request_time id=$request_id';
+
+server {
+  listen 8080;
+  server_name _;
+  server_tokens off;
+  access_log /var/log/nginx/access.log gateway;
+
+  client_max_body_size 64k;
+  gzip on;
+  gzip_types text/plain text/css application/json application/javascript image/svg+xml;
+  gzip_min_length 1024;
+
+  include /etc/nginx/snippets/security-headers.conf;
+
+  # Same for every proxied location (re-declared where a location adds its own headers).
+  include /etc/nginx/snippets/proxy-params.conf;
+
+  # The gateway's own liveness probe (Container Apps): never touches the upstreams.
+  location = /healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
+  # Billboard creatives (<=4 MB) and club tracks (<=10 MB) are uploaded through the API.
+  location ~ ^/api/v1/promotions/(creatives|tracks)$ {
+    client_max_body_size 11m;
+    proxy_request_buffering on;
+    proxy_pass ${API_UPSTREAM};
+  }
+
+  # Chat voice notes (<=600 KB) and photos (<=3 MB) are uploaded through the API.
+  location ~ ^/api/v1/chat/dms/[^/]+/media$ {
+    client_max_body_size 4m;
+    proxy_request_buffering on;
+    proxy_pass ${API_UPSTREAM};
+  }
+
+  location /api/ {
+    proxy_pass ${API_UPSTREAM};
+  }
+
+  # Realtime. Socket.IO pings every 20 s; keep idle sockets open well past that (Container Apps ingress idles at 240 s).
+  location /socket.io/ {
+    proxy_pass ${API_UPSTREAM};
+    proxy_read_timeout 300s;
+    proxy_send_timeout 300s;
+    proxy_buffering off;
+  }
+
+  # Public liveness probe; Prometheus metrics stay internal.
+  location = /health { proxy_pass ${API_UPSTREAM}/api/health; }
+  location = /api/metrics { return 404; }
+
+  # Public media (approved billboard creatives, club tracks) from the public R2 bucket. Read-only. Keys are fresh UUIDs
+  # per upload, so they are immutable. R2 needs its own Host (custom domain / r2.dev) and SNI.
+  location /media/ {
+    limit_except GET HEAD { deny all; }
+    proxy_pass ${MEDIA_ORIGIN}/;
+    proxy_hide_header Set-Cookie;
+    proxy_hide_header Cache-Control;
+    proxy_hide_header Expires;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    include /etc/nginx/snippets/security-headers.conf;
+  }
+
+  # Long-lived caching for hashed Next.js assets.
+  location /_next/static/ {
+    proxy_pass ${WEB_UPSTREAM};
+    proxy_hide_header Cache-Control;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    include /etc/nginx/snippets/security-headers.conf;
+  }
+
+  location / {
+    proxy_pass ${WEB_UPSTREAM};
+  }
+}

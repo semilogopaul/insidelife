@@ -15,9 +15,13 @@ export interface AppConfig {
   readonly deployment: 'local' | 'public';
   /** Reverse proxies in front of the API (Express `trust proxy`). */
   readonly trustProxyHops: number;
+  /** CLIENT_IP_HEADER (lowercase, e.g. `cf-connecting-ip`): when set, the client IP comes from this header instead of `trust proxy`. */
+  readonly clientIpHeader: string | null;
   readonly logLevel: string;
   readonly database: {
     readonly url: string;
+    /** DATABASE_SSL override (`disable` | `require` | `no-verify`); empty = follow `sslmode` in the URL. */
+    readonly ssl: string;
     readonly poolSize: number;
     readonly runMigrations: boolean;
     readonly synchronize: boolean;
@@ -47,6 +51,8 @@ export interface AppConfig {
     readonly bucket: string;
     readonly privateBucket: string;
     readonly publicBaseUrl: string;
+    /** S3_BOOTSTRAP: create missing buckets at boot. Off on R2 / managed S3 (buckets exist already, no CreateBucket calls). */
+    readonly bootstrap: boolean;
   };
   readonly betting: {
     /** BETTING_SECRET (server-only seed of every result); empty → derived from the JWT secret with HKDF. */
@@ -132,9 +138,11 @@ export const configuration = (): AppConfig => {
     adminApiHost: env.ADMIN_API_HOST?.trim().toLowerCase() || null,
     deployment: env.DEPLOYMENT === 'public' ? 'public' : 'local',
     trustProxyHops: Number(env.TRUST_PROXY_HOPS ?? 1),
+    clientIpHeader: env.CLIENT_IP_HEADER?.trim().toLowerCase() || null,
     logLevel: env.LOG_LEVEL ?? 'info',
     database: {
       url: env.DATABASE_URL ?? '',
+      ssl: env.DATABASE_SSL?.trim().toLowerCase() ?? '',
       poolSize: Number(env.DATABASE_POOL_SIZE ?? 20),
       runMigrations: bool(env.DATABASE_RUN_MIGRATIONS, true),
       synchronize: env.NODE_ENV !== 'production' && bool(env.DATABASE_SYNCHRONIZE, false),
@@ -161,6 +169,7 @@ export const configuration = (): AppConfig => {
       bucket: env.S3_BUCKET ?? 'insidelife-media',
       privateBucket: env.S3_PRIVATE_BUCKET ?? 'insidelife-private',
       publicBaseUrl: env.S3_PUBLIC_BASE_URL ?? '/media',
+      bootstrap: bool(env.S3_BOOTSTRAP, true),
     },
     ads: {
       phoneAppSlots: Math.min(20, Math.max(0, Number.parseInt(env.PHONE_APP_AD_SLOTS ?? '10', 10) || 0)),

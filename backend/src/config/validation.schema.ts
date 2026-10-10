@@ -33,12 +33,21 @@ export const validationSchema = Joi.object({
   /** Reverse proxies in front of the API: 1 behind nginx, 2 with an edge (Caddy) in front of nginx. */
   TRUST_PROXY_HOPS: Joi.number().integer().min(0).max(5).default(1),
   /**
+   * Header that carries the real client IP (set by the edge, e.g. `cf-connecting-ip` behind Cloudflare). Empty = use
+   * TRUST_PROXY_HOPS. Only set it when every request reaches the API through a proxy that overwrites the header.
+   */
+  CLIENT_IP_HEADER: Joi.string().pattern(/^[A-Za-z0-9-]+$/).allow('').default(''),
+  /**
    * `public` = the live site (players, real money). Turns on the strict checks below: secure cookies, https origins,
    * real secrets and seeds, no payment sandbox. `local` (default) is the docker stack on your machine.
    */
   DEPLOYMENT: Joi.string().valid('local', 'public').default('local'),
 
   DATABASE_URL: Joi.string().uri({ scheme: ['postgres', 'postgresql'] }).required(),
+  /** Optional direct URL (bypassing PgBouncer) for the migration job; falls back to DATABASE_URL. */
+  DATABASE_MIGRATION_URL: Joi.string().uri({ scheme: ['postgres', 'postgresql'] }).allow(''),
+  /** TLS to Postgres: `require` (verified), `no-verify`, `disable`. Empty = follow `?sslmode=` in the URLs. */
+  DATABASE_SSL: Joi.string().valid('', 'disable', 'require', 'no-verify').default(''),
   DATABASE_POOL_SIZE: Joi.number().integer().min(2).max(200).default(20),
   DATABASE_RUN_MIGRATIONS: Joi.boolean().default(true),
   /** Prototype-only: let TypeORM sync the schema to entities. Refused in production; migrations are the source of truth. */
@@ -108,6 +117,8 @@ export const validationSchema = Joi.object({
   S3_PRIVATE_BUCKET: Joi.string().min(3).max(63).default('insidelife-private'),
   /** Public base URL the browser uses to load media (e.g. http://localhost:8080/media). */
   S3_PUBLIC_BASE_URL: Joi.string().uri({ allowRelative: true }).required(),
+  /** Create missing buckets at boot (local SeaweedFS). `false` on Cloudflare R2 / managed S3: buckets are made in advance. */
+  S3_BOOTSTRAP: Joi.boolean().default(true),
   /** Sponsored apps sold on the phone's home screen (0-20). */
   PHONE_APP_AD_SLOTS: Joi.number().integer().min(0).max(20).default(10),
   /** Comma-separated emails that get the admin role (moderation of ads and music). */

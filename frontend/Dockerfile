@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Inside Life web client — build context is the repo root (npm workspaces).
 
-FROM node:24-bookworm-slim AS deps
+FROM node:24.21.0-bookworm-slim AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/shared/package.json packages/shared/
@@ -20,7 +20,7 @@ COPY packages/shared packages/shared
 COPY frontend frontend
 RUN npm run build -w @insidelife/shared && npm run build -w @insidelife/frontend
 
-FROM node:24-bookworm-slim AS runtime
+FROM node:24.21.0-bookworm-slim AS runtime
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 HOSTNAME=0.0.0.0
 WORKDIR /app
 COPY --from=build --chown=node:node /app/frontend/.next/standalone ./
