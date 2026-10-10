@@ -116,6 +116,40 @@ export interface ChatSendPayload {
   readonly body: string;
 }
 
+/** Longest line a player can say out loud (a speech bubble over their head). */
+export const SPEECH_MAX_LENGTH = 120;
+
+/**
+ * Who hears a spoken line: `street` = players around you outside (your interest cell and its neighbours, in your Lagos
+ * instance); `place` = everyone in the venue or home you're in (all instances).
+ */
+export const SPEECH_SCOPES = ['street', 'place'] as const;
+export type SpeechScope = (typeof SPEECH_SCOPES)[number];
+
+/** Say something out loud (`chat:say`). The server cleans it and decides who hears it. */
+export interface ChatSayPayload {
+  readonly text: string;
+}
+
+/**
+ * A line someone near you said (`chat:said`): shown as a speech bubble over their head and in the Nearby log. Never
+ * stored, except that a line said inside a venue also lands in that venue's chat (Gist → Here) as a normal message.
+ */
+export interface ChatSaidDto {
+  /** Unique per line (bubble keys, de-duplication). */
+  readonly id: string;
+  readonly characterId: string;
+  readonly handle: string;
+  readonly firstName: string;
+  /** Already cleaned by the server (≤ SPEECH_MAX_LENGTH, swear words masked). */
+  readonly text: string;
+  /** Epoch ms on the server clock. */
+  readonly at: number;
+  readonly scope: SpeechScope;
+  /** Where it was said: the speaker's `street:<districtId>`, venue id or `home:<characterId>`. */
+  readonly locationId: string;
+}
+
 /** Open-world movement (visual only — never trusted for game logic). */
 export interface WorldMovePayload {
   readonly x: number;
@@ -189,6 +223,8 @@ export interface ServerToClientEvents {
   'presence:updated': (player: PresencePlayerDto) => void;
   'presence:left': (payload: { readonly characterId: string }) => void;
   'chat:message': (message: ChatMessageDto) => void;
+  /** Someone near you (or you) said something out loud: a speech bubble over their head. */
+  'chat:said': (line: ChatSaidDto) => void;
   'notification': (notification: NotificationDto) => void;
   /** Something about my character changed server-side (transfer received, event created): refetch the snapshot. */
   'character:invalidate': (payload: { readonly reason: string }) => void;
@@ -213,6 +249,8 @@ export interface ClientToServerEvents {
   'chat:send': (payload: ChatSendPayload, ack: (result: RealtimeAck) => void) => void;
   'chat:join': (payload: { readonly channel: string }, ack: (result: RealtimeAck) => void) => void;
   'chat:leave': (payload: { readonly channel: string }) => void;
+  /** Say something out loud to the people around you (rate limited; the ack carries the refusal reason). */
+  'chat:say': (payload: ChatSayPayload, ack: (result: RealtimeAck) => void) => void;
   /** Report my open-world position (rate limited server-side). */
   'world:move': (payload: WorldMovePayload) => void;
 }

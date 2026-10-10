@@ -29,6 +29,7 @@ export {
   type GoalStep,
 } from './goals';
 export { placesApi } from './places.api';
+export { fetchVenuePlayers, useVenuePlayers, venuePlayerPresence, venuePlayersKey } from './venue-players';
 export {
   PLACE_OBJECT_KINDS,
   PLACE_SERVICES,

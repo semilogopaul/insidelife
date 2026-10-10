@@ -20,7 +20,6 @@ import type {
   ReportPlayerRequest,
   SprayRequest,
   SprayResultDto,
-  VenuePlayersDto,
   VenueSprayRequest,
   VenueSprayResultDto,
   DmStateDto,
@@ -48,7 +47,6 @@ export const gistApi = {
   // Players
   search: (query: string) => api.get<PlayerSearchResultDto>('/players', { query: { query } }),
   profile: (handle: string) => api.get<PlayerProfileDto>(`/players/${handlePath(handle)}`),
-  venuePlayers: (venueId: string) => api.get<VenuePlayersDto>(`/venues/${encodeURIComponent(venueId)}/players`),
   venueSpray: (venueId: string, body: VenueSprayRequest) => api.post<VenueSprayResultDto>(`/venues/${encodeURIComponent(venueId)}/sprays`, body),
 
   // Friends

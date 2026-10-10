@@ -1,4 +1,5 @@
 import { NIGHT_OUT_RULES, formatNaira, nightOutSoldAt, type NightOutItemDefinition, type NightOutItemId, type VenueType } from '@insidelife/shared';
+import { containsContactNumber, containsLink } from '../../../common/moderation/contact-details.js';
 import { containsProfanity } from '../../../common/moderation/profanity.js';
 import { sanitisePlayerText } from '../text-sanitiser.js';
 import { OK, fail, type RuleResult } from './rule-result.js';
@@ -82,9 +83,6 @@ export type ShoutoutMessageCheck =
   | { readonly ok: true; readonly message: string; readonly mentions: readonly string[] }
   | { readonly ok: false; readonly code: string; readonly message: string };
 
-const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|ng|net|org|io|co|xyz|link|me|app|gg|ly|tv|info|biz|shop|site|online)\b)/i;
-/** Ten or more digits, spaced or not ("0803 123 4567", "+2348031234567"): phone numbers and account numbers. */
-const PHONE = /(?:\+?\d[\s.-]?){10,}/;
 const MENTION = /@([a-z0-9_]{3,20})\b/gi;
 
 /**
@@ -97,8 +95,8 @@ export function checkShoutoutMessage(raw: string | null | undefined): ShoutoutMe
   const trimmed = (raw ?? '').replace(/\s+/g, ' ').trim();
   if (trimmed.length > max) return { ok: false, code: 'SHOUTOUT_TOO_LONG', message: `Keep it under ${max} characters — the DJ talks fast` };
   const message = sanitisePlayerText(trimmed, max);
-  if (LINK.test(message)) return { ok: false, code: 'SHOUTOUT_LINK', message: 'No links on the DJ’s mic' };
-  if (PHONE.test(message)) return { ok: false, code: 'SHOUTOUT_PHONE', message: 'No phone numbers on the DJ’s mic' };
+  if (containsLink(message)) return { ok: false, code: 'SHOUTOUT_LINK', message: 'No links on the DJ’s mic' };
+  if (containsContactNumber(message)) return { ok: false, code: 'SHOUTOUT_PHONE', message: 'No phone numbers on the DJ’s mic' };
   if (containsProfanity(message)) return { ok: false, code: 'SHOUTOUT_NOT_CLEAN', message: 'The DJ won’t say that on the mic. Keep it clean.' };
   const mentions = [...new Set([...message.matchAll(MENTION)].map((match) => match[1]!.toLowerCase()))];
   if (mentions.length > NIGHT_OUT_RULES.shoutoutMaxMentions) {
