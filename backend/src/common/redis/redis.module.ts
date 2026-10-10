@@ -1,6 +1,7 @@
 import { Global, Inject, Injectable, Logger, Module, type OnApplicationShutdown } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
+import { REDIS_KEEP_ALIVE_MS } from './redis-options.js';
 import type { AppConfig } from '../../config/configuration.js';
 
 export const REDIS = Symbol('REDIS');
@@ -27,6 +28,7 @@ class RedisLifecycle implements OnApplicationShutdown {
           maxRetriesPerRequest: 3,
           enableReadyCheck: true,
           lazyConnect: false,
+          keepAlive: REDIS_KEEP_ALIVE_MS,
         });
         client.on('error', (error: Error) => logger.warn(`Redis error: ${error.message}`));
         return client;

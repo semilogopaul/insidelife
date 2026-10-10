@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import cookieParser from 'cookie-parser';
 import helmet from 'helmet';
+import { clientIpMiddleware } from './common/http/client-ip.js';
 import { configureHttpBoundary } from './common/http/http-boundary.js';
 import type { AppConfig } from './config/configuration.js';
 
@@ -16,6 +17,9 @@ export function configureApp(app: NestExpressApplication): void {
 
   // Proxies in front of the API (nginx = 1; an edge such as Caddy in front of nginx = 2), so rate limits see real IPs.
   app.set('trust proxy', config.get('trustProxyHops', { infer: true }));
+  // Behind Cloudflare the hop count varies, so take the client IP from the edge's header when one is configured.
+  const clientIpHeader = config.get('clientIpHeader', { infer: true });
+  if (clientIpHeader) app.use(clientIpMiddleware(clientIpHeader));
   app.disable('x-powered-by');
   app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'same-site' } }));
   app.use(cookieParser());

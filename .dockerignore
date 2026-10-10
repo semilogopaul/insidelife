@@ -9,3 +9,7 @@
 skillsresearch.txt
 **/dist-*
 **/*.tsbuildinfo
+.claude
+docs
+quickchecklist.txt
+**/*.log

@@ -2,6 +2,7 @@ import { IoAdapter } from '@nestjs/platform-socket.io';
 import type { INestApplicationContext } from '@nestjs/common';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { Redis } from 'ioredis';
+import { REDIS_KEEP_ALIVE_MS } from './redis-options.js';
 import type { Server, ServerOptions } from 'socket.io';
 
 /** Socket.IO adapter backed by Redis pub/sub so rooms and broadcasts span every API instance. */
@@ -18,7 +19,7 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   async connect(): Promise<void> {
-    const pub = new Redis(this.redisUrl, { lazyConnect: true });
+    const pub = new Redis(this.redisUrl, { lazyConnect: true, keepAlive: REDIS_KEEP_ALIVE_MS });
     const sub = pub.duplicate();
     await Promise.all([pub.connect(), sub.connect()]);
     this.clients.push(pub, sub);

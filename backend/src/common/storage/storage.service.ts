@@ -42,7 +42,7 @@ const MAX_BACKOFF_MS = 30_000;
  * S3-compatible object storage (SeaweedFS locally, any S3 in production). Only the API writes, with credentials.
  * Two buckets: public media (approved billboard creatives, club tracks) that players read anonymously via
  * `storage.publicBaseUrl`, and private media (chat voice notes and photos) that the API streams after an access
- * check. Buckets are created on boot when missing (retrying while storage starts up, and again before an upload if
+ * check (S3_BOOTSTRAP=false skips all of this: R2 buckets are made in advance). Buckets are created on boot when missing (retrying while storage starts up, and again before an upload if
  * that never confirmed); if storage is down the API still boots and uploads fail with a friendly 502.
  */
 @Injectable()
@@ -51,7 +51,8 @@ export class StorageService implements OnModuleInit, OnApplicationShutdown {
   private readonly client: S3Client;
   private readonly buckets: Readonly<Record<MediaVisibility, string>>;
   private readonly publicBaseUrl: string;
-  private readonly ready: Record<MediaVisibility, boolean> = { public: false, private: false };
+  private readonly bootstrap: boolean;
+  private ready: Record<MediaVisibility, boolean> = { public: false, private: false };
   private closed = false;
   private retryTimer: NodeJS.Timeout | null = null;
 
@@ -59,18 +60,25 @@ export class StorageService implements OnModuleInit, OnApplicationShutdown {
     const storage = config.get('storage', { infer: true });
     this.buckets = { public: storage.bucket, private: storage.privateBucket };
     this.publicBaseUrl = storage.publicBaseUrl.replace(/\/+$/, '');
+    this.bootstrap = storage.bootstrap;
+    // Buckets already exist (Cloudflare R2, managed S3): never call HeadBucket / CreateBucket.
+    if (!this.bootstrap) this.ready = { public: true, private: true };
     this.client = new S3Client({
       endpoint: storage.endpoint,
       region: storage.region,
       forcePathStyle: true,
       credentials: { accessKeyId: storage.accessKey, secretAccessKey: storage.secretKey },
       maxAttempts: 2,
+      // Cloudflare R2 (and older S3-compatibles) reject the SDK's default CRC32 trailer checksums.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       requestHandler: { connectionTimeout: 2_000, requestTimeout: 15_000 },
     });
   }
 
   onModuleInit(): void {
     // Never block boot on storage; keep trying in the background.
+    if (!this.bootstrap) return;
     void this.ensureBucketWithRetry(1);
   }
 
