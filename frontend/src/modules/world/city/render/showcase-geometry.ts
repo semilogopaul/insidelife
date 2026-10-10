@@ -1,6 +1,5 @@
 import {
   BoxGeometry,
-  BufferAttribute,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -11,6 +10,7 @@ import {
   SphereGeometry,
   Vector2,
   Vector3,
+  type BufferAttribute,
   type BufferGeometry,
 } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';

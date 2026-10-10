@@ -89,11 +89,17 @@ export function ShowcaseLandmarks({ shadows }: { readonly shadows: boolean }) {
   );
 
   const flames = useRef<Group>(null);
+  // Materials lit by the clock: mutated per frame through a ref (never React state).
+  const live = useRef(resources);
+  useEffect(() => {
+    live.current = resources;
+  }, [resources]);
   useFrame(({ clock }) => {
     const night = cityUniforms.uIlNight.value;
-    resources.glass.emissiveIntensity = night * 0.5;
-    resources.glow.color.setScalar(0.38 + night * 0.62);
-    resources.decal.emissiveIntensity = night * 0.35;
+    const { glass, glow, decal } = live.current;
+    glass.emissiveIntensity = night * 0.5;
+    glow.color.setScalar(0.38 + night * 0.62);
+    decal.emissiveIntensity = night * 0.35;
     const group = flames.current;
     if (!group) return;
     const t = clock.elapsedTime;
