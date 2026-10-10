@@ -1,4 +1,4 @@
-import { MINUTES_PER_DAY, VEHICLE_BREAKDOWN_CONDITION, formatNaira } from '@insidelife/shared';
+import { MINUTES_PER_DAY, VEHICLE_BREAKDOWN_CONDITION, formatNaira, fuelTankLitres } from '@insidelife/shared';
 import type { LifeEventDefinition, LifeEventOutcome, LifeEventParams } from '../events/interfaces/life-event.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import type { LicenceService } from './licence.service.js';
@@ -332,10 +332,19 @@ export function vehicleLifeEvents(vehicles: VehiclesService, licence: LicenceSer
         id: 'queue',
         label: () => 'Join the queue',
         hint: () => 'costs your afternoon',
-        resolve: async (ctx) => {
+        resolve: async (ctx, p) => {
           drainNeeds(ctx, { energy: 25, fun: 20 });
           addMood(ctx, 'fuel-queue', 'Three hours in a fuel queue', -3, 1);
-          return { title: 'Filled up — finally', body: 'Three hours, two fights and one "pump don finish" scare later, you have fuel.', tone: 'neutral' };
+          // You fill the tank at the scarcity pump price — as much as you can pay for.
+          const car = await vehicles.driving(ctx);
+          if (!car) return { title: 'Queued for nothing', body: 'By the time you reached the pump, you remembered the car isn’t here.', tone: 'neutral' };
+          const price = vehicles.pumpPrice(ctx, car);
+          const litres = Math.floor(Math.min(fuelTankLitres(car.def) - vehicles.fuel(car), ctx.wallet.cash / price));
+          if (litres >= 1 && (await ctx.wallet.tryPay(litres * price, 'transport', `Fuel after the queue (${litres}L)`, eventKey('fuel-scarcity-queue', p, 'queue')))) {
+            await vehicles.addFuel(ctx, car, litres);
+            return { title: 'Filled up — finally', body: `Three hours, two fights and one "pump don finish" scare later: ${litres} L in the tank.`, tone: 'neutral', moneyDelta: -litres * price };
+          }
+          return { title: 'Pump don finish', body: 'Three hours in the queue and you couldn’t pay for fuel at the end. Back to danfo.', tone: 'bad' };
         },
       },
       {
@@ -348,11 +357,13 @@ export function vehicleLifeEvents(vehicles: VehiclesService, licence: LicenceSer
           if (!(await ctx.wallet.tryPay(price, 'transport', 'Black-market fuel (20L)', eventKey('fuel-scarcity-queue', p, 'black-market')))) {
             return { title: 'No deal', body: 'You couldn’t pay. Back to the queue.', tone: 'bad' };
           }
+          const car = await vehicles.driving(ctx);
+          if (car) await vehicles.addFuel(ctx, car, 20);
           if (ctx.rng('fuel-queue', num(p, 'rolledAt'), 'adulterated').chance(0.15)) {
             await damageDriving(ctx, 12);
             return { title: 'Adulterated fuel!', body: 'Half water, half wahala. The engine is knocking now.', tone: 'bad', moneyDelta: -price };
           }
-          return { title: 'Tank full, no queue', body: 'Expensive, but you skipped the madness.', tone: 'good', moneyDelta: -price };
+          return { title: '20 L, no queue', body: 'Expensive, but you skipped the madness.', tone: 'good', moneyDelta: -price };
         },
       },
       {
@@ -374,10 +385,10 @@ export function vehicleLifeEvents(vehicles: VehiclesService, licence: LicenceSer
     weight: 3,
     cooldownDays: 4,
     eligible: async (ctx) =>
-      (await vehicles.garage(ctx)).some((car) => car.row.status === 'owned' && vehicles.condition(ctx, car) < VEHICLE_BREAKDOWN_CONDITION),
+      (await vehicles.garage(ctx)).some((car) => car.row.status === 'owned' && !vehicles.brokenDown(car) && vehicles.condition(ctx, car) < VEHICLE_BREAKDOWN_CONDITION),
     prepare: async (ctx) => {
       const worst = (await vehicles.garage(ctx))
-        .filter((car) => car.row.status === 'owned')
+        .filter((car) => car.row.status === 'owned' && !vehicles.brokenDown(car))
         .toSorted((a, b) => vehicles.condition(ctx, a) - vehicles.condition(ctx, b))[0];
       const rng = ctx.rng('car-breakdown', ctx.time);
       const base = Math.round(((worst?.def.price ?? 0) * rng.float(0.02, 0.05)) / 1_000) * 1_000;
@@ -400,11 +411,13 @@ export function vehicleLifeEvents(vehicles: VehiclesService, licence: LicenceSer
           const car = await carById(ctx, p);
           const cost = num(p, 'cost');
           if (car && (await ctx.wallet.tryPay(cost, 'transport', `Breakdown repair: ${car.def.name}`, eventKey('car-breakdown', p, 'mechanic')))) {
+            await vehicles.clearBreakdown(ctx, car);
             await vehicles.setCondition(ctx, car, vehicles.condition(ctx, car) + 25);
             return { title: 'Back on the road', body: 'New belt, new plugs, and a lecture about servicing. Listen to him.', tone: 'neutral', moneyDelta: -cost };
           }
+          if (car) await vehicles.breakDown(ctx, car);
           addMood(ctx, 'car-broke-down', 'Stranded on the road', -6, 2);
-          return { title: 'Stranded', body: 'No money for the mechanic. The car is parked where it died. Repair it from the Motors app when you can.', tone: 'bad' };
+          return { title: 'Stranded', body: 'No money for the mechanic. The car won’t move until a mechanic sees it: Motors → call a mechanic, or tow it.', tone: 'bad' };
         },
       },
       {
@@ -415,15 +428,18 @@ export function vehicleLifeEvents(vehicles: VehiclesService, licence: LicenceSer
           const car = await carById(ctx, p);
           const cost = Math.round((num(p, 'cost') * 0.4) / 100) * 100;
           if (!car || !(await ctx.wallet.tryPay(cost, 'transport', 'Roadside mechanic', eventKey('car-breakdown', p, 'roadside')))) {
+            if (car) await vehicles.breakDown(ctx, car);
             addMood(ctx, 'car-broke-down', 'Stranded on the road', -6, 2);
-            return { title: 'Stranded', body: 'Not even the roadside guy will touch it for free.', tone: 'bad' };
+            return { title: 'Stranded', body: 'Not even the roadside guy will touch it for free. It won’t move until a mechanic sees it.', tone: 'bad' };
           }
           if (ctx.rng('car-breakdown', num(p, 'rolledAt'), 'roadside').chance(0.5)) {
+            await vehicles.clearBreakdown(ctx, car);
             await vehicles.setCondition(ctx, car, vehicles.condition(ctx, car) + 12);
             return { title: 'Jagajaga fix, but it works', body: 'Some wire, some nylon, and the engine started. Don’t ask how.', tone: 'neutral', moneyDelta: -cost };
           }
+          await vehicles.breakDown(ctx, car);
           await vehicles.setCondition(ctx, car, vehicles.condition(ctx, car) - 5);
-          return { title: 'He made it worse', body: 'He removed three parts and returned two. The car limps now.', tone: 'bad', moneyDelta: -cost };
+          return { title: 'He made it worse', body: 'He removed three parts and returned two. It won’t start now: get a proper mechanic.', tone: 'bad', moneyDelta: -cost };
         },
       },
       {
@@ -431,7 +447,10 @@ export function vehicleLifeEvents(vehicles: VehiclesService, licence: LicenceSer
         label: () => 'Push it to the side and take okada home',
         resolve: async (ctx, p) => {
           const car = await carById(ctx, p);
-          if (car) await vehicles.setCondition(ctx, car, vehicles.condition(ctx, car) - 8);
+          if (car) {
+            await vehicles.breakDown(ctx, car);
+            await vehicles.setCondition(ctx, car, vehicles.condition(ctx, car) - 8);
+          }
           addMood(ctx, 'car-broke-down', 'Abandoned the car on the road', -6, 2);
           return { title: 'Left it there', body: 'By morning, someone had "borrowed" the battery.', tone: 'bad' };
         },

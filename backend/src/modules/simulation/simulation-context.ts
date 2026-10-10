@@ -113,10 +113,13 @@ export class CharacterWallet {
     }
   }
 
-  /** Charge the character; throws InsufficientFundsException when they can't afford it (use for player commands). */
-  async pay(amount: number, kind: LedgerKind, memo: string, key: string, options: PayOptions = {}): Promise<void> {
+  /**
+   * Charge the character; throws InsufficientFundsException when they can't afford it (use for player commands).
+   * Resolves false when this key was already charged (a replayed request: don't hand the goods over twice).
+   */
+  async pay(amount: number, kind: LedgerKind, memo: string, key: string, options: PayOptions = {}): Promise<boolean> {
     const rounded = Math.round(amount);
-    if (rounded <= 0) return;
+    if (rounded <= 0) return true;
     const account = options.account ?? 'cash';
     if (account === 'cash' && !this.canAfford(rounded)) throw new InsufficientFundsException(rounded);
     await this.flush();
@@ -133,6 +136,7 @@ export class CharacterWallet {
       sink: options.sink ?? 'burn',
     });
     this.sync(result.balances);
+    return result.applied;
   }
 
   /** Charge if affordable; returns false instead of throwing (use inside the simulation for bills). */

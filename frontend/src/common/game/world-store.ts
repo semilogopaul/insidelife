@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import type { WorldPoint } from '@insidelife/shared';
+import type { VehicleWarning, WorldPoint } from '@insidelife/shared';
 
 /** How the player is present in the 3D world right now. */
 export type PlayerMode = 'loading' | 'inside' | 'walking' | 'driving' | 'riding';
@@ -34,8 +34,17 @@ export interface Interactable {
 export interface DriveTelemetry {
   /** km/h shown on the speedometer. */
   readonly speedKmh: number;
-  /** Estimated fuel cost of this drive so far (₦), charged by the server on heartbeat/arrival. */
-  readonly tripFuelCost: number;
+  /** The tank (litres, the server's as of the last heartbeat minus what's been burnt since). */
+  readonly fuelLitres: number;
+  readonly tankLitres: number;
+  /** Map km left on the tank. */
+  readonly rangeKm: number;
+  /** 0-100. */
+  readonly condition: number;
+  /** The engine won't run (out of fuel, broken down): it can only be pushed. */
+  readonly engineOff: boolean;
+  /** The most urgent problem ("Fuel low: 12 km left"), or null. */
+  readonly warning: VehicleWarning | null;
 }
 
 interface WorldState {

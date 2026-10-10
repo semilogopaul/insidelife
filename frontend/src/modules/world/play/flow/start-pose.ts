@@ -73,7 +73,7 @@ export function resolveStart(snapshot: CharacterSnapshotDto | undefined, offer: 
   if (sandbox) {
     const entrance = venueEntrance(sandbox.at) ?? venueEntrance('unilag');
     const car: DrivenVehicleDto | null = sandbox.carModel && isVehicleModel(sandbox.carModel)
-      ? { ownedVehicleId: 'sandbox', vehicleId: 'toyota-corolla-2008', name: 'Sandbox car', model: sandbox.carModel, color: '#c0392b', plate: 'DEV-001-IL', fuelType: 'petrol', fuelEconomyKmPerLitre: 12 }
+      ? { ownedVehicleId: 'sandbox', vehicleId: 'toyota-corolla-2008', name: 'Sandbox car', model: sandbox.carModel, color: '#c0392b', plate: 'DEV-001-IL', fuelType: 'petrol', fuelEconomyKmPerLitre: 12, fuelLitres: 45, tankLitres: 60, condition: 90, brokenDown: false }
       : null;
     if (entrance) return fromEntrance(entrance, car, false);
   }

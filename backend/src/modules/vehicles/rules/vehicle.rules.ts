@@ -3,21 +3,23 @@ import {
   DEALER_OFFER_RANGE,
   MINUTES_PER_DAY,
   PLATE_PREFIXES,
-  VEHICLE_REPAIR_RATE,
+  VEHICLE_DAILY_WEAR,
+  VEHICLE_WEAR_PER_KM,
   dealerStocks,
   findVenue,
   isVenueOpen,
   vehicleMarketValue,
+  workshopRepairCost,
   type DistrictId,
   type GameMinute,
   type Rng,
   type VehicleDefinition,
 } from '@insidelife/shared';
 
-/** Condition lost per game day just from Lagos roads and sun. */
-export const DAILY_WEAR = 0.04;
+/** Condition lost per game day just from Lagos roads and sun (a new car; older ones: `dailyWearFor`). */
+export const DAILY_WEAR = VEHICLE_DAILY_WEAR;
 /** Extra condition lost per km driven. */
-export const WEAR_PER_KM = 0.004;
+export const WEAR_PER_KM = VEHICLE_WEAR_PER_KM;
 /** Condition lost for each month-end service the owner couldn't pay for. */
 export const SKIPPED_SERVICE_WEAR = 8;
 /** A paid service tightens things up a little. */
@@ -41,10 +43,10 @@ export function dealerHere(position: BuyerPosition, vehicle: VehicleDefinition):
   return dealerStocks(venue.id, vehicle) ? venue.id : null;
 }
 
-/** Condition right now, worn linearly since it was last set. */
-export function vehicleConditionNow(condition: number, conditionAt: GameMinute, now: GameMinute): number {
+/** Condition right now, worn linearly since it was last set (`dailyWear`: `dailyWearFor` the car's age). */
+export function vehicleConditionNow(condition: number, conditionAt: GameMinute, now: GameMinute, dailyWear = DAILY_WEAR): number {
   const days = Math.max(0, now - conditionAt) / MINUTES_PER_DAY;
-  return Math.max(0, Math.min(100, condition - DAILY_WEAR * days));
+  return Math.max(0, Math.min(100, condition - dailyWear * days));
 }
 
 /** Market value today (depreciated by age in your hands, scaled by condition and the price index). */
@@ -67,10 +69,8 @@ export function monthlyMaintenance(vehicle: VehicleDefinition, priceIndex: numbe
 }
 
 /** Mechanic bill to restore the car to 100 condition (0 when there's nothing worth fixing). */
-export function vehicleRepairCost(vehicle: VehicleDefinition, condition: number, priceIndex: number): number {
-  const missing = 100 - Math.min(100, Math.max(0, condition));
-  if (missing < 1) return 0;
-  return Math.max(5_000, Math.round((vehicle.price * priceIndex * VEHICLE_REPAIR_RATE * missing) / 100 / 1_000) * 1_000);
+export function vehicleRepairCost(vehicle: VehicleDefinition, condition: number, priceIndex: number, brokenDown = false): number {
+  return workshopRepairCost(vehicle, condition, brokenDown, priceIndex);
 }
 
 const PLATE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';

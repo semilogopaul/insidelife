@@ -2,7 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { DISTRICTS, ENTRY_RADIUS, MAP_KM_PER_WORLD_METRE, districtAt, streetNameAt, type DrivenVehicleDto, type OpenWorldMode } from '@insidelife/shared';
+import { DISTRICTS, ENTRY_RADIUS, districtAt, fuelRangeKm, servicePointAt, streetNameAt, vehicleWarnings, type OpenWorldMode } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
 import { toast } from '@/common/components';
 import { useNavigation } from '@/common/game/navigation-store';
@@ -13,6 +13,7 @@ import type { PlayRuntime } from '../runtime/play-runtime';
 import { doorLabel, nearestDoor, type Door } from './doors';
 import { movementApi } from './movement.api';
 import { usePlayUi } from '../state/play-ui-store';
+import { serviceOffer } from './service-offers';
 import { savePose } from './spawn-handoff';
 
 export const CAR_ENTER_ID = 'play:car:enter';
@@ -25,7 +26,8 @@ const DOOR_PROMPT_RADIUS = 7;
 const PLAYER_PROMPT_SECONDS = 6;
 const HEARTBEAT_MS = 15_000;
 const MIN_HEARTBEAT_GAP_MS = 4_000;
-const DIESEL_PREMIUM = 1.3;
+/** Stopped (m/s) enough for the pump attendant or the mechanic. */
+const SERVICE_STOP_SPEED = 2.5;
 
 export interface WorldSyncOptions {
   /** A real session (heartbeats, positions); false in the dev sandbox. */
@@ -34,8 +36,9 @@ export interface WorldSyncOptions {
   readonly homeDoor: Door | null;
   /** Doors of hosts whose invite you accepted. */
   readonly visitDoors: readonly Door[];
-  /** ₦ per litre right now. */
+  /** ₦ per litre of petrol right now (scarcity included). */
   readonly fuelPrice: number;
+  readonly priceIndex: number;
 }
 
 function privateDoors(options: WorldSyncOptions): readonly Door[] {
@@ -91,16 +94,20 @@ export class Heartbeats {
     this.last = now;
     this.pending = null;
     this.inFlight = true;
+    const bumps = wanted === 'car' ? Math.round(runtime.bumps * 10) / 10 : 0;
+    runtime.bumps = 0;
     movementApi
-      .heartbeat({ position: { x: runtime.controller.x, z: runtime.controller.z }, mode: wanted, heading: runtime.controller.heading })
-      .then(({ accepted }) => {
+      .heartbeat({ position: { x: runtime.controller.x, z: runtime.controller.z }, mode: wanted, heading: runtime.controller.heading, ...(bumps > 0 ? { bumps } : {}) })
+      .then(({ accepted, car }) => {
+        // The server's tank and condition (fuel burnt, a breakdown rolled): the engine dies here if it says so.
+        if (car) runtime.controller.applyCarStatus(car);
         if (accepted) {
           this.rejected = 0;
           return;
         }
         this.rejected++;
         this.onRejected();
-        if (wanted === 'car' && this.rejected >= 3 && runtime.mode === 'drive') {
+        if (wanted === 'car' && this.rejected >= 3 && runtime.mode === 'drive' && !runtime.controller.engineOff) {
           this.rejected = 0;
           toast({ title: 'The car won’t go on', body: 'Park up and continue on foot — check Motors on your phone.', tone: 'bad' });
           runtime.requestExitCar();
@@ -138,7 +145,6 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
     let lastX = Number.NaN;
     let lastZ = Number.NaN;
     let lastSent = 0;
-    let lastFuel = -1;
 
     // ≈5 Hz: pose for the HUD, the context button, the speedometer.
     const pose = window.setInterval(() => {
@@ -157,41 +163,52 @@ export function useWorldSync(runtime: PlayRuntime, options: WorldSyncOptions): H
       // Context button.
       let next: Interactable | null = null;
       let driveOffer: Interactable | null = null;
+      const prices = { fuelPrice: optionsRef.current.fuelPrice, priceIndex: optionsRef.current.priceIndex };
+      // A filling station or mechanic you've pulled up at (on foot too: a jerrycan from the pump for a dead car).
+      const atService = (x: number, z: number): Interactable | null => {
+        if (!c.car) return null;
+        const point = servicePointAt('fuel', { x, z }) ?? servicePointAt('mechanic', { x, z });
+        return point ? serviceOffer(point, c.car, prices) : null;
+      };
       if (runtime.mode === 'walk') {
         const destinationId = useNavigation.getState().destinationId;
         const door = nearestDoor({ x: c.walker.x, z: c.walker.z }, ENTRY_RADIUS, privateDoors(optionsRef.current));
         const doorClose = door && (Math.hypot(door.x - c.walker.x, door.z - c.walker.z) <= DOOR_PROMPT_RADIUS || door.locationId === destinationId);
         const selected = runtime.selectedPlayer && performance.now() - runtime.selectedAt < PLAYER_PROMPT_SECONDS * 1000 ? runtime.selectedPlayer : null;
-        // A player you just tapped wins for a few seconds (explicit intent), then your car, then the nearest door.
+        const service = atService(c.walker.x, c.walker.z);
+        // A player you just tapped wins for a few seconds (explicit intent), then the pump or mechanic, your car, the
+        // nearest door.
         if (selected) next = { id: playerTargetId(selected), kind: 'player', label: `@${handleOf(selected)}` };
+        else if (service) next = c.canEnterCar() ? { ...service, more: [...(service.more ?? []), { id: CAR_ENTER_ID, label: 'Get in car', emoji: '🚗' }] } : service;
         else if (c.canEnterCar()) next = { id: CAR_ENTER_ID, kind: 'car', label: 'Get in car' };
         else if (door && doorClose) next = { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, false, door === optionsRef.current.homeDoor), locationId: door.locationId };
       } else if (runtime.mode === 'drive') {
-        const door = Math.abs(c.speed) < 2.5 ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, privateDoors(optionsRef.current)) : null;
-        const offer: Interactable | null = door
-          ? { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, true, door === optionsRef.current.homeDoor), locationId: door.locationId }
-          : null;
+        const slow = Math.abs(c.speed) < SERVICE_STOP_SPEED;
+        const door = slow ? nearestDoor({ x: c.x, z: c.z }, ENTRY_RADIUS - 1, privateDoors(optionsRef.current)) : null;
+        const offer: Interactable | null =
+          (slow ? atService(c.x, c.z) : null) ??
+          (door ? { id: doorId(door.locationId), kind: 'door', label: doorLabel(door, true, door === optionsRef.current.homeDoor), locationId: door.locationId } : null);
         // Touch screens: the drive controls show the offer next to their own "Get out" (HUD hidden or not). With a
-        // mouse, the context button offers it with "Get out" as a second choice (keys E, 1; F gets out too).
+        // mouse, the context button offers it with "Get out" as a second choice (keys E, 1–2; F gets out too).
         if (touchUi) driveOffer = offer;
-        else next = offer ? { ...offer, more: [GET_OUT_OPTION] } : { id: CAR_EXIT_ID, kind: 'car', label: 'Get out' };
+        else next = offer ? { ...offer, more: [...(offer.more ?? []), GET_OUT_OPTION] } : { id: CAR_EXIT_ID, kind: 'car', label: 'Get out' };
       }
       if (!sameNearby(world().nearby, next)) world().setNearby(next);
       if (!sameNearby(usePlayUi.getState().driveOffer, driveOffer)) usePlayUi.getState().setDriveOffer(driveOffer);
 
-      // Speedometer and fuel so far.
+      // Speedometer, fuel gauge and the engine light.
       if (runtime.mode === 'drive' && c.car) {
-        const km = c.driven * MAP_KM_PER_WORLD_METRE;
-        const vehicle: DrivenVehicleDto = c.car.vehicle;
-        const litres = km / Math.max(1, vehicle.fuelEconomyKmPerLitre);
-        const fuel = Math.round(litres * optionsRef.current.fuelPrice * (vehicle.fuelType === 'diesel' ? DIESEL_PREMIUM : 1));
-        const speedKmh = Math.round(Math.abs(c.speed) * 3.6);
+        const { running, vehicle } = c.car;
+        const fuelLitres = Math.round(running.fuelLitres * 10) / 10;
+        const rangeKm = fuelRangeKm(vehicle, fuelLitres);
+        const warning = vehicleWarnings({ fuelLitres, tankLitres: running.tankLitres, rangeKm, condition: running.condition, brokenDown: running.brokenDown })[0] ?? null;
+        const next = { speedKmh: Math.round(Math.abs(c.speed) * 3.6), fuelLitres, tankLitres: running.tankLitres, rangeKm: Math.round(rangeKm), condition: Math.round(running.condition), engineOff: c.engineOff, warning };
         const drive = world().drive;
-        if (!drive || drive.speedKmh !== speedKmh || fuel !== lastFuel) world().setDrive({ speedKmh, tripFuelCost: fuel });
-        lastFuel = fuel;
+        if (!drive || drive.speedKmh !== next.speedKmh || drive.fuelLitres !== next.fuelLitres || drive.condition !== next.condition || drive.engineOff !== next.engineOff || drive.warning?.text !== next.warning?.text) {
+          world().setDrive(next);
+        }
       } else if (world().drive) {
         world().setDrive(null);
-        lastFuel = -1;
       }
     }, 200);
 

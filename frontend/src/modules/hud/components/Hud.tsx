@@ -21,6 +21,7 @@ import { useSuggestions } from '../hooks/use-suggestions';
 import { isRoutineDue } from '../services/suggestions';
 import { ActivityBanner } from './ActivityBanner';
 import { ClockCard } from './ClockCard';
+import { DriveAlert } from './DriveAlert';
 import { DrivePanel } from './DrivePanel';
 import { GpsBanner } from './GpsBanner';
 import { RoutinePrompt } from './RoutinePrompt';
@@ -169,6 +170,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const routinePrompt = routine ? <RoutinePrompt suggestion={routine} now={data.minute} onSkip={() => setSkipped((current) => new Set(current).add(routine.id))} /> : null;
   const centre = (
     <>
+      {drive?.warning && <DriveAlert warning={drive.warning} />}
       {gps}
       {routinePrompt}
       {notices}

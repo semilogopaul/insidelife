@@ -6,7 +6,7 @@ import { controls, driveAxes, moveAxes } from '../input/controls';
 import type { ColliderGrid } from '../physics/collision';
 import { clamp, yawFromHeading } from '../physics/math';
 import type { DriveIntent } from '../physics/vehicle';
-import { PlayerController } from '../player/player-controller';
+import { PUSH_SPEED, PlayerController } from '../player/player-controller';
 import { cityLaneGraph } from '../traffic/lane-graph';
 import { TrafficSim, type TrafficObstacle } from '../traffic/traffic-sim';
 import type { VehicleBatch } from '../vehicles/vehicle-batch';
@@ -92,6 +92,8 @@ export class PlayRuntime {
   selectedAt = 0;
   /** Shared batch for traffic and other players' cars (set by the traffic layer once the kit has loaded). */
   vehicleBatch: VehicleBatch | null = null;
+  /** m/s of speed lost in hard hits since the last heartbeat took them (crash damage, reported to the server). */
+  bumps = 0;
 
   private avatar: AvatarHandle | null = null;
   private avatarClip: AvatarClip = 'idle';
@@ -286,6 +288,11 @@ export class PlayRuntime {
         intent.throttle = 0;
         intent.brake = Math.abs(controller.speed) > 0.5 ? 1 : 0;
         intent.steer = 0;
+      } else if (controller.engineOff) {
+        // No engine: it coasts to a stop, then you can only push it (walking pace, forwards or back).
+        if (controller.speed > PUSH_SPEED) intent.throttle = 0;
+        else intent.throttle = Math.min(intent.throttle, 0.12);
+        if (controller.speed < -PUSH_SPEED || (controller.speed <= 0.3 && intent.brake > 0)) intent.brake = controller.speed < -PUSH_SPEED ? 0 : Math.min(intent.brake, 0.12);
       }
       controller.stepDrive(intent, dt);
       if (this.exitRequested && Math.abs(controller.speed) < 0.8) {
@@ -296,7 +303,10 @@ export class PlayRuntime {
         }
       }
       const impact = controller.car?.state.impact ?? 0;
-      if (impact > 3) this.rig.shake = Math.min(0.35, this.rig.shake + impact * 0.03);
+      if (impact > 3) {
+        this.rig.shake = Math.min(0.35, this.rig.shake + impact * 0.03);
+        this.bumps = Math.min(200, this.bumps + impact);
+      }
     }
 
     // The player (and their parked car) are obstacles for traffic.

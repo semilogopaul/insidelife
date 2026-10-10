@@ -124,8 +124,8 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     blurb: 'Your ride, your fuel, your police checkpoints.',
     speed: 25,
     baseFare: 0,
-    /** Fuel ≈ ₦1,350/L at ~10 km/L, plus wear. */
-    farePerKm: 170,
+    /** Nothing at departure: the trip burns fuel from your tank (`litresForKm`, more in go-slow); you pay at the pump. */
+    farePerKm: 0,
     trafficExposure: 0.9,
     energyPerHour: -1.5,
     funPerHour: 1,

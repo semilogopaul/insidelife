@@ -43,10 +43,28 @@ export interface OwnedVehicleDto {
   readonly status: OwnedVehicleStatus;
   /** Remote purchases: when it's delivered to your gate. */
   readonly arrivesAt: GameMinute | null;
-  /** Cost to restore to 100 condition now (0 if nothing to fix). */
+  /** What a mechanic workshop charges to fix it properly (back to 100, breakdown cleared); 0 if nothing to fix. */
   readonly repairCost: number;
+  /** "Tow & fix" from anywhere (the workshop bill plus the tow truck); 0 if nothing to fix. */
+  readonly towRepairCost: number;
+  /** Roadside mechanic: gets it going again (breakdown cleared, patched up to 50); 0 if it runs and is fine. */
+  readonly roadsideRepairCost: number;
   /** Charged at month end. */
   readonly monthlyMaintenance: number;
+  /** Litres in the tank and its size. */
+  readonly fuelLitres: number;
+  readonly tankLitres: number;
+  /** Map km left on the tank. */
+  readonly rangeKm: number;
+  readonly fuelType: 'petrol' | 'diesel';
+  /** Pump price per litre for this car right now (scarcity included). */
+  readonly pumpPrice: number;
+  /** A 10 L jerrycan brought to you, right now. */
+  readonly jerrycanPrice: number;
+  /** It broke down and won't move until a mechanic sees it. */
+  readonly brokenDown: boolean;
+  /** Fuel in the tank, not broken down, good enough to start. */
+  readonly canDrive: boolean;
 }
 
 export interface DriverLicenceDto {
@@ -95,6 +113,19 @@ export interface VehicleSaleResultDto {
 
 export interface VehicleRepairResultDto {
   readonly vehicle: OwnedVehicleDto;
+  readonly cost: number;
+  readonly balance: number;
+}
+
+/** POST /v1/vehicles/:id/roadside-repairs and /jerrycans: a key per press so a retry never pays twice. */
+export interface VehicleServiceRequest {
+  readonly idempotencyKey: string;
+}
+
+/** POST /v1/vehicles/:id/jerrycans */
+export interface JerrycanResultDto {
+  readonly vehicle: OwnedVehicleDto;
+  readonly litres: number;
   readonly cost: number;
   readonly balance: number;
 }

@@ -1,20 +1,35 @@
 'use client';
 
-import { Gauge, Star, Wrench } from 'lucide-react';
+import { Fuel, Gauge, Navigation, Star, Truck, Wrench } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { MAX_VEHICLES, type GameMinute, type OwnedVehicleDto, type VehiclesDto } from '@insidelife/shared';
+import { FUEL_LOW_SHARE, MAX_VEHICLES, nearestServicePoint, serviceLocationId, type GameMinute, type OwnedVehicleDto, type ServicePointKind, type VehiclesDto } from '@insidelife/shared';
 import { Badge, Button, Money, ProgressBar } from '@/common/components';
 import { useVehicleCommands } from '../../hooks/use-vehicles';
 import { announce, complain } from '@/common/game/feedback';
+import { useNavigation } from '@/common/game/navigation-store';
+import { useUi } from '@/common/game/ui-store';
+import { useWorld } from '@/common/game/world-store';
 import { gameDateTime } from '@/common/utils/game-time';
 import { conditionWord } from '../../services/motors-rules';
 import { CarArt, Plate } from '../CarArt';
 import { ConfirmSheet } from '@/common/components';
 import { NextStep } from '@/common/components';
 
-type Pending = { readonly kind: 'repair' | 'sell'; readonly car: OwnedVehicleDto } | null;
+type Pending = { readonly kind: 'repair' | 'roadside' | 'sell'; readonly car: OwnedVehicleDto } | null;
 
-/** Your cars: condition, value, plate, which one you drive, repairs and selling. */
+/** GPS to the nearest filling station or mechanic from where you are on the street (null when you're not outside). */
+function useNearestService(kind: ServicePointKind) {
+  const position = useWorld((state) => (state.mode === 'walking' || state.mode === 'driving' ? state.position : null));
+  const point = position ? nearestServicePoint(kind, position) : null;
+  if (!point) return null;
+  return () => {
+    useNavigation.getState().setDestination(serviceLocationId(point), point.name);
+    useUi.getState().closePhone();
+    announce(`GPS: ${point.name}`, { sfx: 'ui-success' });
+  };
+}
+
+/** Your cars: condition, fuel, value, plate, which one you drive, fuel and mechanics, and selling. */
 export function GarageTab({
   data,
   now,
@@ -24,8 +39,10 @@ export function GarageTab({
   readonly now: GameMinute;
   readonly onShop: () => void;
 }) {
-  const { setPrimary, repair, sell } = useVehicleCommands();
+  const { setPrimary, repair, roadside, jerrycan, sell } = useVehicleCommands();
   const [pending, setPending] = useState<Pending>(null);
+  const toFuel = useNearestService('fuel');
+  const toMechanic = useNearestService('mechanic');
 
   if (data.mine.length === 0) {
     const starters = [...data.catalogue].sort((a, b) => a.price - b.price).slice(0, 3);
@@ -113,6 +130,31 @@ export function GarageTab({
                     tone={car.condition >= 70 ? 'naira' : car.condition >= 45 ? 'danfo' : 'okada'}
                   />
                 </div>
+                <div>
+                  <div className="flex items-baseline justify-between text-sm">
+                    <span className="flex items-center gap-1.5 font-bold">
+                      <Fuel size={15} aria-hidden /> Fuel
+                    </span>
+                    <span className="tabular font-bold">
+                      {Math.round(car.fuelLitres)} of {car.tankLitres} L · {car.rangeKm} km
+                    </span>
+                  </div>
+                  <ProgressBar
+                    className="mt-1.5"
+                    value={(car.fuelLitres / Math.max(1, car.tankLitres)) * 100}
+                    label={`${car.name} fuel`}
+                    tone={car.fuelLitres <= car.tankLitres * FUEL_LOW_SHARE ? 'okada' : 'danfo'}
+                  />
+                </div>
+                {(car.brokenDown || !car.canDrive) && (
+                  <p role="status" className="rounded-card bg-okada-soft p-3 text-sm font-bold text-okada">
+                    {car.brokenDown
+                      ? 'Broken down: it won’t move until a mechanic sees it.'
+                      : car.fuelLitres < 0.1
+                        ? 'Out of fuel: get a jerrycan, or push it to a filling station.'
+                        : 'It won’t start: it needs a mechanic.'}
+                  </p>
+                )}
                 <dl className="grid grid-cols-3 gap-2 text-sm">
                   <Fact label="Worth">
                     <Money amount={car.value} compact />
@@ -126,8 +168,27 @@ export function GarageTab({
                   </Fact>
                 </dl>
                 <p className="text-xs text-text-soft">
-                  {Math.round(car.mileageKm).toLocaleString('en-NG')} km on the clock
+                  {Math.round(car.mileageKm).toLocaleString('en-NG')} km on the clock · pump price <Money amount={car.pumpPrice} />/L
+                  {car.repairCost > 0 && (
+                    <>
+                      {' '}· a workshop fixes it for <Money amount={car.repairCost} compact />
+                    </>
+                  )}
                 </p>
+                {((car.repairCost > 0 && toMechanic) || (car.fuelLitres <= car.tankLitres * 0.5 && toFuel)) && (
+                  <div className="flex flex-wrap gap-2">
+                    {car.fuelLitres <= car.tankLitres * 0.5 && toFuel && (
+                      <Button size="sm" variant="ghost" icon={<Navigation size={14} aria-hidden />} onClick={toFuel}>
+                        Nearest filling station
+                      </Button>
+                    )}
+                    {car.repairCost > 0 && toMechanic && (
+                      <Button size="sm" variant="ghost" icon={<Navigation size={14} aria-hidden />} onClick={toMechanic}>
+                        Nearest mechanic
+                      </Button>
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   {car.isPrimary ? (
                     <Badge tone="good" className="h-9 px-3">
@@ -148,14 +209,30 @@ export function GarageTab({
                       Drive this one
                     </Button>
                   )}
-                  {car.repairCost > 0 && (
+                  {car.fuelLitres < car.tankLitres - 1 && (
                     <Button
                       size="sm"
-                      variant="ink"
-                      icon={<Wrench size={15} aria-hidden />}
-                      onClick={() => setPending({ kind: 'repair', car })}
+                      variant="paper"
+                      icon={<Fuel size={15} aria-hidden />}
+                      loading={jerrycan.isPending && jerrycan.variables === car.id}
+                      onClick={() =>
+                        jerrycan.mutate(car.id, {
+                          onSuccess: (result) => announce(`${result.litres} L delivered`, { body: 'The okada boy poured it in and left with his change.', amount: -result.cost, sfx: 'cash-out' }),
+                          onError: (error) => complain('No jerrycan today', error),
+                        })
+                      }
                     >
-                      Repair · <Money amount={car.repairCost} compact />
+                      Jerrycan 10 L · <Money amount={car.jerrycanPrice} compact />
+                    </Button>
+                  )}
+                  {car.roadsideRepairCost > 0 && (car.brokenDown || car.condition < 50) && (
+                    <Button size="sm" variant="ink" icon={<Wrench size={15} aria-hidden />} onClick={() => setPending({ kind: 'roadside', car })}>
+                      Roadside mechanic · <Money amount={car.roadsideRepairCost} compact />
+                    </Button>
+                  )}
+                  {car.towRepairCost > 0 && (
+                    <Button size="sm" variant="paper" icon={<Truck size={15} aria-hidden />} onClick={() => setPending({ kind: 'repair', car })}>
+                      Tow & fix · <Money amount={car.towRepairCost} compact />
                     </Button>
                   )}
                   <Button
@@ -178,21 +255,33 @@ export function GarageTab({
         tone={pending?.kind === 'sell' ? 'danger' : 'danfo'}
         title={
           pending?.kind === 'repair'
-            ? `Fix the ${pending.car.name}?`
-            : pending
-              ? `Sell the ${pending.car.name}?`
-              : ''
+            ? `Tow and fix the ${pending.car.name}?`
+            : pending?.kind === 'roadside'
+              ? 'Call a roadside mechanic?'
+              : pending
+                ? `Sell the ${pending.car.name}?`
+                : ''
         }
         description={
           pending?.kind === 'repair'
-            ? 'Ladipo mechanics restore it to full condition today.'
-            : 'The dealer pays cash now. The plate goes with the car.'
+            ? 'A tow truck takes it to Ladipo; the mechanics restore it to full condition today. Driving it to a workshop yourself skips the tow.'
+            : pending?.kind === 'roadside'
+              ? 'He comes to you, gets it going and patches it up enough to drive (to 50). Pricier per fix than a workshop.'
+              : 'The dealer pays cash now. The plate goes with the car.'
         }
-        confirmLabel={pending?.kind === 'repair' ? 'Pay for the repair' : 'Sell to the dealer'}
-        loading={repair.isPending || sell.isPending}
+        confirmLabel={pending?.kind === 'repair' ? 'Pay for the tow & repair' : pending?.kind === 'roadside' ? 'Call him' : 'Sell to the dealer'}
+        loading={repair.isPending || roadside.isPending || sell.isPending}
         onConfirm={() => {
           if (!pending) return;
-          if (pending.kind === 'repair') {
+          if (pending.kind === 'roadside') {
+            roadside.mutate(pending.car.id, {
+              onSuccess: (result) => {
+                setPending(null);
+                announce('E don start!', { body: 'Some wire, some tape, and the engine is running.', amount: -result.cost });
+              },
+              onError: (error) => complain('The mechanic didn’t come', error),
+            });
+          } else if (pending.kind === 'repair') {
             repair.mutate(pending.car.id, {
               onSuccess: (result) => {
                 setPending(null);
@@ -213,9 +302,9 @@ export function GarageTab({
       >
         {pending && (
           <p className="rounded-card bg-paper-2 p-3 text-sm">
-            {pending.kind === 'repair' ? (
+            {pending.kind === 'repair' || pending.kind === 'roadside' ? (
               <>
-                Cost: <Money amount={pending.car.repairCost} className="font-bold" />
+                Cost: <Money amount={pending.kind === 'repair' ? pending.car.towRepairCost : pending.car.roadsideRepairCost} className="font-bold" />
               </>
             ) : (
               <>

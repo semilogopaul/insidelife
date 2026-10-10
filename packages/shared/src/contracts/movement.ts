@@ -23,6 +23,12 @@ export interface DrivenVehicleDto {
   readonly plate: string;
   readonly fuelType: 'petrol' | 'diesel';
   readonly fuelEconomyKmPerLitre: number;
+  /** Running state (the server's, as of the last spawn or heartbeat). */
+  readonly fuelLitres: number;
+  readonly tankLitres: number;
+  /** 0-100. */
+  readonly condition: number;
+  readonly brokenDown: boolean;
 }
 
 /** Where the player appears after stepping outside. */
@@ -48,11 +54,52 @@ export interface MovementHeartbeatRequest {
   readonly mode: OpenWorldMode;
   /** Radians (see `Entrance` for the convention). */
   readonly heading?: number;
+  /** Driving: m/s of speed lost in hard hits since the last heartbeat (crash damage; the client reports, capped). */
+  readonly bumps?: number;
 }
 
-/** `accepted: false` → the move was implausible or the car is unavailable; nothing was charged. */
+/** Why a heartbeat was refused. */
+export type HeartbeatRejection = 'not-outside' | 'no-car' | 'implausible' | 'car-disabled';
+
+/**
+ * `accepted: false` → the move was implausible or the car can't go (out of fuel, broken down); nothing was charged.
+ * `car` is the car with you after this beat (fuel burnt, wear, a breakdown), or null without one.
+ */
 export interface MovementHeartbeatResultDto {
   readonly accepted: boolean;
+  readonly reason?: HeartbeatRejection;
+  readonly car: DrivenVehicleDto | null;
+}
+
+/** `POST /characters/me/fuel-purchases`: at a filling station (`SERVICE_POINTS`, within `SERVICE_RADIUS`). */
+export interface FuelPurchaseRequest {
+  readonly stationId: string;
+  readonly position: WorldPoint;
+  /** Litres to buy; omitted = fill the tank. */
+  readonly litres?: number;
+  /** One per press: a retry never pays (or fills) twice. */
+  readonly idempotencyKey: string;
+}
+
+export interface FuelPurchaseResultDto {
+  readonly litres: number;
+  readonly pricePerLitre: number;
+  readonly cost: number;
+  readonly car: DrivenVehicleDto;
+  readonly balance: number;
+}
+
+/** `POST /characters/me/mechanic-visits`: a proper repair at a workshop on the street. */
+export interface MechanicVisitRequest {
+  readonly workshopId: string;
+  readonly position: WorldPoint;
+  readonly idempotencyKey: string;
+}
+
+export interface MechanicVisitResultDto {
+  readonly cost: number;
+  readonly car: DrivenVehicleDto;
+  readonly balance: number;
 }
 
 /** `POST /characters/me/entries` → `CharacterSnapshotDto`. Must stand within `ENTRY_RADIUS` of the door. */

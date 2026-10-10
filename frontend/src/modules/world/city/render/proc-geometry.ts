@@ -26,6 +26,7 @@ function merge(parts: BufferGeometry[]): BufferGeometry {
 const WOOD = 0x7a5232;
 const STEEL = 0x8a8f94;
 const WHITE = 0xf2f0ea;
+const FUEL_GREEN = 0x16804a;
 
 const BUILDERS: Readonly<Record<ProcModelId, () => BufferGeometry>> = {
   stall: () =>
@@ -73,6 +74,38 @@ const BUILDERS: Readonly<Record<ProcModelId, () => BufferGeometry>> = {
       box(2.0, 2.1, 1.5, 0, 0, 0, 0xf2c94c),
       box(1.7, 0.9, 0.05, 0, 0.9, 0.76, 0x2b2b2b),
       paint(new BoxGeometry(2.3, 0.08, 0.9).rotateX(0.25).translate(0, 2.35, 0.9), 0xd9452f),
+    ]),
+  // Filling station forecourt: a white canopy with a green fascia and Danfo trim on two pillars, two pump islands
+  // under it, and the price board on a pole by the road (front +z faces the road).
+  'fuel-station': () =>
+    merge([
+      box(7, 0.32, 4.6, 0, 4.05, 0, WHITE),
+      box(7.1, 0.42, 4.7, 0, 3.66, 0, FUEL_GREEN),
+      box(7.12, 0.08, 4.72, 0, 3.62, 0, 0xf6b90b),
+      ...[-2.6, 2.6].map((x) => box(0.32, 3.66, 0.32, x, 0, 0, STEEL)),
+      ...[-1.5, 1.5].flatMap((x) => [
+        box(1.0, 0.18, 2.4, x, 0, 0, 0xa7a59f),
+        box(0.62, 1.55, 0.5, x, 0.18, 0, 0xd9452f),
+        box(0.48, 0.32, 0.04, x, 1.2, 0.27, 0x1b1d1f),
+        box(0.66, 0.16, 0.54, x, 1.73, 0, WHITE),
+      ]),
+      cylinder(0.09, 3.4, 3.7, 0, 2.1, STEEL, 6),
+      box(1.3, 1.5, 0.16, 3.7, 3.4, 2.1, FUEL_GREEN),
+      box(1.1, 0.26, 0.18, 3.7, 4.55, 2.1, 0xf6b90b),
+      ...[3.85, 4.2].map((y) => box(1.0, 0.18, 0.18, 3.7, y, 2.1, WHITE)),
+    ]),
+  // Mechanic shed: corrugated roof on four posts against a back wall, a workbench, stacked tyres, a red board.
+  workshop: () =>
+    merge([
+      paint(new BoxGeometry(6.2, 0.1, 4.4).rotateX(-0.08).translate(0, 3.05, 0), 0x8f969c),
+      ...[-2.9, 2.9].flatMap((x) => [-1.9, 1.9].map((z) => box(0.14, z < 0 ? 3.2 : 2.85, 0.14, x, 0, z, WOOD))),
+      box(6.2, 2.8, 0.18, 0, 0, -2.0, 0xb9ab8d),
+      box(2.2, 0.9, 0.7, -1.6, 0, -1.4, WOOD),
+      box(0.5, 0.35, 0.3, -2.1, 0.9, -1.4, 0x3d6fb3),
+      ...[0, 0.26, 0.52, 0.78].map((y) => paint(new CylinderGeometry(0.36, 0.36, 0.24, 10).translate(2.3, y + 0.12, 1.2), 0x1c1c1e)),
+      ...[0, 0.26, 0.52].map((y) => paint(new CylinderGeometry(0.36, 0.36, 0.24, 10).translate(1.5, y + 0.12, 1.5), 0x1c1c1e)),
+      box(2.6, 0.75, 0.1, 0, 2.45, 2.0, 0xc0392b),
+      box(2.3, 0.12, 0.11, 0, 2.6, 2.0, WHITE),
     ]),
 };
 

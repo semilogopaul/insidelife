@@ -5,6 +5,7 @@ import { useEffect, useState, type PointerEvent as ReactPointerEvent, type React
 import { PressButton } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
+import { useWorld } from '@/common/game/world-store';
 import { cn } from '@/common/utils/cn';
 import { controls } from '../input/controls';
 import { usePlayUi } from '../state/play-ui-store';
@@ -71,6 +72,8 @@ export function DriveControls() {
   const side = useUi((state) => state.settings.walkStick);
   const phoneOpen = useUi((state) => state.phoneOpen);
   const offer = usePlayUi((state) => state.driveOffer);
+  // Engine dead (empty, broken down): say so where the thumbs are, even with the HUD hidden.
+  const stalled = useWorld((state) => (state.drive?.engineOff ? (state.drive.warning?.text ?? 'The engine won’t start') : null));
   const steerLeft = side === 'left';
   // Nothing stays held when the phone covers the controls or they go away (got out, went inside).
   useEffect(() => {
@@ -96,6 +99,21 @@ export function DriveControls() {
           steerLeft ? 'left-[max(env(safe-area-inset-left),0.75rem)] items-start' : 'right-[max(env(safe-area-inset-right),0.75rem)] items-end',
         )}
       >
+        {stalled && (
+          <p role="status" className="pointer-events-none max-w-[15rem] rounded-full bg-okada px-3 py-1.5 text-xs font-bold text-white shadow-[var(--shadow-glass)]">
+            {stalled}
+          </p>
+        )}
+        {offer?.more?.slice(0, 2).map((option) => (
+          <PressButton
+            key={option.id}
+            onPress={() => gameEvents.emit('interact', { interactableId: option.id })}
+            className="pointer-events-auto flex min-h-11 max-w-[min(15rem,calc(100vw-7.5rem))] items-center gap-1.5 rounded-card bg-ink/75 px-3 text-xs font-bold text-on-ink shadow-[var(--shadow-glass)] backdrop-blur data-[pressed=true]:scale-95"
+          >
+            {option.emoji && <span aria-hidden>{option.emoji}</span>}
+            <span className="truncate">{option.label}</span>
+          </PressButton>
+        ))}
         {offer && (
           <PressButton
             data-testid="drive-offer"

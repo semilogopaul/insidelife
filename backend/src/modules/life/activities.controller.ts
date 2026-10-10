@@ -1,12 +1,12 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { CharacterSnapshotDto, ExitResultDto, MovementHeartbeatResultDto } from '@insidelife/shared';
+import type { CharacterSnapshotDto, ExitResultDto, FuelPurchaseResultDto, MechanicVisitResultDto, MovementHeartbeatResultDto } from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
 import { ActionsService } from './actions.service.js';
 import { StartActionDto } from './dto/action.dto.js';
-import { EnterLocationDto, HeartbeatDto, QuoteQueryDto, TravelDto } from './dto/movement.dto.js';
+import { EnterLocationDto, FuelPurchaseDto, HeartbeatDto, MechanicVisitDto, QuoteQueryDto, TravelDto } from './dto/movement.dto.js';
 import { MovementService, type TravelQuoteDto } from './movement.service.js';
 import { SnapshotService } from './snapshot.service.js';
 
@@ -90,7 +90,29 @@ export class ActivitiesController {
   heartbeat(@CurrentUser() user: AuthUser, @Body() body: HeartbeatDto): Promise<MovementHeartbeatResultDto> {
     return this.session.run(
       { userId: user.userId },
-      async (ctx) => ({ accepted: await this.movement.heartbeat(ctx, body.position, body.mode, body.heading) }),
+      (ctx) => this.movement.heartbeat(ctx, body.position, body.mode, body.heading, body.bumps),
+      { touch: true },
+    );
+  }
+
+  /** Buy fuel at a filling station on the street (fill up, or `litres`). */
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
+  @Post('fuel-purchases')
+  buyFuel(@CurrentUser() user: AuthUser, @Body() body: FuelPurchaseDto): Promise<FuelPurchaseResultDto> {
+    return this.session.run(
+      { userId: user.userId },
+      async (ctx) => ({ ...(await this.movement.buyFuel(ctx, body.stationId, body.position, body.litres ?? null, body.idempotencyKey)), balance: ctx.wallet.cash }),
+      { touch: true },
+    );
+  }
+
+  /** A proper repair at a mechanic workshop on the street. */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('mechanic-visits')
+  seeMechanic(@CurrentUser() user: AuthUser, @Body() body: MechanicVisitDto): Promise<MechanicVisitResultDto> {
+    return this.session.run(
+      { userId: user.userId },
+      async (ctx) => ({ ...(await this.movement.seeMechanic(ctx, body.workshopId, body.position, body.idempotencyKey)), balance: ctx.wallet.cash }),
       { touch: true },
     );
   }

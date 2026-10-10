@@ -7,6 +7,7 @@ import {
   homeEntrance,
   homeKey,
   homeLocationId,
+  servicePointFromLocation,
   straightDistance,
   turnByTurn,
   venueEntrance,
@@ -62,6 +63,9 @@ export function resolveDestination(id: string, name: string | null, snapshot: Ch
   if (owned?.lot.entrance) return { id, name: name ?? owned.property.label, entrance: owned.lot.entrance };
   const visit = visits?.incoming.find((candidate) => candidate.home.locationId === id && candidate.status === 'accepted');
   if (visit) return { id, name: name ?? `${visit.host.firstName}’s place`, entrance: visit.home.entrance };
+  // A filling station or mechanic workshop ("Nearest fuel" on the drive alert).
+  const service = servicePointFromLocation(id);
+  if (service) return { id, name: name ?? service.name, entrance: service.entrance };
   const entrance = venueEntrance(id);
   if (!entrance) return null;
   return { id, name: name ?? findVenue(id)?.name ?? 'your destination', entrance };

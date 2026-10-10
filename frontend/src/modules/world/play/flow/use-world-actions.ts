@@ -2,18 +2,20 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
-import type { OpenWorldMode } from '@insidelife/shared';
+import { findServicePoint, formatNaira, type OpenWorldMode } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
 import { toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
+import { newIdempotencyKey } from '@/common/utils/money-input';
 import { applyKey, isGameKey, isTypingTarget, resetControls } from '../input/controls';
 import { handleOf } from '../players/presence-directory';
 import type { PlayRuntime } from '../runtime/play-runtime';
 import { usePlayUi } from '../state/play-ui-store';
 import { movementApi } from './movement.api';
+import { parseServiceAction } from './service-offers';
 import { clearPose } from './spawn-handoff';
 import { CAR_ENTER_ID, CAR_EXIT_ID, type Heartbeats } from './use-world-sync';
 
@@ -37,6 +39,7 @@ export function useWorldActions(runtime: PlayRuntime, options: WorldActionsOptio
     optionsRef.current = options;
   });
   const entering = useRef(false);
+  const serving = useRef(false);
 
   useEffect(() => {
     const setMode = useWorld.getState().setMode;
@@ -98,9 +101,43 @@ export function useWorldActions(runtime: PlayRuntime, options: WorldActionsOptio
       }
     };
 
+    // The pump or the mechanic you've pulled up at (the server checks you're there and charges).
+    const serveAt = async (pointId: string, litres: number | null): Promise<void> => {
+      const point = findServicePoint(pointId);
+      if (!point || !runtime.controller.car || serving.current) return;
+      if (!optionsRef.current.online) {
+        toast({ title: 'Sandbox', body: `${point.name} serves you in the real game.`, tone: 'neutral' });
+        return;
+      }
+      serving.current = true;
+      const position = { x: runtime.controller.x, z: runtime.controller.z };
+      const idempotencyKey = newIdempotencyKey();
+      try {
+        if (point.kind === 'fuel') {
+          const sale = await movementApi.buyFuel({ stationId: point.id, position, idempotencyKey, ...(litres ? { litres } : {}) });
+          runtime.controller.applyCarStatus(sale.car);
+          gameEvents.emit('sfx', { id: 'cash-out' });
+          toast({ title: `Filled up at ${point.name}`, body: `${sale.litres.toFixed(1)} L at ${formatNaira(sale.pricePerLitre)} a litre`, tone: 'good', amount: -sale.cost });
+        } else {
+          const repair = await movementApi.seeMechanic({ workshopId: point.id, position, idempotencyKey });
+          runtime.controller.applyCarStatus(repair.car);
+          gameEvents.emit('sfx', { id: 'cash-out' });
+          toast({ title: 'Car fixed 🔧', body: `${point.name} sorted it out. Good as new.`, tone: 'good', amount: -repair.cost });
+        }
+        void client.invalidateQueries({ queryKey: queryKeys.snapshot }, { cancelRefetch: false });
+      } catch (error) {
+        gameEvents.emit('sfx', { id: 'ui-error' });
+        toast({ title: point.kind === 'fuel' ? 'Couldn’t buy fuel' : 'The mechanic couldn’t help', body: errorMessage(error), tone: 'bad' });
+      } finally {
+        serving.current = false;
+      }
+    };
+
     const offs = [
       gameEvents.on('interact', ({ interactableId }) => {
-        if (interactableId === CAR_ENTER_ID) enterCar();
+        const service = parseServiceAction(interactableId);
+        if (service) void serveAt(service.pointId, service.litres);
+        else if (interactableId === CAR_ENTER_ID) enterCar();
         else if (interactableId === CAR_EXIT_ID) runtime.requestExitCar();
         else if (interactableId.startsWith(DOOR_PREFIX)) void enterDoor(interactableId.slice(DOOR_PREFIX.length));
         else if (interactableId.startsWith(PLAYER_PREFIX)) {
