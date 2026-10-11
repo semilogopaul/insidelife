@@ -1,4 +1,5 @@
 import {
+  INCOME_MULTIPLIER,
   CENTS_PER_DOLLAR,
   CUSTOM_TOPUP_ID,
   KOBO_PER_NAIRA,
@@ -36,7 +37,8 @@ export const DOLLAR_TOPUP_LABEL = 'Dollar top-up';
  * at credit time the rate the server stored is trusted (tiers may have changed since), only checked against these.
  */
 export const TOPUP_RATE_MIN = 1;
-export const TOPUP_RATE_MAX = 2_000;
+/** Top-up packs scale with the Lagos boom (INCOME_MULTIPLIER), so the bound does too. */
+export const TOPUP_RATE_MAX = 2_000 * INCOME_MULTIPLIER;
 
 export const isSaneTopupRate = (rate: number): boolean => Number.isSafeInteger(rate) && rate >= TOPUP_RATE_MIN && rate <= TOPUP_RATE_MAX;
 
