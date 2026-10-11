@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MAX_SINGLE_TRANSFER, transferFee } from '@insidelife/shared';
+import { MAX_SINGLE_TRANSFER, TRANSFER_TIERS, formatNaira, transferFee } from '@insidelife/shared';
 import { maxSendable, nextTierHint, previewTransfer, tierLabel, tierLimitLabel } from '../services/transfer-preview';
 
 const tier1 = { cash: 10_000_000, dailyLimit: 4_000_000, sentToday: 0, sendable: 8_000_000 };
@@ -88,9 +88,10 @@ describe('maxSendable', () => {
 describe('tiers', () => {
   it('names the tier, its limit and how to reach the next one', () => {
     expect(tierLabel(1)).toBe('Tier 1');
-    expect(tierLimitLabel(4_000_000)).toBe('₦4,000,000 a day');
+    expect(tierLimitLabel(TRANSFER_TIERS[0].dailyLimit)).toBe(`${formatNaira(TRANSFER_TIERS[0].dailyLimit)} a day`);
     expect(tierLimitLabel(null)).toBe('no daily limit');
-    expect(nextTierHint(1)).toMatch(/Tier 2 .*₦10,000,000 a day.*7 game days/);
+    expect(nextTierHint(1)).toContain(`${formatNaira(TRANSFER_TIERS[1].dailyLimit)} a day`);
+    expect(nextTierHint(1)).toMatch(/Tier 2 .*7 game days/);
     expect(nextTierHint(2)).toMatch(/no daily limit.*verified email/);
     expect(nextTierHint(3)).toBeNull();
   });

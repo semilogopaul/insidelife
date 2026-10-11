@@ -796,7 +796,7 @@ export function findLifeChapter(chapter: number): LifeChapterDefinition | undefi
 }
 
 /** Every naira all Life Goals can ever pay out (base + bonuses) must stay under this — they're nudges, not salaries. */
-export const LIFE_GOAL_CASH_BUDGET = 1_500_000;
+export const LIFE_GOAL_CASH_BUDGET = boosted(1_500_000);
 
 // ----- Achievements ------------------------------------------------------------------------------------------------
 

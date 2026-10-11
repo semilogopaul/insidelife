@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CreatePartyResultDto, TopupStartedDto, TransferResultDto, WalletDto } from '@insidelife/shared';
+import { DAILY_PEER_RECEIVE_LIMIT, INCOME_MULTIPLIER as K, MAX_SINGLE_TRANSFER, TRANSFER_TIERS, type CreatePartyResultDto, type TopupStartedDto, type TransferResultDto, type WalletDto } from '@insidelife/shared';
 import { bootApp, type E2eApp } from './support/app.js';
 import { burst, fund } from './support/game.js';
 import { ledgerViolations, NO_VIOLATIONS } from './support/ledger.js';
@@ -64,52 +64,52 @@ describe('transfers', () => {
       expect(legs.find((leg) => leg.code === 'system:fees')?.amount ?? '0').toBe(String(fee + stampDuty));
     }
     refused(await send(from, to, 99), 400);
-    refused(await send(from, to, 5_000_001), 400);
+    refused(await send(from, to, MAX_SINGLE_TRANSFER + 1), 400);
     refused(await from.post('/transfers', { toHandle: from.handle, amount: 1_000, idempotencyKey: key() }), 422, 'SELF_TRANSFER');
     refused(await from.post('/transfers', { toHandle: 'nobody_here_x', amount: 1_000, idempotencyKey: key() }), 404);
   });
 
-  it('Tier 1 (a new character) can send ₦4,000,000 a day', async () => {
-    const from = await sender(9_000_000);
+  it('Tier 1 (a new character) can send its daily limit', async () => {
+    const from = await sender(9_000_000 * K);
     const [a, b] = [await createPlayer(e2e), await createPlayer(e2e)];
-    expect(await wallet(from)).toMatchObject({ transferTier: 1, dailyLimit: 4_000_000, sentToday: 0 });
-    ok(await send(from, a, 4_000_000));
+    expect(await wallet(from)).toMatchObject({ transferTier: 1, dailyLimit: TRANSFER_TIERS[0].dailyLimit, sentToday: 0 });
+    ok(await send(from, a, 4_000_000 * K));
     refused(await send(from, b, 100), 422, 'DAILY_LIMIT_EXCEEDED');
-    expect(await wallet(from)).toMatchObject({ sentToday: 4_000_000 });
+    expect(await wallet(from)).toMatchObject({ sentToday: 4_000_000 * K });
   });
 
-  it('Tier 2 (7+ game days old) can send ₦10,000,000 a day', async () => {
-    const from = await sender(12_000_000, (player) => setCreatedHoursAgo(player, 3));
-    expect(await wallet(from)).toMatchObject({ transferTier: 2, dailyLimit: 10_000_000 });
+  it('Tier 2 (7+ game days old) can send its higher daily limit', async () => {
+    const from = await sender(12_000_000 * K, (player) => setCreatedHoursAgo(player, 3));
+    expect(await wallet(from)).toMatchObject({ transferTier: 2, dailyLimit: TRANSFER_TIERS[1].dailyLimit });
     const recipients = [await createPlayer(e2e), await createPlayer(e2e), await createPlayer(e2e), await createPlayer(e2e)];
-    ok(await send(from, recipients[0]!, 4_000_000));
-    ok(await send(from, recipients[1]!, 4_000_000));
-    ok(await send(from, recipients[2]!, 2_000_000));
+    ok(await send(from, recipients[0]!, 4_000_000 * K));
+    ok(await send(from, recipients[1]!, 4_000_000 * K));
+    ok(await send(from, recipients[2]!, 2_000_000 * K));
     refused(await send(from, recipients[3]!, 100), 422, 'DAILY_LIMIT_EXCEEDED');
   });
 
   it('Tier 3 (30+ game days old and a verified email) has no daily limit; age alone isn’t enough', async () => {
-    const unverified = await sender(1_000_000, (player) => setCreatedHoursAgo(player, 10));
+    const unverified = await sender(1_000_000 * K, (player) => setCreatedHoursAgo(player, 10));
     expect((await wallet(unverified)).transferTier).toBe(2);
 
-    const from = await sender(15_000_000, async (player) => {
+    const from = await sender(15_000_000 * K, async (player) => {
       await setCreatedHoursAgo(player, 10);
       await verifyEmail(player);
     });
     expect(await wallet(from)).toMatchObject({ transferTier: 3, dailyLimit: null });
-    for (let i = 0; i < 3; i++) ok(await send(from, await createPlayer(e2e), 4_000_000));
-    expect((await wallet(from)).sentToday).toBe(12_000_000);
+    for (let i = 0; i < 3; i++) ok(await send(from, await createPlayer(e2e), 4_000_000 * K));
+    expect((await wallet(from)).sentToday).toBe(12_000_000 * K);
   });
 
-  it('a player can receive at most ₦4,000,000 a day from other players', async () => {
+  it('a player can receive at most the daily peer limit from other players', async () => {
     const to = await createPlayer(e2e);
-    const [a, b, c] = [await sender(5_000_000), await sender(5_000_000), await sender(5_000_000)];
-    ok(await send(a, to, 3_000_000));
-    refused(await send(b, to, 1_500_000), 422, 'RECIPIENT_DAILY_LIMIT');
-    ok(await send(b, to, 1_000_000));
+    const [a, b, c] = [await sender(5_000_000 * K), await sender(5_000_000 * K), await sender(5_000_000 * K)];
+    ok(await send(a, to, 3_000_000 * K));
+    refused(await send(b, to, 1_500_000 * K), 422, 'RECIPIENT_DAILY_LIMIT');
+    ok(await send(b, to, 1_000_000 * K));
     refused(await send(c, to, 100), 422, 'RECIPIENT_DAILY_LIMIT');
-    expect(await wallet(to)).toMatchObject({ receivedToday: 4_000_000, receiveLimit: 4_000_000 });
-    expect(await peerDay(to)).toEqual({ sent: 0, received: 4_000_000 });
+    expect(await wallet(to)).toMatchObject({ receivedToday: 4_000_000 * K, receiveLimit: DAILY_PEER_RECEIVE_LIMIT });
+    expect(await peerDay(to)).toEqual({ sent: 0, received: 4_000_000 * K });
     // The refused attempts left no trace on the would-be senders.
     expect(await peerDay(c)).toEqual({ sent: 0, received: 0 });
   });
@@ -132,22 +132,22 @@ describe('transfers', () => {
   });
 
   it('a retried transfer (same key) sends once and returns the same receipt; a reused key for something else is refused', async () => {
-    const from = await sender(2_000_000);
+    const from = await sender(2_000_000 * K);
     const [to, other] = [await createPlayer(e2e), await createPlayer(e2e)];
     const before = await from.cash();
     const idempotencyKey = key();
-    const first = ok<TransferResultDto>(await send(from, to, 250_000, idempotencyKey));
-    const again = ok<TransferResultDto>(await send(from, to, 250_000, idempotencyKey));
+    const first = ok<TransferResultDto>(await send(from, to, 250_000 * K, idempotencyKey));
+    const again = ok<TransferResultDto>(await send(from, to, 250_000 * K, idempotencyKey));
     expect(again.transferId).toBe(first.transferId);
-    const parallel = await burst(5, () => send(from, to, 250_000, idempotencyKey));
+    const parallel = await burst(5, () => send(from, to, 250_000 * K, idempotencyKey));
     expect(parallel.every((response) => response.status === 201 && response.body.transferId === first.transferId)).toBe(true);
-    expect(await from.cash()).toBe(before - 250_100);
-    refused(await send(from, to, 250_001, idempotencyKey), 409, 'IDEMPOTENCY_KEY_REUSED');
-    refused(await send(from, other, 250_000, idempotencyKey), 409, 'IDEMPOTENCY_KEY_REUSED');
+    expect(await from.cash()).toBe(before - (250_000 * K + 100));
+    refused(await send(from, to, 250_000 * K + 1, idempotencyKey), 409, 'IDEMPOTENCY_KEY_REUSED');
+    refused(await send(from, other, 250_000 * K, idempotencyKey), 409, 'IDEMPOTENCY_KEY_REUSED');
 
     // A fresh key sent several times at once also goes through once (another sender: transfers are limited to 10 a
     // minute per player, and this one has used them up).
-    const second = await sender(1_000_000);
+    const second = await sender(1_000_000 * K);
     const secondBefore = await second.cash();
     const burstKey = key();
     const results = await burst(6, () => send(second, other, 100_000, burstKey));
@@ -158,30 +158,30 @@ describe('transfers', () => {
 
   it('ten senders racing at one recipient can’t push them past the daily cap', async () => {
     const to = await createPlayer(e2e);
-    const senders = await Promise.all(Array.from({ length: 10 }, () => sender(600_000)));
+    const senders = await Promise.all(Array.from({ length: 10 }, () => sender(600_000 * K)));
     const before = await Promise.all(senders.map((player) => player.cash()));
     const toBefore = await to.cash();
-    const results = await Promise.all(senders.map((player) => send(player, to, 500_000)));
+    const results = await Promise.all(senders.map((player) => send(player, to, 500_000 * K)));
     expect(statuses(results)).toEqual([201, 201, 201, 201, 201, 201, 201, 201, 422, 422]);
     expect(results.filter((response) => response.status === 422).every((response) => response.body.errorCode === 'RECIPIENT_DAILY_LIMIT')).toBe(true);
-    expect(await to.cash()).toBe(toBefore + 4_000_000);
-    expect((await peerDay(to)).received).toBe(4_000_000);
+    expect(await to.cash()).toBe(toBefore + 4_000_000 * K);
+    expect((await peerDay(to)).received).toBe(4_000_000 * K);
     for (const [index, player] of senders.entries()) {
       const succeeded = results[index]!.status === 201;
-      expect(await player.cash()).toBe(before[index]! - (succeeded ? 500_100 : 0));
-      expect((await peerDay(player)).sent).toBe(succeeded ? 500_000 : 0);
+      expect(await player.cash()).toBe(before[index]! - (succeeded ? 500_000 * K + 100 : 0));
+      expect((await peerDay(player)).sent).toBe(succeeded ? 500_000 * K : 0);
     }
   });
 
   it('one sender racing two transfers past their own limit gets only one through', async () => {
-    const from = await sender(8_000_000);
+    const from = await sender(8_000_000 * K);
     const [a, b] = [await createPlayer(e2e), await createPlayer(e2e)];
     const before = await from.cash();
-    const results = await Promise.all([send(from, a, 3_000_000), send(from, b, 3_000_000)]);
+    const results = await Promise.all([send(from, a, 3_000_000 * K), send(from, b, 3_000_000 * K)]);
     expect(statuses(results)).toEqual([201, 422]);
     expect(results.find((response) => response.status === 422)?.body.errorCode).toBe('DAILY_LIMIT_EXCEEDED');
-    expect(await from.cash()).toBe(before - 3_000_100);
-    expect((await peerDay(from)).sent).toBe(3_000_000);
+    expect(await from.cash()).toBe(before - (3_000_000 * K + 100));
+    expect((await peerDay(from)).sent).toBe(3_000_000 * K);
   });
 });
 
@@ -193,9 +193,10 @@ describe('sprays count as player-to-player money', () => {
     const to = await createPlayer(e2e);
     const sprayer = await sender(2_000_000);
     const starterOnly = await createPlayer(e2e);
-    const filler = await sender(4_000_000);
+    const filler = await sender(DAILY_PEER_RECEIVE_LIMIT);
     for (const player of [to, sprayer, starterOnly]) await moveTo(player, 'yaba-left-joint');
-    ok(await send(filler, to, 3_500_000));
+    // Leave ₦500,000 of room under the daily receive limit (a single spray is capped at ₦1,000,000, whatever the multiplier).
+    ok(await send(filler, to, DAILY_PEER_RECEIVE_LIMIT - 500_000));
 
     refused(await spray(sprayer, to.handle, 1_000_000), 422, 'RECIPIENT_DAILY_LIMIT');
     const toBefore = await to.cash();
@@ -204,7 +205,7 @@ describe('sprays count as player-to-player money', () => {
     const replay = ok<{ replayed?: boolean }>(await spray(sprayer, to.handle, 500_000, sprayKey));
     expect(replay.replayed).toBe(true);
     expect(await to.cash()).toBe(toBefore + 500_000);
-    expect(await peerDay(to)).toMatchObject({ received: 4_000_000 });
+    expect(await peerDay(to)).toMatchObject({ received: DAILY_PEER_RECEIVE_LIMIT });
     expect((await peerDay(sprayer)).sent).toBe(500_000);
     refused(await spray(starterOnly, to.handle, 500), 422, 'STARTER_MONEY_LOCKED');
 
@@ -240,10 +241,10 @@ describe('sprays count as player-to-player money', () => {
     expect((await peerDay(guest)).sent).toBe(1_000_000);
     refused(await starterOnly.post(`/parties/${party.party.id}/sprays`, { toHandle: celebrant.handle, amount: 500, idempotencyKey: key() }), 422, 'STARTER_MONEY_LOCKED');
 
-    // The spray used a quarter of the celebrant's ₦4m: a ₦3.5m transfer no longer fits.
-    const friend = await sender(4_000_000);
-    refused(await send(friend, celebrant, 3_500_000), 422, 'RECIPIENT_DAILY_LIMIT');
-    ok(await send(friend, celebrant, 3_000_000));
+    // The spray used ₦1,000,000 of the celebrant's daily receive limit: a transfer of the whole limit no longer fits.
+    const friend = await sender(DAILY_PEER_RECEIVE_LIMIT);
+    refused(await send(friend, celebrant, DAILY_PEER_RECEIVE_LIMIT - 1_000_000 + 1), 422, 'RECIPIENT_DAILY_LIMIT');
+    ok(await send(friend, celebrant, DAILY_PEER_RECEIVE_LIMIT - 1_000_000));
   });
 });
 

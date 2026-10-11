@@ -1,4 +1,4 @@
-import type { PaymentStatus } from '@insidelife/shared';
+import { INCOME_MULTIPLIER, findTopupPackage, topupVirtualAmount, type PaymentStatus } from '@insidelife/shared';
 import {
   CHECK_SCHEDULE_MINUTES,
   claimRefund,
@@ -152,22 +152,22 @@ describe('top-up quotes at their edges', () => {
   it('refuses unknown packs and packs above the per-payment maximum, with a reason', () => {
     expect(quoteTopup({ packageId: 'free-money' }, { maxNgn: 10_000_000, usd: null })).toEqual({ ok: false, reason: 'That top-up pack doesn’t exist' });
     expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 9_999, usd: null })).toEqual({ ok: false, reason: 'One top-up can be at most ₦9,999' });
-    expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 10_000, usd: null })).toMatchObject({ ok: true, quote: { priceNgn: 10_000, virtualAmount: 5_000_000 } });
-    expect(quoteTopup({ amountNgn: 10_000_000 }, { maxNgn: 10_000_000, usd: null })).toMatchObject({ ok: true, quote: { virtualAmount: 5_000_000_000 } });
+    expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 10_000, usd: null })).toMatchObject({ ok: true, quote: { priceNgn: 10_000, virtualAmount: findTopupPackage('odogwu-pack')?.virtualAmount } });
+    expect(quoteTopup({ amountNgn: 10_000_000 }, { maxNgn: 10_000_000, usd: null })).toMatchObject({ ok: true, quote: { virtualAmount: topupVirtualAmount(10_000_000) } });
   });
 
-  it('only trusts whole rates from 1 to 2,000 game naira per ₦1', () => {
-    expect([TOPUP_RATE_MIN, TOPUP_RATE_MAX]).toEqual([1, 2_000]);
+  it('only trusts whole rates from 1 to 2,000 × the multiplier game naira per ₦1', () => {
+    expect([TOPUP_RATE_MIN, TOPUP_RATE_MAX]).toEqual([1, 2_000 * INCOME_MULTIPLIER]);
     expect(isSaneTopupRate(1)).toBe(true);
     expect(isSaneTopupRate(0)).toBe(false);
-    expect(isSaneTopupRate(2_000)).toBe(true);
-    expect(isSaneTopupRate(2_001)).toBe(false);
+    expect(isSaneTopupRate(TOPUP_RATE_MAX)).toBe(true);
+    expect(isSaneTopupRate(TOPUP_RATE_MAX + 1)).toBe(false);
     expect(isSaneTopupRate(300.5)).toBe(false);
   });
 
   it('explains why a stored payment can’t be credited', () => {
     expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'big-boy-pack', amountMinor: 50_000, paidMinor: 50_000, topupRate: null })).toEqual({ ok: false, reason: 'No stored rate for top-up big-boy-pack' });
-    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 50_000, paidMinor: 50_000, topupRate: 9_999 })).toEqual({ ok: false, reason: 'Stored top-up rate 9999 is out of bounds' });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 50_000, paidMinor: 50_000, topupRate: TOPUP_RATE_MAX + 1 })).toEqual({ ok: false, reason: `Stored top-up rate ${TOPUP_RATE_MAX + 1} is out of bounds` });
     // A rate of exactly 1 is sane (and credits 1 game naira per ₦1).
     expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 50_000, paidMinor: 50_000, topupRate: 1 })).toMatchObject({ ok: true, credit: { virtualAmount: 500 } });
     // Kobo below a naira are never credited.

@@ -464,7 +464,13 @@ export class VehiclesService {
         hasPrimary = true;
       }
       await ctx.manager.save(car.row);
-      ctx.notify({ kind: 'system', title: 'Your car has arrived 🚗', body: `The dealer's driver parked your ${car.def.name} (${car.row.plate}) at your gate.`, tone: 'good' });
+      ctx.notify({
+        kind: 'system',
+        title: 'Your car has arrived 🚗',
+        // It waits at home, not where you are: say so, and how to get there.
+        body: `The dealer's driver parked your ${car.def.name} (${car.row.plate}) at your home gate. On the Map, tap Home at the top to go and pick it up.`,
+        tone: 'good',
+      });
       ctx.report({ label: `${car.def.name} delivered`, tone: 'good' });
     }
     this.changed(ctx);

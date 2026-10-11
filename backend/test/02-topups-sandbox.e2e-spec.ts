@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { TOPUP_PACKAGES, topupVirtualAmountUsd, type PaymentDto, type PaymentVerificationDto, type TopupStartedDto, type TopupVerificationDto } from '@insidelife/shared';
+import { INCOME_MULTIPLIER as K, TOPUP_PACKAGES, topupVirtualAmountUsd, type PaymentDto, type PaymentVerificationDto, type TopupStartedDto, type TopupVerificationDto } from '@insidelife/shared';
 import { bootApp, type E2eApp } from './support/app.js';
 import { E2E } from './support/env.js';
 import { burst } from './support/game.js';
@@ -20,14 +20,14 @@ afterAll(async () => {
 
 /**
  * The rate table players are promised (docs/GAME_DESIGN.md, "Top-ups"): game naira per real ₦1 by amount. Written
- * out here as the oracle, independently of the shared `topupVirtualAmount`.
+ * out here (× the income multiplier) as the oracle, independently of the shared `topupVirtualAmount`.
  */
 const RATE_TABLE: ReadonlyArray<readonly [fromNgn: number, perNaira: number]> = [
-  [500, 300],
-  [1_000, 350],
-  [2_500, 400],
-  [5_000, 440],
-  [10_000, 500],
+  [500, 300 * K],
+  [1_000, 350 * K],
+  [2_500, 400 * K],
+  [5_000, 440 * K],
+  [10_000, 500 * K],
 ];
 const promisedCredit = (ngn: number): number => ngn * RATE_TABLE.toReversed().find(([from]) => ngn >= from)![1];
 
@@ -84,8 +84,8 @@ describe('top-up packs through the sandbox checkout', () => {
         expect(await player.cash() - before).toBe(promisedCredit(amountNgn));
       }
     }
-    expect(promisedCredit(123_456)).toBe(61_728_000);
-    expect(promisedCredit(999)).toBe(299_700);
+    expect(promisedCredit(123_456)).toBe(61_728_000 * K);
+    expect(promisedCredit(999)).toBe(299_700 * K);
   });
 
   it('refuses amounts outside ₦500 – the per-payment maximum, and a pack and an amount together', async () => {
@@ -110,10 +110,10 @@ describe('top-ups are credited exactly once', () => {
     for (let i = 0; i < 3; i++) {
       const again = ok<TopupVerificationDto>(await player.post(`/payments/topups/${started.reference}/verification`, {}));
       expect(again.fulfilledNow).toBe(false);
-      expect(again.balance).toBe(before + 350_000);
+      expect(again.balance).toBe(before + 350_000 * K);
     }
     expect((await payInSandbox(player, started.reference)).fulfilledNow).toBe(false);
-    expect(await player.cash()).toBe(before + 350_000);
+    expect(await player.cash()).toBe(before + 350_000 * K);
     expect(await topupPostings(player, started.reference)).toHaveLength(1);
   });
 
@@ -127,7 +127,7 @@ describe('top-ups are credited exactly once', () => {
     expect(results.every((response) => response.status === 200)).toBe(true);
     const deliveries = results.filter((response) => (response.body as { fulfilledNow?: boolean }).fulfilledNow === true);
     expect(deliveries).toHaveLength(1);
-    expect(await player.cash()).toBe(before + 1_000_000);
+    expect(await player.cash()).toBe(before + 1_000_000 * K);
     expect(await topupPostings(player, started.reference)).toHaveLength(1);
   });
 
@@ -143,7 +143,7 @@ describe('top-ups are credited exactly once', () => {
 
     await payInSandbox(player, started.reference);
     await payInSandbox(player, started.reference);
-    expect(await player.cash()).toBe(before + 150_000);
+    expect(await player.cash()).toBe(before + 150_000 * K);
     expect(await topupPostings(player, started.reference)).toHaveLength(1);
   });
 

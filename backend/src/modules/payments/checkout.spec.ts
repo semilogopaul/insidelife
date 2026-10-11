@@ -2,7 +2,7 @@ import { FindOperator, type DataSource, type EntityManager, type Repository } fr
 import type { Queue } from 'bullmq';
 import type { Request } from 'express';
 import type { Redis } from 'ioredis';
-import type { TopupDetailsDto } from '@insidelife/shared';
+import { INCOME_MULTIPLIER as K, type TopupDetailsDto } from '@insidelife/shared';
 import type { CheckoutFulfiller, CheckoutRefund, CheckoutRequest, FulfilmentResult, PaidCheckout } from '../../common/ports/checkout.port.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import type { CharacterDirectory } from '../characters/character-directory.service.js';
@@ -28,7 +28,7 @@ import { CHECK_DEBOUNCE_MS, CHECKS_PER_MINUTE, PaymentCheckLimiter } from './pay
 import { PaymentsController } from './payments.controller.js';
 import { PaymentsEventsProcessor } from './payments-events.processor.js';
 import { TopupCreditor } from './topup-creditor.service.js';
-import { quoteTopup, topupCredit, type TopupLimits } from './topup-quote.js';
+import { quoteTopup, topupCredit, TOPUP_RATE_MAX, type TopupLimits } from './topup-quote.js';
 import { TopupsService } from './topups.service.js';
 import type { UsdRateService } from './usd-rate.service.js';
 
@@ -1210,17 +1210,17 @@ describe('top-up quotes and credits', () => {
         packageId: 'owambe-pack',
         label: 'Owambe pack',
         priceNgn: 2_500,
-        ratePerNaira: 400,
-        virtualAmount: 1_000_000,
+        ratePerNaira: 400 * K,
+        virtualAmount: 1_000_000 * K,
         currency: 'NGN',
         amountMinor: 250_000,
         priceUsd: null,
         ngnPerUsd: null,
       },
     });
-    expect(quoteTopup({ amountNgn: 2_500 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { subjectId: 'custom', packageId: null, ratePerNaira: 400, virtualAmount: 1_000_000 } });
-    expect(quoteTopup({ amountNgn: 7_000 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { label: 'Custom top-up', ratePerNaira: 440, virtualAmount: 3_080_000 } });
-    expect(quoteTopup({ amountNgn: 250_000 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { ratePerNaira: 500, virtualAmount: 125_000_000 } });
+    expect(quoteTopup({ amountNgn: 2_500 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { subjectId: 'custom', packageId: null, ratePerNaira: 400 * K, virtualAmount: 1_000_000 * K } });
+    expect(quoteTopup({ amountNgn: 7_000 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { label: 'Custom top-up', ratePerNaira: 440 * K, virtualAmount: 3_080_000 * K } });
+    expect(quoteTopup({ amountNgn: 250_000 }, ngnOnly(10_000_000))).toMatchObject({ ok: true, quote: { ratePerNaira: 500 * K, virtualAmount: 125_000_000 * K } });
     expect(quoteTopup({}, ngnOnly(10_000_000))).toEqual({ ok: false, reason: 'Pick a pack or enter an amount' });
     expect(quoteTopup({ packageId: 'jollof-pack', amountNgn: 1_000 }, ngnOnly(10_000_000)).ok).toBe(false);
     expect(quoteTopup({ amountNgn: 499 }, ngnOnly(10_000_000))).toMatchObject({ ok: false, reason: expect.stringMatching(/₦500/) });
@@ -1236,8 +1236,8 @@ describe('top-up quotes and credits', () => {
         packageId: null,
         label: 'Dollar top-up',
         priceNgn: 15_000,
-        ratePerNaira: 500,
-        virtualAmount: 7_500_000,
+        ratePerNaira: 500 * K,
+        virtualAmount: 7_500_000 * K,
         currency: 'USD',
         amountMinor: 1_000,
         priceUsd: 10,
@@ -1263,11 +1263,11 @@ describe('top-up quotes and credits', () => {
   });
 
   it('credits a dollar top-up from the cents verified at the rate stored at checkout, never today’s rate', () => {
-    const dollars = { currency: 'USD' as const, ngnPerUsd: 1_500, subjectId: 'custom', amountMinor: 1_000, paidMinor: 1_000, topupRate: 500 };
-    expect(topupCredit(dollars)).toEqual({ ok: true, credit: { packageId: null, label: 'Dollar top-up', ratePerNaira: 500, virtualAmount: 7_500_000 } });
+    const dollars = { currency: 'USD' as const, ngnPerUsd: 1_500, subjectId: 'custom', amountMinor: 1_000, paidMinor: 1_000, topupRate: 500 * K };
+    expect(topupCredit(dollars)).toEqual({ ok: true, credit: { packageId: null, label: 'Dollar top-up', ratePerNaira: 500 * K, virtualAmount: 7_500_000 * K } });
     // Paid a little more than quoted: the verified cents count, at the stored rate (rounded down to the naira).
-    expect(topupCredit({ ...dollars, paidMinor: 1_001 })).toMatchObject({ ok: true, credit: { virtualAmount: 15_015 * 500 } });
-    expect(topupCredit({ ...dollars, paidMinor: null })).toMatchObject({ ok: true, credit: { virtualAmount: 7_500_000 } });
+    expect(topupCredit({ ...dollars, paidMinor: 1_001 })).toMatchObject({ ok: true, credit: { virtualAmount: 15_015 * 500 * K } });
+    expect(topupCredit({ ...dollars, paidMinor: null })).toMatchObject({ ok: true, credit: { virtualAmount: 7_500_000 * K } });
     // No rate, or an insane one, on a dollar row: never credited (retried and flagged instead).
     expect(topupCredit({ ...dollars, ngnPerUsd: null }).ok).toBe(false);
     expect(topupCredit({ ...dollars, ngnPerUsd: 499 }).ok).toBe(false);
@@ -1277,25 +1277,25 @@ describe('top-up quotes and credits', () => {
   });
 
   it('credits the verified amount × the stored rate, and refuses rows that do not add up', () => {
-    const custom = { currency: 'NGN' as const, ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 440 };
-    expect(topupCredit(custom)).toEqual({ ok: true, credit: { packageId: null, label: 'Custom top-up', ratePerNaira: 440, virtualAmount: 3_080_000 } });
+    const custom = { currency: 'NGN' as const, ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 440 * K };
+    expect(topupCredit(custom)).toEqual({ ok: true, credit: { packageId: null, label: 'Custom top-up', ratePerNaira: 440 * K, virtualAmount: 3_080_000 * K } });
     // Paid more than quoted (never on hosted checkout, but the verified amount is what counts).
-    expect(topupCredit({ ...custom, paidMinor: 800_000 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_520_000 } });
+    expect(topupCredit({ ...custom, paidMinor: 800_000 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_520_000 * K } });
     // Before verification the quote is shown.
-    expect(topupCredit({ ...custom, paidMinor: null })).toMatchObject({ ok: true, credit: { virtualAmount: 3_080_000 } });
+    expect(topupCredit({ ...custom, paidMinor: null })).toMatchObject({ ok: true, credit: { virtualAmount: 3_080_000 * K } });
     // Top-ups made before custom amounts have no stored rate: the pack's, if the pack still matches what was charged.
-    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'big-boy-pack', amountMinor: 500_000, paidMinor: 500_000, topupRate: null })).toMatchObject({ ok: true, credit: { virtualAmount: 2_200_000, ratePerNaira: 440 } });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'big-boy-pack', amountMinor: 500_000, paidMinor: 500_000, topupRate: null })).toMatchObject({ ok: true, credit: { virtualAmount: 2_200_000 * K, ratePerNaira: 440 * K } });
     expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'big-boy-pack', amountMinor: 50_000, paidMinor: 50_000, topupRate: null })).toMatchObject({ ok: false });
     expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'free-money', amountMinor: 50_000, paidMinor: 50_000, topupRate: null })).toMatchObject({ ok: false });
   });
 
   it('trusts the rate stored at checkout even after packs or tiers change, within sane bounds', () => {
-    // Quoted at 550 per ₦1 on a day the tiers were more generous: today's 440 doesn't strand it.
-    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 550 })).toMatchObject({ ok: true, credit: { virtualAmount: 3_850_000 } });
+    // Quoted at 550 × the multiplier per ₦1 on a day the tiers were more generous: today's 440 doesn't strand it.
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 550 * K })).toMatchObject({ ok: true, credit: { virtualAmount: 3_850_000 * K } });
     // A pack that has since been renamed or retired still credits, with a generic label.
-    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'retired-pack', amountMinor: 300_000, paidMinor: 300_000, topupRate: 380 })).toMatchObject({ ok: true, credit: { label: 'Top-up', virtualAmount: 1_140_000 } });
-    for (const rate of [0, -5, 2_001, 1.5]) expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: rate }), String(rate)).toMatchObject({ ok: false });
-    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: 2_000 }).ok).toBe(true);
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'retired-pack', amountMinor: 300_000, paidMinor: 300_000, topupRate: 380 * K })).toMatchObject({ ok: true, credit: { label: 'Top-up', virtualAmount: 1_140_000 * K } });
+    for (const rate of [0, -5, TOPUP_RATE_MAX + 1, 1.5]) expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: rate }), String(rate)).toMatchObject({ ok: false });
+    expect(topupCredit({ currency: 'NGN', ngnPerUsd: null, subjectId: 'custom', amountMinor: 700_000, paidMinor: 700_000, topupRate: TOPUP_RATE_MAX }).ok).toBe(true);
   });
 });
 
@@ -1327,21 +1327,21 @@ describe('TopupsService checkout', () => {
       packageId: null,
       label: 'Custom top-up',
       priceNgn: 3_000_000,
-      ratePerNaira: 500,
-      virtualAmount: 1_500_000_000,
+      ratePerNaira: 500 * K,
+      virtualAmount: 1_500_000_000 * K,
       currency: 'NGN',
       amountMinor: 300_000_000,
       priceUsd: null,
       ngnPerUsd: null,
     });
-    expect(started).toEqual([expect.objectContaining({ amountMinor: 300_000_000, subjectId: 'custom', topupRate: 500, purpose: 'topup' })]);
+    expect(started).toEqual([expect.objectContaining({ amountMinor: 300_000_000, subjectId: 'custom', topupRate: 500 * K, purpose: 'topup' })]);
     expect(await service.catalog(USER)).toMatchObject({ dailyLimitNgn: null, remainingTodayNgn: null, minNgn: 500, maxPerPaymentNgn: 10_000_000 });
   });
 
   it('enforces a daily cap only when the owner sets one', async () => {
     const { service } = topupsWith(20_000, 1_500_000);
     await expect(service.start(USER, { amountNgn: 6_000 })).rejects.toMatchObject({ errorCode: 'TOPUP_DAILY_LIMIT' });
-    await expect(service.start(USER, { amountNgn: 5_000 })).resolves.toMatchObject({ topup: { virtualAmount: 2_200_000 } });
+    await expect(service.start(USER, { amountNgn: 5_000 })).resolves.toMatchObject({ topup: { virtualAmount: 2_200_000 * K } });
     expect(await service.catalog(USER)).toMatchObject({ dailyLimitNgn: 20_000, remainingTodayNgn: 5_000 });
   });
 
@@ -1352,14 +1352,14 @@ describe('TopupsService checkout', () => {
       packageId: null,
       label: 'Dollar top-up',
       priceNgn: 15_000,
-      ratePerNaira: 500,
-      virtualAmount: 7_500_000,
+      ratePerNaira: 500 * K,
+      virtualAmount: 7_500_000 * K,
       currency: 'USD',
       amountMinor: 1_000,
       priceUsd: 10,
       ngnPerUsd: 1_500,
     });
-    expect(started).toEqual([expect.objectContaining({ currency: 'USD', amountMinor: 1_000, ngnPerUsd: 1_500, method: 'card', topupRate: 500, subjectId: 'custom' })]);
+    expect(started).toEqual([expect.objectContaining({ currency: 'USD', amountMinor: 1_000, ngnPerUsd: 1_500, method: 'card', topupRate: 500 * K, subjectId: 'custom' })]);
     expect(await service.catalog(USER)).toMatchObject({
       usd: { ngnPerUsd: 1_500, methods: ['card'], minUsd: 1, maxPerPaymentUsd: 5_000, quickPicksUsd: [1, 5, 10, 25, 50], minChargeCents: 100 },
     });

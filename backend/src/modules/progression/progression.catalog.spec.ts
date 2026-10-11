@@ -1,4 +1,5 @@
 import {
+  boosted,
   ACHIEVEMENTS,
   ACHIEVEMENT_CATEGORIES,
   ACHIEVEMENT_RARITY_IDS,
@@ -178,17 +179,17 @@ describe('Life Goals graph', () => {
       total += cash;
       if (goal.preCompleted) expect(cash).toBe(0);
       else {
-        expect(goal.reward.cash, goal.id).toBeGreaterThanOrEqual(5_000);
-        expect(cash, goal.id).toBeLessThanOrEqual(200_000);
+        expect(goal.reward.cash, goal.id).toBeGreaterThanOrEqual(boosted(5_000));
+        expect(cash, goal.id).toBeLessThanOrEqual(boosted(200_000));
       }
       expect(goal.reward.clout + (goal.bonus?.clout ?? 0), goal.id).toBeLessThanOrEqual(20);
       expect(Number.isInteger(goal.reward.cash)).toBe(true);
     }
     expect(total).toBeLessThanOrEqual(LIFE_GOAL_CASH_BUDGET);
-    expect(LIFE_GOAL_CASH_BUDGET).toBeLessThanOrEqual(1_500_000);
+    expect(LIFE_GOAL_CASH_BUDGET).toBeLessThanOrEqual(boosted(1_500_000));
     // The first session pays pocket change compared with the ₦5M starter fund.
     const chapterOne = GOALS.filter((goal) => goal.chapter === 1).reduce((sum, goal) => sum + goal.reward.cash, 0);
-    expect(chapterOne).toBeLessThanOrEqual(100_000);
+    expect(chapterOne).toBeLessThanOrEqual(boosted(100_000));
     const goalClout = GOALS.reduce((sum, goal) => sum + goal.reward.clout + (goal.bonus?.clout ?? 0), 0);
     expect(goalClout).toBeLessThanOrEqual(PROGRESSION_CLOUT_CAP);
   });
