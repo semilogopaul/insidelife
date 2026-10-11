@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { io, type Socket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ACCOUNT_DELETION_PHRASE, REALTIME_NAMESPACE } from '@insidelife/shared';
+import { ACCOUNT_DELETION_PHRASE, findTopupPackage, REALTIME_NAMESPACE } from '@insidelife/shared';
 import { grantAdmin, signInOwner, type Admin } from './support/admin.js';
 import { bootApp, type E2eApp } from './support/app.js';
 import { burst, fund, waitFor } from './support/game.js';
@@ -125,7 +125,7 @@ describe('the open game hears about money at once (realtime)', () => {
     const credited = next<{ title: string; amount?: number }>(socket, 'notification', (payload) => payload.title === 'Payment confirmed ✓');
     const started = ok<{ reference: string }>(await recipient.post('/payments/topups', { packageId: 'small-chops' }));
     ok(await recipient.post(`/payments/sandbox/${started.reference}/succeed`));
-    expect(await credited).toMatchObject({ amount: 150_000 });
+    expect(await credited).toMatchObject({ amount: findTopupPackage('small-chops')?.virtualAmount });
     socket.disconnect();
   });
 });

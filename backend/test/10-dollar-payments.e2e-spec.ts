@@ -2,6 +2,7 @@ import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  INCOME_MULTIPLIER,
   topupVirtualAmountUsd,
   usdCentsForKobo,
   type BillboardSlotsDto,
@@ -112,7 +113,7 @@ describe('a paid dollar checkout is credited exactly once, whoever confirms it f
     const verified = ok<TopupVerificationDto>(await verify(player, started.reference, transaction));
     expect(verified.fulfilledNow).toBe(true);
     const credit = topupVirtualAmountUsd(10, RATE);
-    expect(credit).toBe(15_000 * 500);
+    expect(credit).toBe(15_000 * 500 * INCOME_MULTIPLIER);
     expect(verified.balance).toBe(before + credit);
     expect(verified.payment).toMatchObject({ currency: 'USD', amountMinor: 1_000, ngnPerUsd: RATE, amountNgn: 15_000, topup: { label: 'Dollar top-up', virtualAmount: credit } });
     expect(await paymentRow(e2e, started.reference)).toMatchObject({ status: 'success', paid_minor: '1000', channel: 'card' });
@@ -346,8 +347,8 @@ describe('refunds of dollar payments take back the coins in proportion, once', (
     // From ₦0, so the dollars bought below always fit the monthly FX allowance, whatever the starting money.
     await drainCash(e2e, player);
     const { transaction } = await paidDollars(player, 2);
-    // Spend everything but ₦1,000 by moving it into dollars (out of reach of a claw-back).
-    ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: (await player.cash()) - 1_000, idempotencyKey: key() }));
+    // Move most of it into dollars (out of reach of a claw-back), capped at ₦5m: the CBN monthly allowance is real-world and doesn't grow with the income multiplier.
+    ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: Math.min((await player.cash()) - 1_000, 5_000_000), idempotencyKey: key() }));
     const cash = await player.cash();
     const owed = topupVirtualAmountUsd(2, RATE) - cash;
     expect(owed).toBeGreaterThan(0);

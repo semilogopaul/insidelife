@@ -1,7 +1,7 @@
 import { getQueueToken } from '@nestjs/bullmq';
 import type { Queue } from 'bullmq';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { CampaignCheckoutDto, PaymentVerificationDto, TopupStartedDto, TopupVerificationDto } from '@insidelife/shared';
+import { INCOME_MULTIPLIER as K, formatNaira, type CampaignCheckoutDto, PaymentVerificationDto, TopupStartedDto, TopupVerificationDto } from '@insidelife/shared';
 import { CheckoutReconciler } from '../src/modules/payments/checkout-reconciler.service.js';
 import { PAYMENTS_QUEUE } from '../src/modules/payments/payments-queue.js';
 import { signInOwner, type Admin } from './support/admin.js';
@@ -82,7 +82,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     const transaction = fw.pay(started.reference);
     const verified = ok<TopupVerificationDto>(await verifyTopup(player, started.reference, transaction));
     expect(verified.fulfilledNow).toBe(true);
-    expect(verified.balance).toBe(before + 1_000_000);
+    expect(verified.balance).toBe(before + 1_000_000 * K);
     const row = await paymentRow(started.reference);
     expect(row).toMatchObject({ status: 'success', gateway_transaction_id: String(transaction.id) });
     expect(Number(row.paid_minor)).toBe(250_000);
@@ -94,7 +94,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     ok(await webhook(fw.chargeWebhook(transaction)));
     expect(await processed(`charge-${transaction.id}`)).toBe('already-paid');
 
-    expect(await player.cash()).toBe(before + 1_000_000);
+    expect(await player.cash()).toBe(before + 1_000_000 * K);
     expect(await credits(player, started.reference)).toHaveLength(1);
   });
 
@@ -105,8 +105,8 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     const transaction = fw.pay(started.reference);
     ok(await webhook(fw.chargeWebhook(transaction)));
     expect(await processed(`charge-${transaction.id}`)).toBe('record-success');
-    expect(await player.cash()).toBe(before + 3_000 * 400);
-    expect((await player.character()).purchased_total).toBe(3_000 * 400);
+    expect(await player.cash()).toBe(before + 3_000 * 400 * K);
+    expect((await player.character()).purchased_total).toBe(3_000 * 400 * K);
   });
 
   it('refuses webhooks without the right secret hash, and they change nothing', async () => {
@@ -136,7 +136,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
       reconciler.sweep(later),
     ]);
     await processed(`charge-${transaction.id}`);
-    expect(await player.cash()).toBe(before + 5_000_000);
+    expect(await player.cash()).toBe(before + 5_000_000 * K);
     expect(await credits(player, started.reference)).toHaveLength(1);
     expect((await paymentRow(started.reference)).fulfilled_at).not.toBeNull();
   });
@@ -149,7 +149,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     const results = await burst(10, () => verifyTopup(player, started.reference, transaction));
     expect(results.map((response) => response.status)).toEqual(Array.from({ length: 10 }, () => 200));
     expect(results.filter((response) => (response.body as TopupVerificationDto).fulfilledNow)).toHaveLength(1);
-    expect(await player.cash()).toBe(before + 2_200_000);
+    expect(await player.cash()).toBe(before + 2_200_000 * K);
     expect(await credits(player, started.reference)).toHaveLength(1);
   });
 
@@ -159,7 +159,7 @@ describe('a paid checkout is credited exactly once, whoever confirms it first', 
     const started = await startTopup(player, { packageId: 'jollof-pack' });
     fw.pay(started.reference);
     await sweepWhenDue(e2e, started.reference);
-    expect(await player.cash()).toBe(before + 350_000);
+    expect(await player.cash()).toBe(before + 350_000 * K);
     expect(await paymentRow(started.reference)).toMatchObject({ status: 'success' });
   });
 
@@ -229,13 +229,16 @@ async function paidTopup(player: Player, packageId: string): Promise<{ reference
   return { reference: started.reference, transaction, credit: (await player.cash()) - before };
 }
 
+/** Dollars bought with part of the top-up: the CBN monthly allowance ($5,000, about ₦7m) is real-world, so it doesn't grow with the income multiplier. */
+const FX_SPEND = 5_000_000;
+
 describe('refunds made in the Flutterwave dashboard take the coins back, once', () => {
 
   it('a full refund claws back everything; the same refund reported again takes nothing more', async () => {
     const player = await createPlayer(e2e);
     const start = await player.cash();
     const { reference, transaction, credit } = await paidTopup(player, 'owambe-pack');
-    expect(credit).toBe(1_000_000);
+    expect(credit).toBe(1_000_000 * K);
 
     const refund = fw.dashboardRefund(transaction.id, 2_500);
     ok(await webhook(fw.refundWebhook(refund)));
@@ -258,7 +261,7 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     const first = fw.dashboardRefund(transaction.id, 5_000);
     ok(await webhook(fw.refundWebhook(first)));
     await processed(`refund-${first.id}-completed`);
-    expect(await player.cash()).toBe(start + 2_500_000);
+    expect(await player.cash()).toBe(start + 2_500_000 * K);
     const second = fw.dashboardRefund(transaction.id, 5_000);
     ok(await webhook(fw.refundWebhook(second)));
     await processed(`refund-${second.id}-completed`);
@@ -270,15 +273,15 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     const player = await createPlayer(e2e);
     const { reference, transaction } = await paidTopup(player, 'big-boy-pack');
     const cash = await player.cash();
-    ok(await player.post('/wallet/savings-transfers', { direction: 'deposit', amount: cash - 1_000_000, idempotencyKey: key() }));
+    ok(await player.post('/wallet/savings-transfers', { direction: 'deposit', amount: cash - 1_000_000 * K, idempotencyKey: key() }));
     const savings = await player.savings();
 
     const refund = fw.dashboardRefund(transaction.id, 5_000);
     ok(await webhook(fw.refundWebhook(refund)));
     await processed(`refund-${refund.id}-completed`);
     expect(await player.cash()).toBe(0);
-    expect(await player.savings()).toBe(savings - 1_200_000);
-    expect((await paymentRow(reference)).flag_reason).toMatch(/clawed back ₦2,200,000 of ₦2,200,000/);
+    expect(await player.savings()).toBe(savings - 1_200_000 * K);
+    expect((await paymentRow(reference)).flag_reason).toMatch(new RegExp(`clawed back ${formatNaira(2_200_000 * K)} of ${formatNaira(2_200_000 * K)}`));
   });
 
   it('never goes below zero: what was moved out of reach (here, into dollars) is flagged for ops as a shortfall', async () => {
@@ -286,9 +289,9 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     // From ₦0, so the dollars bought below always fit the monthly FX allowance, whatever the starting money.
     await drainCash(e2e, player);
     const { reference, transaction } = await paidTopup(player, 'big-boy-pack');
-    ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: (await player.cash()) - 100_000, idempotencyKey: key() }));
+    ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: FX_SPEND, idempotencyKey: key() }));
     const cash = await player.cash();
-    expect(cash).toBeLessThan(2_200_000);
+    expect(cash).toBeLessThan(2_200_000 * K);
 
     const refund = fw.dashboardRefund(transaction.id, 5_000);
     ok(await webhook(fw.refundWebhook(refund)));
@@ -297,7 +300,7 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     const row = await paymentRow(reference);
     expect(row.refund_status).toBe('refunded');
     expect(row.flag_reason).toMatch(/already spent/);
-    expect((await player.character()).purchased_total).toBe(2_200_000 - cash);
+    expect((await player.character()).purchased_total).toBe(2_200_000 * K - cash);
   });
 
   it('what was already spent becomes a debt: recorded once, blocks sending, shown in the bank and to admins, repaid from the next money in', async () => {
@@ -306,9 +309,9 @@ describe('refunds made in the Flutterwave dashboard take the coins back, once', 
     // From ₦0: the birth lottery's starting money (₦8m for a nepo baby) would otherwise blow the $5,000 FX allowance below.
     await drainCash(e2e, player);
     const { transaction } = await paidTopup(player, 'big-boy-pack');
-    ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: (await player.cash()) - 100_000, idempotencyKey: key() }));
+    ok(await player.post('/fx/orders', { side: 'buy-usd', amountNaira: FX_SPEND, idempotencyKey: key() }));
     const cash = await player.cash();
-    const owed = 2_200_000 - cash;
+    const owed = 2_200_000 * K - cash;
 
     const refund = fw.dashboardRefund(transaction.id, 5_000);
     ok(await webhook(fw.refundWebhook(refund)));

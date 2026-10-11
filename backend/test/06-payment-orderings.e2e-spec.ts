@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { findAdSlot, type BillboardSlotsDto, type CampaignCheckoutDto, type ClubOrderCheckoutDto, type ClubTrackDto, type TopupStartedDto } from '@insidelife/shared';
+import { INCOME_MULTIPLIER as K, findAdSlot, type BillboardSlotsDto, type CampaignCheckoutDto, type ClubOrderCheckoutDto, type ClubTrackDto, type TopupStartedDto } from '@insidelife/shared';
 import { lagosToday } from '../src/modules/promotions/rules/schedule.rules.js';
 import { bootApp, type E2eApp } from './support/app.js';
 import { FAKE_FLUTTERWAVE_KEY, FakeFlutterwave, type FakeTransaction } from './support/fake-flutterwave.js';
@@ -47,7 +47,7 @@ interface Purchase {
   readonly cashBefore: number;
 }
 
-const TOPUP_CREDIT = 1_000_000;
+const TOPUP_CREDIT = 1_000_000 * K;
 
 async function startPurchase(kind: Kind): Promise<Purchase> {
   const buyer = await createPlayer(e2e);
