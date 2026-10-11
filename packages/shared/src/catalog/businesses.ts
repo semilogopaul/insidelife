@@ -1,3 +1,4 @@
+import { boosted } from '../money/income-multiplier.js';
 import type { DistrictId } from './geography.js';
 import type { SkillKey } from './life.js';
 
@@ -102,7 +103,8 @@ export interface BusinessTypeDefinition {
 
 const b = (definition: BusinessTypeDefinition): BusinessTypeDefinition => definition;
 
-export const BUSINESS_TYPES: readonly BusinessTypeDefinition[] = [
+/** Takings and overheads as in real Lagos; `BUSINESS_TYPES` (below) is what the game runs: × INCOME_MULTIPLIER. */
+const LAGOS_BUSINESS_TYPES: readonly BusinessTypeDefinition[] = [
   b({
     id: 'pos-kiosk',
     label: 'POS kiosk',
@@ -382,6 +384,16 @@ export const BUSINESS_TYPES: readonly BusinessTypeDefinition[] = [
     minAge: 21,
   }),
 ];
+
+/**
+ * What the game runs: monthly takings and fixed overheads × INCOME_MULTIPLIER, so profit grows by the same factor as
+ * job pay. What it costs to open a business is a price and stays as in real Lagos, so businesses pay back faster.
+ */
+export const BUSINESS_TYPES: readonly BusinessTypeDefinition[] = LAGOS_BUSINESS_TYPES.map((type) => ({
+  ...type,
+  revenue: { ...type.revenue, median: boosted(type.revenue.median), min: boosted(type.revenue.min), max: boosted(type.revenue.max) },
+  costs: { ...type.costs, fixedMonthly: boosted(type.costs.fixedMonthly) },
+}));
 
 const BUSINESS_INDEX: ReadonlyMap<string, BusinessTypeDefinition> = new Map(BUSINESS_TYPES.map((type) => [type.id, type]));
 

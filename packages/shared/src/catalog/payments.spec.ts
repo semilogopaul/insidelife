@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { INCOME_MULTIPLIER as K } from '../money/income-multiplier.js';
 import {
   CUSTOM_TOPUP_ID,
   DEFAULT_TOPUP_DAILY_LIMIT_NGN,
@@ -27,13 +28,13 @@ import {
 } from './payments.js';
 
 describe('top-up rates', () => {
-  it('has one whole-number rate per pack, rising with the price: 300, 350, 400, 440, 500 per ₦1', () => {
+  it('has one whole-number rate per pack, rising with the price: 300, 350, 400, 440, 500 per ₦1 × INCOME_MULTIPLIER', () => {
     expect(TOPUP_RATE_TIERS.map((tier) => [tier.fromNgn, tier.perNaira])).toEqual([
-      [500, 300],
-      [1_000, 350],
-      [2_500, 400],
-      [5_000, 440],
-      [10_000, 500],
+      [500, 300 * K],
+      [1_000, 350 * K],
+      [2_500, 400 * K],
+      [5_000, 440 * K],
+      [10_000, 500 * K],
     ]);
     for (const tier of TOPUP_RATE_TIERS) expect(Number.isInteger(tier.perNaira)).toBe(true);
   });
@@ -44,25 +45,25 @@ describe('top-up rates', () => {
 
   it('uses the largest pack whose price is at most the amount, at the boundaries', () => {
     expect(topupRateFor(499)).toBeNull();
-    expect(topupRateFor(500)).toBe(300);
-    expect(topupRateFor(999)).toBe(300);
-    expect(topupRateFor(1_000)).toBe(350);
-    expect(topupRateFor(2_499)).toBe(350);
-    expect(topupRateFor(2_500)).toBe(400);
-    expect(topupRateFor(4_999)).toBe(400);
-    expect(topupRateFor(5_000)).toBe(440);
-    expect(topupRateFor(9_999)).toBe(440);
-    expect(topupRateFor(10_000)).toBe(500);
-    expect(topupRateFor(10_000_000)).toBe(500);
+    expect(topupRateFor(500)).toBe(300 * K);
+    expect(topupRateFor(999)).toBe(300 * K);
+    expect(topupRateFor(1_000)).toBe(350 * K);
+    expect(topupRateFor(2_499)).toBe(350 * K);
+    expect(topupRateFor(2_500)).toBe(400 * K);
+    expect(topupRateFor(4_999)).toBe(400 * K);
+    expect(topupRateFor(5_000)).toBe(440 * K);
+    expect(topupRateFor(9_999)).toBe(440 * K);
+    expect(topupRateFor(10_000)).toBe(500 * K);
+    expect(topupRateFor(10_000_000)).toBe(500 * K);
   });
 
   it('credits custom amounts at that rate', () => {
-    expect(topupVirtualAmount(500)).toBe(150_000);
-    expect(topupVirtualAmount(750)).toBe(225_000);
-    expect(topupVirtualAmount(999)).toBe(299_700);
-    expect(topupVirtualAmount(7_000)).toBe(3_080_000);
-    expect(topupVirtualAmount(25_000)).toBe(12_500_000);
-    expect(topupVirtualAmount(DEFAULT_TOPUP_MAX_PER_PAYMENT_NGN)).toBe(5_000_000_000);
+    expect(topupVirtualAmount(500)).toBe(150_000 * K);
+    expect(topupVirtualAmount(750)).toBe(225_000 * K);
+    expect(topupVirtualAmount(999)).toBe(299_700 * K);
+    expect(topupVirtualAmount(7_000)).toBe(3_080_000 * K);
+    expect(topupVirtualAmount(25_000)).toBe(12_500_000 * K);
+    expect(topupVirtualAmount(DEFAULT_TOPUP_MAX_PER_PAYMENT_NGN)).toBe(5_000_000_000 * K);
     expect(Number.isSafeInteger(topupVirtualAmount(DEFAULT_TOPUP_MAX_PER_PAYMENT_NGN))).toBe(true);
   });
 
@@ -132,14 +133,14 @@ describe('paying in dollars', () => {
 
   it('credits a dollar top-up exactly what the same value in naira credits, tier included', () => {
     expect(topupVirtualAmountUsd(1, 1_500)).toBe(topupVirtualAmount(1_500));
-    expect(topupVirtualAmountUsd(1, 1_500)).toBe(1_500 * 350);
-    expect(topupVirtualAmountUsd(10, 1_500)).toBe(15_000 * 500);
+    expect(topupVirtualAmountUsd(1, 1_500)).toBe(1_500 * 350 * K);
+    expect(topupVirtualAmountUsd(10, 1_500)).toBe(15_000 * 500 * K);
     // $1 at the lowest rate is exactly the ₦500 minimum.
-    expect(topupVirtualAmountUsd(1, 500)).toBe(150_000);
+    expect(topupVirtualAmountUsd(1, 500)).toBe(150_000 * K);
     // Tier boundaries reached through the rate: $2 × ₦1,250 = ₦2,500 (400/₦1), $2 × ₦1,249 = ₦2,498 (350/₦1).
-    expect(topupVirtualAmountUsd(2, 1_250)).toBe(2_500 * 400);
-    expect(topupVirtualAmountUsd(2, 1_249)).toBe(2_498 * 350);
-    expect(topupVirtualAmountUsd(DEFAULT_TOPUP_MAX_PER_PAYMENT_USD, USD_RATE_MAX_NGN)).toBe(25_000_000 * 500);
+    expect(topupVirtualAmountUsd(2, 1_250)).toBe(2_500 * 400 * K);
+    expect(topupVirtualAmountUsd(2, 1_249)).toBe(2_498 * 350 * K);
+    expect(topupVirtualAmountUsd(DEFAULT_TOPUP_MAX_PER_PAYMENT_USD, USD_RATE_MAX_NGN)).toBe(25_000_000 * 500 * K);
     expect(Number.isSafeInteger(topupVirtualAmountUsd(DEFAULT_TOPUP_MAX_PER_PAYMENT_USD, USD_RATE_MAX_NGN))).toBe(true);
     for (const dollars of TOPUP_USD_QUICK_PICKS) expect(topupVirtualAmountUsd(dollars, 1_600)).toBe(topupVirtualAmount(dollars * 1_600));
   });

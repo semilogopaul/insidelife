@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { formatNaira } from '../money/money.js';
+import { INCOME_MULTIPLIER } from '../money/income-multiplier.js';
 import {
   DAILY_PEER_RECEIVE_LIMIT,
   PURCHASE_HOLD_HOURS,
@@ -53,8 +55,8 @@ describe('transfers', () => {
     expect(transferTierFor(0, true)).toBe(1);
     expect(transferTierFor(10, false)).toBe(2);
     expect(transferTierFor(40, true)).toBe(3);
-    expect(dailyTransferLimit(1)).toBe(4_000_000);
-    expect(dailyTransferLimit(2)).toBe(10_000_000);
+    expect(dailyTransferLimit(1)).toBe(4_000_000 * INCOME_MULTIPLIER);
+    expect(dailyTransferLimit(2)).toBe(10_000_000 * INCOME_MULTIPLIER);
     expect(dailyTransferLimit(3)).toBeNull();
   });
 });
@@ -162,10 +164,10 @@ describe('money rules at their exact boundaries', () => {
     expect(messageOf(peer({ sendable: 0 }))).toMatch(/^Your starting money is for you to spend in Lagos/);
   });
 
-  it('receive cap: exactly ₦4m a day is allowed; the refusal says how much room is left', () => {
+  it('receive cap: exactly the daily limit is allowed; the refusal says how much room is left', () => {
     expect(peer({ amount: 100_000, receivedToday: DAILY_PEER_RECEIVE_LIMIT - 100_000 }).ok).toBe(true);
     expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT - 60_000 }))).toBe('@femi can only receive ₦60,000 more from players today.');
-    expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT }))).toBe('@femi has received all they can from players today (₦4,000,000 a day).');
+    expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT }))).toBe(`@femi has received all they can from players today (${formatNaira(DAILY_PEER_RECEIVE_LIMIT)} a day).`);
     expect(messageOf(peer({ receivedToday: DAILY_PEER_RECEIVE_LIMIT + 1 }))).toMatch(/has received all they can/);
   });
 

@@ -6,6 +6,7 @@ export * from './time/clock.js';
 export * from './needs/needs.js';
 export * from './random/rng.js';
 export * from './money/money.js';
+export * from './money/income-multiplier.js';
 export * from './world/world.js';
 
 // Rules

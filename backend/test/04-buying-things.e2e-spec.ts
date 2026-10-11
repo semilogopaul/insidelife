@@ -204,7 +204,7 @@ describe('homes: renting, land, ready-built houses and makeovers', () => {
     expect(await player.cash()).toBe(before - 2 * offer.totalPerPlot);
   });
 
-  it('buying a ready-built house charges the listing total; it can be bought once, moved into and restyled', async () => {
+  it('buying a ready-built house charges the listing total; it can be bought once, you move straight in, and it can be restyled', async () => {
     e2e.clock.at(10);
     const player = await createPlayer(e2e);
     await fund(e2e, player, 400_000_000);
@@ -218,8 +218,9 @@ describe('homes: renting, land, ready-built houses and makeovers', () => {
     const marker = (await player.snapshot()).summary.properties.find((property) => property.id === bought.propertyId);
     expect(marker).toMatchObject({ stage: 'built', blueprintId: listing.blueprintId, districtId: listing.districtId });
 
-    ok(await player.post('/housing/moves', { to: bought.propertyId }));
+    // Buying moves you straight in.
     expect((await player.snapshot()).summary.home.ownership).toBe('owned');
+    refused(await player.post('/housing/moves', { to: bought.propertyId }), 422, 'ALREADY_HOME');
 
     const exterior = { paint: 'terracotta', gate: 'green' } as const;
     const current = marker!.exterior;
@@ -237,7 +238,6 @@ describe('homes: renting, land, ready-built houses and makeovers', () => {
     await fund(e2e, player, 400_000_000);
     const listing = ok<HouseListingDto[]>(await player.get('/housing/houses')).toSorted((a, b) => a.total - b.total)[0]!;
     const bought = ok<BuyHouseResultDto>(await player.post('/housing/houses', { listingId: listing.id }));
-    ok(await player.post('/housing/moves', { to: bought.propertyId }));
 
     const before = await player.cash();
     ok(await player.post('/housing/makeovers', { paint: 'sky' }));

@@ -9,6 +9,7 @@
  * dollars are only a way to pay, converted at the owner's "₦ per $1 for payments" rate (`usd-rate` on the rate card).
  * See docs/GAME_DESIGN.md §6 "Top-ups (real money)".
  */
+import { boosted } from '../money/income-multiplier.js';
 import { formatNaira } from '../money/money.js';
 
 export const TOPUP_PACKAGE_IDS = ['small-chops', 'jollof-pack', 'owambe-pack', 'big-boy-pack', 'odogwu-pack'] as const;
@@ -25,11 +26,11 @@ export interface TopupPackage {
 }
 
 export const TOPUP_PACKAGES: readonly TopupPackage[] = [
-  { id: 'small-chops', label: 'Small chops', blurb: 'Enough for a few danfo rides and suya.', priceNgn: 500, virtualAmount: 150_000 },
-  { id: 'jollof-pack', label: 'Jollof pack', blurb: 'Party jollof money. No be small thing.', priceNgn: 1_000, virtualAmount: 350_000 },
-  { id: 'owambe-pack', label: 'Owambe pack', blurb: 'Aso-ebi, gele and small spraying.', priceNgn: 2_500, virtualAmount: 1_000_000 },
-  { id: 'big-boy-pack', label: 'Big Boy pack', blurb: 'Tokunbo-car deposit energy.', priceNgn: 5_000, virtualAmount: 2_200_000 },
-  { id: 'odogwu-pack', label: 'Odogwu pack', blurb: 'For when you want to move like Odogwu.', priceNgn: 10_000, virtualAmount: 5_000_000 },
+  { id: 'small-chops', label: 'Small chops', blurb: 'Enough for a few danfo rides and suya.', priceNgn: 500, virtualAmount: boosted(150_000) },
+  { id: 'jollof-pack', label: 'Jollof pack', blurb: 'Party jollof money. No be small thing.', priceNgn: 1_000, virtualAmount: boosted(350_000) },
+  { id: 'owambe-pack', label: 'Owambe pack', blurb: 'Aso-ebi, gele and small spraying.', priceNgn: 2_500, virtualAmount: boosted(1_000_000) },
+  { id: 'big-boy-pack', label: 'Big Boy pack', blurb: 'Tokunbo-car deposit energy.', priceNgn: 5_000, virtualAmount: boosted(2_200_000) },
+  { id: 'odogwu-pack', label: 'Odogwu pack', blurb: 'For when you want to move like Odogwu.', priceNgn: 10_000, virtualAmount: boosted(5_000_000) },
 ];
 
 export function findTopupPackage(id: string): TopupPackage | undefined {

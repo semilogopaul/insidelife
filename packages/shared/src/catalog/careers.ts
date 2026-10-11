@@ -1,3 +1,4 @@
+import { boosted } from '../money/income-multiplier.js';
 import type { SkillKey } from './life.js';
 
 /**
@@ -247,7 +248,8 @@ const job = (definition: JobDefinition): JobDefinition => definition;
 // The jobs
 // ---------------------------------------------------------------------------------------------------------------
 
-export const JOBS: readonly JobDefinition[] = [
+/** Pay as in real Lagos; `JOBS` (below) is what the game pays: × INCOME_MULTIPLIER. */
+const LAGOS_JOBS: readonly JobDefinition[] = [
   // --- Hustles: no certificate needed ---------------------------------------------------------------------------
   job({
     id: 'pos-attendant',
@@ -1086,6 +1088,12 @@ export const JOBS: readonly JobDefinition[] = [
     traits: ['viral'],
   }),
 ];
+
+/** What the game pays: every level × INCOME_MULTIPLIER (naira to the nearest ₦1,000, dollars to the nearest $1). */
+export const JOBS: readonly JobDefinition[] = LAGOS_JOBS.map((job) => ({
+  ...job,
+  levels: job.levels.map((level) => ({ ...level, pay: boosted(level.pay, job.currency === 'NGN' ? 1_000 : 1) })),
+}));
 
 const JOB_INDEX: ReadonlyMap<string, JobDefinition> = new Map(JOBS.map((definition) => [definition.id, definition]));
 

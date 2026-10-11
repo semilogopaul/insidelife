@@ -3,6 +3,7 @@
  * Calibrated to Nigeria in 2026 — see docs/research/nigeria-economy-2026.md.
  */
 
+import { boosted } from '../money/income-multiplier.js';
 import { formatNaira } from '../money/money.js';
 
 /** Nigeria Tax Act 2025 personal income tax bands (annual, from 2026). */
@@ -98,20 +99,20 @@ export function transferFee(amount: number): TransferFee {
  * per real UTC day on the amounts that reach them (charges not included). `null` = no daily limit.
  */
 export const TRANSFER_TIERS = [
-  { tier: 1, label: 'Tier 1', dailyLimit: 4_000_000 },
-  { tier: 2, label: 'Tier 2', dailyLimit: 10_000_000 },
+  { tier: 1, label: 'Tier 1', dailyLimit: boosted(4_000_000) },
+  { tier: 2, label: 'Tier 2', dailyLimit: boosted(10_000_000) },
   { tier: 3, label: 'Tier 3', dailyLimit: null },
 ] as const satisfies ReadonlyArray<{ readonly tier: number; readonly label: string; readonly dailyLimit: number | null }>;
 export type TransferTier = (typeof TRANSFER_TIERS)[number]['tier'];
 
-export const MAX_SINGLE_TRANSFER = 5_000_000;
+export const MAX_SINGLE_TRANSFER = boosted(5_000_000);
 export const MIN_TRANSFER = 100;
 
 /**
  * The most a player can RECEIVE from other players per real UTC day, across every player-to-player channel. Money from
  * work, businesses, investments, the game itself and top-ups is never capped. Stops many accounts feeding one.
  */
-export const DAILY_PEER_RECEIVE_LIMIT = 4_000_000;
+export const DAILY_PEER_RECEIVE_LIMIT = boosted(4_000_000);
 
 /** Character age (in game days) needed for each transfer tier. Tier 3 also needs a verified email. */
 export const TRANSFER_TIER_MIN_DAYS: Readonly<Record<TransferTier, number>> = { 1: 0, 2: 7, 3: 30 };

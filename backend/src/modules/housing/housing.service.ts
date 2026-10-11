@@ -25,6 +25,7 @@ import {
   type TenancyAction,
 } from '@insidelife/shared';
 import type { HomeSnapshot, HouseholdPort } from '../../common/ports/household.port.js';
+import { GameRuleException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { ComfortService } from './comfort.service.js';
 import { ConstructionService } from './construction.service.js';
@@ -312,10 +313,22 @@ export class HousingService implements HouseholdPort {
     const { property, building } = await this.houses.buy(ctx, listingId);
     const title = LAND_TITLES[property.title];
     const warning = title.disputePerYear >= 0.08 ? ' Weak papers attract omonile — consider perfecting the title.' : '';
+    // A house you buy is a house you live in: move straight in (the old lease ends as with any move). If that can't
+    // happen right now, the purchase still stands and Homes explains why.
+    const movedIn = await this.moves.moveTo(ctx, property.id).then(
+      () => true,
+      (error: unknown) => {
+        if (error instanceof GameRuleException) return false;
+        throw error;
+      },
+    );
+    const what = `The ${BLUEPRINTS[building.blueprintId].label.toLowerCase()} at ${property.label}, ${DISTRICTS[property.districtId].name} (${title.shortLabel})`;
     const result = await this.result(ctx, {
       outcome: 'house-purchased',
-      title: 'The keys are yours!',
-      message: `The ${BLUEPRINTS[building.blueprintId].label.toLowerCase()} at ${property.label}, ${DISTRICTS[property.districtId].name} (${title.shortLabel}) is yours for ${formatNaira(property.costBasis)} all-in. Move in today, or let it out and collect rent.${warning}`,
+      title: movedIn ? 'Welcome home, landlord!' : 'The keys are yours!',
+      message: movedIn
+        ? `${what} is yours for ${formatNaira(property.costBasis)} all-in, and you’ve moved in. Your own roof, your own rules.${warning}`
+        : `${what} is yours for ${formatNaira(property.costBasis)} all-in. Move in from Homes, or let it out and collect rent.${warning}`,
       tone: 'good',
     });
     return { ...result, propertyId: property.id };
