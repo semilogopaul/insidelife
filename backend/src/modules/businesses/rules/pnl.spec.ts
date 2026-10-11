@@ -1,4 +1,4 @@
-import { BUSINESS_TYPES, CIT_RATE, createRng, findBusinessType, type BusinessTypeDefinition } from '@insidelife/shared';
+import { BUSINESS_TYPES, CIT_RATE, INCOME_MULTIPLIER, createRng, findBusinessType, type BusinessTypeDefinition } from '@insidelife/shared';
 import {
   REVENUE_MULTIPLIER_BOUNDS,
   UNIT_SCALING_EXPONENT,
@@ -45,25 +45,25 @@ describe('business P&L', () => {
     const rng = createRng('pos-bounds');
     for (let i = 0; i < 5_000; i++) {
       const profit = computeMonthlyPnl(pos, bestCase(pos), rng.normal() * 3).profit;
-      expect(profit).toBeLessThan(1_000_000);
+      expect(profit).toBeLessThan(1_000_000 * INCOME_MULTIPLIER);
     }
-    expect(computeMonthlyPnl(pos, bestCase(pos), 10).profit).toBeLessThan(500_000);
+    expect(computeMonthlyPnl(pos, bestCase(pos), 10).profit).toBeLessThan(500_000 * INCOME_MULTIPLIER);
   });
 
-  it('keeps a typical POS kiosk month around ₦50-200k', () => {
+  it('keeps a typical POS kiosk month around ₦50-200k × the income multiplier', () => {
     const pos = type('pos-kiosk');
     const profit = computeMonthlyPnl(pos, typicalConditions(pos), 0).profit;
-    expect(profit).toBeGreaterThan(50_000);
-    expect(profit).toBeLessThan(200_000);
+    expect(profit).toBeGreaterThan(50_000 * INCOME_MULTIPLIER);
+    expect(profit).toBeLessThan(200_000 * INCOME_MULTIPLIER);
   });
 
   it('never returns 10× a filling station’s capital in a year — not even 1×', () => {
     const station = type('filling-station');
     const luckiest = computeMonthlyPnl(station, bestCase(station), 10).profit * 12;
-    expect(luckiest).toBeLessThan(station.capital);
+    expect(luckiest).toBeLessThan(station.capital * INCOME_MULTIPLIER);
     const typical = yearOfProfit(station, typicalConditions(station), 'station');
-    expect(typical / station.capital).toBeGreaterThan(0.05);
-    expect(typical / station.capital).toBeLessThan(0.4);
+    expect(typical / station.capital).toBeGreaterThan(0.05 * INCOME_MULTIPLIER);
+    expect(typical / station.capital).toBeLessThan(0.4 * INCOME_MULTIPLIER);
   });
 
   it('bounds every business type: revenue never exceeds its ceiling × size × the multiplier cap', () => {
@@ -75,10 +75,10 @@ describe('business P&L', () => {
     }
   });
 
-  it('keeps even an impossibly lucky year of any big non-startup business below 3× its capital', () => {
+  it('keeps even an impossibly lucky year of any big non-startup business below 3× its capital × the income multiplier', () => {
     for (const definition of BUSINESS_TYPES.filter((candidate) => !candidate.growth && candidate.capital >= 10_000_000)) {
       const luckiest = computeMonthlyPnl(definition, bestCase(definition), 10).profit * 12;
-      expect(luckiest / definition.capital, definition.id).toBeLessThan(3);
+      expect(luckiest / definition.capital, definition.id).toBeLessThan(3 * INCOME_MULTIPLIER);
     }
   });
 

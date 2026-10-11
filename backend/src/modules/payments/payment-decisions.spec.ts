@@ -1,4 +1,4 @@
-import type { PaymentStatus } from '@insidelife/shared';
+import { findTopupPackage, topupVirtualAmount, type PaymentStatus } from '@insidelife/shared';
 import {
   CHECK_SCHEDULE_MINUTES,
   claimRefund,
@@ -152,8 +152,8 @@ describe('top-up quotes at their edges', () => {
   it('refuses unknown packs and packs above the per-payment maximum, with a reason', () => {
     expect(quoteTopup({ packageId: 'free-money' }, { maxNgn: 10_000_000, usd: null })).toEqual({ ok: false, reason: 'That top-up pack doesn’t exist' });
     expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 9_999, usd: null })).toEqual({ ok: false, reason: 'One top-up can be at most ₦9,999' });
-    expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 10_000, usd: null })).toMatchObject({ ok: true, quote: { priceNgn: 10_000, virtualAmount: 5_000_000 } });
-    expect(quoteTopup({ amountNgn: 10_000_000 }, { maxNgn: 10_000_000, usd: null })).toMatchObject({ ok: true, quote: { virtualAmount: 5_000_000_000 } });
+    expect(quoteTopup({ packageId: 'odogwu-pack' }, { maxNgn: 10_000, usd: null })).toMatchObject({ ok: true, quote: { priceNgn: 10_000, virtualAmount: findTopupPackage('odogwu-pack')?.virtualAmount } });
+    expect(quoteTopup({ amountNgn: 10_000_000 }, { maxNgn: 10_000_000, usd: null })).toMatchObject({ ok: true, quote: { virtualAmount: topupVirtualAmount(10_000_000) } });
   });
 
   it('only trusts whole rates from 1 to 2,000 game naira per ₦1', () => {

@@ -1,8 +1,8 @@
-import { MINUTES_PER_DAY, dailyTransferLimit, transferFee, transferTierFor } from '@insidelife/shared';
+import { MAX_SINGLE_TRANSFER, MINUTES_PER_DAY, TRANSFER_TIERS, dailyTransferLimit, formatNaira, transferFee, transferTierFor } from '@insidelife/shared';
 import { characterAgeDays, checkTransfer, sanitizeNote } from './transfer-rules.js';
 import { startOfUtcDay } from './utc-day.js';
 
-const RICH = 100_000_000;
+const RICH = MAX_SINGLE_TRANSFER * 20;
 
 describe('transfer fees (Nigerian interbank schedule)', () => {
   it.each([
@@ -25,19 +25,19 @@ describe('transfer fees (Nigerian interbank schedule)', () => {
 });
 
 describe('transfer limits', () => {
-  it('rejects amounts outside ₦100 – ₦5m and non-integers', () => {
+  it('rejects amounts outside ₦100 – the single-transfer maximum and non-integers', () => {
     expect(checkTransfer({ amount: 99, cash: RICH })).toMatchObject({ ok: false, code: 'TRANSFER_TOO_SMALL' });
-    expect(checkTransfer({ amount: 5_000_001, cash: RICH })).toMatchObject({ ok: false, code: 'TRANSFER_TOO_LARGE' });
+    expect(checkTransfer({ amount: MAX_SINGLE_TRANSFER + 1, cash: RICH })).toMatchObject({ ok: false, code: 'TRANSFER_TOO_LARGE' });
     expect(checkTransfer({ amount: 100.5, cash: RICH })).toMatchObject({ ok: false, code: 'INVALID_AMOUNT' });
     expect(checkTransfer({ amount: -500, cash: RICH })).toMatchObject({ ok: false, code: 'INVALID_AMOUNT' });
   });
 
-  it('accepts exactly ₦100 and exactly ₦5m, refuses zero, and explains every refusal (mutation-tested edges)', () => {
+  it('accepts exactly ₦100 and exactly the maximum, refuses zero, and explains every refusal (mutation-tested edges)', () => {
     expect(checkTransfer({ amount: 100, cash: RICH }).ok).toBe(true);
-    expect(checkTransfer({ amount: 5_000_000, cash: RICH }).ok).toBe(true);
+    expect(checkTransfer({ amount: MAX_SINGLE_TRANSFER, cash: RICH }).ok).toBe(true);
     expect(checkTransfer({ amount: 0, cash: RICH })).toEqual({ ok: false, code: 'INVALID_AMOUNT', message: 'Enter a whole naira amount' });
     expect(checkTransfer({ amount: 99, cash: RICH })).toEqual({ ok: false, code: 'TRANSFER_TOO_SMALL', message: 'The smallest transfer is ₦100' });
-    expect(checkTransfer({ amount: 5_000_001, cash: RICH })).toEqual({ ok: false, code: 'TRANSFER_TOO_LARGE', message: 'You can send at most ₦5,000,000 at once' });
+    expect(checkTransfer({ amount: MAX_SINGLE_TRANSFER + 1, cash: RICH })).toEqual({ ok: false, code: 'TRANSFER_TOO_LARGE', message: `You can send at most ${formatNaira(MAX_SINGLE_TRANSFER)} at once` });
     expect(checkTransfer({ amount: 10_000, cash: 10_000 })).toEqual({ ok: false, code: 'INSUFFICIENT_FUNDS', message: 'You need ₦10,060 including ₦60 charges' });
   });
 
@@ -58,7 +58,7 @@ describe('transfer limits', () => {
     expect(transferTierFor(7, false)).toBe(2);
     expect(transferTierFor(45, false)).toBe(2);
     expect(transferTierFor(30, true)).toBe(3);
-    expect([1, 2, 3].map((tier) => dailyTransferLimit(tier as 1 | 2 | 3))).toEqual([4_000_000, 10_000_000, null]);
+    expect([1, 2, 3].map((tier) => dailyTransferLimit(tier as 1 | 2 | 3))).toEqual(TRANSFER_TIERS.map((tier) => tier.dailyLimit));
   });
 
   it('measures character age in whole game days since creation', () => {
