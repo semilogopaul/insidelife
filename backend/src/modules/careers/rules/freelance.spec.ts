@@ -1,4 +1,4 @@
-import { ACTION_PACE, MINUTES_PER_HOUR, findAction } from '@insidelife/shared';
+import { ACTION_PACE, boosted, MINUTES_PER_HOUR, findAction } from '@insidelife/shared';
 import { FREELANCE_MAX_RATE, freelanceHourlyRate, freelancePay } from './freelance.js';
 
 describe('freelance pay', () => {
@@ -13,8 +13,8 @@ describe('freelance pay', () => {
     const longest = Math.max(...(findAction('freelance')?.durations ?? []));
     expect((longest / MINUTES_PER_HOUR) * ACTION_PACE).toBe(4);
     const pay = freelancePay(20, 4, 1, 1);
-    expect(pay).toBeGreaterThan(8_000);
-    expect(pay).toBeLessThan(15_000);
+    expect(pay).toBeGreaterThan(boosted(8_000));
+    expect(pay).toBeLessThan(boosted(15_000));
     // Rounded to the nearest ₦100.
     expect(freelancePay(100, 4, 1.25, 1.25)).toBeLessThanOrEqual(FREELANCE_MAX_RATE * 4 * 1.25 * 1.25 + 100);
   });

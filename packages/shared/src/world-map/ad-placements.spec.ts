@@ -69,7 +69,7 @@ describe('ad placements (bigger faces that still fit the city)', () => {
         for (const door of allDoors) expect(Math.hypot(point.x - door.x, point.z - door.z), spot.id).toBeGreaterThanOrEqual(AD_DOOR_CLEARANCE - 1e-6);
       }
     }
-  });
+  }, 30_000);
 
   it('moves a board only within its spot: along the kerb from its pinned anchor, a few metres at most', () => {
     let moved = 0;

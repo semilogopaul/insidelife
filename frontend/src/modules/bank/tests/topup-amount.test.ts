@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { TOPUP_PACKAGES, topupVirtualAmount, type TopupUsdCatalogDto } from '@insidelife/shared';
+import { INCOME_MULTIPLIER as K, TOPUP_PACKAGES, topupVirtualAmount, type TopupUsdCatalogDto } from '@insidelife/shared';
 import { previewTopupAmount, previewTopupUsd } from '../services/topup-amount';
 
 const open = { maxPerPaymentNgn: 10_000_000, remainingTodayNgn: null };
 
 describe('custom top-up preview', () => {
   it('shows what an amount buys at the rate of the largest pack it reaches', () => {
-    expect(previewTopupAmount(750, open)).toEqual({ amountNgn: 750, ratePerNaira: 300, virtualAmount: 225_000, problem: null });
-    expect(previewTopupAmount(7_000, open)).toMatchObject({ ratePerNaira: 440, virtualAmount: 3_080_000 });
-    expect(previewTopupAmount(50_000, open)).toMatchObject({ ratePerNaira: 500, virtualAmount: 25_000_000 });
+    expect(previewTopupAmount(750, open)).toEqual({ amountNgn: 750, ratePerNaira: 300 * K, virtualAmount: 225_000 * K, problem: null });
+    expect(previewTopupAmount(7_000, open)).toMatchObject({ ratePerNaira: 440 * K, virtualAmount: 3_080_000 * K });
+    expect(previewTopupAmount(50_000, open)).toMatchObject({ ratePerNaira: 500 * K, virtualAmount: 25_000_000 * K });
   });
 
   it('matches every pack at the pack price', () => {
