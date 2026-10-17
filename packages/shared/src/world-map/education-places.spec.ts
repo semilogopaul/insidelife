@@ -5,8 +5,19 @@ import { findVenue } from '../catalog/venues.js';
 import { findRoute } from './routing.js';
 import { venueEntrance, venueLot } from './world-map.js';
 
-/** The Lagos campuses and where they really are (Akoka, Yaba, Ojo, Ajah). */
-const LAGOS_CAMPUSES: Readonly<Record<string, string>> = { unilag: 'yaba', yabatech: 'yaba', lasu: 'ojo', 'pan-atlantic': 'ajah' };
+/** The Lagos campuses and where they really are (Akoka, Yaba, Ojo, Ikorodu, Ayobo (Alimosho side, mapped to Mushin), Ilara-Epe, Ajah). */
+const LAGOS_CAMPUSES: Readonly<Record<string, string>> = {
+  unilag: 'yaba',
+  yabatech: 'yaba',
+  'fce-akoka': 'yaba',
+  lasu: 'ojo',
+  ekounimed: 'ojo',
+  lasustech: 'ikorodu',
+  caleb: 'ikorodu',
+  anchor: 'mushin',
+  augustine: 'epe',
+  'pan-atlantic': 'ajah',
+};
 
 describe('schools in the education catalog', () => {
   it('sits every institution at a campus venue', () => {
@@ -30,13 +41,12 @@ describe('schools in the education catalog', () => {
     }
   });
 
-  it('leaves the other institutions in their own cities, reached by a bus or a flight', () => {
-    for (const institution of INSTITUTIONS.filter((entry) => !(entry.id in LAGOS_CAMPUSES))) {
-      expect(findVenue(institution.venueId)?.regionId, institution.id).toBeDefined();
-    }
+  it('has no school outside Lagos', () => {
+    expect(INSTITUTIONS.map((entry) => entry.id).sort()).toEqual(Object.keys(LAGOS_CAMPUSES).sort());
+    for (const institution of INSTITUTIONS) expect(findVenue(institution.venueId)?.regionId, institution.id).toBeUndefined();
   });
 
   it('offers study actions at campuses', () => {
-    expect(ACTIONS.some((action) => action.where.venueTypes?.includes('campus') && action.category === 'study')).toBe(true);
+    expect(ACTIONS.some((action) => 'venueTypes' in action.where && (action.where.venueTypes as readonly string[]).includes('campus') && action.category === 'study')).toBe(true);
   });
 });

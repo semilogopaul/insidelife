@@ -66,6 +66,7 @@ export const VENUES = [
   v({ id: 'berger-car-market', name: 'Berger Car Mart', type: 'car-dealer', districtId: 'ikeja', blurb: 'Tokunbo and Naija-used rides.', hours: [8, 18] }),
   v({ id: 'ikeja-gra-lounge', name: 'GRA Lounge', type: 'bar', districtId: 'ikeja', blurb: 'Suya, chapman and gist.', hours: [12, 26] }),
   v({ id: 'lasuth', name: 'LASUTH', type: 'hospital-public', districtId: 'ikeja', blurb: 'State teaching hospital. Bring patience.' }),
+  v({ id: 'anchor', name: 'Anchor University', type: 'campus', districtId: 'mushin', blurb: 'Private campus at Ayobo, in the Alimosho corridor.' }),
 
   v({ id: 'new-afrika-shrine', name: 'New Afrika Shrine', type: 'bar', districtId: 'ikeja', blurb: 'Fela’s house: live Afrobeat, cold drinks, Thursday and Sunday jump.', hours: [16, 28] }),
   v({ id: 'allen-nights', name: 'Allen Avenue Nights', type: 'club', districtId: 'ikeja', blurb: 'Mainland turn-up: loud DJ, cheap bottles, no dress code.', minStatus: 30, hours: [22, 30] }),
@@ -74,6 +75,7 @@ export const VENUES = [
   v({ id: 'yaba-left-joint', name: 'Yaba Left Joint', type: 'bar', districtId: 'yaba', blurb: 'Students, pepper soup, cold Star and football on the big screen.', hours: [12, 26] }),
   v({ id: 'unilag', name: 'University of Lagos', type: 'campus', districtId: 'yaba', blurb: 'University of First Choice and the Nation’s Pride.' }),
   v({ id: 'yabatech', name: 'Yaba College of Technology', type: 'campus', districtId: 'yaba', blurb: 'ND, HND and serious practicals.' }),
+  v({ id: 'fce-akoka', name: 'Federal College of Education (Technical), Akoka', type: 'campus', districtId: 'yaba', blurb: 'Teacher training beside the lagoon.' }),
   v({ id: 'yaba-market', name: 'Yaba Market', type: 'market', districtId: 'yaba', blurb: 'Okrika heaven. Dig well, look fresh.', hours: [8, 19] }),
   v({ id: 'yaba-hub', name: 'Yaba Tech Hub', type: 'office', districtId: 'yaba', blurb: 'Startups, hackathons and free Wi-Fi.', hours: [7, 23] }),
   v({ id: 'cbt-yaba', name: 'Yaba CBT Centre', type: 'cbt-centre', districtId: 'yaba', blurb: 'JAMB registration and exams.', hours: [7, 18] }),
@@ -94,9 +96,12 @@ export const VENUES = [
 
   // Ojo
   v({ id: 'lasu', name: 'Lagos State University', type: 'campus', districtId: 'ojo', blurb: 'LASU — indigenes pay less.' }),
+  v({ id: 'ekounimed', name: 'Eko University of Medicine and Health Sciences', type: 'campus', districtId: 'ojo', blurb: 'Medicine and health sciences at Ijanikin.' }),
 
   // Ikorodu
   v({ id: 'ikorodu-garage', name: 'Ikorodu Garage', type: 'motor-park', districtId: 'ikorodu', blurb: 'Danfo, BRT and agberos.' }),
+  v({ id: 'lasustech', name: 'Lagos State University of Science and Technology', type: 'campus', districtId: 'ikorodu', blurb: 'LASUSTECH, Ikorodu: the state’s science and tech campus.' }),
+  v({ id: 'caleb', name: 'Caleb University', type: 'campus', districtId: 'ikorodu', blurb: 'Private campus at Imota, off the Ikorodu road.' }),
 
   // Lagos Island
   v({ id: 'balogun-market', name: 'Balogun Market', type: 'market', districtId: 'lagos-island', blurb: 'Fabrics, shoes, haggling Olympics.', hours: [8, 18] }),
@@ -147,19 +152,8 @@ export const VENUES = [
 
   // Epe & Ibeju-Lekki
   v({ id: 'epe-land-office', name: 'Epe Land Bureau', type: 'estate-agency', districtId: 'epe', blurb: 'Plots, surveys and family-land wahala.', hours: [8, 17] }),
+  v({ id: 'augustine', name: 'Augustine University', type: 'campus', districtId: 'epe', blurb: 'Catholic private university at Ilara-Epe.' }),
   v({ id: 'dangote-refinery', name: 'Dangote Refinery', type: 'refinery', districtId: 'epe', blurb: 'Africa’s biggest refinery on the Lekki lagoon. The visitor centre runs tours by day.', hours: [8, 17] }),
-
-  // Out-of-town campuses (regionId set; districtId is the departure district for travel)
-  v({ id: 'ui', name: 'University of Ibadan', type: 'campus', districtId: 'ikeja', regionId: 'ibadan', blurb: 'Nigeria’s premier university.' }),
-  v({ id: 'oau', name: 'Obafemi Awolowo University', type: 'campus', districtId: 'ikeja', regionId: 'ife', blurb: 'Great Ife. Beautiful campus.' }),
-  v({ id: 'unn', name: 'University of Nigeria, Nsukka', type: 'campus', districtId: 'ikeja', regionId: 'nsukka', blurb: 'Lion and Lioness.' }),
-  v({ id: 'abu', name: 'Ahmadu Bello University', type: 'campus', districtId: 'ikeja', regionId: 'zaria', blurb: 'Africa’s largest campus.' }),
-  v({ id: 'babcock', name: 'Babcock University', type: 'campus', districtId: 'ikeja', regionId: 'ogun', blurb: 'Strict rules, no strikes.' }),
-  v({ id: 'covenant', name: 'Covenant University', type: 'campus', districtId: 'ikeja', regionId: 'ogun', blurb: 'Raising a new generation of leaders (with dress code).' }),
-  v({ id: 'abuad', name: 'Afe Babalola University', type: 'campus', districtId: 'ikeja', regionId: 'ekiti', blurb: 'Gleaming campus in Ado-Ekiti.' }),
-  v({ id: 'bowen', name: 'Bowen University', type: 'campus', districtId: 'ikeja', regionId: 'iwo', blurb: 'Baptist private university in Iwo.' }),
-  v({ id: 'aun', name: 'American University of Nigeria', type: 'campus', districtId: 'ikeja', regionId: 'yola', blurb: 'US-style liberal arts in Yola.' }),
-  v({ id: 'nile', name: 'Nile University', type: 'campus', districtId: 'ikeja', regionId: 'abuja', blurb: 'Private university in Abuja.' }),
 ] as const satisfies readonly VenueDefinition[];
 
 export type VenueId = (typeof VENUES)[number]['id'];

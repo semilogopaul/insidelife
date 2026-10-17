@@ -242,12 +242,12 @@ describe('chapter machine', () => {
 describe('presence and trips', () => {
   const characterId = 'c1';
 
-  it('classifies streets, homes, venues and out-of-town campuses', () => {
+  it('classifies streets, homes and venues', () => {
     expect(presenceFlags(placeOf('street:yaba', characterId, 'mushin'))).toEqual(['outside', 'district:yaba']);
     expect(presenceFlags(placeOf(homeLocationId(characterId), characterId, 'mushin'))).toEqual(['district:mushin']);
     expect(presenceFlags(placeOf(homeLocationId('someone-else'), characterId, 'mushin'))).toEqual([]);
     expect(presenceFlags(placeOf('cbt-yaba', characterId, 'mushin'))).toEqual(['venue:cbt-yaba', 'district:yaba']);
-    expect(presenceFlags(placeOf('ui', characterId, 'mushin'))).toEqual(['venue:ui', 'region:ibadan']);
+    expect(presenceFlags(placeOf('lasustech', characterId, 'mushin'))).toEqual(['venue:lasustech', 'district:ikorodu']);
   });
 
   it('derives distinct counts from first visits', () => {

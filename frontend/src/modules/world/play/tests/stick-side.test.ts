@@ -3,8 +3,8 @@ import { useUi } from '@/common/game/ui-store';
 import { inStickZone } from '../overlay/PointerLayer';
 
 describe('walking stick side', () => {
-  it('defaults to the right thumb', () => {
-    expect(useUi.getState().settings.walkStick).toBe('right');
+  it('defaults to the left thumb', () => {
+    expect(useUi.getState().settings.walkStick).toBe('left');
   });
 
   it('grabs the stick on the chosen side; the other side looks around', () => {
@@ -26,10 +26,10 @@ describe('walking stick side', () => {
     const { settings } = useUi.getState();
     expect(settings.musicVolume).toBe(0.2);
     expect(settings.graphics).toBe('low');
-    expect(settings.walkStick).toBe('right');
-    useUi.getState().updateSettings({ walkStick: 'left' });
+    expect(settings.walkStick).toBe('left');
+    useUi.getState().updateSettings({ walkStick: 'right' });
     expect(JSON.parse(window.localStorage.getItem('insidelife:ui') ?? '{}').state.settings.walkStick).toBe(
-      'left',
+      'right',
     );
   });
 });

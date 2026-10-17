@@ -322,6 +322,17 @@ export const VENUE_LOTS: readonly VenueLotSpec[] = [
   lot('dangote-refinery', [60, 26, 60, 26], 'E', 'refinery'),
   // Polanco, the Victoria Island car dealer: a showroom on the waterfront strip south of Ahmadu Bello Way.
   lot('polanco-motors', [27, 39, 29, 39], 'N', 'car-dealer'),
+  // Yaba Left Joint used to take whatever filler lot hashed to it; pinned where it stood so the Yaba campus can claim cells.
+  lot('yaba-left-joint', [28, 21, 28, 21], 'E', 'club'),
+  // Lagos institutions added after the first campuses. Each stands on infill and office cells (never on houses, so every
+  // `homeLotOf` result is unchanged), with its door at a road end, tee or bend where no roadside ad spot stands, so the
+  // generated ad inventory is unchanged too.
+  lot('fce-akoka', [26, 20, 27, 20], 'W', 'campus', 0),
+  lot('lasustech', [41, 1, 43, 1], 'E', 'campus', 2),
+  lot('caleb', [39, 6, 40, 7], 'S', 'campus', 1),
+  lot('anchor', [1, 16, 3, 17], 'E', 'campus', 0),
+  lot('augustine', [62, 35, 63, 38], 'W', 'campus', 0),
+  lot('ekounimed', [5, 27, 8, 27], 'W', 'campus', 0),
 ];
 
 /** Landmark lots that are not venues (the renderer puts something iconic there and no filler building). */

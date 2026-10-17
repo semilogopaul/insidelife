@@ -231,8 +231,8 @@ export interface JobDefinition {
   readonly licence?: { readonly certification: string; readonly afterYears: number };
   readonly traits: readonly JobTrait[];
   /**
-   * Exempt from the degree rule for well-paid levels (the ₦10m cap still applies). Only professional football: talent,
-   * not a certificate, takes you from the academy to the Super Eagles and a club abroad.
+   * Exempt from the degree rule for well-paid levels (the ₦10m cap still applies). Football, music, content creation, the
+   * artisan trades (contractor) and Bolt fleets: talent, hustle and a business, not a certificate, take you to the top.
    */
   readonly degreeExempt?: boolean;
 }
@@ -411,6 +411,7 @@ const LAGOS_JOBS: readonly JobDefinition[] = [
     hiring: OPEN_DOOR,
     payVolatility: 0.25,
     traits: [],
+    degreeExempt: true,
   }),
   job({
     id: 'hair-stylist',
@@ -467,6 +468,7 @@ const LAGOS_JOBS: readonly JobDefinition[] = [
     hiring: { ...OPEN_DOOR, selectivity: 0.1 },
     payVolatility: 0.25,
     traits: [],
+    degreeExempt: true,
   }),
   job({
     id: 'okada-rider',
@@ -1099,6 +1101,7 @@ const LAGOS_JOBS: readonly JobDefinition[] = [
     payVolatility: 0.6,
     dettyDecemberPay: 1.8,
     traits: ['music'],
+    degreeExempt: true,
   }),
   job({
     id: 'content-creator',
@@ -1127,6 +1130,7 @@ const LAGOS_JOBS: readonly JobDefinition[] = [
     payVolatility: 0.5,
     dettyDecemberPay: 1.4,
     traits: ['viral'],
+    degreeExempt: true,
   }),
 ];
 

@@ -58,7 +58,7 @@ const DEFAULT_SETTINGS: PlayerSettings = {
   graphics: 'auto',
   showFps: false,
   invertSteering: false,
-  walkStick: 'right',
+  walkStick: 'left',
   hudHidden: false,
 };
 

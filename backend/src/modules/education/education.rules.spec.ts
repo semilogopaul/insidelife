@@ -240,15 +240,16 @@ describe('Professional programmes', () => {
 });
 
 describe('Fees and labels', () => {
-  it('gives Lagos indigenes the LASU fee discount and charges hostel only out of town', () => {
+  it('gives Lagos indigenes the LASU fee discount and charges no hostel at Lagos campuses', () => {
     const lasu = findInstitution('lasu');
-    const ui = findInstitution('ui');
+    const pau = findInstitution('pan-atlantic');
     const education = findCourse('education');
-    expect(lasu && ui && education).toBeTruthy();
-    if (!lasu || !ui || !education) return;
+    expect(lasu && pau && education).toBeTruthy();
+    if (!lasu || !pau || !education) return;
     expect(annualTuition(lasu, education, 'lagos')).toBe(36_000);
     expect(annualTuition(lasu, education, 'anambra')).toBe(120_000);
-    expect(sessionFees(ui, education, 'lagos')).toBe(250_000 + 90_000);
+    expect(sessionFees(lasu, education, 'lagos')).toBe(36_000);
+    expect(sessionFees(pau, findCourse('economics')!, 'lagos')).toBe(annualTuition(pau, findCourse('economics')!, 'lagos'));
   });
 
   it('labels levels the Nigerian way', () => {

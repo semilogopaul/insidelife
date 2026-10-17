@@ -21,7 +21,7 @@ export function GameSettings() {
         <input type="range" min={0} max={1} step={0.05} value={settings.sfxVolume} onChange={(event) => updateSettings({ sfxVolume: Number(event.target.value) })} className="w-40 accent-[var(--color-ink)]" />
       </label>
       <div className="flex min-h-11 items-center justify-between gap-3">
-        <span id="walk-stick-label">Walk stick</span>
+        <span id="walk-stick-label">Joystick side</span>
         <div className="flex rounded-chip bg-paper-2 p-0.5" role="radiogroup" aria-labelledby="walk-stick-label">
           {(['left', 'right'] as const).map((side) => (
             <button
@@ -32,7 +32,7 @@ export function GameSettings() {
               onClick={() => updateSettings({ walkStick: side })}
               className={settings.walkStick === side ? 'h-9 rounded-chip bg-ink px-3 text-sm font-bold text-on-ink' : 'h-9 rounded-chip px-3 text-sm font-bold text-text-soft'}
             >
-              {side === 'left' ? 'Left hand' : 'Right hand'}
+              {side === 'left' ? 'Left' : 'Right'}
             </button>
           ))}
         </div>
