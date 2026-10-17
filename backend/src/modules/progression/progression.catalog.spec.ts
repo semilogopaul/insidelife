@@ -1,4 +1,5 @@
 import {
+  cityOfVenue,
   boosted,
   ACHIEVEMENTS,
   ACHIEVEMENT_CATEGORIES,
@@ -53,7 +54,7 @@ const PLAIN_COUNTERS = new Set([
   'trips',
   'venues',
   'districts',
-  'regions',
+  'cities',
   'outside',
   'street-late',
   'lagoon-crossings',
@@ -198,7 +199,7 @@ describe('Life Goals graph', () => {
     const types = GOALS.flatMap((goal) => [...(goal.targetVenueTypes ?? []), ...(goal.paths ?? []).flatMap((path) => path.targetVenueTypes ?? [])]);
     for (const type of types) {
       expect(VENUE_TYPES).toContain(type);
-      expect(VENUE_LIST.some((venue) => venue.type === type && (!venue.regionId || venue.regionId === 'lagos')), type).toBe(true);
+      expect(VENUE_LIST.some((venue) => venue.type === type && cityOfVenue(venue) === 'lagos'), type).toBe(true);
     }
     for (const goal of GOALS.filter((candidate) => candidate.suggestedActionId)) {
       const action = ACTION_LIST.find((candidate) => candidate.id === goal.suggestedActionId);

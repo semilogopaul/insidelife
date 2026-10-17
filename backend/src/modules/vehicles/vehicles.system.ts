@@ -62,7 +62,7 @@ export class VehiclesSystem implements SimulationSystem, OnModuleInit {
     // One at a time: these share the session's transaction connection (pg runs one query at a time).
     const from = await this.planner.place(ctx, travel.fromLocationId);
     const to = await this.planner.place(ctx, travel.toLocationId);
-    if (from.regionId !== to.regionId) return;
+    if (from.cityId !== to.cityId) return;
     const { distance } = quoteTrip(from.districtId, to.districtId, 'car', { hour: 12, weekend: false, raining: false, priceIndex: 1 });
     // Go-slow burns fuel: the traffic when you set off sets how much more per km.
     const departed = toDateParts(travel.departAt);

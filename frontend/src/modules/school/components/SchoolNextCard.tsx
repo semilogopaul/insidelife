@@ -237,7 +237,7 @@ function NextStepFor({
           actions={
             <>
               <StudyButton tone="ink" />
-              {institution && !step.enrolment.livesInHostel && (
+              {institution && (
                 <GoThere
                   venueId={institution.venueId}
                   venueName={institution.shortName}

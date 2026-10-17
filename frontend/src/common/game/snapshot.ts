@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo } from 'react';
 import {
   computeMood,
+  isIntercityMode,
   isStreetLocation,
   needsAlongTimeline,
   type CharacterSnapshotDto,
@@ -105,6 +106,18 @@ export function useSnapshotMutation<TVariables>(mutationFn: (variables: TVariabl
   });
 }
 
+/**
+ * Writes a snapshot that arrived nested in another answer (e.g. a flights action returns `{ overview, snapshot }`) into
+ * the cache, the same way `useSnapshotMutation` does: cancel in-flight refetches first, no refetch after.
+ */
+export function useWriteSnapshot(): (snapshot: CharacterSnapshotDto) => Promise<void> {
+  const client = useQueryClient();
+  return async (snapshot) => {
+    await client.cancelQueries({ queryKey: queryKeys.snapshot });
+    client.setQueryData(queryKeys.snapshot, snapshot);
+  };
+}
+
 /** Where the world should be: inside a place, out on the street, or riding to somewhere. */
 export type WorldPlace =
   | { readonly kind: 'inside'; readonly locationId: string }
@@ -113,6 +126,8 @@ export type WorldPlace =
 
 /** What the snapshot itself says (what the 3D world renders). */
 export function snapshotPlace(snapshot: CharacterSnapshotDto): WorldPlace {
+  // On a flight or the coach you sit inside where you boarded (the city has no road to where you are going).
+  if (snapshot.travel && isIntercityMode(snapshot.travel.mode)) return { kind: 'inside', locationId: snapshot.travel.fromLocationId };
   if (snapshot.travel) return { kind: 'riding', toLocationId: snapshot.travel.toLocationId };
   const locationId = snapshot.character.locationId;
   return isStreetLocation(locationId) ? { kind: 'outside' } : { kind: 'inside', locationId };
@@ -123,6 +138,8 @@ export function timelinePlace(snapshot: CharacterSnapshotDto, t: GameMinute): Wo
   const segment = segmentAt(snapshot, t);
   if (!segment) return null;
   if (segment.kind === 'commute' || segment.kind === 'travel') return { kind: 'riding', toLocationId: segment.locationId };
+  // A flight segment is located at its destination, but the world shows the departure venue until the landing.
+  if (segment.kind === 'flight') return snapshot.travel ? { kind: 'inside', locationId: snapshot.travel.fromLocationId } : { kind: 'inside', locationId: segment.locationId };
   return isStreetLocation(segment.locationId) ? { kind: 'outside' } : { kind: 'inside', locationId: segment.locationId };
 }
 

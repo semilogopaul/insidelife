@@ -2,6 +2,7 @@ import type {
   BusinessExitDto,
   BusinessesViewDto,
   CharacterSnapshotDto,
+  CityId,
   EmploymentViewDto,
   InventoryDto,
   JobApplicationDto,
@@ -18,7 +19,7 @@ const id = (value: string): string => encodeURIComponent(value);
 
 /** Careers + businesses endpoints (all under /api/v1). */
 export const jobsApi = {
-  board: () => api.get<JobBoardDto>('/jobs'),
+  board: (cityId: CityId | null) => api.get<JobBoardDto>(cityId ? `/jobs?cityId=${cityId}` : '/jobs'),
   detail: (jobId: string) => api.get<JobDetailDto>(`/jobs/${id(jobId)}`),
   apply: (jobId: string) => api.post<JobApplicationDto>(`/jobs/${id(jobId)}/applications`),
 

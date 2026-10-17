@@ -230,7 +230,7 @@ export async function refresh(player: Player): Promise<Response> {
 
 /** Put the character inside a place (as if they walked in), idle. */
 export async function moveTo(player: Player, locationId: string): Promise<void> {
-  await player.e2e.dataSource.query(`UPDATE characters SET location_id = $1, region_id = 'lagos', travel = NULL, activity = NULL WHERE id = $2`, [locationId, player.characterId]);
+  await player.e2e.dataSource.query(`UPDATE characters SET location_id = $1, city_id = 'lagos', travel = NULL, activity = NULL WHERE id = $2`, [locationId, player.characterId]);
 }
 
 export async function goHome(player: Player): Promise<void> {

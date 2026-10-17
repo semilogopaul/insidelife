@@ -11,8 +11,8 @@ import {
   type SuggestionDto,
   type SuggestionTargetDto,
   type TransportMode,
-  type VenueDefinition,
   type VenueType,
+  cityOfVenue,
 } from '@insidelife/shared';
 import { COLLAPSE_AFTER_MINUTES, daysWithoutSleep } from '../../simulation/rest.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
@@ -98,8 +98,6 @@ const NEED_RULES: readonly NeedRule[] = [
     flavour: 'Man know man — go and mingle, or at least call your mum.',
   },
 ];
-
-const LAGOS_VENUES: readonly VenueDefinition[] = (VENUES as readonly VenueDefinition[]).filter((venue) => !venue.regionId || venue.regionId === 'lagos');
 
 interface NearestPlace {
   readonly target: SuggestionTargetDto;
@@ -237,11 +235,11 @@ export class SuggestionsService {
     };
   }
 
-  /** Nearest Lagos venue of the given types: open on arrival first, then fastest, then id (deterministic). */
+  /** Nearest venue of the given types in the city you are in: open on arrival first, then fastest, then id (deterministic). */
   private async nearest(ctx: SimulationContext, types: readonly VenueType[]): Promise<NearestPlace | null> {
     const places: NearestPlace[] = [];
-    for (const venue of LAGOS_VENUES) {
-      if (!types.includes(venue.type)) continue;
+    for (const venue of VENUES) {
+      if (!types.includes(venue.type) || cityOfVenue(venue) !== ctx.character.cityId) continue;
       const place = await this.targetFor(ctx, venue.id, venue.type, venue.name);
       if (place) places.push(place);
     }
@@ -255,6 +253,8 @@ export class SuggestionsService {
     const venue = findVenue(locationId);
     const here = ctx.character.locationId === locationId;
     const quote = here ? null : await this.planner.quote(ctx, ctx.character.locationId, locationId, ctx.character.defaultTransport, ctx.time);
+    // Somewhere in the other city can't be reached by a ride: no suggestion to go there.
+    if (quote?.intercity) return null;
     const etaMinutes = quote?.minutes ?? 0;
     const venueType = venue?.type ?? fallbackType;
     return {
@@ -263,7 +263,7 @@ export class SuggestionsService {
         locationId,
         name: name ?? venue?.name ?? 'Home',
         venueType,
-        mode: quote?.mode ?? 'walk',
+        mode: (quote?.mode as TransportMode | undefined) ?? 'walk',
         etaMinutes,
         fare: quote?.fare ?? 0,
         openNow: venue ? isVenueOpen(venue, toDateParts(ctx.time + etaMinutes).hour) : true,

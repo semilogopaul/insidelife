@@ -1,4 +1,4 @@
-import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, DISTRICT_IDS, cellBounds, cellCentreX, cellCentreZ, type DistrictId } from '@insidelife/shared';
+import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, DISTRICT_IDS, LAGOS_ROWS, cellBounds, cellCentreX, cellCentreZ, cityBounds, type DistrictId } from '@insidelife/shared';
 import { BufferAttribute, BufferGeometry, Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType } from 'three';
 import { APRON, LAGOON_ARM_X, PAVEMENT_Y, type CityPlan } from '../layout/placements';
 import { DISTRICT_STYLES } from '../layout/styles';
@@ -178,14 +178,19 @@ const QUAY = 0x7d7468;
 const DECK = 0xa29d95;
 const PILLAR = 0x8f8a82;
 
+/** Scenery land around Abuja (the capital is inland): this far beyond the edge of its grid. */
+const ABUJA_SURROUND = 300;
+
 /**
  * Mainland beyond the playable grid (north, west and east), so the city never reads as an island; the lagoon arm
- * continues north between quay walls.
+ * continues north between quay walls. Abuja, inland, gets a margin of land all round it.
  */
 export function buildOuterLandGeometry(): BufferGeometry {
   const w = new GeometryWriter();
-  const { minX, minZ, maxX } = CITY_MAP.bounds;
-  const coastZ = cellBounds(0, CITY_MAP.rows - 2).minZ;
+  const { minX, minZ, maxX } = cityBounds('lagos');
+  const coastZ = cellBounds(0, LAGOS_ROWS - 2).minZ;
+  const abuja = cityBounds('abuja');
+  w.quad([abuja.minX - ABUJA_SURROUND, 0, abuja.minZ - ABUJA_SURROUND], [abuja.minX - ABUJA_SURROUND, 0, abuja.maxZ + ABUJA_SURROUND], [abuja.maxX + ABUJA_SURROUND, 0, abuja.maxZ + ABUJA_SURROUND], [abuja.maxX + ABUJA_SURROUND, 0, abuja.minZ - ABUJA_SURROUND], 0xffffff);
   const top = (x0: number, z0: number, x1: number, z1: number): void => w.quad([x0, 0, z0], [x0, 0, z1], [x1, 0, z1], [x1, 0, z0], 0xffffff);
   top(-OUTER, -OUTER, ARM_X[0], minZ);
   top(ARM_X[1], -OUTER, OUTER, minZ);

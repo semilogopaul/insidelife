@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { AD_SLOTS } from '../catalog/ad-inventory.js';
-import { DISTRICT_IDS } from '../catalog/geography.js';
+import { DISTRICTS, DISTRICT_IDS } from '../catalog/geography.js';
+
+const LAGOS_DISTRICT_IDS = DISTRICT_IDS.filter((id) => DISTRICTS[id].cityId === 'lagos');
 import { VENUES } from '../catalog/venues.js';
 import { hashString } from '../random/rng.js';
 import { AD_PLACEMENTS } from './ad-placements.js';
@@ -36,28 +38,30 @@ const sig = (parts: readonly (string | number)[][]): number => hashString(parts.
 
 describe('widening keeps every id', () => {
   it('keeps every lot: id, kind, district, venue, front, door, street, cells and seed', () => {
-    expect(CITY_MAP.lots).toHaveLength(882);
-    const lots = CITY_MAP.lots.map((l) => [l.id, l.kind, l.districtId, l.venueId ?? '', l.archetype ?? '', l.front ?? '', l.entrance ? 'door' : '', l.street ?? '', l.cells.join(','), l.seed]);
-    expect(sig(lots)).toBe(2_090_848_573);
+    // 882 lots before the multi-city work; 875 now: the General Aviation Terminal (mmia-gat) took eight infill cells (one lot of 4 × 2).
+    const lagos = CITY_MAP.lots.filter((l) => DISTRICTS[l.districtId].cityId === 'lagos');
+    expect(lagos).toHaveLength(882 - 8 + 1);
+    const lots = lagos.map((l) => [l.id, l.kind, l.districtId, l.venueId ?? '', l.archetype ?? '', l.front ?? '', l.entrance ? 'door' : '', l.street ?? '', l.cells.join(','), l.seed]);
+    expect(sig(lots)).toBe(4_198_778_187);
   });
 
   it('keeps every district’s home lots, so `homeLotOf` lands every house and family home on the same lot', () => {
-    expect(hashString(DISTRICT_IDS.map((d) => `${d}:${homeLots(d).map((l) => l.id).join(',')}`).join(';'))).toBe(3_072_173_288);
-    const owned = DISTRICT_IDS.map((d) => Array.from({ length: 40 }, (_, i) => homeLotOf(`property:p-${i}`, d)?.id ?? '-').join(','));
+    expect(hashString(LAGOS_DISTRICT_IDS.map((d) => `${d}:${homeLots(d).map((l) => l.id).join(',')}`).join(';'))).toBe(3_072_173_288);
+    const owned = LAGOS_DISTRICT_IDS.map((d) => Array.from({ length: 40 }, (_, i) => homeLotOf(`property:p-${i}`, d)?.id ?? '-').join(','));
     expect(hashString(owned.join(';'))).toBe(2_405_394_939);
   });
 
   it('keeps every filling station and mechanic on its lot, with its name', () => {
-    expect(sig(SERVICE_POINTS.map((p) => [p.id, p.kind, p.lotId, p.name, p.street, p.districtId]))).toBe(321_660_306);
+    expect(sig(SERVICE_POINTS.filter((p) => DISTRICTS[p.districtId].cityId === 'lagos').map((p) => [p.id, p.kind, p.lotId, p.name, p.street, p.districtId]))).toBe(321_660_306);
   });
 
   it('keeps every ad spot and bookable slot: id, kind, district, street, venue, name, tier and price', () => {
-    expect(sig(AD_PLACEMENTS.map((s) => [s.id, s.kind, s.districtId, s.street, s.venueId ?? '']))).toBe(3_852_550_639);
-    expect(sig(AD_SLOTS.map((s) => [s.id, s.kind, s.name, s.districtId ?? '', s.tier, s.weekPriceKobo, s.maxConcurrentAds]))).toBe(3_659_380_086);
+    expect(sig(AD_PLACEMENTS.filter((s) => s.cityId === 'lagos').map((s) => [s.id, s.kind, s.districtId, s.street, s.venueId ?? '']))).toBe(3_852_550_639);
+    expect(sig(AD_SLOTS.filter((s) => !s.districtId || DISTRICTS[s.districtId].cityId === 'lagos').map((s) => [s.id, s.kind, s.name, s.districtId ?? '', s.tier, s.weekPriceKobo, s.maxConcurrentAds]))).toBe(3_659_380_086);
   });
 
   it('keeps every venue on its authored lot and street', () => {
-    const venues = VENUES.filter((v) => !v.regionId).map((v) => {
+    const venues = VENUES.filter((v) => DISTRICTS[v.districtId].cityId === 'lagos' && v.id !== 'mmia-gat').map((v) => {
       const lot = venueLot(v.id);
       return [v.id, lot?.id ?? '', lot?.cells.join(',') ?? '', lot?.front ?? '', lot?.street ?? ''];
     });
@@ -118,10 +122,12 @@ describe('four-lane geometry invariants', () => {
   }, 30_000);
 
   it('reaches every door from the road graph, with the car parked in the kerbside lane', () => {
-    const from = venueEntrance('unilag')!.position;
-    const doors = [...CITY_MAP.lots.flatMap((lot) => (lot.entrance ? [[lot.id, lot.entrance] as const] : [])), ...SERVICE_POINTS.map((point) => [point.id, point.entrance] as const)];
+    // Each city is one connected road graph: from a venue in the city to every door in it.
+    const origin: Readonly<Record<string, string>> = { lagos: 'unilag', abuja: 'wuse-market' };
+    const doors = [...CITY_MAP.lots.flatMap((lot) => (lot.entrance ? [[lot.id, lot.entrance, DISTRICTS[lot.districtId].cityId] as const] : [])), ...SERVICE_POINTS.map((point) => [point.id, point.entrance, DISTRICTS[point.districtId].cityId] as const)];
     expect(doors.length).toBeGreaterThan(500);
-    for (const [id, entrance] of doors) {
+    for (const [id, entrance, city] of doors) {
+      const from = venueEntrance(origin[city]!)!.position;
       expect(findRoute(from, entrance.position), id).not.toBeNull();
       expect(['road', 'bridge', 'roundabout'], id).toContain(cellKindAt(entrance.parking));
       const kerb = nearestRoadPoint(entrance.parking)!;

@@ -301,7 +301,7 @@ export class HealthEvents implements OnModuleInit {
       art: '🚦',
       weight: 5,
       cooldownDays: 14,
-      eligible: (ctx) => ctx.age >= 18 && ctx.character.regionId === 'lagos',
+      eligible: (ctx) => ctx.age >= 18 && ctx.character.cityId === 'lagos',
       title: () => 'Lagos traffic stress',
       body: () =>
         'Three hours on Third Mainland Bridge. A danfo scraped a Bolt, both drivers came down to fight, and your bladder has filed a formal complaint.',

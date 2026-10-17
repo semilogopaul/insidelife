@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { hashString } from '../random/rng.js';
 import { AD_DOOR_CLEARANCE, AD_FACE_GAP, AD_PLACEMENTS, adFaceEnds, adFaceGap, adFootprint, type AdFaceExtent } from './ad-placements.js';
 import { CARRIAGEWAY_HALF_WIDTH } from './city-layout.js';
-import { CITY_MAP } from './city-map.js';
+import { DISTRICTS } from '../catalog/geography.js';
+import { CITY_MAP, cityAt } from './city-map.js';
 import { nearestRoadPoint } from './routing.js';
 import type { WorldPoint } from './types.js';
 
@@ -20,10 +21,21 @@ const inside = (point: WorldPoint, lot: (typeof buildings)[number], margin = 0.5
 
 describe('ad placements (bigger faces that still fit the city)', () => {
   it('keeps every spot id: bookings are tied to them (grow faces, never reshuffle the spots)', () => {
-    const ids = AD_PLACEMENTS.map((spot) => spot.id).toSorted();
+    const ids = AD_PLACEMENTS.filter((spot) => spot.cityId === 'lagos').map((spot) => spot.id).toSorted();
     expect(ids).toHaveLength(533);
     // Changing this hash means existing bookings point at spots that no longer exist: don't.
     expect(hashString(ids.join(','))).toBe(EXPECTED_ID_HASH);
+  });
+
+  it('gives Abuja its own spots, on its own map, with ids that never collide with Lagos’s', () => {
+    const abuja = AD_PLACEMENTS.filter((spot) => spot.cityId === 'abuja');
+    expect(abuja.length).toBeGreaterThan(100);
+    expect(new Set(AD_PLACEMENTS.map((spot) => spot.id)).size).toBe(AD_PLACEMENTS.length);
+    for (const spot of abuja) {
+      expect(cityAt(spot.position), spot.id).toBe('abuja');
+      expect(DISTRICTS[spot.districtId].cityId, spot.id).toBe('abuja');
+    }
+    for (const kind of ['street-billboard', 'bus-shelter', 'totem', 'market-banner', 'park-board']) expect(abuja.some((spot) => spot.kind === kind), kind).toBe(true);
   });
 
   it('never lets two faces touch, including the premium boards', () => {

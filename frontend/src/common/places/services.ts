@@ -212,7 +212,25 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceSe
       at: 'counter',
     },
   ],
+  'aviation-terminal': [
+    {
+      id: 'gat-flights',
+      label: 'Flights',
+      emoji: '✈️',
+      blurb: 'Commercial flights and the coach, in the Flights app. Private flights and hangars come with the aircraft update.',
+      opens: { app: 'flights' },
+      at: 'counter',
+    },
+  ],
   airport: [
+    {
+      id: 'ticket-counter',
+      label: 'Ticket counter & gate',
+      emoji: '🎫',
+      blurb: 'Walk-up tickets, check-in and boarding — in the Flights app.',
+      opens: { app: 'flights', param: 'counter' },
+      at: 'counter',
+    },
     {
       id: 'book-trip',
       label: 'Travel',

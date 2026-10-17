@@ -1,5 +1,5 @@
 import { AD_PLACEMENT_KINDS, AD_PLACEMENTS, type AdPlacementKind, type AdPlacementSpot } from '../world-map/ad-placements.js';
-import { DISTRICTS, type DistrictId } from './geography.js';
+import { DISTRICTS, type CityId, type DistrictId } from './geography.js';
 import {
   AD_MAX_PRICE_KOBO,
   BILLBOARD_FORMAT_SPECS,
@@ -75,6 +75,16 @@ const PRICING: Readonly<Record<AdPlacementKind, KindPricing>> = {
 
 /** Lagos TV: every TV in the game, 12 ads share the channel (was ₦6,000/day). */
 const LAGOS_TV_WEEK_PRICE_KOBO = 7 * 6_000 * NAIRA;
+
+/** The city an ad slot is in (null for citywide slots: Lagos TV and the phone apps, which reach every player). */
+export function adSlotCityId(slot: Pick<AdSlot, 'districtId'>): CityId | null {
+  return slot.districtId ? DISTRICTS[slot.districtId].cityId : null;
+}
+
+/** The slots a city's advertisers see: its own boards and shelters, plus the citywide ones. */
+export function adSlotsInCity(cityId: CityId): readonly AdSlot[] {
+  return AD_SLOTS.filter((slot) => adSlotCityId(slot) === null || adSlotCityId(slot) === cityId);
+}
 
 /** District prestige multiplier for roadside spots (≈0.82 in the poorest district … 1.92 in the richest). */
 export const districtPriceFactor = (districtId: DistrictId): number => 0.72 + (DISTRICTS[districtId].prestige / 100) * 1.2;

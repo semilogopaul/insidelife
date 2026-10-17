@@ -1,4 +1,4 @@
-import { DISTRICT_IDS, type DistrictId } from '../catalog/geography.js';
+import { CITY_IDS, DISTRICT_IDS, DISTRICTS, type CityId, type DistrictId } from '../catalog/geography.js';
 import { BILLBOARD_FORMAT_SPECS, BILLBOARD_SLOTS, type BillboardFormat, type BillboardSlotId } from '../catalog/promotions.js';
 import { VENUES, type VenueDefinition, type VenueType } from '../catalog/venues.js';
 import { hashString } from '../random/rng.js';
@@ -7,9 +7,12 @@ import {
   CARRIAGEWAY_HALF_WIDTH,
   CITY_CELL_SIZE,
   CITY_COLS,
+  CITY_GRID_RECTS,
   CITY_ROWS,
   DISTRICT_RECTS,
   HOME_SHARE,
+  LAGOS_COLS,
+  LAGOS_ROWS,
   LANDMARKS,
   LAYOUT_CARRIAGEWAY_HALF_WIDTH,
   ROAD_LINE_WIDTH,
@@ -19,6 +22,7 @@ import {
   ROUNDABOUTS,
   TERRAIN_RECTS,
   VENUE_LOTS,
+  cityOfCell,
   type BillboardMount,
   type CellRect,
   type CompassSide,
@@ -328,21 +332,24 @@ for (const spec of ROUNDABOUTS) {
   ROAD_ROWS[spec.centre[1]] = 1;
 }
 
-/** World edges of the grid lines (count + 1 values), centred on the origin. */
-function lineEdges(wide: Uint8Array): Float64Array {
+/**
+ * World edges of the grid lines (count + 1 values). Lagos's lines come first and are centred on the origin exactly as
+ * they were when Lagos was the whole grid (`anchor` = Lagos's line count); Abuja's lines continue beyond them.
+ */
+function lineEdges(wide: Uint8Array, anchor: number): Float64Array {
   const edges = new Float64Array(wide.length + 1);
   for (let i = 0; i < wide.length; i++) edges[i + 1] = (edges[i] as number) + (wide[i] ? ROAD_LINE_WIDTH : S);
-  const half = (edges[wide.length] as number) / 2;
+  const half = (edges[anchor] as number) / 2;
   for (let i = 0; i <= wide.length; i++) edges[i] = (edges[i] as number) - half;
   return edges;
 }
 
-const COL_EDGES = lineEdges(ROAD_COLS);
-const ROW_EDGES = lineEdges(ROAD_ROWS);
+const COL_EDGES = lineEdges(ROAD_COLS, LAGOS_COLS);
+const ROW_EDGES = lineEdges(ROAD_ROWS, LAGOS_ROWS);
 const ORIGIN_X = COL_EDGES[0] as number;
 const ORIGIN_Z = ROW_EDGES[0] as number;
 
-/** Playable extent of the city in world metres. */
+/** Extent of the whole world frame (both cities and the water between them) in world metres. */
 export const CITY_BOUNDS: CityBounds = { minX: ORIGIN_X, minZ: ORIGIN_Z, maxX: COL_EDGES[CITY_COLS] as number, maxZ: ROW_EDGES[CITY_ROWS] as number };
 
 /** Index of the line containing `value` (outside the grid: continues in 10 m steps, like the layout). */
@@ -394,9 +401,10 @@ export function cellBounds(col: number, row: number): CityBounds {
 }
 
 // The layout: the uniform 10 m grid the first city was built on. Ids are chosen there (never in the world), and the
-// first city's world coordinates *are* layout coordinates, which is what `layoutToWorld` migrates.
-const LAYOUT_ORIGIN_X = (-CITY_COLS * S) / 2;
-const LAYOUT_ORIGIN_Z = (-CITY_ROWS * S) / 2;
+// first city's world coordinates *are* layout coordinates, which is what `layoutToWorld` migrates. (Abuja's cells
+// continue the same uniform grid beyond Lagos's.)
+const LAYOUT_ORIGIN_X = (-LAGOS_COLS * S) / 2;
+const LAYOUT_ORIGIN_Z = (-LAGOS_ROWS * S) / 2;
 const layoutCentreX = (col: number): number => LAYOUT_ORIGIN_X + (col + 0.5) * S;
 const layoutCentreZ = (row: number): number => LAYOUT_ORIGIN_Z + (row + 0.5) * S;
 
@@ -593,6 +601,7 @@ const ARCHETYPE_BY_TYPE: Readonly<Record<VenueType, LotArchetype>> = {
   'private-jet': 'jet-pad',
   refinery: 'refinery',
   stadium: 'stadium',
+  'aviation-terminal': 'aviation-terminal',
 };
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -705,7 +714,7 @@ function buildCityMap(): { readonly map: CityMap; readonly layoutLots: readonly 
     }
   }
 
-  // Lots.
+  // Lots, one city at a time: Lagos's lots (and their indices) never depend on Abuja's.
   const lots: CityLot[] = [];
   const layoutLots: LayoutLot[] = [];
   const lotIndex = new Int32Array(CELL_COUNT).fill(-1);
@@ -722,120 +731,125 @@ function buildCityMap(): { readonly map: CityMap; readonly layoutLots: readonly 
   };
 
   const authored = new Set<string>();
-  for (const spec of VENUE_LOTS) {
-    const venue = VENUES.find((entry) => entry.id === spec.venueId) as VenueDefinition | undefined;
-    if (!venue || venue.regionId) continue;
-    authored.add(spec.venueId);
-    const [dc, dr] = doorCell(spec.rect, spec.front, spec.door);
-    lots.push({
-      id: spec.venueId,
-      kind: 'venue',
-      districtId: districtOf(dc, dr),
-      venueId: spec.venueId,
-      archetype: spec.archetype,
-      cells: spec.rect,
-      footprint: rectFootprint(spec.rect),
-      front: spec.front,
-      entrance: entranceFor(dc, dr, spec.front),
-      street: streetInFront(dc, dr, spec.front),
-      seed: hashString(`lot:${spec.venueId}`),
-    });
-    layoutLots.push({ footprint: layoutFootprint(spec.rect), door: layoutDoor(dc, dr, spec.front) });
-    claim(spec.rect, lots.length - 1);
-  }
-  for (const spec of LANDMARKS) {
-    const [dc, dr] = doorCell(spec.rect, spec.front);
-    lots.push({
-      id: `landmark:${spec.id}`,
-      kind: 'landmark',
-      districtId: districtOf(dc, dr),
-      cells: spec.rect,
-      footprint: rectFootprint(spec.rect),
-      front: spec.front,
-      seed: hashString(`landmark:${spec.id}`),
-    });
-    layoutLots.push({ footprint: layoutFootprint(spec.rect), door: null });
-    claim(spec.rect, lots.length - 1);
-  }
   const reserved = new Set<number>(BILLBOARD_SPECS.map((spec) => cellIndex(spec.cell[0], spec.cell[1])));
+  for (const cityId of CITY_IDS) {
+    for (const spec of VENUE_LOTS) {
+      const venue = VENUES.find((entry) => entry.id === spec.venueId) as VenueDefinition | undefined;
+      if (!venue || DISTRICTS[venue.districtId].cityId !== cityId) continue;
+      authored.add(spec.venueId);
+      const [dc, dr] = doorCell(spec.rect, spec.front, spec.door);
+      lots.push({
+        id: spec.venueId,
+        kind: 'venue',
+        districtId: districtOf(dc, dr),
+        venueId: spec.venueId,
+        archetype: spec.archetype,
+        cells: spec.rect,
+        footprint: rectFootprint(spec.rect),
+        front: spec.front,
+        entrance: entranceFor(dc, dr, spec.front),
+        street: streetInFront(dc, dr, spec.front),
+        seed: hashString(`lot:${spec.venueId}`),
+      });
+      layoutLots.push({ footprint: layoutFootprint(spec.rect), door: layoutDoor(dc, dr, spec.front) });
+      claim(spec.rect, lots.length - 1);
+    }
+    for (const spec of LANDMARKS) {
+      if (cityOfCell(spec.rect[0], spec.rect[1]) !== cityId) continue;
+      const [dc, dr] = doorCell(spec.rect, spec.front);
+      lots.push({
+        id: `landmark:${spec.id}`,
+        kind: 'landmark',
+        districtId: districtOf(dc, dr),
+        cells: spec.rect,
+        footprint: rectFootprint(spec.rect),
+        front: spec.front,
+        seed: hashString(`landmark:${spec.id}`),
+      });
+      layoutLots.push({ footprint: layoutFootprint(spec.rect), door: null });
+      claim(spec.rect, lots.length - 1);
+    }
 
-  // Filler lots: every remaining land cell. Cells facing a straight road get a door.
-  const fillerStart = lots.length;
-  for (let row = 0; row < CITY_ROWS; row++) {
-    for (let col = 0; col < CITY_COLS; col++) {
-      const i = cellIndex(col, row);
-      if (cells[i] !== K_LAND || lotIndex[i] !== -1 || reserved.has(i)) continue;
-      const districtId = districtOf(col, row);
-      const seed = hashString(`lot:${col}:${row}`);
-      let front: CompassSide | undefined;
-      let bestRank = -1;
-      for (const side of ['S', 'E', 'N', 'W'] as const) {
-        const d = SIDE_DIR[side];
-        const nc = col + at(DIR_DC, d);
-        const nr = row + at(DIR_DR, d);
-        if (!inGrid(nc, nr)) continue;
-        const n = cellIndex(nc, nr);
-        if (cells[n] !== K_ROAD) continue;
-        const straight = isStraight(mask[n] as number) ? 10 : 0;
-        const rank = straight + ROAD_CLASS_RANK[cellRoadInfo(raster, n).roadClass];
-        if (rank > bestRank) {
-          bestRank = rank;
-          front = side;
+    // Filler lots: every remaining land cell of the city. Cells facing a straight road get a door.
+    const fillerStart = lots.length;
+    const [gc0, gr0, gc1, gr1] = CITY_GRID_RECTS[cityId];
+    for (let row = gr0; row <= gr1; row++) {
+      for (let col = gc0; col <= gc1; col++) {
+        const i = cellIndex(col, row);
+        if (cells[i] !== K_LAND || lotIndex[i] !== -1 || reserved.has(i)) continue;
+        const districtId = districtOf(col, row);
+        const seed = hashString(`lot:${col}:${row}`);
+        let front: CompassSide | undefined;
+        let bestRank = -1;
+        for (const side of ['S', 'E', 'N', 'W'] as const) {
+          const d = SIDE_DIR[side];
+          const nc = col + at(DIR_DC, d);
+          const nr = row + at(DIR_DR, d);
+          if (!inGrid(nc, nr)) continue;
+          const n = cellIndex(nc, nr);
+          if (cells[n] !== K_ROAD) continue;
+          const straight = isStraight(mask[n] as number) ? 10 : 0;
+          const rank = straight + ROAD_CLASS_RANK[cellRoadInfo(raster, n).roadClass];
+          if (rank > bestRank) {
+            bestRank = rank;
+            front = side;
+          }
         }
+        const rect: CellRect = [col, row, col, row];
+        if (!front) {
+          lots.push({ id: `lot:${col}:${row}`, kind: 'infill', districtId, cells: rect, footprint: rectFootprint(rect), seed });
+          layoutLots.push({ footprint: layoutFootprint(rect), door: null });
+        } else {
+          const straightFront = bestRank >= 10;
+          const home = straightFront && (seed % 1000) / 1000 < HOME_SHARE[districtId];
+          lots.push({
+            id: `lot:${col}:${row}`,
+            kind: home ? 'home' : 'building',
+            districtId,
+            cells: rect,
+            footprint: rectFootprint(rect),
+            front,
+            entrance: straightFront ? entranceFor(col, row, front) : undefined,
+            street: streetInFront(col, row, front),
+            seed,
+          });
+          layoutLots.push({ footprint: layoutFootprint(rect), door: straightFront ? layoutDoor(col, row, front) : null });
+        }
+        lotIndex[i] = lots.length - 1;
       }
-      const rect: CellRect = [col, row, col, row];
-      if (!front) {
-        lots.push({ id: `lot:${col}:${row}`, kind: 'infill', districtId, cells: rect, footprint: rectFootprint(rect), seed });
-        layoutLots.push({ footprint: layoutFootprint(rect), door: null });
-      } else {
-        const straightFront = bestRank >= 10;
-        const home = straightFront && (seed % 1000) / 1000 < HOME_SHARE[districtId];
-        lots.push({
-          id: `lot:${col}:${row}`,
-          kind: home ? 'home' : 'building',
-          districtId,
-          cells: rect,
-          footprint: rectFootprint(rect),
-          front,
-          entrance: straightFront ? entranceFor(col, row, front) : undefined,
-          street: streetInFront(col, row, front),
-          seed,
-        });
-        layoutLots.push({ footprint: layoutFootprint(rect), door: straightFront ? layoutDoor(col, row, front) : null });
+    }
+
+    // Every district keeps a few homes even where offices dominate (Marina flats, VI apartments).
+    for (const districtId of DISTRICT_IDS) {
+      if (DISTRICTS[districtId].cityId !== cityId) continue;
+      let homes = 0;
+      const offices: number[] = [];
+      for (let i = fillerStart; i < lots.length; i++) {
+        const candidate = at(lots, i);
+        if (candidate.districtId !== districtId || !candidate.entrance) continue;
+        if (candidate.kind === 'home') homes++;
+        else if (candidate.kind === 'building') offices.push(i);
       }
-      lotIndex[i] = lots.length - 1;
+      offices.sort((a, b) => at(lots, a).seed - at(lots, b).seed);
+      for (let k = 0; homes < MIN_HOMES_PER_DISTRICT && k < offices.length; k++, homes++) {
+        const index = at(offices, k);
+        lots[index] = { ...at(lots, index), kind: 'home' };
+      }
     }
-  }
 
-  // Every district keeps a few homes even where offices dominate (Marina flats, VI apartments).
-  for (const districtId of DISTRICT_IDS) {
-    let homes = 0;
-    const offices: number[] = [];
-    for (let i = fillerStart; i < lots.length; i++) {
-      const candidate = at(lots, i);
-      if (candidate.districtId !== districtId || !candidate.entrance) continue;
-      if (candidate.kind === 'home') homes++;
-      else if (candidate.kind === 'building') offices.push(i);
+    // Venues added to the catalog later than the layout take over a filler lot in their district (never homeless).
+    for (const venue of VENUES as readonly VenueDefinition[]) {
+      if (DISTRICTS[venue.districtId].cityId !== cityId || authored.has(venue.id)) continue;
+      const candidates: number[] = [];
+      for (let i = fillerStart; i < lots.length; i++) {
+        const candidate = at(lots, i);
+        if (candidate.kind === 'building' && candidate.entrance && candidate.districtId === venue.districtId) candidates.push(i);
+      }
+      if (candidates.length === 0) continue;
+      const index = at(candidates, hashString(`venue-lot:${venue.id}`) % candidates.length);
+      const base = at(lots, index);
+      lots[index] = { ...base, id: venue.id, kind: 'venue', venueId: venue.id, archetype: ARCHETYPE_BY_TYPE[venue.type], seed: hashString(`lot:${venue.id}`) };
     }
-    offices.sort((a, b) => at(lots, a).seed - at(lots, b).seed);
-    for (let k = 0; homes < MIN_HOMES_PER_DISTRICT && k < offices.length; k++, homes++) {
-      const index = at(offices, k);
-      lots[index] = { ...at(lots, index), kind: 'home' };
-    }
-  }
-
-  // Venues added to the catalog later than the layout take over a filler lot in their district (never homeless).
-  for (const venue of VENUES as readonly VenueDefinition[]) {
-    if (venue.regionId || authored.has(venue.id)) continue;
-    const candidates: number[] = [];
-    for (let i = fillerStart; i < lots.length; i++) {
-      const candidate = at(lots, i);
-      if (candidate.kind === 'building' && candidate.entrance && candidate.districtId === venue.districtId) candidates.push(i);
-    }
-    if (candidates.length === 0) continue;
-    const index = at(candidates, hashString(`venue-lot:${venue.id}`) % candidates.length);
-    const base = at(lots, index);
-    lots[index] = { ...base, id: venue.id, kind: 'venue', venueId: venue.id, archetype: ARCHETYPE_BY_TYPE[venue.type], seed: hashString(`lot:${venue.id}`) };
   }
 
   // Bridges: maximal straight runs of bridge cells, named by their road.
@@ -1063,3 +1077,14 @@ export const CELL_EDGES: { readonly start: Int32Array; readonly edges: Int32Arra
 })();
 
 export { ORIGIN_X as CITY_ORIGIN_X, ORIGIN_Z as CITY_ORIGIN_Z, inGrid as cityCellInGrid };
+
+/** World extent of one city's grid (the land, its scrub and the rivers: not the water between the cities). */
+export function cityBounds(cityId: CityId): CityBounds {
+  const [c0, r0, c1, r1] = CITY_GRID_RECTS[cityId];
+  return rectFootprint([c0, r0, c1, r1]);
+}
+
+/** The city a world point is in (points between the cities count for the nearer one). */
+export function cityAt(point: WorldPoint): CityId {
+  return DISTRICTS[cityDistrictAt(point)].cityId;
+}

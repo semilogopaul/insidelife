@@ -1,10 +1,13 @@
 import {
   CITY_MAP,
   DIR_E,
+  LAGOS_ROWS,
   ROAD_LINE_WIDTH,
   cellBounds,
   cellCentreX,
   cellCentreZ,
+  cityBounds,
+  cityOfCell,
   findVenue,
   servicePointOnLot,
   type CityLot,
@@ -890,6 +893,12 @@ function beaches(plan: PlanBuilder): void {
       const random = rng(index * 2654435761);
       const x = cellCentreX(col);
       const z = cellCentreZ(row);
+      // Abuja's sand is dry scrub, not a beach: acacia and bush, no palms or parasols.
+      if (cityOfCell(col, row) === 'abuja') {
+        if (random() < 0.5) plan.bush(x + (random() - 0.5) * 7, z + (random() - 0.5) * 7, random);
+        else if (random() < 0.2) plan.tree(x + (random() - 0.5) * 6, z + (random() - 0.5) * 6, random);
+        continue;
+      }
       if (random() < 0.55) plan.palm(x + (random() - 0.5) * 7, z - 2 + (random() - 0.5) * 4, random);
       if (random() < 0.25) plan.add('commercial', 'detail-parasol-a', x + (random() - 0.5) * 6, 0, z + (random() - 0.5) * 4, random() * Math.PI, 9);
     }
@@ -906,15 +915,15 @@ function parkedCars(plan: PlanBuilder): void {
     const shift = (random() - 0.5) * 3;
     const x = parking.x + Math.cos(parking.heading) * shift;
     const z = parking.z + Math.sin(parking.heading) * shift;
-    const wealthy = lot.districtId === 'ikoyi' || lot.districtId === 'banana-island' || lot.districtId === 'lekki' || lot.districtId === 'victoria-island';
+    const wealthy = ['ikoyi', 'banana-island', 'lekki', 'victoria-island', 'maitama', 'asokoro'].includes(lot.districtId);
     plan.vehicle(wealthy ? pick(['suv-luxury', 'suv', 'sedan-sports', 'sedan'], random) : pick(models, random), x, z, parking.heading);
   }
 }
 
 /** A belt of palms and bush just outside the playable edge, so the mainland seems to go on. */
 function outskirts(plan: PlanBuilder): void {
-  const { minX, minZ, maxX } = CITY_MAP.bounds;
-  const coastZ = cellBounds(0, CITY_MAP.rows - 2).minZ;
+  const { minX, minZ, maxX } = cityBounds('lagos');
+  const coastZ = cellBounds(0, LAGOS_ROWS - 2).minZ;
   const random = rng(0x5eed);
   const scatter = (x0: number, z0: number, x1: number, z1: number, count: number): void => {
     for (let i = 0; i < count; i++) {
@@ -929,6 +938,25 @@ function outskirts(plan: PlanBuilder): void {
   scatter(minX - 70, minZ - 70, maxX + 70, minZ - 6, 150);
   scatter(minX - 70, minZ, minX - 6, coastZ - 4, 70);
   scatter(maxX + 6, minZ, maxX + 70, coastZ - 4, 70);
+  abujaOutskirts(plan);
+}
+
+/** Abuja's scrub and acacia just beyond its edge (it is inland: no palms). */
+function abujaOutskirts(plan: PlanBuilder): void {
+  const { minX, minZ, maxX, maxZ } = cityBounds('abuja');
+  const random = rng(0xab07a);
+  const scatter = (x0: number, z0: number, x1: number, z1: number, count: number): void => {
+    for (let i = 0; i < count; i++) {
+      const x = x0 + random() * (x1 - x0);
+      const z = z0 + random() * (z1 - z0);
+      if (random() < 0.4) plan.tree(x, z, random);
+      else plan.bush(x, z, random);
+    }
+  };
+  scatter(minX - 70, minZ - 70, maxX + 70, minZ - 6, 110);
+  scatter(minX - 70, maxZ + 6, maxX + 70, maxZ + 70, 110);
+  scatter(minX - 70, minZ, minX - 6, maxZ, 70);
+  scatter(maxX + 6, minZ, maxX + 70, maxZ, 70);
 }
 
 // ---------------------------------------------------------------------------------------------------------------

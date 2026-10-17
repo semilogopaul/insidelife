@@ -52,6 +52,18 @@ const PLAN: ReadonlyArray<readonly [ServicePointKind, DistrictId, number]> = [
   ['mechanic', 'ikorodu', 1],
   ['mechanic', 'ikoyi', 1],
   ['mechanic', 'ajah', 1],
+  // Abuja (after Lagos's, so Lagos's stations and their names never move).
+  ['fuel', 'wuse', 1],
+  ['fuel', 'garki', 1],
+  ['fuel', 'jabi', 1],
+  ['fuel', 'abuja-cbd', 1],
+  ['fuel', 'gwarinpa', 1],
+  ['fuel', 'kubwa', 1],
+  ['fuel', 'lugbe', 1],
+  ['fuel', 'asokoro', 1],
+  ['mechanic', 'garki', 1],
+  ['mechanic', 'kubwa', 1],
+  ['mechanic', 'lugbe', 1],
 ];
 
 const FUEL_NAMES = ['Mega Station', 'Filling Station', 'Petrol Station'] as const;
@@ -98,7 +110,7 @@ function buildServicePoints(): readonly ServicePoint[] {
       if (!best || !best.entrance) continue;
       used.add(best.id);
       const names = kind === 'fuel' ? FUEL_NAMES : MECHANIC_NAMES;
-      const street = best.street ?? 'Lagos';
+      const street = best.street ?? 'Roadside';
       points.push({
         id: `${kind}:${best.id.replace(/^lot:/, '')}`,
         kind,

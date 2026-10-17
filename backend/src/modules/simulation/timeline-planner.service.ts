@@ -1,14 +1,16 @@
 import { Injectable } from '@nestjs/common';
 import {
   MINUTES_PER_DAY,
+  INTERSTATE_BUS,
   MINUTES_PER_HOUR,
-  REGIONS,
   TRANSPORT,
   actionProfile,
   awayProfile,
   AUTOPILOT_TARGET,
   COLLAPSE_TARGET,
   HABIT_TARGET,
+  cityOfDistrict,
+  cityOfVenue,
   commuteProfile,
   driftNeed,
   HABIT_MIN_ENERGY,
@@ -29,13 +31,14 @@ import {
   toDateParts,
   workProfile,
   homeLocationId,
+  type CityId,
   type DistrictId,
   type GameMinute,
   type NeedDrift,
   type NeedProfile,
   type ProfileContext,
-  type RegionId,
   type TransportMode,
+  type TravelMode,
 } from '@insidelife/shared';
 import type { ActivityState, TravelState } from '../characters/entities/character.entity.js';
 import { CharacterEntity } from '../characters/entities/character.entity.js';
@@ -77,7 +80,7 @@ const MEAL_WINDOWS: ReadonlyArray<{ readonly start: number; readonly minutes: nu
 /** The mutable bits of a character the planner reasons about (lets us dry-run the future without side effects). */
 export interface PlanState {
   locationId: string;
-  regionId: RegionId;
+  cityId: CityId;
   travel: TravelState | null;
   activity: ActivityState | null;
   /** Energy and hunger at the planning instant (exhaustion → bed, hunger → a meal at home). */
@@ -107,11 +110,11 @@ const MIN_HABIT_SESSION_MINUTES = 15;
 
 export interface Place {
   readonly districtId: DistrictId;
-  readonly regionId: RegionId;
+  readonly cityId: CityId;
 }
 
 export interface CommuteQuote {
-  readonly mode: TransportMode;
+  readonly mode: TravelMode;
   readonly minutes: number;
   readonly fare: number;
   readonly intercity: boolean;
@@ -135,7 +138,7 @@ export class TimelinePlanner {
     const character = ctx.character;
     return {
       locationId: character.locationId,
-      regionId: character.regionId,
+      cityId: character.cityId,
       travel: character.travel,
       activity: character.activity,
       energy: character.needs.energy,
@@ -150,6 +153,10 @@ export class TimelinePlanner {
 
     if (state.travel && state.travel.arriveAt > t) {
       const destination = await this.placeLabel(ctx, state.travel.toLocationId);
+      if (state.travel.mode === 'flight' || state.travel.mode === 'coach') {
+        const label = state.travel.mode === 'flight' ? `In the air to ${destination}` : `On the coach to ${destination}`;
+        return this.segment('flight', t, Math.min(state.travel.arriveAt, horizon), state.travel.toLocationId, label, true, commuteProfile(profiles, state.travel.mode));
+      }
       return this.segment('commute', t, Math.min(state.travel.arriveAt, horizon), state.travel.toLocationId, `Heading to ${destination}`, true, commuteProfile(profiles, state.travel.mode));
     }
 
@@ -182,16 +189,16 @@ export class TimelinePlanner {
         const running = here.find((block) => block.startsAt <= t);
         if (running) return this.routineSegment(running, blocks, t, Math.min(horizon, activity.endsAt, collapseBoundary), profiles);
         const nextHere = Math.min(...here.map((block) => block.startsAt));
-        const atHome = state.locationId === (await this.residence(ctx, t)).locationId;
+        const atHome = state.locationId === (await this.localResidence(ctx, state, t)).locationId;
         return this.segment('action', t, Math.min(end, nextHere, collapseBoundary), activity.locationId, action.verb, true, actionProfile(action, atHome, profiles), action.id);
       }
       if (action) {
-        const atHome = state.locationId === (await this.residence(ctx, t)).locationId;
+        const atHome = state.locationId === (await this.localResidence(ctx, state, t)).locationId;
         return this.segment('action', t, end, activity.locationId, action.verb, true, actionProfile(action, atHome, profiles), action.id);
       }
     }
 
-    const residence = await this.residence(ctx, t);
+    const residence = await this.localResidence(ctx, state, t);
     const blocks = await this.blocksAround(ctx, t);
     const current = this.blockAt(blocks, t);
 
@@ -208,7 +215,8 @@ export class TimelinePlanner {
         if (!present) {
           const quote = await this.quote(ctx, state.locationId, upcoming.locationId, ctx.character.defaultTransport, t);
           const leaveAt = upcoming.startsAt - quote.minutes;
-          if (t >= leaveAt) return this.depart(state, upcoming.locationId, quote, t, `Commute to ${upcoming.label}`);
+          // The autopilot never crosses between cities: a shift in the other city is missed, the player decides.
+          if (!quote.intercity && t >= leaveAt) return this.depart(state, upcoming.locationId, quote, t, `Commute to ${upcoming.label}`);
         }
       } else if (upcoming.startsAt <= t) {
         return this.routineSegment(upcoming, blocks, t, Math.min(horizon, collapseBoundary), profiles);
@@ -227,7 +235,7 @@ export class TimelinePlanner {
     const dayStart = startOfDay(t);
     const minuteOfDay = t - dayStart;
     const nextLeave = upcoming && state.locationId !== upcoming.locationId
-      ? upcoming.startsAt - (await this.quote(ctx, state.locationId, upcoming.locationId, ctx.character.defaultTransport, t)).minutes
+      ? await this.nextLeaveFor(ctx, state, upcoming, t)
       : upcoming && upcoming.startsAt > t
         ? upcoming.startsAt
         : Number.POSITIVE_INFINITY;
@@ -245,7 +253,7 @@ export class TimelinePlanner {
       upcoming !== undefined && upcoming.locationId === state.locationId && upcoming.startsAt - t <= 3 * MINUTES_PER_HOUR;
     if (state.locationId !== residence.locationId && (sleeping || atRoutinePlace) && !nextHereSoon) {
       const quote = await this.quote(ctx, state.locationId, residence.locationId, ctx.character.defaultTransport, t);
-      return this.depart(state, residence.locationId, quote, t, 'Going home');
+      if (!quote.intercity) return this.depart(state, residence.locationId, quote, t, 'Going home');
     }
 
     // Home and hungry: eat first — breakfast before an early commute, dinner after a late one, a bite before bed.
@@ -318,11 +326,28 @@ export class TimelinePlanner {
       if (state.activity && t >= state.activity.endsAt) state.activity = null;
       if (state.travel && t >= state.travel.arriveAt) {
         state.locationId = state.travel.toLocationId;
-        state.regionId = (await this.place(ctx, state.locationId)).regionId;
+        state.cityId = (await this.place(ctx, state.locationId)).cityId;
         state.travel = null;
       }
     }
     return segments;
+  }
+
+  /**
+   * Where the character beds down tonight: their residence, unless it is in the other city. Then they stay put wherever
+   * they are (a hotel by the airport, a friend's sofa): there is no autopilot trip between cities, so a traveller still
+   * sleeps and eats instead of idling until they collapse.
+   */
+  async localResidence(ctx: SimulationContext, state: Pick<PlanState, 'locationId' | 'cityId' | 'travel'>, t: GameMinute): Promise<Residence> {
+    const base = await this.residence(ctx, t);
+    if (base.cityId === state.cityId || state.travel || isStreetLocation(state.locationId)) return base;
+    return { ...base, locationId: state.locationId, cityId: state.cityId, label: 'Staying here' };
+  }
+
+  /** When the autopilot must leave for a routine block (∞ when it is in the other city: it never travels between cities). */
+  private async nextLeaveFor(ctx: SimulationContext, state: PlanState, upcoming: ScheduleBlock, t: GameMinute): Promise<GameMinute> {
+    const quote = await this.quote(ctx, state.locationId, upcoming.locationId, ctx.character.defaultTransport, t);
+    return quote.intercity ? Number.POSITIVE_INFINITY : upcoming.startsAt - quote.minutes;
   }
 
   async residence(ctx: SimulationContext, t: GameMinute): Promise<Residence> {
@@ -337,7 +362,7 @@ export class TimelinePlanner {
       return {
         locationId: homeLocationId(ctx.character.id),
         districtId: ctx.character.homeDistrictId,
-        regionId: 'lagos',
+        cityId: cityOfDistrict(ctx.character.homeDistrictId),
         label: 'Home',
       };
     });
@@ -356,17 +381,19 @@ export class TimelinePlanner {
 
   async place(ctx: SimulationContext, locationId: string): Promise<Place> {
     const street = streetDistrict(locationId);
-    if (street) return { districtId: street, regionId: 'lagos' };
+    if (street) return { districtId: street, cityId: cityOfDistrict(street) };
     if (isHomeLocation(locationId)) {
       const ownerId = locationId.slice('home:'.length);
-      if (ownerId === ctx.character.id) return { districtId: ctx.character.homeDistrictId, regionId: 'lagos' };
+      if (ownerId === ctx.character.id) return { districtId: ctx.character.homeDistrictId, cityId: cityOfDistrict(ctx.character.homeDistrictId) };
       return ctx.memo(`home-district:${ownerId}`, async () => {
         const owner = await ctx.manager.findOne(CharacterEntity, { where: { id: ownerId }, select: { id: true, homeDistrictId: true } });
-        return { districtId: owner?.homeDistrictId ?? 'yaba', regionId: 'lagos' as RegionId };
+        const districtId = owner?.homeDistrictId ?? 'yaba';
+        return { districtId, cityId: cityOfDistrict(districtId) };
       });
     }
     const venue = findVenue(locationId);
-    return { districtId: venue?.districtId ?? ctx.character.homeDistrictId, regionId: venue?.regionId ?? 'lagos' };
+    const districtId = venue?.districtId ?? ctx.character.homeDistrictId;
+    return { districtId, cityId: venue ? cityOfVenue(venue) : cityOfDistrict(districtId) };
   }
 
   async placeLabel(ctx: SimulationContext, locationId: string): Promise<string> {
@@ -382,11 +409,10 @@ export class TimelinePlanner {
     const a = await this.place(ctx, from);
     const b = await this.place(ctx, to);
     const economy = ctx.world.economy(t);
-    if (a.regionId !== b.regionId) {
-      const legs = [a.regionId, b.regionId].filter((region) => region !== 'lagos').map((region) => REGIONS[region]);
-      const hours = legs.reduce((sum, region) => sum + region.busHoursFromLagos, 0);
-      const fare = legs.reduce((sum, region) => sum + region.busFare, 0) * economy.priceIndex * economy.fareMultiplier;
-      return { mode: 'danfo', minutes: Math.round(hours * MINUTES_PER_HOUR + 30), fare: Math.round(fare / 50) * 50, intercity: true };
+    if (a.cityId !== b.cityId) {
+      // Between cities there are no roads: only the interstate coach (or a flight) goes. The autopilot never takes it.
+      const fare = INTERSTATE_BUS.fare * economy.priceIndex * economy.fareMultiplier;
+      return { mode: 'coach', minutes: Math.round(INTERSTATE_BUS.hours * MINUTES_PER_HOUR + 30), fare: Math.round(fare / 50) * 50, intercity: true };
     }
 
     const parts = toDateParts(t);

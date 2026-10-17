@@ -1,7 +1,7 @@
-import type { DistrictId } from '../catalog/geography.js';
+import { CITY_IDS, DISTRICTS, type CityId, type DistrictId } from '../catalog/geography.js';
 import type { BillboardFormat } from '../catalog/promotions.js';
 import { createRng } from '../random/rng.js';
-import { BILLBOARD_SPECS, CARRIAGEWAY_HALF_WIDTH } from './city-layout.js';
+import { BILLBOARD_SPECS, CARRIAGEWAY_HALF_WIDTH, cityOfCell } from './city-layout.js';
 import { CITY_LAYOUT, CITY_MAP, DIR_E, layoutToWorld, type CityLot, type CityRoadTile } from './city-map.js';
 import { nearestRoadPoint } from './routing.js';
 import type { WorldPoint } from './types.js';
@@ -20,7 +20,7 @@ import type { WorldPoint } from './types.js';
 export const AD_PLACEMENT_KINDS = ['street-billboard', 'bus-shelter', 'totem', 'stadium-led', 'market-banner', 'park-board'] as const;
 export type AdPlacementKind = (typeof AD_PLACEMENT_KINDS)[number];
 
-/** How many of each the city gets (the single place to grow or shrink the outdoor inventory). */
+/** How many of each Lagos gets (the single place to grow or shrink the outdoor inventory). */
 export const AD_PLACEMENT_COUNTS: Readonly<Record<AdPlacementKind, number>> = {
   'street-billboard': 130,
   'bus-shelter': 150,
@@ -30,10 +30,24 @@ export const AD_PLACEMENT_COUNTS: Readonly<Record<AdPlacementKind, number>> = {
   'park-board': 12,
 };
 
+/** How many of each Abuja gets: a smaller city, and no stadium yet. Each city picks with its own seed, so one never moves the other's ids. */
+export const AD_PLACEMENT_COUNTS_ABUJA: Readonly<Record<AdPlacementKind, number>> = {
+  'street-billboard': 44,
+  'bus-shelter': 52,
+  totem: 64,
+  'stadium-led': 0,
+  'market-banner': 12,
+  'park-board': 4,
+};
+
+export const AD_PLACEMENT_COUNTS_BY_CITY: Readonly<Record<CityId, Readonly<Record<AdPlacementKind, number>>>> = { lagos: AD_PLACEMENT_COUNTS, abuja: AD_PLACEMENT_COUNTS_ABUJA };
+
 export interface AdPlacementSpot {
   readonly id: string;
   readonly kind: AdPlacementKind;
   readonly districtId: DistrictId;
+  /** The city the spot is in (from its district). */
+  readonly cityId: CityId;
   /** Street it's on, for the booking list. */
   readonly street: string;
   /** The venue it belongs to (stadium, market and motor-park spots). */
@@ -146,9 +160,10 @@ const near = (points: readonly WorldPoint[], x: number, z: number, radius: numbe
  * Roadside candidates on straight, non-bridge tiles: one per tile side, nudged `along` the tile. The advert faces the
  * oncoming traffic of the near lane, turned `angle` towards the road (0 = end-on, up the road; π/2 = facing the road).
  */
-function roadside(prefix: string, accept: (tile: CityRoadTile) => boolean, along: number, angle: number): Candidate[] {
+function roadside(cityId: CityId, prefix: string, accept: (tile: CityRoadTile) => boolean, along: number, angle: number): Candidate[] {
   const out: Candidate[] = [];
   for (const tile of CITY_MAP.roadTiles) {
+    if (cityOfCell(tile.col, tile.row) !== cityId) continue;
     if (tile.kind !== 'straight' || tile.bridge || !accept(tile)) continue;
     const { ax, az, px, pz } = axes(tile);
     const tx = CITY_LAYOUT.cellCentreX(tile.col);
@@ -169,12 +184,13 @@ function roadside(prefix: string, accept: (tile: CityRoadTile) => boolean, along
 }
 
 /** Seeded pick of `count` candidates at least `spacing` metres apart. */
-function pick(kind: AdPlacementKind, candidates: readonly Candidate[], taken: readonly WorldPoint[]): Candidate[] {
-  const rng = createRng(`ad-placements:${kind}`);
+function pick(cityId: CityId, kind: AdPlacementKind, candidates: readonly Candidate[], taken: readonly WorldPoint[]): Candidate[] {
+  // Lagos keeps the seed it always had (its ids never move); Abuja has its own.
+  const rng = createRng(cityId === 'lagos' ? `ad-placements:${kind}` : `ad-placements:${cityId}:${kind}`);
   const chosen: Candidate[] = [];
   const spacing = SPACING[kind];
   for (const candidate of rng.shuffle(candidates)) {
-    if (chosen.length >= AD_PLACEMENT_COUNTS[kind]) break;
+    if (chosen.length >= AD_PLACEMENT_COUNTS_BY_CITY[cityId][kind]) break;
     if (spacing > 0 && chosen.some((other) => Math.hypot(other.x - candidate.x, other.z - candidate.z) < spacing)) continue;
     if (near(taken, candidate.x, candidate.z, 3)) continue;
     chosen.push(candidate);
@@ -216,6 +232,7 @@ function spots(kind: AdPlacementKind, candidates: readonly Candidate[]): AdPlace
     id: candidate.id,
     kind,
     districtId: CITY_LAYOUT.districtAt(candidate),
+    cityId: DISTRICTS[CITY_LAYOUT.districtAt(candidate)].cityId,
     street: candidate.street,
     venueId: candidate.venueId ?? null,
     anchor,
@@ -419,19 +436,21 @@ function fitFaces(input: readonly AdPlacementSpot[], fixed: readonly AdFaceExten
   return out;
 }
 
-function generate(): AdPlacementSpot[] {
+function generateCity(cityId: CityId): AdPlacementSpot[] {
   const big = (tile: CityRoadTile): boolean => tile.roadClass !== 'street';
+  const counts = AD_PLACEMENT_COUNTS_BY_CITY[cityId];
+  const cityLots = CITY_MAP.lots.filter((lot) => cityOfCell(lot.cells[0], lot.cells[1]) === cityId);
   // Billboards stand ~26° off the kerb line: overhead, the panel reaches less than a metre over the road and clears the
   // building fronts behind it.
-  const billboards = pick('street-billboard', roadside('sb', big, 2.2, BILLBOARD_ANGLE), premiumBoards);
-  const shelters = pick('bus-shelter', roadside('bs', () => true, -2.2, 0), [...premiumBoards, ...billboards]);
-  const totems = pick('totem', roadside('tt', (tile) => tile.roadClass !== 'expressway', 0.4, 0), [...premiumBoards, ...billboards, ...shelters]);
-  const lotsOf = (archetype: string): CityLot[] => CITY_MAP.lots.filter((lot) => lot.archetype === archetype);
-  const stadium = lotsOf('stadium').flatMap((lot) => aroundLot(lot, 'led', AD_PLACEMENT_COUNTS['stadium-led'], 3, true));
+  const billboards = pick(cityId, 'street-billboard', roadside(cityId, 'sb', big, 2.2, BILLBOARD_ANGLE), premiumBoards);
+  const shelters = pick(cityId, 'bus-shelter', roadside(cityId, 'bs', () => true, -2.2, 0), [...premiumBoards, ...billboards]);
+  const totems = pick(cityId, 'totem', roadside(cityId, 'tt', (tile) => tile.roadClass !== 'expressway', 0.4, 0), [...premiumBoards, ...billboards, ...shelters]);
+  const lotsOf = (archetype: string): CityLot[] => cityLots.filter((lot) => lot.archetype === archetype);
+  const stadium = lotsOf('stadium').flatMap((lot) => aroundLot(lot, 'led', counts['stadium-led'], 3, true));
   const markets = lotsOf('market');
-  const marketBanners = markets.flatMap((lot) => aroundLot(lot, 'mk', Math.round(AD_PLACEMENT_COUNTS['market-banner'] / Math.max(1, markets.length)), 2.5, true));
+  const marketBanners = markets.flatMap((lot) => aroundLot(lot, 'mk', Math.round(counts['market-banner'] / Math.max(1, markets.length)), 2.5, true));
   const parks = lotsOf('motor-park');
-  const parkBoards = parks.flatMap((lot) => aroundLot(lot, 'mp', Math.round(AD_PLACEMENT_COUNTS['park-board'] / Math.max(1, parks.length)), 2, false));
+  const parkBoards = parks.flatMap((lot) => aroundLot(lot, 'mp', Math.round(counts['park-board'] / Math.max(1, parks.length)), 2, false));
   const all = [
     ...spots('street-billboard', billboards),
     ...spots('bus-shelter', shelters),
@@ -441,10 +460,20 @@ function generate(): AdPlacementSpot[] {
     ...spots('park-board', parkBoards),
   ].toSorted((a, b) => a.id.localeCompare(b.id));
   // Twice: a board blocked by a neighbour that slid away later in the first pass gets another go.
-  return fitFaces(clearDoorways(clearDoorways(all)), CITY_MAP.billboards);
+  const cleared = clearDoorways(clearDoorways(all));
+  // A spot that still can't clear a doorway (a shelter squeezed between a junction and two gates) is dropped, never left
+  // wedged at someone's door. Lagos has none; its spots and ids are exactly what they were.
+  return fitFaces(
+    cleared.filter((spot) => clearOfDoors(adFootprint(spot), cityDoors.filter((door) => Math.hypot(door.x - spot.anchor.x, door.z - spot.anchor.z) < 30))),
+    CITY_MAP.billboards,
+  );
 }
 
-/** Every generated advertising surface in the city. */
+function generate(): AdPlacementSpot[] {
+  return CITY_IDS.flatMap(generateCity);
+}
+
+/** Every generated advertising surface in both cities (Lagos's first, exactly as before Abuja existed). */
 export const AD_PLACEMENTS: readonly AdPlacementSpot[] = generate();
 
 const PLACEMENT_INDEX: ReadonlyMap<string, AdPlacementSpot> = new Map(AD_PLACEMENTS.map((spot) => [spot.id, spot]));

@@ -1,11 +1,11 @@
-import { Controller, Get, Param, Post } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type { JobApplicationDto, JobBoardDto, JobDetailDto } from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
 import { ApplicationsService } from './applications.service.js';
-import { JobParamsDto } from './dto/careers.dto.js';
+import { JobBoardQueryDto, JobParamsDto } from './dto/careers.dto.js';
 import { JobBoardService } from './job-board.service.js';
 
 /** The Jobs app: board, job details and applications. */
@@ -18,8 +18,8 @@ export class JobsController {
   ) {}
 
   @Get()
-  list(@CurrentUser() user: AuthUser): Promise<JobBoardDto> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.board.board(ctx));
+  list(@CurrentUser() user: AuthUser, @Query() query: JobBoardQueryDto): Promise<JobBoardDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.board.board(ctx, query.cityId));
   }
 
   @Get(':id')

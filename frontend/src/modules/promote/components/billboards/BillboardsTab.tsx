@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { AD_SLOT_KIND_LABELS, DISTRICTS, type AdSlotKind, type BillboardSlotId, type DistrictId } from '@insidelife/shared';
+import { AD_SLOT_KIND_LABELS, CITIES, CITY_IDS, DISTRICTS, type AdSlotKind, type BillboardSlotId, type CityId, type DistrictId } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
+import { useSnapshot } from '@/common/game/snapshot';
 import { Button, FilterChips, SelectField, Spinner, Tabs } from '@/common/components';
 import { useCampaigns, useSlots } from '../../hooks/use-promote';
 import { CampaignList } from './CampaignList';
@@ -36,11 +37,16 @@ export interface BillboardsTabProps {
 export function BillboardsTab({ view, onView, onBook, onOpenCampaign }: BillboardsTabProps) {
   const slots = useSlots();
   const campaigns = useCampaigns();
+  const { data: snapshot } = useSnapshot();
+  const [pickedCity, setCity] = useState<CityId | null>(null);
+  // Boards are per city: yours first, the other city's a tap away. Citywide slots (TV, phone apps) show in both.
+  const city = pickedCity ?? snapshot?.character.cityId ?? 'lagos';
   const [kind, setKind] = useState<AdSlotKind>('premium-billboard');
   const [district, setDistrict] = useState<DistrictId | 'all'>('all');
   const [shown, setShown] = useState(PAGE);
 
-  const all = slots.data?.slots;
+  const everything = slots.data?.slots;
+  const all = useMemo(() => everything?.filter((slot) => !slot.districtId || DISTRICTS[slot.districtId].cityId === city), [everything, city]);
   const kinds = useMemo(() => KINDS.filter((candidate) => all?.some((slot) => slot.kind === candidate)), [all]);
   const list = useMemo(
     () =>
@@ -83,6 +89,16 @@ export function BillboardsTab({ view, onView, onBook, onOpenCampaign }: Billboar
             <p className="text-sm text-text-soft">
               <strong className="text-text">{all?.length ?? 0} places</strong> to put your brand in front of players.
             </p>
+            <FilterChips
+              label="City"
+              value={city}
+              onChange={(next) => {
+                setCity(next);
+                setDistrict('all');
+                setShown(PAGE);
+              }}
+              options={CITY_IDS.map((id) => ({ id, label: CITIES[id].name }))}
+            />
             <FilterChips
               label="Kind of spot"
               value={kind}

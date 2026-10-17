@@ -59,7 +59,7 @@ export class VenueSpraysService {
     if (previous) return this.replayed(ctx, previous);
 
     const venue = findVenue(venueId);
-    if (!venue || venue.regionId) throw new ResourceNotFoundException('Venue');
+    if (!venue) throw new ResourceNotFoundException('Venue');
     const recipient = request.toHandle
       ? await ctx.manager.findOne(CharacterEntity, { where: { handle: normaliseHandle(request.toHandle), alive: true, hiddenAt: IsNull() } })
       : null;

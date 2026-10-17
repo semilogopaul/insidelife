@@ -1,7 +1,9 @@
 import { IsIn, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 import {
+  CITY_IDS,
   DISTRICT_IDS,
   type BuyHouseRequest,
+  type CityId,
   type DistrictId,
   type HouseListingsQuery,
 } from '@insidelife/shared';
@@ -11,6 +13,10 @@ export class HouseListingsQueryDto implements HouseListingsQuery {
   @IsOptional()
   @IsIn(DISTRICT_IDS)
   readonly districtId?: DistrictId;
+
+  @IsOptional()
+  @IsIn(CITY_IDS)
+  readonly cityId?: CityId;
 }
 
 export class BuyHouseDto implements BuyHouseRequest {

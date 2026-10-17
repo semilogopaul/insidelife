@@ -1,7 +1,8 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EmploymentViewDto, StartBusinessRequest } from '@insidelife/shared';
+import { create } from 'zustand';
+import type { CityId, EmploymentViewDto, StartBusinessRequest } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
 import { jobsApi } from '../services/jobs.api';
 
@@ -13,9 +14,13 @@ export const jobsKeys = {
   inventory: queryKeys.domain('inventory'),
 } as const;
 
+/** Which city's board the Jobs app shows (null: the city you are in; the server decides). */
+export const useJobsCity = create<{ readonly cityId: CityId | null; readonly set: (cityId: CityId | null) => void }>((set) => ({ cityId: null, set: (cityId) => set({ cityId }) }));
+
 /** Job board (listings with eligibility, plus your open applications). */
 export function useJobBoard() {
-  return useQuery({ queryKey: jobsKeys.board, queryFn: jobsApi.board, refetchInterval: 30_000 });
+  const cityId = useJobsCity((state) => state.cityId);
+  return useQuery({ queryKey: [...jobsKeys.board, cityId], queryFn: () => jobsApi.board(cityId), refetchInterval: 30_000 });
 }
 
 export function useJobDetail(jobId: string | null) {

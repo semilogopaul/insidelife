@@ -8,6 +8,7 @@ import {
   Info,
   Megaphone,
   Newspaper,
+  Plane,
   PartyPopper,
   Receipt,
   TrendingUp,
@@ -37,11 +38,12 @@ export const KIND_META: Readonly<Record<NotificationKind, KindMeta>> = {
   family: { label: 'Family', icon: Users, tile: 'bg-danfo-soft text-[#7a5600]' },
   property: { label: 'Property', icon: House, tile: 'bg-paper-3 text-ink' },
   investment: { label: 'Investments', icon: TrendingUp, tile: 'bg-naira-soft text-naira' },
-  world: { label: 'Lagos', icon: Newspaper, tile: 'bg-paper-3 text-ink' },
+  world: { label: 'City news', icon: Newspaper, tile: 'bg-paper-3 text-ink' },
   social: { label: 'Social', icon: PartyPopper, tile: 'bg-ankara-soft text-ankara' },
   system: { label: 'Inside Life', icon: Info, tile: 'bg-paper-3 text-text-soft' },
   achievement: { label: 'Achievement', icon: Trophy, tile: 'bg-danfo text-ink' },
   promotion: { label: 'Promotion', icon: Megaphone, tile: 'bg-danfo-soft text-[#7a5600]' },
+  travel: { label: 'Travel', icon: Plane, tile: 'bg-cobalt-soft text-cobalt' },
 };
 
 /** "just now", "4m ago", "3h ago", "2d ago" from an ISO time. */

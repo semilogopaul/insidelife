@@ -155,6 +155,9 @@ export const SERVICE_CHARGE_RATES: Readonly<Partial<Record<DistrictId, number>>>
   'victoria-island': 0.15,
   lekki: 0.12,
   ajah: 0.08,
+  maitama: 0.14,
+  asokoro: 0.15,
+  jabi: 0.1,
 };
 
 export function serviceChargeFor(districtId: DistrictId, typeId: HousingTypeId, annualRent: number): number {
@@ -211,7 +214,7 @@ export const RENT_NOISE = 0.15;
 export const SCAM_PRICE_THRESHOLD = -0.1;
 export const SCAM_CHANCE = 0.45;
 
-export const LAGOS_STREETS: Readonly<Record<DistrictId, readonly string[]>> = {
+export const DISTRICT_STREETS: Readonly<Record<DistrictId, readonly string[]>> = {
   ikeja: ['Allen Avenue', 'Opebi Road', 'Toyin Street', 'Adeniyi Jones Avenue', 'Oba Akran Avenue', 'Isaac John Street', 'Joel Ogunnaike Street', 'Kodesoh Street', 'Obafemi Awolowo Way'],
   ikorodu: ['Ijede Road', 'Ebute Road', 'Sagamu Road', 'Ayangburen Road', 'Igbogbo Road', 'Odogunyan Street', 'Agric Road', 'Lagos Road'],
   mushin: ['Ladipo Street', 'Idi-Araba Street', 'Olosha Road', 'Palm Avenue', 'Isolo Road', 'Agege Motor Road', 'Ojuwoye Street', 'Odi-Olowo Road'],
@@ -225,6 +228,16 @@ export const LAGOS_STREETS: Readonly<Record<DistrictId, readonly string[]>> = {
   lekki: ['Admiralty Way', 'Fola Osibo Road', 'Freedom Way', 'Chevron Drive', 'Ikate Street', 'Agungi Road', 'Osapa London Road', 'Oniru Estate Road', 'Orchid Road'],
   ajah: ['Addo Road', 'Badore Road', 'Abraham Adesanya Road', 'Thomas Estate Road', 'Sangotedo Street', 'Abijo GRA Road', 'Ado Road', 'Lekki Gardens Road'],
   epe: ['Lekki-Epe Expressway', 'Eleko Road', 'Awoyaya Street', 'Lakowe Road', 'Bogije Street', 'Itoikin Road', 'Poka Road', 'Epe Town Road'],
+  // Abuja
+  'abuja-cbd': ['Ahmadu Bello Way', 'Shehu Shagari Way', 'Independence Avenue', 'Constitution Avenue', 'Herbert Macaulay Way', 'Yakubu Gowon Crescent', 'Tafawa Balewa Way', 'Moshood Abiola Way'],
+  maitama: ['Ibrahim Babangida Boulevard', 'Gana Street', 'Aguiyi Ironsi Street', 'Yedseram Street', 'Mississippi Street', 'Nile Street', 'Danube Street', 'Amazon Street', 'Panama Street'],
+  asokoro: ['Yakubu Gowon Crescent', 'Nelson Mandela Street', 'Kwame Nkrumah Crescent', 'Samuel Ogbemudia Street', 'Julius Nyerere Crescent', 'Gimbiya Street', 'Jos Street'],
+  wuse: ['Ademola Adetokunbo Crescent', 'Aminu Kano Crescent', 'Adetokunbo Ademola Street', 'Libreville Crescent', 'Lake Chad Crescent', 'Zambezi Crescent', 'Sambisa Street', 'Aminu Kano Street'],
+  garki: ['Sokode Crescent', 'Ladoke Akintola Boulevard', 'Ahmadu Bello Way', 'Ibrahim Taiwo Road', 'Gwani Street', 'Okigwe Street', 'Gimbiya Street', 'Kano Street'],
+  jabi: ['Jabi Lake Road', 'Ahmadu Bello Way', 'Ibrahim Babangida Way', 'Utako District Road', 'Gado Nasko Road', 'Wole Soyinka Street', 'Mohammed Buhari Way', 'Chief Hassan Avenue'],
+  gwarinpa: ['1st Avenue', '3rd Avenue', '6th Avenue', '71 Road', '12th Avenue', 'Gwarinpa Estate Road', 'Sultan Abubakar Road', 'Kado-Gwarinpa Road'],
+  kubwa: ['Kubwa Expressway', 'Arab Road', 'Gado Nasko Road', 'Phase 4 Road', 'Byazhin Road', 'Dutse Alhaji Road', 'Bwari Road', 'Kubwa Market Road'],
+  lugbe: ['Airport Road', 'Sauka Road', 'FHA Road', 'Lugbe Estate Road', 'Trademore Road', 'Karmo Road', 'Chika Road', 'Pyakasa Road'],
 };
 
 const BASIC_FEATURES = ['Prepaid meter', 'Shared toilet', 'Well water', 'Close to the bus stop', 'Landlord lives in the compound', 'Newly painted'];
@@ -290,7 +303,7 @@ export function generateListings(seed: string, districtId: DistrictId, typeId: H
   if (!isHousingTypeAllowed(districtId, typeId)) return [];
   const type = HOUSING_TYPES[typeId];
   const market = marketRent(districtId, typeId);
-  const streets = LAGOS_STREETS[districtId];
+  const streets = DISTRICT_STREETS[districtId];
   const listings: RentalListing[] = [];
   for (let n = 1; n <= type.listingsPerWeek; n++) {
     const rng = rngFor(seed, 'rental-listing', districtId, typeId, weekIndex, n);
@@ -457,6 +470,12 @@ export const LAND_AREAS: Readonly<Partial<Record<DistrictId, readonly string[]>>
   lekki: ['Lekki Phase 1', 'Chevron', 'Ikate', 'Osapa London', 'Agungi'],
   ajah: ['Sangotedo', 'Abijo', 'Badore', 'Ogombo', 'Okun Ajah'],
   epe: ['Lakowe', 'Bogije', 'Awoyaya', 'Eleko', 'Akodo', 'Itoikin'],
+  maitama: ['Maitama District', 'Maitama Extension', 'Cadastral Zone A'],
+  asokoro: ['Asokoro District', 'Asokoro Extension', 'Cadastral Zone A'],
+  jabi: ['Jabi District', 'Utako', 'Jabi Lake Estate'],
+  gwarinpa: ['Gwarinpa Estate', 'Life Camp', 'Dawaki', 'Kado'],
+  kubwa: ['Phase 4', 'Byazhin', 'Dutse', 'Arab Road'],
+  lugbe: ['FHA Lugbe', 'Sauka', 'Trademore', 'Airport Road Estates'],
 };
 
 /** Weekly ± wobble on asking prices for land. */
@@ -788,7 +807,7 @@ export function generateHouseListings(seed: string, districtId: DistrictId, week
   const weights = houseBlueprintWeights(districtId);
   const blueprints = BLUEPRINT_IDS.filter((id) => weights[id] > 0).map((id) => ({ value: id, weight: weights[id] }));
   const titles = availableTitles(districtId).map((id) => ({ value: id, weight: HOUSE_TITLE_WEIGHTS[id] }));
-  const streets = LAGOS_STREETS[districtId];
+  const streets = DISTRICT_STREETS[districtId];
   const labels = new Set<string>();
   const listings: HouseListing[] = [];
   for (let n = 1; n <= HOUSE_LISTINGS_PER_WEEK; n++) {

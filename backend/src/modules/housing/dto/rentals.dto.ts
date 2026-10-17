@@ -1,8 +1,10 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import {
+  CITY_IDS,
   DISTRICT_IDS,
   HOUSING_TYPE_IDS,
+  type CityId,
   type DistrictId,
   type HousingTypeId,
   type MoveHomeRequest,
@@ -15,6 +17,10 @@ export class ListingsQueryDto implements RentalListingsQuery {
   @IsOptional()
   @IsIn(DISTRICT_IDS)
   readonly districtId?: DistrictId;
+
+  @IsOptional()
+  @IsIn(CITY_IDS)
+  readonly cityId?: CityId;
 
   @IsOptional()
   @IsIn(HOUSING_TYPE_IDS)

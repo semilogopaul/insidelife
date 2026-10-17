@@ -13,6 +13,7 @@ import {
   weekEndsAt,
   weekIndexOf,
   type BuyLandRequest,
+  type CityId,
   type DisputeKind,
   type DistrictId,
   type LandOfferDto,
@@ -52,11 +53,11 @@ export class LandService {
     private readonly homes: HomeService,
   ) {}
 
-  offers(ctx: SimulationContext, districtId?: DistrictId): LandOfferDto[] {
+  offers(ctx: SimulationContext, districtId?: DistrictId, cityId: CityId = ctx.character.cityId): LandOfferDto[] {
     if (districtId) this.assertLandDistrict(districtId);
     const week = weekIndexOf(ctx.time);
     const offers: LandOfferDto[] = [];
-    for (const id of districtId ? [districtId] : LAND_DISTRICT_IDS) {
+    for (const id of districtId ? [districtId] : LAND_DISTRICT_IDS.filter((each) => DISTRICTS[each].cityId === cityId)) {
       const district = DISTRICTS[id];
       for (const title of Object.values(LAND_TITLES)) {
         const quote = landQuote(ctx.world.seed, id, title.id, 1, week);

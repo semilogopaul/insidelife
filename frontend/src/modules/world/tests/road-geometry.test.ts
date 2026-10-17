@@ -56,9 +56,9 @@ function drawnHeight(x: number, z: number): number | null {
 }
 
 describe('procedural four-lane roads', () => {
-  it('stays inside the road budget: one geometry, under 60k triangles', () => {
+  it('stays inside the road budget: one geometry, under 120k triangles (both cities)', () => {
     expect(triangles).toBeGreaterThan(CITY_MAP.roadTiles.length * 10);
-    expect(triangles).toBeLessThan(60_000);
+    expect(triangles).toBeLessThan(120_000);
   });
 
   it('draws exactly what the physics drives on: asphalt where cars go, kerbed pavement where they slow down', () => {

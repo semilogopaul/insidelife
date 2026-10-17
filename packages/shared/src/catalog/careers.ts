@@ -1,6 +1,8 @@
 import { boosted } from '../money/income-multiplier.js';
 import { BASE_USD_RATE } from '../world/world.js';
 import type { SkillKey } from './life.js';
+import type { CityId } from './geography.js';
+import { cityOfVenueId } from './venues.js';
 
 /**
  * Careers catalog — owned by the careers domain.
@@ -1177,12 +1179,134 @@ function applySalaryRules(job: JobDefinition): JobDefinition {
   return { ...job, levels };
 }
 
-export const JOBS: readonly JobDefinition[] = LAGOS_JOBS.map(applySalaryRules);
+/** The first Abuja employers (the full Abuja job market is a later workstream). Pay as in real Abuja. */
+const ABUJA_JOBS: readonly JobDefinition[] = [
+  job({
+    id: 'wuse-market-trader',
+    title: 'Market trader (Wuse Market)',
+    employer: 'Hajia Aisha Foodstuff Store, Wuse Market',
+    industry: 'Market trade',
+    sector: 'informal',
+    emoji: '🧺',
+    blurb: 'Tomatoes from Kaduna, yams from Benue, and customers who always say “last price”.',
+    workplaceId: 'wuse-market',
+    workMode: 'onsite',
+    schedule: { days: MON_SAT, startHour: 7, hours: 10 },
+    currency: 'NGN',
+    requirements: {},
+    levels: [
+      { title: 'Shop assistant', pay: 90_000, minYears: 0.5, status: 3 },
+      { title: 'Senior sales hand', pay: 125_000, minYears: 1, skills: { hustle: 25 }, status: 6 },
+      { title: 'Stall manager', pay: 180_000, minYears: 0, skills: { hustle: 40, business: 15 }, status: 10 },
+    ],
+    perks: HUSTLE,
+    stress: 0.35,
+    skillXpPerHour: { hustle: 0.009, business: 0.002, charisma: 0.001 },
+    hiring: OPEN_DOOR,
+    payVolatility: 0.12,
+    traits: ['kickback'],
+  }),
+  job({
+    id: 'garki-buka-attendant',
+    title: 'Buka attendant',
+    employer: 'Garki Local Buka',
+    industry: 'Food service',
+    sector: 'informal',
+    emoji: '🍲',
+    blurb: 'Serve tuwo and soup to civil servants at lunch rush. Tips are in cash, gist is free.',
+    workplaceId: 'garki-buka',
+    workMode: 'onsite',
+    schedule: { days: MON_SAT, startHour: 9, hours: 10 },
+    currency: 'NGN',
+    requirements: {},
+    levels: [
+      { title: 'Server', pay: 75_000, minYears: 0.5, status: 2 },
+      { title: 'Head server', pay: 105_000, minYears: 1, skills: { hustle: 20 }, status: 5 },
+      { title: 'Buka supervisor', pay: 150_000, minYears: 0, skills: { hustle: 35, charisma: 20 }, status: 9 },
+    ],
+    perks: HUSTLE,
+    stress: 0.4,
+    skillXpPerHour: { hustle: 0.008, charisma: 0.0015 },
+    hiring: OPEN_DOOR,
+    payVolatility: 0.15,
+    traits: [],
+  }),
+  job({
+    id: 'abuja-bank-contract-staff',
+    title: 'Bank contract staff (teller), Abuja',
+    employer: 'Capital Trust Bank (via Hallmark Outsourcing)',
+    industry: 'Banking',
+    sector: 'entry',
+    emoji: '🏧',
+    blurb: 'A banking hall in the Central Area where every customer is “from the ministry”. A foot in the door.',
+    workplaceId: 'central-area-towers',
+    workMode: 'onsite',
+    schedule: { days: MON_FRI, startHour: 7, hours: 10 },
+    currency: 'NGN',
+    requirements: { minAge: 18, education: 'nd', waecMathsEnglish: true },
+    levels: [
+      { title: 'Contract teller', pay: 135_000, minYears: 1, status: 10 },
+      { title: 'Senior teller', pay: 180_000, minYears: 1.5, skills: { finance: 20 }, status: 14 },
+      { title: 'Customer service lead', pay: 250_000, minYears: 0, skills: { finance: 30, charisma: 25 }, status: 20 },
+    ],
+    perks: { ...FORMAL, leaveDays: 15 },
+    stress: 0.55,
+    skillXpPerHour: { finance: 0.004, charisma: 0.0015 },
+    hiring: { selectivity: 0.45, academicWeight: 0.1, connectionWeight: 0.2, interviewChance: 0.5 },
+    payVolatility: 0,
+    traits: ['office', 'kickback'],
+  }),
+  job({
+    id: 'federal-civil-service',
+    title: 'Civil servant (federal ministry)',
+    employer: 'Federal Civil Service Commission',
+    industry: 'Public service',
+    sector: 'graduate',
+    emoji: '🏛️',
+    blurb: 'A desk in the Central Area, a file that has been “in transit” since 2019, and a pension. Connections help.',
+    workplaceId: 'central-area-towers',
+    workMode: 'onsite',
+    schedule: { days: MON_FRI, startHour: 8, hours: 8 },
+    currency: 'NGN',
+    requirements: { minAge: 18, maxAge: 35, education: 'hnd', nysc: true },
+    levels: [
+      { title: 'Administrative Officer II (GL 08)', pay: 200_000, minYears: 2, status: 22 },
+      { title: 'Administrative Officer I (GL 09)', pay: 275_000, minYears: 2, status: 30 },
+      { title: 'Senior Administrative Officer (GL 12)', pay: 400_000, minYears: 3, skills: { charisma: 25 }, minConnections: 15, status: 42 },
+      { title: 'Principal Administrative Officer (GL 14)', pay: 570_000, minYears: 3, minConnections: 25, status: 62 },
+      { title: 'Deputy Director (GL 16)', pay: 780_000, minYears: 4, skills: { business: 30 }, minConnections: 40, status: 95 },
+      { title: 'Permanent Secretary', pay: 1_600_000, minYears: 0, skills: { charisma: 55 }, minConnections: 70, status: 270 },
+    ],
+    perks: { ...FORMAL, leaveDays: 21 },
+    stress: 0.3,
+    skillXpPerHour: { business: 0.0015, charisma: 0.0015, intellect: 0.001 },
+    hiring: { selectivity: 0.8, academicWeight: 0.15, connectionWeight: 0.55, interviewChance: 0.4 },
+    payVolatility: 0,
+    traits: ['office', 'public-service', 'kickback'],
+  }),
+];
+
+export const JOBS: readonly JobDefinition[] = [...LAGOS_JOBS, ...ABUJA_JOBS].map(applySalaryRules);
 
 const JOB_INDEX: ReadonlyMap<string, JobDefinition> = new Map(JOBS.map((definition) => [definition.id, definition]));
 
 export function findJob(id: string): JobDefinition | undefined {
   return JOB_INDEX.get(id);
+}
+
+/**
+ * The city a job is in: its workplace's. Remote jobs have none (`null`): they are on every city's board, and a
+ * roaming job reports to a motor park in its city.
+ */
+export function jobCityId(job: Pick<JobDefinition, 'workMode' | 'workplaceId'>): CityId | null {
+  if (job.workMode === 'remote') return null;
+  return cityOfVenueId(job.workplaceId);
+}
+
+/** True if the job is on the given city's board. */
+export function jobInCity(job: Pick<JobDefinition, 'workMode' | 'workplaceId'>, cityId: CityId): boolean {
+  const city = jobCityId(job);
+  return city === null || city === cityId;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

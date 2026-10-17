@@ -251,8 +251,8 @@ describe('presence and trips', () => {
   });
 
   it('derives distinct counts from first visits', () => {
-    const deltas = aggregateDeltasForFlags(['venue:cbt-yaba', 'venue:cbt-ikeja', 'district:yaba', 'region:ibadan', 'outside']);
-    expect(Object.fromEntries(deltas)).toEqual({ venues: 2, 'venue-type:cbt-centre': 2, districts: 1, regions: 1 });
+    const deltas = aggregateDeltasForFlags(['venue:cbt-yaba', 'venue:cbt-ikeja', 'district:yaba', 'city:abuja', 'outside']);
+    expect(Object.fromEntries(deltas)).toEqual({ venues: 2, 'venue-type:cbt-centre': 2, districts: 1, cities: 1 });
   });
 
   it('spots a sunset bridge crossing and late-night streets, across midnight too', () => {

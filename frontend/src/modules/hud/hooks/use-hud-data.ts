@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  CITIES,
   findAction,
   findVenue,
   formatClock12,
@@ -27,7 +28,7 @@ export function useHudData() {
   const parts = toDateParts(minute);
   const weather: Weather | null = gameClock.worldSeed ? weatherAt(gameClock.worldSeed, minute) : null;
   const locationId = snapshot.character.locationId;
-  const place = isHomeLocation(locationId) ? 'Home' : isStreetLocation(locationId) ? 'On the streets' : (findVenue(locationId)?.name ?? 'Lagos');
+  const place = isHomeLocation(locationId) ? 'Home' : isStreetLocation(locationId) ? 'On the streets' : (findVenue(locationId)?.name ?? CITIES[snapshot.character.cityId].name);
   /** Inside a building: the venue sheet is showing at the bottom centre. */
   const inside = snapshot.travel === null && !isStreetLocation(locationId);
   /** Nothing chosen is running: no explicit action, not travelling. Routine prompts only bother a free player. */
@@ -46,6 +47,7 @@ export function useHudData() {
     segment,
     action,
     place,
+    city: CITIES[snapshot.character.cityId].name,
     inside,
     free,
   };

@@ -34,7 +34,7 @@ export type ProgressionSignal = (typeof PROGRESSION_SIGNALS)[number];
  * - `action:<id>` / `category:<c>` / `hook:<h>` — completed actions
  * - `trip:<mode>` / `rain-trip:<mode>` / `trips` — completed rides and drives
  * - `venue:<id>` (flag), `venue-type:<type>` / `venues` — distinct places visited
- * - `district:<id>` (flag) / `districts`, `region:<id>` (flag) / `regions` — distinct districts and out-of-town regions
+ * - `district:<id>` (flag) / `districts`, `city:<id>` (flag) / `cities` — distinct districts and cities other than Lagos
  * - `outside`, `street-late`, `had:<illness>` — flags
  * - `lagoon-crossings`, `bridge-drives`, `bridge-sunset`, `long-trips`, `detty-club`, `promotions`, `salary-months`,
  *   `strike-days`, `welcome-sunday` — tallies
@@ -51,8 +51,8 @@ export type ProgressionCounterKey =
   | 'venues'
   | `district:${DistrictId}`
   | 'districts'
-  | `region:${string}`
-  | 'regions'
+  | `city:${string}`
+  | 'cities'
   | 'outside'
   | 'street-late'
   | `had:${string}`
@@ -78,7 +78,7 @@ export const progressionCounter = {
   venue: (venueId: string): ProgressionCounterKey => `venue:${venueId}`,
   venueType: (type: VenueType): ProgressionCounterKey => `venue-type:${type}`,
   district: (districtId: DistrictId): ProgressionCounterKey => `district:${districtId}`,
-  region: (regionId: string): ProgressionCounterKey => `region:${regionId}`,
+  city: (cityId: string): ProgressionCounterKey => `city:${cityId}`,
   had: (illnessId: string): ProgressionCounterKey => `had:${illnessId}`,
   signal: (signal: ProgressionSignal): ProgressionCounterKey => `signal:${signal}`,
   signalTotal: (signal: ProgressionSignal): ProgressionCounterKey => `signal-total:${signal}`,
@@ -854,7 +854,7 @@ export const ACHIEVEMENTS = [
   { id: 'go-slow-gladiator', title: 'Go-slow gladiator', description: 'Survived a 2-hour trip through Lagos traffic without losing your mind (mostly).', icon: 'snail', rarity: 'uncommon', category: 'city', condition: count('long-trips') },
   { id: 'gidi-explorer', title: 'Gidi explorer', description: 'Visited 10 different places in Lagos.', icon: 'map', rarity: 'uncommon', category: 'city', condition: count('venues', 10) },
   { id: 'eko-o-ni-baje', title: 'Eko o ni baje', description: 'Set foot in 12 Lagos districts. You know this city like your palm.', icon: 'map-pinned', rarity: 'epic', category: 'city', condition: count('districts', 12) },
-  { id: 'interstate', title: 'Interstate', description: 'Left Lagos for another city. Mind the potholes on the expressway.', icon: 'map', rarity: 'uncommon', category: 'city', condition: count('regions') },
+  { id: 'interstate', title: 'Interstate', description: 'Left Lagos for another city: fly, or take the coach and mind the potholes on the expressway.', icon: 'map', rarity: 'uncommon', category: 'city', condition: count('cities') },
   { id: 'departure-lounge', title: 'Departure lounge', description: 'Visited the airport. Just looking. For now.', icon: 'plane', rarity: 'common', category: 'city', condition: visited('airport') },
   { id: 'server-don-down', title: 'Server don down', description: 'Visited a CBT centre. The generator was louder than the invigilator.', icon: 'monitor', rarity: 'common', category: 'city', condition: visited('cbt-centre') },
   { id: 'inside-obo-mansion', title: 'Inside OBO’s house', description: 'Walked into OBO Mansion in Ikoyi. Shekpe!', icon: 'castle', rarity: 'common', category: 'city', condition: count(progressionCounter.venue('obo-mansion')) },

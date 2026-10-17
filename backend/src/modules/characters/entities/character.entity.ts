@@ -10,15 +10,16 @@ import {
 import type {
   Appearance,
   BackgroundId,
+  CityId,
   DistrictId,
   Gender,
   Habit,
   LifestyleTier,
   Needs,
   Outfit,
-  RegionId,
   Skills,
   TransportMode,
+  TravelMode,
 } from '@insidelife/shared';
 import { bigintNumber } from '../../../database/transformers.js';
 
@@ -41,11 +42,13 @@ export interface HabitLog {
   readonly skillsAtStart: Skills;
 }
 
-/** A trip in progress within Lagos (or to an out-of-town region). */
+/** A trip in progress: a ride within a city, or a flight or coach between Lagos and Abuja. */
 export interface TravelState {
   readonly fromLocationId: string;
   readonly toLocationId: string;
-  readonly mode: TransportMode;
+  readonly mode: TravelMode;
+  /** The flight a `flight`-mode trip is on (commercial: `findFlight`; private: the aircraft module's own ids). */
+  readonly flightId?: string;
   readonly departAt: number;
   readonly arriveAt: number;
   readonly fare: number;
@@ -169,8 +172,9 @@ export class CharacterEntity {
   @Column({ type: 'varchar', length: 64 })
   locationId: string;
 
+  /** The city the character is in (Lagos or Abuja). */
   @Column({ type: 'varchar', length: 16, default: 'lagos' })
-  regionId: RegionId;
+  cityId: CityId;
 
   @Column({ type: 'varchar', length: 24 })
   homeDistrictId: DistrictId;

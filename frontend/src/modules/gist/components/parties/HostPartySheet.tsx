@@ -10,10 +10,12 @@ import {
   PARTY_TIER_IDS,
   PARTY_VENUES,
   VENUES,
+  cityOfVenue,
   findVenue,
   formatNaira,
   partyVenueKindOf,
   type CharacterSnapshotDto,
+  type CityId,
   type PartyDressCode,
   type PartyTierId,
   type PartyVenueKind,
@@ -26,9 +28,9 @@ import { cn } from '@/common/utils/cn';
 import { useGistNav } from '../../hooks/use-gist-nav';
 import { useHostParty, usePartyQuote } from '../../hooks/use-parties';
 
-const PARTY_VENUES_IN_LAGOS: readonly VenueDefinition[] = (VENUES as readonly VenueDefinition[]).filter(
-  (venue) => (!venue.regionId || venue.regionId === 'lagos') && partyVenueKindOf(venue.type) !== null,
-);
+/** Party venues of a city: you throw your owambe where you are. */
+const partyVenuesIn = (cityId: CityId): readonly VenueDefinition[] =>
+  (VENUES as readonly VenueDefinition[]).filter((venue) => cityOfVenue(venue) === cityId && partyVenueKindOf(venue.type) !== null);
 
 const STARTS: ReadonlyArray<{ readonly minutes: number; readonly label: string }> = [
   { minutes: 0, label: 'Right now' },
@@ -98,7 +100,7 @@ export function HostPartySheet({ open, onClose, snapshot }: { readonly open: boo
           <select id={venueSelectId} value={venueId} onChange={(event) => setVenueId(event.target.value)} className="h-12 rounded-card bg-paper-2 px-3 font-bold ring-1 ring-line">
             {hereCanHost && here && <option value={here.id}>Right here — {here.name}</option>}
             <option value="home">{PARTY_VENUES.home.label}</option>
-            {PARTY_VENUES_IN_LAGOS.filter((venue) => venue.id !== hereCanHost).map((venue) => (
+            {partyVenuesIn(snapshot.character.cityId).filter((venue) => venue.id !== hereCanHost).map((venue) => (
               <option key={venue.id} value={venue.id}>
                 {venue.name} ({PARTY_VENUES[partyVenueKindOf(venue.type) ?? 'bar'].label.toLowerCase()})
               </option>

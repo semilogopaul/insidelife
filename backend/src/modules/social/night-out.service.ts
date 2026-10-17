@@ -244,7 +244,7 @@ export class NightOutService {
 
   private venue(venueId: string): VenueDefinition {
     const venue = findVenue(venueId);
-    if (!venue || venue.regionId) throw new ResourceNotFoundException('Venue');
+    if (!venue) throw new ResourceNotFoundException('Venue');
     return venue;
   }
 

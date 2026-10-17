@@ -1,7 +1,6 @@
 'use client';
 
 import {
-  CITY_BOUNDS,
   createRng,
   findRoute,
   homeEntrance,
@@ -44,7 +43,10 @@ function modelFor(travel: TravelDto, ownCar: string | null): RenderVehicleModel 
       return 'okada';
     case 'car':
       return ownCar && isDrivableModel(ownCar) ? ownCar : 'sedan';
+    // Flights and the coach are not rides on the city's roads (the world shows the departure venue meanwhile).
     case 'walk':
+    case 'flight':
+    case 'coach':
       return null;
   }
 }
@@ -81,7 +83,7 @@ export function RideLayer({ runtime, snapshot, travel, ownCar }: { readonly runt
 
   const path = useMemo<RidePath>(() => {
     const origin = entranceOf(travel.fromLocationId, snapshot) ?? { x: runtime.controller.walker.x, z: runtime.controller.walker.z };
-    const destination = entranceOf(travel.toLocationId, snapshot) ?? { x: CITY_BOUNDS.minX + 6, z: origin.z };
+    const destination = entranceOf(travel.toLocationId, snapshot) ?? { x: origin.x + 6, z: origin.z };
     const route = findRoute(origin, destination);
     // Walkers on the pavement, vehicles in the kerbside lane (danfos, keke and BRT stop there).
     if (route) return buildRidePath(route, travel.mode === 'walk' ? PED_OFFSET : LANE_OFFSET);

@@ -48,7 +48,7 @@ export function resolvePartyPlace(venueIdInput: string, hostId: string, homeDist
     return { venueId: ownHome, venueKind: 'home', venueName: 'Street owambe', districtId: homeDistrictId, venue: null };
   }
   const venue = findVenue(venueIdInput);
-  if (!venue || venue.regionId) return null;
+  if (!venue) return null;
   const kind = partyVenueKindOf(venue.type);
   if (!kind) return null;
   return { venueId: venue.id, venueKind: kind, venueName: venue.name, districtId: venue.districtId, venue };

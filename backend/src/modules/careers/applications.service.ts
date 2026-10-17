@@ -5,6 +5,9 @@ import {
   findJob,
   type JobApplicationDto,
   type JobDefinition,
+  CITIES,
+  cityOfVenueId,
+  jobInCity,
 } from '@insidelife/shared';
 import { ConflictException, GameRuleException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
@@ -47,6 +50,10 @@ export class ApplicationsService {
   async apply(ctx: SimulationContext, jobId: string): Promise<JobApplicationDto> {
     const job = findJob(jobId);
     if (!job) throw new ResourceNotFoundException('Job');
+    // Jobs are in a city: you can browse the other city's board, but you apply from the city you live in.
+    if (!jobInCity(job, ctx.character.cityId)) {
+      throw new GameRuleException('OTHER_CITY', `${job.employer} is in ${CITIES[cityOfVenueId(job.workplaceId) ?? 'lagos'].name}. Move there first, then apply.`);
+    }
 
     const current = await this.store.active(ctx);
     if (current?.jobId === job.id) throw new GameRuleException('ALREADY_EMPLOYED_HERE', `You already work at ${job.employer}`);

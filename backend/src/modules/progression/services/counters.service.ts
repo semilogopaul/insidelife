@@ -50,7 +50,7 @@ export class CountersService {
 
   /**
    * Set first-time flags. Newly set flags also bump their distinct counters (`venues`, `venue-type:<type>`,
-   * `districts`, `regions`). Returns every counter key that changed.
+   * `districts`, `cities`). Returns every counter key that changed.
    */
   async markFlags(ctx: SimulationContext, flags: readonly string[]): Promise<string[]> {
     const characterId = ctx.character.id;

@@ -8,6 +8,7 @@ import { useHousing } from '../hooks/use-housing';
 import { MyHomeTab } from './home/MyHomeTab';
 import { ErrorState, LoadingRows } from '@/common/components';
 import { DecorTab } from './decor/DecorTab';
+import { CitySwitch } from './CitySwitch';
 import { HousesTab } from './houses/HousesTab';
 import { LandTab } from './land/LandTab';
 import { PropertiesTab } from './property/PropertiesTab';
@@ -47,6 +48,7 @@ export function HomesApp() {
           items={TABS.map((id) => ({ id, label: LABELS[id], badge: id === 'property' ? owned : undefined }))}
         />
       </div>
+      {(tab === 'rent' || tab === 'houses' || tab === 'land') && <CitySwitch />}
       <div role="tabpanel" aria-label={LABELS[tab]}>
         {tab === 'decor' ? (
           <DecorTab />

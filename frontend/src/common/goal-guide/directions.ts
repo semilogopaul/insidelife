@@ -1,5 +1,7 @@
 import {
   VENUES,
+  cityAt,
+  cityOfVenue,
   districtBounds,
   homeEntrance,
   homeKey,
@@ -14,8 +16,6 @@ import {
   type WorldPoint,
 } from '@insidelife/shared';
 
-const LAGOS_VENUES: readonly VenueDefinition[] = (VENUES as readonly VenueDefinition[]).filter((venue) => !venue.regionId || venue.regionId === 'lagos');
-
 export interface NearestVenue {
   readonly venue: VenueDefinition;
   /** Straight-line metres in the world (for ordering only). */
@@ -24,13 +24,15 @@ export interface NearestVenue {
 }
 
 /**
- * The nearest Lagos venue of any of `types` to `from`: open places first, then closest, then id (deterministic).
+ * The nearest venue of any of `types` to `from`, in the city `from` is in (nothing across the water): open places first,
+ * then closest, then id (deterministic).
  * Returns null when no venue matches.
  */
 export function nearestVenueOfTypes(types: readonly VenueType[], from: WorldPoint, hour: number): NearestVenue | null {
   let best: NearestVenue | null = null;
-  for (const venue of LAGOS_VENUES) {
-    if (!types.includes(venue.type)) continue;
+  const city = cityAt(from);
+  for (const venue of VENUES as readonly VenueDefinition[]) {
+    if (!types.includes(venue.type) || cityOfVenue(venue) !== city) continue;
     const door = venueEntrance(venue.id);
     if (!door) continue;
     const candidate: NearestVenue = { venue, distance: straightDistance(from, door.position), open: isVenueOpen(venue, hour) };

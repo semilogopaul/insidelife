@@ -365,6 +365,44 @@ const shop: AppIconArt = {
   ),
 };
 
+const flights: AppIconArt = {
+  name: 'Flights',
+  tile: ['#2f7fd1', '#12335f'],
+  backdrop: ({ compact }) => (
+    <>
+      {!compact && (
+        <path
+          d="M0 56V47H5V40H10V49H14V42H19V51H24V44H28V52H36V45H41V51H46V41H51V49H55V43H60V50H64V56Z"
+          fill="#ffffff"
+          opacity={0.14}
+        />
+      )}
+      <rect y={55} width={64} height={9} fill="#000000" opacity={0.25} />
+      <path d="M3 18H12M50 12H60" stroke="#ffffff" strokeWidth={1.6} strokeLinecap="round" opacity={0.35} />
+    </>
+  ),
+  subject: ({ id, url }) => (
+    <>
+      <defs>
+        <Linear
+          id={id('hull')}
+          stops={[
+            [0, '#ffffff'],
+            [1, '#c9d6e3'],
+          ]}
+        />
+      </defs>
+      <g transform="rotate(-28 32 30)">
+        <path d="M8 30C8 26.5 12 25 18 25H46C52 25 57 28 57 30S52 35 46 35H18C12 35 8 33.5 8 30Z" fill={url('hull')} />
+        <path d="M24 29L36 12H42L36 29Z" fill="#dfe8f1" />
+        <path d="M24 31L36 48H42L36 31Z" fill="#c4d2e0" />
+        <path d="M8 30L6 20H11L18 28Z" fill="#f2b705" />
+        <path d="M47 27.2H53" stroke="#2f7fd1" strokeWidth={2.2} strokeLinecap="round" />
+      </g>
+    </>
+  ),
+};
+
 const motors: AppIconArt = {
   name: 'Motors',
   tile: ['#4f5d69', '#182027'],
@@ -875,6 +913,7 @@ export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   homes,
   shop,
   motors,
+  flights,
   health,
   family,
   invest,

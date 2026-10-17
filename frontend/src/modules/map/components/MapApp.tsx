@@ -3,8 +3,12 @@
 import { Bike, Bus, Car, CarTaxiFront, Footprints, Navigation } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
+  CITIES,
   DISTRICTS,
+  OTHER_CITY_REASON,
   VENUES,
+  cityOfDistrict,
+  cityOfVenue,
   formatGameDuration,
   homeLocationId,
   type OwnedPropertyMarkerDto,
@@ -34,7 +38,7 @@ const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readon
   { label: 'Health', types: ['hospital-public', 'hospital-private', 'pharmacy'] },
   { label: 'Shopping', types: ['market', 'mall', 'car-dealer', 'salon'] },
   { label: 'Fun', types: ['bar', 'club', 'beach', 'park', 'cinema', 'event-centre', 'gym'] },
-  { label: 'Services', types: ['estate-agency', 'airport', 'motor-park', 'church', 'mosque'] },
+  { label: 'Services', types: ['estate-agency', 'airport', 'aviation-terminal', 'motor-park', 'church', 'mosque'] },
 ];
 
 const STAGE_LABEL: Readonly<Record<OwnedPropertyMarkerDto['stage'], string>> = {
@@ -59,11 +63,14 @@ export function MapApp() {
   }
   const { data: snapshot } = useSnapshot();
   const visits = useVisits(snapshot !== undefined);
-  const venues = useMemo(() => VENUES.filter((venue) => !venue.regionId && CATEGORIES[category]!.types.includes(venue.type)), [category]);
+  const cityId = snapshot?.character.cityId ?? 'lagos';
+  const openPhone = useUi((state) => state.openPhone);
+  const venues = useMemo(() => VENUES.filter((venue) => cityOfVenue(venue) === cityId && CATEGORIES[category]!.types.includes(venue.type)), [category, cityId]);
   const setDestination = useNavigation((state) => state.setDestination);
   const closePhone = useUi((state) => state.closePhone);
   // Land and houses you own but don't live in (where you live is Home): GPS only, rides go to venues and home.
   const properties = (snapshot?.summary.properties ?? []).filter((property) => !property.livedIn);
+  const homeCity = snapshot ? cityOfDistrict(snapshot.character.homeDistrictId) : cityId;
   const homeId = snapshot ? homeLocationId(snapshot.character.id) : null;
   // Someone is expecting you: their place is a destination like any other while the invite stands.
   const expected = expectedVisits(visits.data?.incoming, snapshot?.character.locationId ?? null);
@@ -74,11 +81,23 @@ export function MapApp() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3 rounded-card bg-ink px-3.5 py-2.5 text-on-ink" data-testid="map-city">
+        <span className="min-w-0">
+          <span className="block text-xs font-bold uppercase tracking-wide opacity-70">You’re in</span>
+          <span className="block truncate font-bold">{CITIES[cityId].name}</span>
+        </span>
+        <button type="button" onClick={() => openPhone('flights')} className="shrink-0 rounded-full bg-danfo px-3 py-1.5 text-sm font-bold text-ink hover:brightness-95">
+          Fly or take the bus
+        </button>
+      </div>
       <button type="button" onClick={() => setSelected('home')} className="flex items-center gap-3 rounded-card bg-paper-2 p-3 text-left hover:bg-paper-3">
         <PlaceIcon kind="home" size={40} decorative />
         <span>
           <span className="block font-bold">Home</span>
-          <span className="text-sm text-text-soft">{snapshot ? DISTRICTS[snapshot.character.homeDistrictId].name : ''}</span>
+          <span className="text-sm text-text-soft">
+            {snapshot ? DISTRICTS[snapshot.character.homeDistrictId].name : ''}
+            {homeCity !== cityId ? ` · ${CITIES[homeCity].name}` : ''}
+          </span>
         </span>
       </button>
       {expected.length > 0 && (
@@ -112,6 +131,10 @@ export function MapApp() {
               <button
                 type="button"
                 onClick={() => {
+                  if (cityOfDistrict(property.districtId) !== cityId) {
+                    toast({ title: `That’s in ${CITIES[cityOfDistrict(property.districtId)].name}`, body: OTHER_CITY_REASON, tone: 'neutral' });
+                    return;
+                  }
                   setDestination(`property:${property.id}`, property.label);
                   gameEvents.emit('sfx', { id: 'ui-success' });
                   closePhone();
@@ -126,7 +149,13 @@ export function MapApp() {
                   </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-1 text-sm font-bold text-text-soft">
-                  <Navigation size={16} aria-hidden /> GPS
+                  {cityOfDistrict(property.districtId) !== cityId ? (
+                    CITIES[cityOfDistrict(property.districtId)].name
+                  ) : (
+                    <>
+                      <Navigation size={16} aria-hidden /> GPS
+                    </>
+                  )}
                 </span>
               </button>
             </li>
@@ -182,6 +211,9 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
   const walk = quotes.data?.find((quote) => quote.mode === 'walk' && quote.available);
   const hasCar = car ? car.available || car.reason !== 'You don’t own a car yet' : false;
   const detail = target.kind === 'venue' ? target.venue.blurb : target.kind === 'visit' ? target.detail : null;
+  const openPhone = useUi((state) => state.openPhone);
+  // Across the water: no road, no ride, no GPS. The server says so for every mode.
+  const otherCity = quotes.data !== undefined && quotes.data.length > 0 && quotes.data.every((quote) => !quote.available && quote.reason === OTHER_CITY_REASON);
 
   const guide = (how: 'walk' | 'drive'): void => {
     setDestination(destinationId, name);
@@ -228,7 +260,16 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
           {detail && <p className="text-sm text-text-soft">{detail}</p>}
         </div>
       </div>
-      <div className="grid gap-2" role="group" aria-label={`Go to ${name} yourself`} data-tour="map-gps">
+      {otherCity && (
+        <div role="note" className="flex flex-col gap-2 rounded-card bg-danfo-soft p-3.5 ring-1 ring-danfo" data-testid="map-other-city">
+          <p className="font-bold">{name} is in another city.</p>
+          <p className="text-sm text-text-soft">{OTHER_CITY_REASON} There are no roads between Lagos and Abuja, so the map and GPS stop at the city limits.</p>
+          <Button variant="ink" onClick={() => openPhone('flights')}>
+            Open Flights
+          </Button>
+        </div>
+      )}
+      <div className={cn('grid gap-2', otherCity && 'hidden')} role="group" aria-label={`Go to ${name} yourself`} data-tour="map-gps">
         <Button icon={<Footprints size={18} aria-hidden />} onClick={() => guide('walk')} block className="justify-start">
           Walk there with GPS{walk ? ` · ${formatGameDuration(walk.minutes)}` : ''}
         </Button>
@@ -249,7 +290,7 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
           </p>
         )}
       </div>
-      <div data-tour="map-rides">
+      <div data-tour="map-rides" className={cn(otherCity && 'hidden')}>
         <h4 className="mb-2 font-bold">Or book a ride</h4>
         {quotes.isPending && <Spinner className="text-text-soft" />}
         {quotes.isError && <p className="text-sm text-okada">{errorMessage(quotes.error)}</p>}

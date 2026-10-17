@@ -416,6 +416,15 @@ export const DISTRICT_FOOT_TRAFFIC: Readonly<Record<DistrictId, number>> = {
   lekki: 1,
   ajah: 1,
   epe: 0.85,
+  'abuja-cbd': 1.1,
+  maitama: 0.85,
+  asokoro: 0.8,
+  wuse: 1.12,
+  garki: 1.08,
+  jabi: 1.04,
+  gwarinpa: 1,
+  kubwa: 1.02,
+  lugbe: 0.92,
 };
 
 /** The most businesses one character can run at once. */

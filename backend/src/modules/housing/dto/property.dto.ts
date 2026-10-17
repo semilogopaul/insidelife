@@ -1,6 +1,7 @@
 import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 import {
   BLUEPRINT_IDS,
+  CITY_IDS,
   CONSTRUCTION_PAYMENT_PLANS,
   DISTRICT_IDS,
   LAND_TITLE_IDS,
@@ -8,6 +9,7 @@ import {
   TENANCY_ACTIONS,
   type BlueprintId,
   type BuyLandRequest,
+  type CityId,
   type ConstructionPaymentPlan,
   type DistrictId,
   type LandOffersQuery,
@@ -22,6 +24,10 @@ export class LandQueryDto implements LandOffersQuery {
   @IsOptional()
   @IsIn(DISTRICT_IDS)
   readonly districtId?: DistrictId;
+
+  @IsOptional()
+  @IsIn(CITY_IDS)
+  readonly cityId?: CityId;
 }
 
 export class BuyLandDto implements BuyLandRequest {

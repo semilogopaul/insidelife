@@ -1,7 +1,7 @@
 /** Housing API contracts — owned by the housing domain. */
 import type { GameMinute } from '../time/calendar.js';
 import type { FloorFinishId, GateColourId, HomeDecor, HouseExterior, HousePaintId, RoofColourId, WallPaintId } from '../catalog/home-style.js';
-import type { DistrictId } from '../catalog/geography.js';
+import type { CityId, DistrictId } from '../catalog/geography.js';
 import type {
   BlueprintId,
   ConstructionPaymentPlan,
@@ -17,6 +17,8 @@ import type {
 
 export interface RentalListingsQuery {
   readonly districtId?: DistrictId;
+  /** Which city's listings (default: the city you are in). Ignored when `districtId` is given. */
+  readonly cityId?: CityId;
   readonly type?: HousingTypeId;
   /** Only show places whose annual rent is at most this. */
   readonly maxRent?: number;
@@ -36,6 +38,8 @@ export interface MoveHomeRequest {
 
 export interface LandOffersQuery {
   readonly districtId?: DistrictId;
+  /** Which city's plots (default: the city you are in). Ignored when `districtId` is given. */
+  readonly cityId?: CityId;
 }
 
 export interface BuyLandRequest {
@@ -287,6 +291,8 @@ export interface HousingActionResultDto {
 
 export interface HouseListingsQuery {
   readonly districtId?: DistrictId;
+  /** Which city's houses (default: the city you are in). Ignored when `districtId` is given. */
+  readonly cityId?: CityId;
 }
 
 export interface BuyHouseRequest {

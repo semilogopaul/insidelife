@@ -1,5 +1,6 @@
 import {
   BLUEPRINTS,
+  DISTRICTS,
   LAND_DISTRICT_IDS,
   MINUTES_PER_DAY,
   generateHouseListings,
@@ -108,8 +109,13 @@ const listingIn = (districtId: (typeof LAND_DISTRICT_IDS)[number], week = WEEK):
 describe('HousePurchasesService.listings', () => {
   it('lists this week’s houses in every land district, cheapest first', async () => {
     const { service, ctx } = harness(50_000_000);
-    const listings = await service.listings(ctx);
-    expect(new Set(listings.map((listing) => listing.districtId))).toEqual(new Set(LAND_DISTRICT_IDS));
+    const lagosOnly = LAND_DISTRICT_IDS.filter((id) => DISTRICTS[id].cityId === 'lagos');
+    const listings = await service.listings(ctx, undefined, 'lagos');
+    expect(new Set(listings.map((listing) => listing.districtId))).toEqual(new Set(lagosOnly));
+    // Each city has its own market: Abuja's districts only show with Abuja asked for.
+    const abuja = await service.listings(ctx, undefined, 'abuja');
+    expect(abuja.length).toBeGreaterThan(0);
+    expect(abuja.every((listing) => DISTRICTS[listing.districtId].cityId === 'abuja')).toBe(true);
     expect(listings.map((listing) => listing.price)).toEqual(
       listings.map((listing) => listing.price).toSorted((a, b) => a - b),
     );

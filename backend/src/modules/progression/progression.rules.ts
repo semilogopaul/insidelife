@@ -1,4 +1,5 @@
 import {
+  cityOfDistrict,
   ACHIEVEMENTS,
   ACHIEVEMENT_RARITIES,
   DAILY_WELCOME_MAX_CASH,
@@ -420,30 +421,31 @@ export function overlapsDailyWindow(start: GameMinute, end: GameMinute, window: 
 }
 
 export interface PlaceFacts {
-  /** Lagos district, or null out of town / at someone else's house. */
+  /** District, or null at someone else's house. */
   readonly districtId: DistrictId | null;
-  /** Out-of-town region, when not in Lagos. */
-  readonly regionId: string | null;
+  /** The city, when it is not Lagos (the cities count is about leaving home turf). */
+  readonly cityId: string | null;
   readonly venueId: string | null;
   readonly street: boolean;
+}
+
+/** The district's city, when it is not Lagos (null for Lagos). */
+function otherCity(districtId: DistrictId): string | null {
+  const city = cityOfDistrict(districtId);
+  return city === 'lagos' ? null : city;
 }
 
 /** Classify a location id for presence counters. */
 export function placeOf(locationId: string, characterId: string, homeDistrictId: DistrictId): PlaceFacts {
   const street = streetDistrict(locationId);
-  if (street) return { districtId: street, regionId: null, venueId: null, street: true };
+  if (street) return { districtId: street, cityId: otherCity(street), venueId: null, street: true };
   if (isHomeLocation(locationId)) {
-    return { districtId: locationId === homeLocationId(characterId) ? homeDistrictId : null, regionId: null, venueId: null, street: false };
+    const own = locationId === homeLocationId(characterId);
+    return { districtId: own ? homeDistrictId : null, cityId: own ? otherCity(homeDistrictId) : null, venueId: null, street: false };
   }
   const venue = findVenue(locationId);
-  if (!venue) return { districtId: null, regionId: null, venueId: null, street: false };
-  const outOfTown = venue.regionId !== undefined && venue.regionId !== 'lagos';
-  return {
-    districtId: outOfTown ? null : venue.districtId,
-    regionId: outOfTown ? (venue.regionId ?? null) : null,
-    venueId: venue.id,
-    street: false,
-  };
+  if (!venue) return { districtId: null, cityId: null, venueId: null, street: false };
+  return { districtId: venue.districtId, cityId: otherCity(venue.districtId), venueId: venue.id, street: false };
 }
 
 /** Flags a presence at `place` sets (first visits, "stepped outside"). */
@@ -452,7 +454,7 @@ export function presenceFlags(place: PlaceFacts): string[] {
   if (place.street) flags.push('outside');
   if (place.venueId) flags.push(`venue:${place.venueId}`);
   if (place.districtId) flags.push(`district:${place.districtId}`);
-  if (place.regionId) flags.push(`region:${place.regionId}`);
+  if (place.cityId) flags.push(`city:${place.cityId}`);
   return flags;
 }
 
@@ -469,8 +471,8 @@ export function aggregateDeltasForFlags(newFlags: readonly string[]): Map<string
       if (venue) bump(`venue-type:${venue.type}`);
     } else if (flag.startsWith('district:')) {
       bump('districts');
-    } else if (flag.startsWith('region:')) {
-      bump('regions');
+    } else if (flag.startsWith('city:')) {
+      bump('cities');
     }
   }
   return deltas;

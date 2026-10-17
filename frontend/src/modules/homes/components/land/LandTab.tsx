@@ -14,6 +14,7 @@ import {
 import { Badge, HoldButton, Money, Sheet } from '@/common/components';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useHousingCommands, useLandOffers } from '../../hooks/use-housing';
+import { useHomesCity } from '../../hooks/use-homes-city';
 import { landLines, oddsPerYear } from '../../services/homes-rules';
 import { ErrorState, LoadingRows } from '@/common/components';
 import { Receipt } from '@/common/components';
@@ -23,7 +24,8 @@ import { TitleLadder } from './TitleLadder';
 
 /** Land by district: plot prices per title type, risks in plain words, and a hold-to-buy flow. */
 export function LandTab() {
-  const query = useLandOffers();
+  const { cityId } = useHomesCity();
+  const query = useLandOffers(cityId);
   const offers = useMemo(() => query.data ?? [], [query.data]);
   const districts = useMemo(() => [...new Set(offers.map((offer) => offer.districtId))], [offers]);
   const [district, setDistrict] = useState<DistrictId | null>(null);

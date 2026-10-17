@@ -44,6 +44,7 @@ const VENUE_CONTEXT: Readonly<Record<VenueType, MusicContext>> = {
   stadium: 'city',
   'motor-park': 'city',
   airport: 'city',
+  'aviation-terminal': 'city',
   gym: 'city',
   salon: 'city',
   cinema: 'city',
@@ -142,7 +143,7 @@ function resolvePlace(inputs: SceneInputs): Omit<AudioScene, 'night' | 'driving'
     context: VENUE_CONTEXT[venue.type],
     energy: ENERGY[venue.type] ?? 0.6,
     placeType: venue.type,
-    districtId: venue.regionId ? null : venue.districtId,
+    districtId: venue.districtId,
     clubVenueId: ROTATION_VENUES.has(venue.type) ? venue.id : null,
   };
 }

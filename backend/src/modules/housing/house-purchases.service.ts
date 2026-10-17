@@ -15,6 +15,7 @@ import {
   weekEndsAt,
   weekIndexOf,
   weekStartsAt,
+  type CityId,
   type DistrictId,
   type HouseListing,
   type HouseListingDto,
@@ -46,11 +47,11 @@ export class HousePurchasesService {
   constructor(private readonly store: HousingStore) {}
 
   /** This week's houses for sale, cheapest first. */
-  async listings(ctx: SimulationContext, districtId?: DistrictId): Promise<HouseListingDto[]> {
+  async listings(ctx: SimulationContext, districtId?: DistrictId, cityId: CityId = ctx.character.cityId): Promise<HouseListingDto[]> {
     if (districtId) this.assertSellingDistrict(districtId);
     const week = weekIndexOf(ctx.time);
     const acquired = await this.store.acquiredSince(ctx, weekStartsAt(week));
-    return (districtId ? [districtId] : LAND_DISTRICT_IDS)
+    return (districtId ? [districtId] : LAND_DISTRICT_IDS.filter((each) => DISTRICTS[each].cityId === cityId))
       .flatMap((id) => generateHouseListings(ctx.world.seed, id, week))
       .map((listing) => this.toDto(ctx, listing, isHouseListingBought(listing, acquired)))
       .toSorted((a, b) => a.price - b.price || a.id.localeCompare(b.id));
