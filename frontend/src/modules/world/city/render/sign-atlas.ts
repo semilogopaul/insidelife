@@ -1,17 +1,22 @@
-import { CITY_MAP, DISTRICTS, findVenue, type CityLot, type LotArchetype, type VenueType } from '@insidelife/shared';
+import { CITY_MAP, DISTRICTS, findVenue, type CityId, type CityLot, type LotArchetype, type VenueType } from '@insidelife/shared';
 import { CanvasTexture, SRGBColorSpace } from 'three';
 
 /**
- * One canvas atlas with a painted signboard per venue (Lagos signwriting: bold condensed names, a small trade label,
- * strong flat colours). 4 × 32 slots of 512 × 128 px (two cities' venues); the last slot is a solid dark swatch for posts.
+ * The painted signboards (Lagos signwriting: bold condensed names, a small trade label, strong flat colours), one atlas
+ * per city: only the city you are in has its signs in memory (`signAtlasPlan(cityId)`; the other city's are never
+ * painted). Each atlas is one or more pages of at most 2048 × 2048 px (4 × 16 slots of 512 × 128, slot 0 a solid dark
+ * swatch for posts); a city with more signs than one page holds simply gets another page, and a short last page is cut
+ * to the rows it needs. No sign is ever dropped.
  */
 
-export const ATLAS_SIZE = 2048;
-export const ATLAS_HEIGHT = 4096;
+export const PAGE_WIDTH = 2048;
+export const MAX_PAGE_HEIGHT = 2048;
 export const SLOT_W = 512;
 export const SLOT_H = 128;
-export const SLOTS_PER_ROW = ATLAS_SIZE / SLOT_W;
-export const POST_SLOT = SLOTS_PER_ROW * (ATLAS_HEIGHT / SLOT_H) - 1;
+export const SLOTS_PER_ROW = PAGE_WIDTH / SLOT_W;
+export const SLOTS_PER_PAGE = SLOTS_PER_ROW * (MAX_PAGE_HEIGHT / SLOT_H);
+/** Slot 0 of every page: the dark swatch posts and lightbox backs use. */
+export const POST_SLOT = 0;
 
 export interface SignStyle {
   readonly background: string;
@@ -72,15 +77,33 @@ export function signStyleFor(lot: CityLot): SignStyle {
   if (venue?.type === 'government' && lot.districtId && DISTRICTS[lot.districtId].cityId === 'lagos' && !/passport/i.test(venue.name)) return { ...base, label: 'LAGOS STATE GOVERNMENT' };
   if (venue?.type === 'government' && /police/i.test(venue.name)) return { ...base, label: 'NIGERIA POLICE FORCE' };
   if (venue?.type === 'government' && /passport/i.test(venue.name)) return { ...base, label: 'NIGERIA IMMIGRATION SERVICE' };
+  if (venue && lot.districtId && DISTRICTS[lot.districtId].cityId === 'abuja') {
+    // Abuja's boards say what the place is in the capital's terms (Lagos's keep the labels above).
+    if (venue.type === 'government' && /embassy|high commission/i.test(venue.name)) return { ...base, background: '#12325c', label: 'EMBASSY · VISAS' };
+    if (venue.type === 'government' && /assembly/i.test(venue.name)) return { ...base, background: '#0f5132', accent: '#f6d36b', label: 'FEDERAL REPUBLIC OF NIGERIA' };
+    if (venue.type === 'government') return { ...base, label: 'FEDERAL GOVERNMENT' };
+    if (venue.type === 'office' && /bank/i.test(venue.name)) return { ...base, background: '#17406f', accent: '#f6b90b', label: 'BANK · BRANCH' };
+    if (venue.type === 'office') return { ...base, label: 'CORPORATE HEADQUARTERS' };
+    if (venue.type === 'mosque') return { ...base, label: 'MOSQUE' };
+    if (venue.type === 'campus') return { ...base, label: /university/i.test(venue.name) ? 'UNIVERSITY' : base.label };
+  }
   return base;
 }
 
-/** Venue lots that get a sign, in atlas order (plus fixed extra signs). */
+/** One signboard: the page of the atlas it is painted on and its slot there. */
 export interface SignEntry {
+  readonly page: number;
   readonly slot: number;
   readonly text: string;
   readonly style: SignStyle;
   readonly lot: CityLot | null;
+}
+
+export interface AtlasPage {
+  readonly index: number;
+  /** Pixel height: as many 128 px rows as the page's signs need (never over 2048). */
+  readonly height: number;
+  readonly entries: readonly SignEntry[];
 }
 
 export const EXTRA_SIGNS = {
@@ -90,16 +113,46 @@ export const EXTRA_SIGNS = {
 /** Showcase places carry their names on their own gates and plates (`showcase-geometry.ts`), not on a signboard. */
 const OWN_SIGNAGE: ReadonlySet<LotArchetype> = new Set(['mansion', 'jet-pad', 'refinery']);
 
-export function signEntries(): readonly SignEntry[] {
-  const entries: SignEntry[] = [];
+const cityOfLot = (lot: CityLot): CityId => DISTRICTS[lot.districtId].cityId;
+
+interface Sign {
+  readonly text: string;
+  readonly style: SignStyle;
+  readonly lot: CityLot | null;
+}
+
+/** The signed lots of a city (in lot order) plus any fixed extra signs it has, before they are laid out on pages. */
+function signsOfCity(cityId: CityId): readonly Sign[] {
+  const signs: Sign[] = [];
   for (const lot of CITY_MAP.lots) {
-    if (lot.kind !== 'venue' || !lot.venueId || !lot.entrance || OWN_SIGNAGE.has(lot.archetype ?? 'shop')) continue;
-    if (entries.length >= POST_SLOT - 1) break;
-    const venue = findVenue(lot.venueId);
-    entries.push({ slot: entries.length, text: venue?.name ?? lot.venueId, style: signStyleFor(lot), lot });
+    if (lot.kind !== 'venue' || !lot.venueId || !lot.entrance || OWN_SIGNAGE.has(lot.archetype ?? 'shop') || cityOfLot(lot) !== cityId) continue;
+    signs.push({ text: findVenue(lot.venueId)?.name ?? lot.venueId, style: signStyleFor(lot), lot });
   }
-  entries.push({ slot: entries.length, text: EXTRA_SIGNS.toll.text, style: EXTRA_SIGNS.toll.style, lot: null });
-  return entries;
+  if (cityId === 'lagos') signs.push({ text: EXTRA_SIGNS.toll.text, style: EXTRA_SIGNS.toll.style, lot: null });
+  return signs;
+}
+
+const planCache = new Map<CityId, readonly AtlasPage[]>();
+
+/** A city's signs laid out on atlas pages: 63 a page (slot 0 is the post swatch), the last page as short as it can be. */
+export function signAtlasPlan(cityId: CityId): readonly AtlasPage[] {
+  const cached = planCache.get(cityId);
+  if (cached) return cached;
+  const signs = signsOfCity(cityId);
+  const perPage = SLOTS_PER_PAGE - 1;
+  const pages: AtlasPage[] = [];
+  for (let start = 0; start < Math.max(1, signs.length); start += perPage) {
+    const index = pages.length;
+    const entries = signs.slice(start, start + perPage).map((sign, i): SignEntry => ({ page: index, slot: i + 1, ...sign }));
+    pages.push({ index, height: Math.ceil((entries.length + 1) / SLOTS_PER_ROW) * SLOT_H, entries });
+  }
+  planCache.set(cityId, pages);
+  return pages;
+}
+
+/** Every sign of a city, page by page. */
+export function signEntries(cityId: CityId): readonly SignEntry[] {
+  return signAtlasPlan(cityId).flatMap((page) => page.entries);
 }
 
 function fontFamily(variable: string, fallback: string): string {
@@ -163,34 +216,32 @@ function drawSign(ctx: CanvasRenderingContext2D, entry: SignEntry, display: stri
   ctx.restore();
 }
 
-/** Draws the atlas; call again (and flag `needsUpdate`) once web fonts have loaded. */
-export function paintAtlas(canvas: HTMLCanvasElement, entries: readonly SignEntry[]): void {
+/** Draws one page; call again (and flag `needsUpdate`) once web fonts have loaded. */
+export function paintAtlasPage(canvas: HTMLCanvasElement, page: AtlasPage): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const display = fontFamily('--font-anybody', "'Arial Narrow', Arial, sans-serif");
   const body = fontFamily('--font-atkinson', 'Arial, sans-serif');
-  ctx.clearRect(0, 0, ATLAS_SIZE, ATLAS_HEIGHT);
-  for (const entry of entries) drawSign(ctx, entry, display, body);
-  const px = (POST_SLOT % SLOTS_PER_ROW) * SLOT_W;
-  const py = Math.floor(POST_SLOT / SLOTS_PER_ROW) * SLOT_H;
+  ctx.clearRect(0, 0, PAGE_WIDTH, page.height);
+  for (const entry of page.entries) drawSign(ctx, entry, display, body);
   ctx.fillStyle = '#2b2c2e';
-  ctx.fillRect(px, py, SLOT_W, SLOT_H);
+  ctx.fillRect((POST_SLOT % SLOTS_PER_ROW) * SLOT_W, Math.floor(POST_SLOT / SLOTS_PER_ROW) * SLOT_H, SLOT_W, SLOT_H);
 }
 
-export function createAtlasTexture(): { canvas: HTMLCanvasElement; texture: CanvasTexture } {
+export function createAtlasTexture(page: AtlasPage): { canvas: HTMLCanvasElement; texture: CanvasTexture } {
   const canvas = document.createElement('canvas');
-  canvas.width = ATLAS_SIZE;
-  canvas.height = ATLAS_HEIGHT;
+  canvas.width = PAGE_WIDTH;
+  canvas.height = page.height;
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   texture.anisotropy = 4;
   return { canvas, texture };
 }
 
-/** UV rectangle [u0, v0, u1, v1] of a slot (canvas y grows down; textures flip by default). */
-export function slotUv(slot: number): readonly [number, number, number, number] {
+/** UV rectangle [u0, v0, u1, v1] of a slot on a page of `height` px (canvas y grows down; textures flip by default). */
+export function slotUv(height: number, slot: number): readonly [number, number, number, number] {
   const x = (slot % SLOTS_PER_ROW) * SLOT_W;
   const y = Math.floor(slot / SLOTS_PER_ROW) * SLOT_H;
   const inset = 2;
-  return [(x + inset) / ATLAS_SIZE, 1 - (y + SLOT_H - inset) / ATLAS_HEIGHT, (x + SLOT_W - inset) / ATLAS_SIZE, 1 - (y + inset) / ATLAS_HEIGHT];
+  return [(x + inset) / PAGE_WIDTH, 1 - (y + SLOT_H - inset) / height, (x + SLOT_W - inset) / PAGE_WIDTH, 1 - (y + inset) / height];
 }

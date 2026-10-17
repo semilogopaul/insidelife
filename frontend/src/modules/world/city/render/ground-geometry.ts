@@ -1,4 +1,4 @@
-import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, DISTRICT_IDS, LAGOS_ROWS, cellBounds, cellCentreX, cellCentreZ, cityBounds, type DistrictId } from '@insidelife/shared';
+import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, CITY_SCENERY_REACH, DISTRICT_IDS, LAGOS_ROWS, cellBounds, cellCentreX, cellCentreZ, cityBounds, type DistrictId } from '@insidelife/shared';
 import { BufferAttribute, BufferGeometry, Color, DataTexture, LinearFilter, LinearMipmapLinearFilter, RGBAFormat, SRGBColorSpace, UnsignedByteType } from 'three';
 import { APRON, LAGOON_ARM_X, PAVEMENT_Y, type CityPlan } from '../layout/placements';
 import { DISTRICT_STYLES } from '../layout/styles';
@@ -178,8 +178,12 @@ const QUAY = 0x7d7468;
 const DECK = 0xa29d95;
 const PILLAR = 0x8f8a82;
 
-/** Scenery land around Abuja (the capital is inland): this far beyond the edge of its grid. */
-const ABUJA_SURROUND = 300;
+/**
+ * Scenery land around Abuja (the capital is inland): this far beyond the edge of its grid. The shared `CITY_SCENERY_REACH`
+ * keeps it (and the rocks and scrub out there) clear of Lagos by more than the draw distance, so the cities never show
+ * each other.
+ */
+const ABUJA_SURROUND = CITY_SCENERY_REACH.abuja;
 
 /**
  * Mainland beyond the playable grid (north, west and east), so the city never reads as an island; the lagoon arm

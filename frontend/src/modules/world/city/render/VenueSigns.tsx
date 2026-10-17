@@ -1,17 +1,18 @@
 'use client';
 
-import { CITY_MAP, cellCentreZ, type CityLot } from '@insidelife/shared';
+import { CITY_MAP, cellCentreZ, type CityId, type CityLot } from '@insidelife/shared';
 import { useFrame } from '@react-three/fiber';
 import { useEffect, useMemo } from 'react';
 import { BufferAttribute, BufferGeometry, Color, MeshStandardMaterial, Vector3 } from 'three';
 import { atmosphereFrame } from '../lib/atmosphere-frame';
 import { addNearFade } from '../materials/city-materials';
-import { createAtlasTexture, paintAtlas, POST_SLOT, signEntries, slotUv, type SignEntry } from './sign-atlas';
+import { createAtlasTexture, paintAtlasPage, POST_SLOT, signAtlasPlan, slotUv, type AtlasPage, type SignEntry } from './sign-atlas';
 import { setProps } from '../lib/mutate';
 
 /**
  * Venue signboards: facade lightboxes for shops, clinics and offices, roadside pylons for big lots, the name on
- * campus gates, and the toll plaza fascia. All quads share one atlas → one draw call; they glow softly at night.
+ * campus gates, and the toll plaza fascia. Only the city you are in has signs (one atlas of at most 2048 × 2048 per
+ * page, see `sign-atlas.ts`): a draw call per page; they glow softly at night.
  */
 
 type Mount = 'facade' | 'pylon' | 'gate';
@@ -19,6 +20,8 @@ type Mount = 'facade' | 'pylon' | 'gate';
 const FACADE: ReadonlySet<string> = new Set(['shop', 'club', 'hospital', 'office', 'government', 'school']);
 
 class QuadWriter {
+  constructor(private readonly pageHeight: number) {}
+
   readonly positions: number[] = [];
   readonly normals: number[] = [];
   readonly uvs: number[] = [];
@@ -45,7 +48,7 @@ class QuadWriter {
 
   /** Axis-aligned-ish dark box (posts, lightbox backing) using the post swatch. */
   box(c: Vector3, right: Vector3, normal: Vector3, width: number, height: number, depth: number): void {
-    const uv = slotUv(POST_SLOT);
+    const uv = slotUv(this.pageHeight, POST_SLOT);
     const half = (v: Vector3, s: number): Vector3 => v.clone().multiplyScalar(s / 2);
     // Front/back.
     this.quad(c.clone().add(half(normal, depth)), right, normal, width, height, uv);
@@ -71,12 +74,12 @@ function mountOf(lot: CityLot): Mount {
   return FACADE.has(lot.archetype ?? 'shop') ? 'facade' : 'pylon';
 }
 
-function writeSign(writer: QuadWriter, entry: SignEntry, lot: CityLot): void {
+function writeSign(writer: QuadWriter, entry: SignEntry, lot: CityLot, pageHeight: number): void {
   const entrance = lot.entrance;
   if (!entrance) return;
   const d = new Vector3(Math.cos(entrance.heading), 0, Math.sin(entrance.heading));
   const right = new Vector3(d.z, 0, -d.x);
-  const uv = slotUv(entry.slot);
+  const uv = slotUv(pageHeight, entry.slot);
   const door = new Vector3(entrance.position.x, 0, entrance.position.z);
   switch (mountOf(lot)) {
     case 'facade': {
@@ -100,17 +103,17 @@ function writeSign(writer: QuadWriter, entry: SignEntry, lot: CityLot): void {
   }
 }
 
-function buildSignGeometry(entries: readonly SignEntry[]): BufferGeometry {
-  const writer = new QuadWriter();
-  for (const entry of entries) {
-    if (entry.lot) writeSign(writer, entry, entry.lot);
+function buildSignGeometry(page: AtlasPage): BufferGeometry {
+  const writer = new QuadWriter(page.height);
+  for (const entry of page.entries) {
+    if (entry.lot) writeSign(writer, entry, entry.lot, page.height);
     else {
       // Toll plaza fascia, facing both directions of the expressway.
       const plaza = CITY_MAP.lots.find((lot) => lot.id === 'landmark:lekki-toll-plaza');
       if (!plaza) continue;
       const x = (plaza.footprint.minX + plaza.footprint.maxX) / 2;
       const z = cellCentreZ(plaza.cells[1] - 1);
-      const uv = slotUv(entry.slot);
+      const uv = slotUv(page.height, entry.slot);
       writer.quad(new Vector3(x - 6.03, 6.7, z), new Vector3(0, 0, -1), new Vector3(-1, 0, 0), 9, 0.92, uv);
       writer.quad(new Vector3(x + 6.03, 6.7, z), new Vector3(0, 0, 1), new Vector3(1, 0, 0), 9, 0.92, uv);
     }
@@ -118,23 +121,23 @@ function buildSignGeometry(entries: readonly SignEntry[]): BufferGeometry {
   return writer.build();
 }
 
-export function VenueSigns() {
+/** One atlas page's signs: its texture, material and geometry, built when the city is entered and disposed when it is left. */
+function SignPage({ page }: { readonly page: AtlasPage }) {
   const resources = useMemo(() => {
-    const entries = signEntries();
-    const { canvas, texture } = createAtlasTexture();
-    paintAtlas(canvas, entries);
+    const { canvas, texture } = createAtlasTexture(page);
+    paintAtlasPage(canvas, page);
     const material = new MeshStandardMaterial({ map: texture, emissiveMap: texture, emissive: new Color('#ffffff'), emissiveIntensity: 0.1, roughness: 0.55 });
     // Gate boards sit at walking-camera height; dissolve them like the beams they hang on.
     addNearFade(material, 'venue-signs', 1, 3);
-    return { entries, canvas, texture, material, geometry: buildSignGeometry(entries) };
-  }, []);
+    return { canvas, texture, material, geometry: buildSignGeometry(page) };
+  }, [page]);
 
   useEffect(() => {
     let alive = true;
     // Repaint once the brand fonts are ready (first paint uses fallbacks).
     void document.fonts?.ready.then(() => {
       if (!alive) return;
-      paintAtlas(resources.canvas, resources.entries);
+      paintAtlasPage(resources.canvas, page);
       setProps(resources.texture, { needsUpdate: true });
     });
     return () => {
@@ -143,11 +146,23 @@ export function VenueSigns() {
       resources.material.dispose();
       resources.geometry.dispose();
     };
-  }, [resources]);
+  }, [resources, page]);
 
   useFrame(() => {
     setProps(resources.material, { emissiveIntensity: 0.06 + atmosphereFrame.night * 0.75 });
   });
 
   return <mesh geometry={resources.geometry} material={resources.material} receiveShadow />;
+}
+
+/** The signboards of one city (the other city's are never painted, so they take no memory). */
+export function VenueSigns({ cityId }: { readonly cityId: CityId }) {
+  const pages = signAtlasPlan(cityId);
+  return (
+    <>
+      {pages.map((page) => (
+        <SignPage key={`${cityId}:${page.index}`} page={page} />
+      ))}
+    </>
+  );
 }

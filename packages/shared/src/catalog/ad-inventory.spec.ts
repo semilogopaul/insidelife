@@ -53,6 +53,12 @@ const OLD_DAILY = {
     'surulere-stadium': 5_000,
     'ajah-roundabout': 4_000,
     'ikorodu-garage': 2_500,
+    // Abuja's premium boards.
+    'abuja-airport-road': 8_000,
+    'abuja-ibb-boulevard': 9_000,
+    'abuja-central-area': 9_500,
+    'abuja-jabi-lake': 5_500,
+    'abuja-wuse-banex': 6_000,
   },
   'street-billboard': 1_800,
   'bus-shelter': 900,
@@ -120,6 +126,11 @@ describe('ad prices: per 7 days, 7 × the old day rate', () => {
     // Today's 3-day slots: the premium boards from ₦35,000 a week, Lagos TV and the sponsored phone apps.
     const short = AD_SLOTS.filter((slot) => adBlockDays(slot.weekPriceKobo) === 3).map((slot) => (slot.kind === 'phone-app' ? 'app' : slot.id));
     expect([...new Set(short)].toSorted()).toEqual([
+      'abuja-airport-road',
+      'abuja-central-area',
+      'abuja-ibb-boulevard',
+      'abuja-jabi-lake',
+      'abuja-wuse-banex',
       'app',
       'balogun-market',
       'ikeja-allen',

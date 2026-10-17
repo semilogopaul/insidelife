@@ -79,5 +79,6 @@ describe('procedural four-lane roads', () => {
       }
     }
     expect(samples).toBeGreaterThan(40_000);
-  }, 30_000);
+    // Both cities' roads: about 8 s on a busy machine.
+  }, 60_000);
 });
