@@ -40,6 +40,8 @@ export interface GameEventMap {
   'enter-car': Record<string, never>;
   'exit-car': Record<string, never>;
   celebrate: { readonly title: string; readonly body?: string; readonly kind: 'milestone' | 'achievement' | 'goal' };
+  /** A delivery-style action finished (a Chowdeck order): at home the food/bag can appear and the eat moment can play. */
+  'delivery-arrived': { readonly actionId: string; readonly items: string; readonly atHome: boolean };
   /** Speak a GPS/voice line (audio feature decides whether voice guidance is on). */
   speak: { readonly text: string };
   /** A hug or kiss to show in 3D (you did it; someone doing it to you arrives over realtime). */

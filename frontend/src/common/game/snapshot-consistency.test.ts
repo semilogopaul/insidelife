@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CharacterSnapshotDto, NeedProfile, TimelineSegmentDto } from '@insidelife/shared';
-import { placesDisagree, snapshotPlace, timelinePlace } from './snapshot';
+import { activityEndRefreshDelayMs, placesDisagree, snapshotPlace, timelinePlace } from './snapshot';
 
 const flat = { target: 50, rate: 0 };
 const profile: NeedProfile = { energy: flat, hunger: flat, hygiene: flat, fun: flat, social: flat };
@@ -47,5 +47,13 @@ describe('world vs timeline consistency', () => {
   it('treats any street as outside (the player walks between districts between snapshots)', () => {
     const outside = snapshot('street:yaba', [segment('action', 1000, 1030, 'street:surulere')]);
     expect(placesDisagree(outside, 1010)).toBe(false);
+  });
+});
+
+describe('activityEndRefreshDelayMs', () => {
+  it('refreshes just after the activity ends, never in a tight loop', () => {
+    expect(activityEndRefreshDelayMs(20_000)).toBe(20_500);
+    expect(activityEndRefreshDelayMs(-5_000)).toBe(1_000);
+    expect(activityEndRefreshDelayMs(10 ** 12)).toBe(24 * 60 * 60_000);
   });
 });

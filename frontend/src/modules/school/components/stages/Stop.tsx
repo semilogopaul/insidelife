@@ -23,6 +23,13 @@ export interface StopProps {
  */
 export function Stop({ index, status, title, summary, last = false, id, children }: StopProps) {
   const [open, setOpen] = useState(status === 'current');
+  // The stop you're in is always open: when the road moves on (a result lands, you get admitted) follow it, rather
+  // than keeping whatever the first render decided.
+  const [seenStatus, setSeenStatus] = useState(status);
+  if (seenStatus !== status) {
+    setSeenStatus(status);
+    setOpen(status === 'current');
+  }
   const bodyId = useId();
   const expandable = children !== undefined && children !== null;
   return (

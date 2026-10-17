@@ -94,8 +94,10 @@ export function usePlaceActions(
 }
 
 /** Something the player chose is running: starting another action waits (hanging around never blocks). */
-export function isBusy(snapshot: CharacterSnapshotDto | undefined): boolean {
+export function isBusy(snapshot: CharacterSnapshotDto | undefined, now?: number): boolean {
   const first = snapshot?.timeline[0];
+  // A segment that already ended (the snapshot is a little stale) no longer blocks anything.
+  if (first && now !== undefined && first.endsAt <= now) return false;
   return first?.kind === 'action' && first.explicit && !isInterruptibleAction(first.actionId);
 }
 

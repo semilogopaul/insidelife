@@ -89,6 +89,8 @@ export interface ActionDefinition {
   };
   readonly animation: AvatarAnimation;
   readonly blurb: string;
+  /** A delivery-style action: when it ends the order arrives (the client announces "Your {service} order arrived: {items}"). */
+  readonly delivery?: { readonly service: string; readonly items: string };
   /** Engine-managed (exploring the open world); never listed in action menus. */
   readonly system?: boolean;
 }
@@ -237,6 +239,7 @@ export const ACTIONS = [
     cost: 7_000,
     drift: { hunger: fill(140), fun: { target: 70, rate: 12 } },
     hooks: ['food-risk-low'],
+    delivery: { service: 'Chowdeck', items: 'hot jollof rice and chicken' },
     animation: 'phone',
     blurb: 'Delivery fee is criminal but the jollof is hot.',
   },

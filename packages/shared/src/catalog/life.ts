@@ -36,6 +36,23 @@ export const SKILL_LABELS: Readonly<Record<SkillKey, string>> = {
   hustle: 'Street smarts',
 };
 
+/** What each skill is for: shown in Me → Skills so a gain always has a visible purpose. */
+export const SKILL_UNLOCKS: Readonly<Record<SkillKey, string>> = {
+  intellect: 'Exam scores, JAMB, university courses and desk jobs.',
+  tech: 'Developer and IT jobs, freelance gigs, tech businesses. Learn to code at home or a tech hub.',
+  finance: 'Banking and accounting jobs, better investments.',
+  medicine: 'Medical school and hospital careers.',
+  law: 'Law school and chambers careers.',
+  engineering: 'Engineering degrees and site jobs.',
+  business: 'Running and growing your own business.',
+  creative: 'Content, music, fashion and design work, plus creative gigs.',
+  charisma: 'Meeting people, dating, networking and sales or service jobs.',
+  fitness: 'Health, energy and sports or security jobs.',
+  cooking: 'Cheaper, better meals at home and food businesses.',
+  trade: 'Artisan jobs (tailor, mechanic, electrician), repairs and trade apprenticeships.',
+  hustle: 'Street jobs, side hustles and better pay from informal work.',
+};
+
 export const SKILL_MAX = 100;
 
 /**

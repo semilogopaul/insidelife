@@ -136,7 +136,7 @@ export function actionContextOf(
     hour: toDateParts(minute).hour,
     priceIndex,
     pantryMeals: snapshot.summary.pantryMeals,
-    busy: isBusy(snapshot),
+    busy: isBusy(snapshot, minute),
   };
 }
 
@@ -146,13 +146,12 @@ export function useActionAvailability(
 ): (entry: ActionDefinition | PlaceService) => ActionAvailability {
   const minute = useGameMinute(5000);
   const priceIndex = useWorldState().data?.economy.priceIndex ?? 1;
-  const hour = toDateParts(minute).hour;
   return useCallback(
     (entry: ActionDefinition | PlaceService) => {
-      const context = actionContextOf(snapshot, hour * 60, priceIndex);
+      const context = actionContextOf(snapshot, minute, priceIndex);
       return 'opens' in entry ? serviceAvailability(entry, context) : actionAvailability(entry, context);
     },
-    [snapshot, hour, priceIndex],
+    [snapshot, minute, priceIndex],
   );
 }
 
