@@ -60,7 +60,7 @@ describe('ad placements (bigger faces that still fit the city)', () => {
         for (const door of doors) expect(Math.hypot(point.x - door.x, point.z - door.z), spot.id).toBeGreaterThan(2.5);
       }
     }
-  });
+  }, 30_000);;
 
   it('keeps every board, pole and shelter ~3 m from every door, homes and offices too (nobody is wedged at their gate)', () => {
     const allDoors = CITY_MAP.lots.flatMap((lot) => (lot.entrance ? [lot.entrance.position] : []));

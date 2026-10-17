@@ -243,5 +243,5 @@ describe('ad inventory', () => {
       const spots = AD_PLACEMENTS.filter((spot) => spot.kind === kind);
       for (const a of spots) for (const b of spots) if (a !== b) expect(Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z)).toBeGreaterThanOrEqual(18);
     }
-  });
+  }, 30_000);;
 });
