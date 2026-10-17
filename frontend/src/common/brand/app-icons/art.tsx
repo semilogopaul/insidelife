@@ -866,6 +866,48 @@ const me: AppIconArt = {
   ),
 };
 
+const hangar: AppIconArt = {
+  name: 'Hangar',
+  tile: ['#4aa8e8', '#14407a'],
+  backdrop: ({ compact }) => (
+    <>
+      {!compact && <path d="M0 22C12 18 20 24 32 20S52 16 64 21V0H0Z" fill="#ffffff" opacity={0.16} />}
+      <rect y={49} width={64} height={15} fill="#0b2a52" opacity={0.45} />
+      <path d="M0 56.5H64" stroke="#ffffff" strokeOpacity={0.4} strokeWidth={1.4} strokeDasharray="5 4" />
+    </>
+  ),
+  subject: ({ id, url, compact }) => (
+    <>
+      <defs>
+        <Linear
+          id={id('hull')}
+          stops={[
+            [0, '#ffffff'],
+            [1, '#cfdbe5'],
+          ]}
+        />
+      </defs>
+      <ellipse cx={32} cy={53} rx={19} ry={2.4} fill="#000000" opacity={0.3} />
+      {/* A private jet seen from the side, climbing out of Lagos. */}
+      <g transform="rotate(-9 32 32)">
+        <path d="M10 25 7.5 13.5H14.5L24 25Z" fill="#f6b90b" />
+        <path d="M8 31C8 26 14 24.2 24 24.2H45C52 24.2 57.5 27.5 57.5 31S52 37.8 45 37.8H21C13 37.8 8 35.5 8 31Z" fill={url('hull')} />
+        <path d="M10 33.4H52L50.5 36H11Z" fill="#f6b90b" />
+        <path d="M43.5 26.2C48 26.2 52.4 27.6 54.4 30.4H43.5Z" fill="#2b7fb1" />
+        {!compact && (
+          <>
+            <rect x={20} y={27.2} width={3.2} height={2.6} rx={1} fill="#2b7fb1" />
+            <rect x={25.5} y={27.2} width={3.2} height={2.6} rx={1} fill="#2b7fb1" />
+            <rect x={31} y={27.2} width={3.2} height={2.6} rx={1} fill="#2b7fb1" />
+          </>
+        )}
+        <path d="M27 36 20 49H29L40 36Z" fill="#e3ecf2" />
+        <rect x={13} y={30.5} width={9} height={5.2} rx={2.6} fill="#14407a" />
+      </g>
+    </>
+  ),
+};
+
 export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   map,
   messages,
@@ -875,6 +917,7 @@ export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   homes,
   shop,
   motors,
+  hangar,
   health,
   family,
   invest,

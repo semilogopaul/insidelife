@@ -79,3 +79,5 @@ export * from './catalog/decor.js';
 export * from './catalog/decor-rooms.js';
 export * from './catalog/decor-placement.js';
 export * from './contracts/decor.js';
+export * from './catalog/aviation.js';
+export * from './contracts/aviation.js';

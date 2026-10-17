@@ -19,6 +19,7 @@ const SchoolApp = dynamic(() => import('@/modules/school').then((m) => m.SchoolA
 const HomesApp = dynamic(() => import('@/modules/homes').then((m) => m.HomesApp), { loading });
 const ShopApp = dynamic(() => import('@/modules/shop').then((m) => m.ShopApp), { loading });
 const MotorsApp = dynamic(() => import('@/modules/motors').then((m) => m.MotorsApp), { loading });
+const HangarApp = dynamic(() => import('@/modules/hangar').then((m) => m.HangarApp), { loading });
 const HealthApp = dynamic(() => import('@/modules/health').then((m) => m.HealthApp), { loading });
 const FamilyApp = dynamic(() => import('@/modules/family').then((m) => m.FamilyApp), { loading });
 const InvestApp = dynamic(() => import('@/modules/invest').then((m) => m.InvestApp), { loading });
@@ -40,6 +41,7 @@ export const PHONE_APPS: readonly PhoneAppDefinition[] = [
   { id: 'homes', name: 'Homes', component: HomesApp },
   { id: 'shop', name: 'Shop', component: ShopApp },
   { id: 'motors', name: 'Motors', component: MotorsApp },
+  { id: 'hangar', name: 'Hangar', component: HangarApp },
   { id: 'health', name: 'Health', component: HealthApp },
   { id: 'family', name: 'Family', component: FamilyApp },
   { id: 'invest', name: 'Invest', component: InvestApp },
