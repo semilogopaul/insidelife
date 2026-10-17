@@ -33,6 +33,8 @@ export type PropSpec =
       readonly style?: 'painted' | 'board' | 'poster' | 'screen';
       /** A family sign ("THE ADEYEMIS"): in a player's home the first line becomes their own surname. */
       readonly familyName?: boolean;
+      /** The venue's own name board: its first line becomes the name of the venue you're in (`templates/variants.ts`). */
+      readonly venueName?: boolean;
     })
   | (Base & { readonly kind: 'pot'; readonly r?: number; readonly color?: string })
   | (Base & { readonly kind: 'cooler'; readonly color: string })

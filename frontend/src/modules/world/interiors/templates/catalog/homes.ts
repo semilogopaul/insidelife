@@ -8,7 +8,7 @@ import type { InteriorTemplate } from '../types';
  * fixture is the family's own and never appears in a home you rent or own.
  */
 
-/** Your room in the family house: bed, wardrobe, study desk, small TV, posters. */
+/** Your room in the family house: bed, wardrobe, study desk, small TV, posters. The kitchen and bathroom are down the passage (`layouts/catalog.ts`). */
 export const HOME_FAMILY: InteriorTemplate = {
   id: 'home-family',
   label: 'Your room at home',
@@ -19,15 +19,16 @@ export const HOME_FAMILY: InteriorTemplate = {
     floor: 'tiles',
     floorColor: '#d9cfbe',
     wall: { style: 'paint', color: '#eadcc0', band: '#b98a55' },
-    windows: [{ wall: 'back', at: -1.6, width: 1.2, sill: 1.15, height: 0.9 }, { wall: 'left', at: 1.7, width: 1.0 }],
-    doors: [{ wall: 'back', at: 1.75, width: 0.9 }],
+    windows: [{ wall: 'back', at: -1.6, width: 1.2, sill: 1.15, height: 0.9 }],
+    // The front door; the bathroom and the kitchen are down the passage on the left.
+    doors: [{ wall: 'back', at: 1.75, width: 0.9 }, { wall: 'left', at: 0.3, width: 0.9 }, { wall: 'left', at: 1.85, width: 0.9 }],
     curtain: '#c0392b',
   },
   furniture: [
     place('bedDouble', [-1.6, -1.6], 0, { slot: 'bed', palette: { carpet: '#2f5d8a', carpetDarker: '#244a70' } }),
     ...base('bed', place('cabinetBedDrawer', [-2.6, -2.25]), place('cabinetBedDrawer', [-0.55, -2.25])),
     place('lampRoundTable', [-2.6, -2.25], 0, { y: 0.39, slot: 'lights' }),
-    ...row('bookcaseClosedDoors', 2, [-2.78, -0.2], [0, 0.62], 90, { slot: 'storage', palette: { wood: '#7a4a2a', woodDark: '#5d3a22' } }),
+    ...row('bookcaseClosedDoors', 2, [-2.78, -1.15], [0, 0.62], 90, { slot: 'storage', palette: { wood: '#7a4a2a', woodDark: '#5d3a22' } }),
     ...slotted('desk', place('desk', [2.3, -0.9], -90, { palette: { wood: '#a0683a' } })),
     place('laptop', [2.3, -0.9], -90, { y: 0.57, slot: 'laptop' }),
     place('books', [2.4, -0.45], -90, { y: 0.57, slot: 'books' }),
@@ -40,7 +41,7 @@ export const HOME_FAMILY: InteriorTemplate = {
   ],
   props: [
     { kind: 'sign', at: [0.55, -2.48], y: 1.62, wall: true, size: [0.55, 0.75], lines: ['SUPER', 'EAGLES', 'SOAR'], bg: '#008751', fg: '#ffffff', accent: '#f6b90b', style: 'poster', slot: 'art' },
-    { kind: 'sign', at: [-2.93, 0.95], rot: 90, y: 1.7, wall: true, size: [0.6, 0.42], lines: ['AFROBEATS', 'TO THE WORLD'], bg: '#1d1d2b', fg: '#f6b90b', accent: '#ff2fb1', style: 'poster', slot: 'art' },
+    { kind: 'sign', at: [-2.93, 1.08], rot: 90, y: 1.7, wall: true, size: [0.5, 0.42], lines: ['AFROBEATS', 'TO THE WORLD'], bg: '#1d1d2b', fg: '#f6b90b', accent: '#ff2fb1', style: 'poster', slot: 'art' },
     { kind: 'wall-clock', at: [-1.6, -2.47], y: 2.15, slot: 'clock' },
     { kind: 'lantern', at: [-0.55, -2.25], y: 0.39, slot: 'lamp' },
     { kind: 'standing-fan', at: [-0.4, 1.9], rot: 200, slot: 'fan' },
@@ -51,7 +52,6 @@ export const HOME_FAMILY: InteriorTemplate = {
     sit: seat([1.65, -0.9], 90, 'sit', { props: false }),
     type: seat([1.65, -0.9], 90, 'type', { props: false }),
     read: seat([1.65, -0.9], 90, 'read'),
-    eat: seat([1.65, -0.9], 90, 'eat'),
     phone: seat([-1.0, -0.62], 0, 'phone', { y: 0.05 }),
     exercise: stand([0.3, 0.5], 30, 'exercise'),
     dance: stand([0.3, 0.5], 30, 'dance'),
@@ -62,7 +62,7 @@ export const HOME_FAMILY: InteriorTemplate = {
   lighting: { mood: 'home', practicals: [[0.2, 2.1, 0.2], [-2.6, 1.0, -2.2]] },
 };
 
-/** One room in a face-me-I-face-you: foam mattress on linoleum, plastic chairs, cooler, buckets, clothes line. */
+/** One room in a face-me-I-face-you: foam mattress on linoleum, plastic chairs, gas cooker, clothes line; the bucket bath is out in the compound. */
 export const HOME_FACE_ME: InteriorTemplate = {
   id: 'home-face-me',
   label: 'Face-me-I-face-you room',
@@ -74,21 +74,24 @@ export const HOME_FACE_ME: InteriorTemplate = {
     floorColor: '#8a4a2c',
     wall: { style: 'plaster', color: '#a9bfcb', band: '#6a8796' },
     windows: [{ wall: 'back', at: 0.9, width: 1.0, sill: 1.0, height: 0.85 }],
-    doors: [{ wall: 'left', at: 1.2, width: 0.85 }],
+    // The front door on the corridor, and the way out to the compound bathroom.
+    doors: [{ wall: 'left', at: 1.2, width: 0.85 }, { wall: 'left', at: -1.3, width: 0.8 }],
     curtain: '#d8a31d',
   },
   furniture: [
     place('televisionVintage', [1.85, -1.55], -35, { y: 0.45, slot: 'tv' }),
+    // Eats off a small table between the plastic chairs (the dining slot: a dining set replaces it).
+    place('table', [0.9, 1.15], 0, { slot: 'dining', scale: 0.75, palette: { wood: '#b07a4a' } }),
     place('cardboardBoxClosed', [-2.05, -1.95], 10),
-    place('cardboardBoxOpen', [-1.95, -1.35], -20, { scale: 0.8 }),
+    place('cardboardBoxOpen', [-1.3, -2.0], -20, { scale: 0.8 }),
   ],
   props: [
-    { kind: 'mattress', at: [-1.15, -1.1], size: [1.25, 1.85], color: '#c2185b', slot: 'bed' },
-    { kind: 'mat', at: [-0.1, -1.55], rot: 90, size: [1.2, 0.7], color: '#2e7d32', border: '#f6b90b', slot: 'rug' },
+    { kind: 'mattress', at: [-0.35, -1.1], size: [1.25, 1.85], color: '#c2185b', slot: 'bed' },
+    { kind: 'mat', at: [1.0, -0.95], rot: 90, size: [1.2, 0.7], color: '#2e7d32', border: '#f6b90b', slot: 'rug' },
     { kind: 'box', at: [1.85, -1.55], rot: -35, size: [0.55, 0.45, 0.45], color: '#6d4c41', surface: 'wood', slot: 'tv', base: true },
-    { kind: 'plastic-chair', at: [1.15, 0.55], rot: 215, color: '#ecebe6', slot: 'seating' },
-    { kind: 'plastic-chair', at: [-0.45, 0.95], rot: 45, color: '#c0392b', slot: 'seating' },
-    { kind: 'cooler', at: [-1.95, 0.25], rot: 90, color: '#1e88e5' },
+    { kind: 'plastic-chair', at: [0.9, 1.65], rot: 180, color: '#ecebe6', slot: 'seating' },
+    { kind: 'plastic-chair', at: [1.65, 1.15], rot: -90, color: '#c0392b', slot: 'seating' },
+    { kind: 'cooler', at: [2.1, -0.5], rot: 90, color: '#1e88e5' },
     { kind: 'bucket', at: [-1.95, 1.75], color: '#1e88e5', slot: 'buckets' },
     { kind: 'bucket', at: [-1.6, 1.95], color: '#e53935', slot: 'buckets' },
     { kind: 'box', at: [1.85, 0.4], rot: -90, size: [0.75, 0.5, 0.45], color: '#7a5230', surface: 'wood', slot: 'cooker', base: true },
@@ -97,24 +100,23 @@ export const HOME_FACE_ME: InteriorTemplate = {
     { kind: 'clothesline', at: [-0.6, -1.95], length: 2.6, height: 1.95, colors: ['#f6b90b', '#1d4e89', '#ffffff', '#c2185b', '#00897b'], slot: 'buckets', base: true },
     { kind: 'mirror', at: [-2.32, -0.3], rot: 90, y: 1.45, size: [0.35, 0.5], frame: '#8d6e63', slot: 'mirror' },
     { kind: 'sign', at: [0.0, -2.07], y: 1.5, wall: true, size: [0.42, 0.56], lines: ['JESUS IS', 'LORD', '2027'], bg: '#fff8e1', fg: '#b71c1c', accent: '#1d4e89', style: 'poster', slot: 'art' },
-    { kind: 'lantern', at: [-0.2, -1.95], slot: 'lamp' },
+    { kind: 'lantern', at: [0.6, -1.95], slot: 'lamp' },
     { kind: 'generator', at: [1.95, 1.75], rot: -60, slot: 'generator' },
-    { kind: 'standing-fan', at: [0.35, -1.85], rot: 30, slot: 'fan' },
+    { kind: 'standing-fan', at: [1.0, -1.95], rot: 30, slot: 'fan' },
   ],
   player: {
-    default: stand([0.3, 0.2], 30),
-    sleep: { at: [-1.15, 0.24, -1.1], rot: 0, animation: 'sleep' },
-    sit: seat([1.15, 0.55], 215),
-    eat: seat([1.15, 0.55], 215, 'eat'),
-    phone: seat([1.15, 0.55], 215, 'phone'),
-    read: seat([1.15, 0.55], 215, 'read'),
-    type: seat([1.15, 0.55], 215, 'type'),
+    default: stand([-1.1, 0.5], 30),
+    sleep: { at: [-0.35, 0.24, -1.1], rot: 0, animation: 'sleep' },
+    sit: seat([0.9, 1.65], 180),
+    eat: seat([0.9, 1.65], 180, 'eat'),
+    phone: seat([0.9, 1.65], 180, 'phone'),
+    read: seat([0.9, 1.65], 180, 'read'),
+    type: seat([0.9, 1.65], 180, 'type'),
     cook: stand([1.2, 0.35], 90, 'cook'),
-    shower: stand([-1.6, 1.45], 70, 'shower'),
-    pray: { at: [-0.1, -1.55], rot: 25, animation: 'pray', stance: 'kneel' },
+    pray: { at: [1.0, -0.95], rot: 25, animation: 'pray', stance: 'kneel' },
   },
-  npcs: [npc(seat([-0.45, 0.95], 45, 'talk'), 'market', { gender: 'female' }), npc({ at: [-1.15, 0.24, -0.85], rot: 10, animation: 'phone', stance: 'sit' }, 'casual', { lod: 'high' })],
-  guests: [stand([0.6, 1.5], 200, 'talk')],
+  npcs: [npc(seat([1.65, 1.15], -90, 'talk'), 'market', { gender: 'female' }), npc({ at: [-0.35, 0.24, -0.85], rot: 10, animation: 'phone', stance: 'sit' }, 'casual', { lod: 'high' })],
+  guests: [stand([-0.9, 1.1], 20, 'talk')],
   lighting: { mood: 'home', practicals: [[0.0, 2.15, 0.0]], practicalColor: '#fff1c9' },
 };
 
@@ -379,7 +381,7 @@ export const HOME_MANSION: InteriorTemplate = {
   lighting: { mood: 'home', practicals: [[-3.0, 2.6, 1.9], [2.0, 2.6, 1.2], [3.6, 2.7, -1.6]] },
 };
 
-/** Hostel room: bunk beds, lockers, a reading table and buckets. */
+/** Hostel room: bunk beds, lockers, a reading table and buckets; the bathroom and kitchenette are shared, down the corridor. */
 export const HOME_HOSTEL: InteriorTemplate = {
   id: 'home-hostel',
   label: 'Hostel room',
@@ -390,8 +392,9 @@ export const HOME_HOSTEL: InteriorTemplate = {
     floor: 'terrazzo',
     floorColor: '#c9c1b2',
     wall: { style: 'paint', color: '#e9e4c9', band: '#6b8f71' },
-    windows: [{ wall: 'back', at: 0.2, width: 1.2 }],
-    doors: [{ wall: 'left', at: 1.3, width: 0.85 }],
+    windows: [{ wall: 'back', at: -0.3, width: 1.0 }],
+    // The corridor, the shared bathroom and the shared kitchenette.
+    doors: [{ wall: 'left', at: 1.3, width: 0.85 }, { wall: 'left', at: -0.2, width: 0.7 }, { wall: 'back', at: 0.85, width: 0.8 }],
     curtain: '#00897b',
   },
   furniture: [
@@ -403,12 +406,15 @@ export const HOME_HOSTEL: InteriorTemplate = {
     ...slotted('desk', place('table', [0.6, 0.7], 0), place('chair', [0.3, 0.15], 0), place('chair', [0.95, 0.15], 0)),
     place('books', [0.4, 0.7], 20, { y: 0.5, slot: 'books' }),
     place('laptop', [0.9, 0.7], 0, { y: 0.5, slot: 'laptop' }),
+    // A little TV on the locker, the hall's: the common room is for the match.
+    ...base('tv', place('cabinetTelevision', [2.4, 0.3], -90, { scale: 0.7 })),
+    place('televisionVintage', [2.4, 0.3], -90, { y: 0.36, slot: 'tv' }),
   ],
   props: [
     { kind: 'bucket', at: [-2.3, 1.9], color: '#e53935', slot: 'buckets' },
     { kind: 'bucket', at: [-1.9, 2.05], color: '#1e88e5', slot: 'buckets' },
     { kind: 'clothesline', at: [0.0, -2.1], length: 1.7, height: 2.05, colors: ['#ffffff', '#f6b90b', '#263238'], slot: 'buckets', base: true },
-    { kind: 'sign', at: [0.2, -2.28], y: 2.22, wall: true, size: [1.1, 0.28], lines: ['NO COOKING IN THE ROOM'], bg: '#ffffff', fg: '#c62828', fixture: true },
+    { kind: 'sign', at: [-0.3, -2.28], y: 2.22, wall: true, size: [1.1, 0.28], lines: ['NO COOKING IN THE ROOM'], bg: '#ffffff', fg: '#c62828', fixture: true },
     { kind: 'sign', at: [-2.78, 1.6], rot: 90, y: 1.6, wall: true, size: [0.5, 0.65], lines: ['FIRST', 'CLASS', 'OR NOTHING'], bg: '#f6b90b', fg: '#0e2733', style: 'poster', slot: 'art' },
     { kind: 'lantern', at: [0.9, 1.0], y: 0.5, slot: 'lamp' },
   ],

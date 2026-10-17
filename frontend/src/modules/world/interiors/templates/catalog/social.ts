@@ -31,7 +31,7 @@ export const CLUB: InteriorTemplate = {
     { kind: 'rope', at: [2.9, -0.4], rot: 0, length: 1.6 },
     { kind: 'rope', at: [3.7, 0.35], rot: 90, length: 1.4 },
     { kind: 'bottles', at: [3.6, -1.6], y: 0.35, count: 4 },
-    { kind: 'sign', at: [0.6, -3.98], y: 2.75, wall: true, size: [3.4, 0.55], lines: ['THE VAULT'], bg: '#0b0710', fg: '#ff2fb1', style: 'screen' },
+    { kind: 'sign', at: [0.6, -3.98], y: 2.75, wall: true, size: [3.4, 0.55], lines: ['THE VAULT'], bg: '#0b0710', fg: '#ff2fb1', style: 'screen', venueName: true },
     { kind: 'sign', at: [4.2, -3.98], y: 2.45, wall: true, size: [1.4, 0.4], lines: ['VIP'], bg: '#0b0710', fg: '#f6b90b', style: 'screen' },
     { kind: 'sign', at: [-5.48, 2.9], rot: 90, y: 2.3, wall: true, size: [1.6, 0.42], lines: ['BOTTLE SERVICE'], bg: '#0b0710', fg: '#21d4fd', style: 'screen' },
   ],
@@ -91,7 +91,7 @@ export const BAR: InteriorTemplate = {
     { kind: 'drink-crate', at: [4.3, -2.9], color: '#2e7d32' },
     { kind: 'bottles', at: [1.8, 0.75], y: 0.43, count: 3 },
     { kind: 'food-plate', at: [-1.4, 1.2], y: 0.43, food: 'suya' },
-    { kind: 'sign', at: [-2.0, -3.48], y: 2.6, wall: true, size: [3.4, 0.45], lines: ['SUYA • CHAPMAN • GIST'], bg: '#1a120e', fg: '#ffb74d', style: 'screen' },
+    { kind: 'sign', at: [-2.0, -3.48], y: 2.6, wall: true, size: [3.4, 0.8], lines: ['GRA LOUNGE', 'SUYA • CHAPMAN • GIST'], bg: '#1a120e', fg: '#ffb74d', style: 'screen', venueName: true },
     { kind: 'sign', at: [-4.98, 1.6], rot: 90, y: 2.0, wall: true, size: [1.4, 0.7], lines: ['HAPPY HOUR', '5PM – 7PM'], bg: '#f6b90b', fg: '#3e2723', style: 'poster' },
   ],
   player: {
@@ -158,6 +158,7 @@ export const EVENT_CENTRE: InteriorTemplate = {
       [3.6, 1.8],
     ].flatMap(([x, z], i) => round([x!, z!], i % 2 === 0 ? '#880e4f' : '#ffd54f')),
     { kind: 'sign', at: [0.0, -4.48], y: 3.1, wall: true, size: [4.2, 0.6], lines: ['TOLU WEDS TOBI • #TT2027'], bg: '#880e4f', fg: '#ffd54f' },
+    { kind: 'sign', at: [-5.98, -2.0], rot: 90, y: 2.9, wall: true, size: [3.2, 0.5], lines: ['EKO HOTEL & SUITES'], bg: '#3e2723', fg: '#f3d27a', venueName: true },
     { kind: 'dj-booth', at: [-5.2, 0.6], rot: 90 },
   ],
   player: {
@@ -220,7 +221,7 @@ export const BUKA: InteriorTemplate = {
     { kind: 'plastic-chair', at: [2.4, 1.2], rot: -120, color: '#c0392b' },
     { kind: 'plastic-chair', at: [2.8, 0.2], rot: -60, color: '#c0392b' },
     { kind: 'sign', at: [0.4, -3.28], y: 2.2, wall: true, size: [3.6, 0.95], lines: ['AMALA • EWEDU • GBEGIRI', 'ASSORTED • SEMO • EBA', 'NO CREDIT TODAY, COME TOMORROW'], bg: '#ffffff', fg: '#2e7d32', accent: '#c62828', frame: '#5d4037', style: 'board' },
-    { kind: 'sign', at: [-4.48, -1.4], rot: 90, y: 2.2, wall: true, size: [1.6, 0.42], lines: ['SHITTA AMALA'], bg: '#c62828', fg: '#ffffff' },
+    { kind: 'sign', at: [-4.48, -1.4], rot: 90, y: 2.2, wall: true, size: [1.6, 0.42], lines: ['SHITTA AMALA'], bg: '#c62828', fg: '#ffffff', venueName: true },
     { kind: 'bucket', at: [-3.9, -2.9], color: '#1e88e5' },
   ],
   player: {
@@ -271,7 +272,7 @@ export const RESTAURANT: InteriorTemplate = {
     ]),
     { kind: 'shelf', at: [-4.8, 0.0], rot: 90, size: [3.6, 2.4, 0.35], items: 'bottles', color: '#1c1c1c' },
     { kind: 'chandelier', at: [0.3, 0.4], height: 2.6 },
-    { kind: 'sign', at: [-1.2, -3.68], y: 2.4, wall: true, size: [2.0, 0.5], lines: ['KOWRY'], bg: '#1a1414', fg: '#c9a227', style: 'screen' },
+    { kind: 'sign', at: [-1.2, -3.68], y: 2.4, wall: true, size: [2.0, 0.5], lines: ['KOWRY'], bg: '#1a1414', fg: '#c9a227', style: 'screen', venueName: true },
   ],
   player: {
     default: stand([3.6, 2.6], 220),
@@ -314,7 +315,7 @@ export const SALON: InteriorTemplate = {
     { kind: 'salon-chair', at: [-3.0, -0.6], rot: 90, color: '#c8287a' },
     { kind: 'bench', at: [0.6, 1.9], length: 2.6, color: '#c8287a' },
     { kind: 'sign', at: [-3.98, 1.2], rot: 90, y: 1.65, wall: true, size: [1.4, 1.1], lines: ['PRICE LIST', 'LOW CUT ₦1,500', 'FADE ₦2,500', 'KNOTLESS ₦15,000'], bg: '#ffffff', fg: '#c8287a', accent: '#0e2733', style: 'board' },
-    { kind: 'sign', at: [-0.4, -2.98], y: 2.35, wall: true, size: [3.2, 0.42], lines: ['SABO CUTS & BRAIDS'], bg: '#c8287a', fg: '#ffffff' },
+    { kind: 'sign', at: [-0.4, -2.98], y: 2.35, wall: true, size: [3.2, 0.42], lines: ['SABO CUTS & BRAIDS'], bg: '#c8287a', fg: '#ffffff', venueName: true },
   ],
   player: {
     default: stand([2.0, 0.8], 210),

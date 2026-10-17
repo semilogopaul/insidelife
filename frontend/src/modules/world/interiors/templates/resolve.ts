@@ -58,6 +58,8 @@ const VENUE_TEMPLATES: Readonly<Partial<Record<Exclude<VenueType, 'home'>, Inter
   restaurant: 'restaurant',
   beach: 'beach',
   park: 'park',
+  // The open ground dressed as a stadium (track, stands, floodlights) by its venue look.
+  stadium: 'park',
   'cbt-centre': 'cbt-centre',
   airport: 'airport',
   'motor-park': 'motor-park',

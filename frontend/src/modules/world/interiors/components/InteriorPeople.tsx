@@ -56,8 +56,9 @@ export function InteriorPeople({ template, locationId, player, players }: Interi
     () =>
       template.npcs.map((spot, index) => ({
         spot,
-        look: npcLook(`${locationId}:${index}`, spot.theme, spot.gender),
-        lod: spot.lod ?? (index < HIGH_DETAIL_NPCS ? ('high' as const) : ('low' as const)),
+        look: npcLook(`${locationId}:${spot.id ?? index}`, spot.theme, spot.gender),
+        lod: spot.lod ?? ((spot.id ?? index) < HIGH_DETAIL_NPCS ? ('high' as const) : ('low' as const)),
+        key: spot.id ?? index,
       })),
     [template, locationId],
   );
@@ -96,9 +97,9 @@ export function InteriorPeople({ template, locationId, player, players }: Interi
           shadow={false}
         />
       )}
-      {npcs.map(({ spot, look, lod }, index) => (
+      {npcs.map(({ spot, look, lod, key }) => (
         <Avatar
-          key={`npc-${index}`}
+          key={`npc-${key}`}
           {...placeAt(spot)}
           appearance={look.appearance}
           outfit={{}}

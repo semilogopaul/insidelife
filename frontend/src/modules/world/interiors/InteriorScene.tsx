@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
 import type { MeshStandardMaterial } from 'three';
-import { homeLocationId, isHomeLocation, toDateParts, type ActionDefinition, type HomePersonDto, type HostTreatId, type PresencePlayerDto } from '@insidelife/shared';
+import { findAction, homeLocationId, isHomeLocation, toDateParts, type ActionDefinition, type HomePersonDto, type HostTreatId, type PresencePlayerDto } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
@@ -17,7 +17,9 @@ import { InteriorPeople, type InteriorPlayer } from './components/InteriorPeople
 import { RoomShell } from './components/RoomShell';
 import { ShowroomCars } from './components/ShowroomCars';
 import { TvScreens } from './components/TvScreens';
+import type { ActionLike } from './hotspots/action-spots';
 import { buildHotspots, hotspotRoom, type ActionStatus } from './hotspots/hotspots';
+import { withSeating } from './hotspots/seating';
 import { placeLayoutFor } from './layouts/catalog';
 import { applyDecor } from './templates/decor';
 import { furnish } from './templates/furnish';
@@ -93,7 +95,7 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   // Every place is a layout of walkable rooms (a venue has one); which room is on screen is client view state (`walk/`).
   const showsPlayer = player !== null && (player !== undefined || snapshot !== undefined);
   const runningId = player === undefined ? (segment?.actionId ?? null) : (player?.actionId ?? null);
-  const house = useHomeRoom(placeLayoutFor(resolvedId), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer, runningId);
+  const house = useHomeRoom(placeLayoutFor(resolvedId, templateId === undefined && !isHomeLocation(locationId) ? locationId : null), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer, runningId);
   const base = house?.room.template ?? getTemplate(resolvedId);
   // Your own home shows what you own; other places show their template.
   const homeItems = snapshot?.summary.homeItems;
@@ -101,8 +103,8 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const decor = snapshot?.summary.home.decor;
   const pantryMeals = snapshot?.summary.pantryMeals ?? 0;
   const surname = ownHome ? snapshot?.character.lastName : visit?.host.lastName;
-  const template = useMemo(() => {
-    if (previewItems) return furnish(base, previewItems, { providedFurniture: base.id === 'home-family' || base.id === 'home-hostel' });
+  const furnished = useMemo(() => {
+    if (previewItems) return furnish(base, previewItems, { providedFurniture: /^home-(family|hostel)(:|$)/.test(base.id) });
     // Your paint and floor go on every room of the home (and the host's on a visit).
     if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname, treats }), visit.home.decor);
     return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname, treats }), decor) : base;
@@ -121,6 +123,18 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
     const { character } = snapshot;
     return { appearance: character.appearance, outfit: character.outfit, gender: character.gender, animation, mood: character.mood, actionId };
   }, [player, snapshot, animation, actionId]);
+
+  // Seats are limited and some are the NPCs': whoever sits down (you for your action, the others present) gets one.
+  const playerAnimation = resolvedPlayer?.animation ?? null;
+  const playerActionId = resolvedPlayer?.actionId ?? null;
+  const seatAction = useMemo<ActionLike | null>(() => {
+    if (!playerAnimation) return null;
+    const found = playerActionId ? findAction(playerActionId) : undefined;
+    return found && found.animation === playerAnimation ? found : { animation: playerAnimation };
+  }, [playerAnimation, playerActionId]);
+  // (A home keeps what you own: nobody conjures a sofa for you; a venue always has a seat for whoever sits down.)
+  const atHome = isHomeLocation(locationId);
+  const template = useMemo(() => (atHome ? furnished : withSeating(furnished, { action: seatAction, others: players.length })), [furnished, atHome, seatAction, players.length]);
 
   // Hotspots: the place's own actions (not the do-anywhere ones) anchored where they happen in this room.
   const here = snapshot !== undefined && snapshot.character.locationId === locationId;

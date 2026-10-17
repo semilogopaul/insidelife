@@ -112,7 +112,7 @@ export function instructionText(maneuver: RouteManeuver, destinationName: string
 }
 
 /** Typical speeds for ETAs when the player's own speed is unknown (m/s). */
-export const DEFAULT_SPEED: Readonly<Record<TravelMode, number>> = { drive: 12, walk: 1.7 };
+export const DEFAULT_SPEED: Readonly<Record<TravelMode, number>> = { drive: 12, walk: 2.4 };
 
 export function etaSeconds(remaining: number, speed: number, mode: TravelMode): number {
   const effective = speed > 0.8 ? Math.max(speed, DEFAULT_SPEED[mode] * 0.5) : DEFAULT_SPEED[mode];

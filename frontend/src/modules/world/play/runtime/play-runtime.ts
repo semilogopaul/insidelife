@@ -7,6 +7,7 @@ import type { ColliderGrid } from '../physics/collision';
 import { clamp, yawFromHeading } from '../physics/math';
 import type { DriveIntent } from '../physics/vehicle';
 import { PUSH_SPEED, PlayerController } from '../player/player-controller';
+import { PACE_BOOST } from '../physics/walker';
 import { cityLaneGraph } from '../traffic/lane-graph';
 import { TrafficSim, type TrafficObstacle } from '../traffic/traffic-sim';
 import type { VehicleBatch } from '../vehicles/vehicle-batch';
@@ -64,8 +65,9 @@ interface CarMeshes {
 /** Locomotion clip for a ground speed, and the time scale that keeps its feet planted at the player's scale. */
 export function gaitFor(speed: number, scale: number): { readonly clip: AvatarClip; readonly timeScale: number } {
   if (speed < 0.3) return { clip: 'idle', timeScale: 1 };
-  const clip = speed < 2.5 ? 'walk' : speed < 4.5 ? 'jog' : 'run';
-  return { clip, timeScale: clamp(speed / (AVATAR_GAIT_SPEED[clip] * scale), 0.6, 2.6) };
+  // Gait changes sit between the walker's paces (walk 2.7, jog 5.2 m/s), the clip rate keeps up with them.
+  const clip = speed < 2.5 * PACE_BOOST ? 'walk' : speed < 4.5 * PACE_BOOST ? 'jog' : 'run';
+  return { clip, timeScale: clamp(speed / (AVATAR_GAIT_SPEED[clip] * scale), 0.6, 2.6 * PACE_BOOST) };
 }
 
 const fwd = { x: 0, z: 0 };
