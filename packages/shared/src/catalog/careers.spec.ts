@@ -52,8 +52,8 @@ describe('salary rules', () => {
     expect(gated).toBeGreaterThan(20);
   });
 
-  it('exempts only professional football from the degree rule (the cap still applies)', () => {
-    expect(JOBS.filter((job) => job.degreeExempt).map((job) => job.id)).toEqual(['football-career']);
+  it('exempts only football, music, content creation, the artisan trades and Bolt fleets from the degree rule (the cap still applies)', () => {
+    expect(JOBS.filter((job) => job.degreeExempt).map((job) => job.id).sort()).toEqual(['afrobeats-musician', 'artisan', 'bolt-driver', 'content-creator', 'football-career']);
   });
 
   it('does not ask for a degree below ₦3m unless the job already does', () => {

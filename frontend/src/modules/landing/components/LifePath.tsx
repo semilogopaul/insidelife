@@ -1,6 +1,6 @@
 const STEPS = [
   { title: 'Born', body: 'Fate deals your family: Sapa Pikin in Mushin or Nepo Baby in Lekki. No rerolls.' },
-  { title: 'School', body: 'Write WAEC and JAMB. UNILAG on ₦190k a year, or Babcock if Daddy can pay. Pray ASUU behaves.' },
+  { title: 'School', body: 'Write WAEC and JAMB. UNILAG on ₦190k a year, or Pan-Atlantic if Daddy can pay. Pray ASUU behaves.' },
   { title: 'Hustle', body: 'POS stand to partner at a law firm, or remote dev paid in dollars. Promotions are earned.' },
   { title: 'Build', body: 'Rent in Yaba, buy land in Epe with a real C of O, build, let it out. Watch for omonile.' },
   { title: 'Legacy', body: 'Marry, raise children, grow old. When you go, your heir inherits what you built.' },

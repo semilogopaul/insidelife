@@ -58,8 +58,7 @@ describe('place pictograms', () => {
     expect(venuePlaceKind(venue('national-stadium'))).toBe('stadium');
     expect(venuePlaceKind(venue('eko-hotel'))).toBe('hotel');
     expect(venuePlaceKind(venue('eko-atlantic'))).toBe('office-tower');
-    // Out-of-town campuses have no lot: their type decides.
-    expect(venuePlaceKind(venue('ui'))).toBe('university');
+    expect(venuePlaceKind(venue('lasustech'))).toBe('university');
   });
 
   it('marks your own property by what stands on it', () => {

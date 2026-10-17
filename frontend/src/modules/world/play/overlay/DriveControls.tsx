@@ -61,7 +61,7 @@ function Pedal({ axis, held, label, className, children }: { readonly axis: Axis
 }
 
 /**
- * Thumb controls while driving on touch screens: steer left/right with the walking thumb (the `walkStick` side, right
+ * Thumb controls while driving on touch screens: steer left/right with the walking thumb (the `walkStick` side, left
  * by default), gas and brake/reverse with the other one (above the HUD's phone button, which sits on that side),
  * plus the horn and "Get out" over the steering. The horn and "Get out" act on pointer events, so they work while
  * the other thumb is on a pedal (a second finger never produces a `click`). Stopped at a door (or a filling station or
