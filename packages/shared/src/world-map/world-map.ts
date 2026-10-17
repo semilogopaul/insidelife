@@ -74,6 +74,7 @@ export {
   CITY_COLS,
   CITY_GRID_RECTS,
   CITY_ROWS,
+  CITY_SCENERY_REACH,
   LAGOS_COLS,
   LAGOS_ROWS,
   cityOfCell,

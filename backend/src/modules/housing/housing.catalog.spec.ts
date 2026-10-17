@@ -81,9 +81,14 @@ describe('rental listings', () => {
     expect(generateListings(SEED, 'banana-island', 'face-me', 1)).toEqual([]);
     for (const districtId of DISTRICT_IDS) {
       const mansions = generateListings(SEED, districtId, 'mansion', 1);
-      if (DISTRICTS[districtId].side !== 'island') expect(mansions).toEqual([]);
+      // Mansions: the prime Island in Lagos, Maitama and Asokoro in Abuja.
+      if (DISTRICTS[districtId].side !== 'island' && districtId !== 'maitama' && districtId !== 'asokoro') expect(mansions).toEqual([]);
     }
+    expect(generateListings(SEED, 'maitama', 'mansion', 1).length).toBeGreaterThan(0);
+    expect(generateListings(SEED, 'asokoro', 'mansion', 1).length).toBeGreaterThan(0);
+    expect(generateListings(SEED, 'maitama', 'face-me', 1)).toEqual([]);
     expect(generateListings(SEED, 'mushin', 'face-me', 1).length).toBeGreaterThan(0);
+    expect(generateListings(SEED, 'kubwa', 'face-me', 1).length).toBeGreaterThan(0);
   });
 
   it('is calibrated to 2026 Lagos rents', () => {

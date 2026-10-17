@@ -166,6 +166,84 @@ export const VENUES = [
   v({ id: 'garki-police-command', name: 'Garki Area Command (Police)', type: 'government', districtId: 'garki', blurb: 'Report it, get a case file number, bring your own pen.', hours: [0, 24] }),
   v({ id: 'maitama-realty', name: 'Maitama Realty', type: 'estate-agency', districtId: 'maitama', blurb: 'Abuja rentals and land with real C of O.', hours: [8, 18] }),
   v({ id: 'utako-motor-park', name: 'Utako Motor Park', type: 'motor-park', districtId: 'jabi', blurb: 'Interstate coaches to Lagos and everywhere else.' }),
+
+  // Abuja, the full city (docs/MULTI_CITY.md): the Central Area, the districts and the satellite towns, real places by real names.
+  // Central Business District
+  v({ id: 'silverbird-galleria', name: 'Silverbird Galleria', type: 'mall', districtId: 'abuja-cbd', blurb: 'The Central Area’s big mall: designer shops, a food court and the cinema upstairs.', hours: [9, 22] }),
+  v({ id: 'silverbird-cinemas-abuja', name: 'Silverbird Cinemas Abuja', type: 'cinema', districtId: 'abuja-cbd', blurb: 'Nollywood premieres, Hollywood blockbusters and popcorn on the Galleria’s top floor.', hours: [10, 24] }),
+  v({ id: 'eagle-square', name: 'Eagle Square', type: 'park', districtId: 'abuja-cbd', blurb: 'Abuja’s parade ground: the flag, the fountains and every Independence Day since 1999.', hours: [6, 22] }),
+  v({ id: 'national-mosque', name: 'Abuja National Mosque', type: 'mosque', districtId: 'abuja-cbd', blurb: 'The golden dome and four minarets. Jumu’ah draws thousands.', hours: [4, 22] }),
+  v({ id: 'national-christian-centre', name: 'National Christian Centre', type: 'church', districtId: 'abuja-cbd', blurb: 'The interdenominational national church with the cross tower. Quiet on weekdays, full on Sundays.', hours: [6, 22] }),
+  v({ id: 'federal-secretariat', name: 'Federal Secretariat Complex', type: 'government', districtId: 'abuja-cbd', blurb: 'Ministries in concrete towers: permanent secretaries, permanent files, “oga is in a meeting”.', hours: [8, 17] }),
+  v({ id: 'nnpc-towers', name: 'NNPC Towers', type: 'office', districtId: 'abuja-cbd', blurb: 'Oil, gas and long meetings: the national oil company’s headquarters in the Central Area.', hours: [7, 20] }),
+  v({ id: 'cbn-hq', name: 'Central Bank of Nigeria Headquarters', type: 'office', districtId: 'abuja-cbd', blurb: 'The naira’s guardians: monetary policy, circulars and a very tall lobby.', hours: [8, 18] }),
+  v({ id: 'us-embassy-abuja', name: 'U.S. Embassy Abuja', type: 'government', districtId: 'abuja-cbd', blurb: 'Visa appointments, a long queue and a very high fence.', hours: [8, 16] }),
+  v({ id: 'ceddi-plaza', name: 'Ceddi Plaza', type: 'mall', districtId: 'abuja-cbd', blurb: 'Offices, banks, restaurants and shops on Tafawa Balewa Way.', hours: [8, 20] }),
+
+  // Maitama
+  v({ id: 'transcorp-hilton', name: 'Transcorp Hilton Abuja', type: 'event-centre', districtId: 'maitama', blurb: 'Presidents, delegations and weddings: the grand hotel on Aguiyi Ironsi Street.' }),
+  v({ id: 'millennium-park', name: 'Millennium Park', type: 'park', districtId: 'maitama', blurb: 'Fountains, lawns and joggers in the park Queen Elizabeth opened.', hours: [6, 20] }),
+  v({ id: 'uk-high-commission', name: 'British High Commission Abuja', type: 'government', districtId: 'maitama', blurb: 'Visas, passports and a very polite queue.', hours: [8, 16] }),
+  v({ id: 'canada-high-commission', name: 'High Commission of Canada', type: 'government', districtId: 'maitama', blurb: 'Study permits, visas and Express Entry questions.', hours: [8, 16] }),
+  v({ id: 'maitama-district-hospital', name: 'Maitama District Hospital', type: 'hospital-public', districtId: 'maitama', blurb: 'The district hospital that half of Abuja’s civil service queues at.' }),
+  v({ id: 'jevinik-restaurant', name: 'Jevinik Restaurant', type: 'restaurant', districtId: 'maitama', blurb: 'Continental and Nigerian plates, linen napkins and ministers at lunch.', hours: [11, 23] }),
+  v({ id: 'medplus-maitama', name: 'MedPlus Pharmacy Maitama', type: 'pharmacy', districtId: 'maitama', blurb: 'Branded pharmacy: prescriptions, skincare and a pharmacist who explains.', hours: [8, 22] }),
+
+  // Wuse
+  v({ id: 'banex-plaza', name: 'Banex Plaza', type: 'market', districtId: 'wuse', blurb: 'Abuja’s phone and gadget plaza in Wuse 2: new phones, “UK used” laptops and repairs.', hours: [9, 19] }),
+  v({ id: 'cubana-abuja', name: 'Cubana Abuja', type: 'club', districtId: 'wuse', blurb: 'Wuse 2’s big-name club: bottle service and the senator’s table.', minStatus: 150, hours: [22, 30] }),
+  v({ id: 'sheraton-abuja', name: 'Sheraton Abuja Hotel', type: 'event-centre', districtId: 'wuse', blurb: 'Conferences, receptions and a lobby where deals get done.' }),
+  v({ id: 'healthplus-wuse', name: 'HealthPlus Pharmacy Wuse 2', type: 'pharmacy', districtId: 'wuse', blurb: 'Chain pharmacy on Aminu Kano Crescent: drugs, baby things and a cold-water dispenser.', hours: [8, 22] }),
+  v({ id: 'wuse-fitness', name: 'Wuse 2 Fitness Centre', type: 'gym', districtId: 'wuse', blurb: 'Treadmills, free weights and civil servants at six a.m.', hours: [5, 22] }),
+  v({ id: 'zone4-suya', name: 'Zone 4 Suya Spot', type: 'buka', districtId: 'wuse', blurb: 'Beef suya with yaji and onions in newspaper: Abuja’s favourite late supper.', hours: [16, 28] }),
+  v({ id: 'wuse-salon', name: 'Zone 5 Unisex Salon', type: 'salon', districtId: 'wuse', blurb: 'Braids, barbing and gist on every chair.', hours: [8, 21] }),
+  v({ id: 'wuse-police-division', name: 'Wuse Police Division', type: 'government', districtId: 'wuse', blurb: 'Statements, bail and “anything for the boys”.', hours: [0, 24] }),
+  v({ id: 'gtbank-wuse', name: 'GTBank Wuse 2', type: 'office', districtId: 'wuse', blurb: 'The orange banking hall: tellers, queues and a very good app.', hours: [8, 17] }),
+  v({ id: 'rhapsodys-abuja', name: 'Rhapsody’s Restaurant', type: 'restaurant', districtId: 'wuse', blurb: 'Abuja’s date-night dining: grills, pasta and a long cocktail list.', hours: [11, 24] }),
+  v({ id: 'wuse-sports-bar', name: 'Wuse Zone 3 Sports Bar', type: 'bar', districtId: 'wuse', blurb: 'Premier League on every screen, pepper soup and cold Star.', hours: [12, 27] }),
+
+  // Garki
+  v({ id: 'garki-market', name: 'Garki International Market', type: 'market', districtId: 'garki', blurb: 'Rows of stalls from foodstuff to fabric: Garki’s old market and its loudest bargains.', hours: [7, 19] }),
+  v({ id: 'garki-hospital', name: 'Garki Hospital', type: 'hospital-public', districtId: 'garki', blurb: 'Busy hospital on the Garki side: long queues, short tempers, good doctors.' }),
+  v({ id: 'garki-central-mosque', name: 'Garki Central Mosque', type: 'mosque', districtId: 'garki', blurb: 'Five daily prayers and a full courtyard on Fridays.', hours: [4, 22] }),
+  v({ id: 'jamb-cbt-garki', name: 'JAMB CBT Centre Garki', type: 'cbt-centre', districtId: 'garki', blurb: 'UTME registration and exam centre: biometrics, “network is slow” and nervous parents.', hours: [7, 18] }),
+  v({ id: 'force-headquarters', name: 'Nigeria Police Force Headquarters', type: 'government', districtId: 'garki', blurb: 'Louis Edet House: the Inspector-General’s office and the Force’s files.', hours: [0, 24] }),
+  v({ id: 'garki-pharmacy', name: 'Garki Area 11 Pharmacy', type: 'pharmacy', districtId: 'garki', blurb: 'Neighbourhood pharmacy: cough syrup, malaria tests and advice.', hours: [7, 22] }),
+  v({ id: 'garki-gym', name: 'Area 3 Fitness Gym', type: 'gym', districtId: 'garki', blurb: 'No-frills iron and a punching bag, ₦15k a month.', hours: [5, 22] }),
+  v({ id: 'garki-salon', name: 'Area 1 Hair & Beauty', type: 'salon', districtId: 'garki', blurb: 'Weave-ons, wash-and-set and the best gist in Garki.', hours: [8, 21] }),
+  v({ id: 'garki-auto-mart', name: 'Garki Auto Mart', type: 'car-dealer', districtId: 'garki', blurb: 'Tokunbo Camrys and Hiaces on the old Garki road.', hours: [8, 18] }),
+  v({ id: 'first-bank-garki', name: 'First Bank Garki', type: 'office', districtId: 'garki', blurb: 'The oldest bank in Nigeria, with a Garki queue to match.', hours: [8, 17] }),
+
+  // Jabi / Utako
+  v({ id: 'jabi-lake-park', name: 'Jabi Lake Park', type: 'park', districtId: 'jabi', blurb: 'Boat rides, picnic lawns and joggers around the lake.', hours: [7, 22] }),
+  v({ id: 'baze-university', name: 'Baze University', type: 'campus', districtId: 'jabi', blurb: 'Private university in Jabi: small classes and a quiet campus.' }),
+  v({ id: 'nile-university', name: 'Nile University of Nigeria', type: 'campus', districtId: 'jabi', blurb: 'Private university on the Airport Road side, in Jabi’s institutions area.' }),
+  v({ id: 'brains-and-hammers', name: 'Brains & Hammers', type: 'estate-agency', districtId: 'jabi', blurb: 'Abuja property developer and agent: flats, duplexes and land with papers.', hours: [8, 18] }),
+  v({ id: 'access-bank-utako', name: 'Access Bank Utako', type: 'office', districtId: 'jabi', blurb: 'Utako’s busy branch: transfers, loans and a very long queue at month end.', hours: [8, 17] }),
+  v({ id: 'jabi-auto-gallery', name: 'Jabi Auto Gallery', type: 'car-dealer', districtId: 'jabi', blurb: 'Brand-new and clean tokunbo SUVs for Abuja’s big men.', hours: [9, 19] }),
+  v({ id: 'jabi-lake-lounge', name: 'Jabi Lake Lounge', type: 'bar', districtId: 'jabi', blurb: 'Lakeside drinks, shisha and a breeze off the water.', hours: [14, 27] }),
+
+  // Gwarinpa
+  v({ id: 'gwarinpa-general-hospital', name: 'Gwarinpa General Hospital', type: 'hospital-public', districtId: 'gwarinpa', blurb: 'The estate’s general hospital: maternity, malaria and long Monday queues.' }),
+  v({ id: 'rccg-gwarinpa', name: 'RCCG Gwarinpa', type: 'church', districtId: 'gwarinpa', blurb: 'Redeemed Christian Church of God parish: Sunday service and Holy Ghost night.', hours: [6, 22] }),
+  v({ id: 'gwarinpa-central-mosque', name: 'Gwarinpa Estate Central Mosque', type: 'mosque', districtId: 'gwarinpa', blurb: 'The estate’s Jumu’ah mosque, with a loudspeaker for the 4 a.m. call.', hours: [4, 22] }),
+  v({ id: 'gwarinpa-school', name: 'Gwarinpa Estate Model School', type: 'school', districtId: 'gwarinpa', blurb: 'Nursery, primary and secondary for the estate’s children.', hours: [7, 17] }),
+  v({ id: 'gwarinpa-buka', name: '1st Avenue Buka', type: 'buka', districtId: 'gwarinpa', blurb: 'Jollof, ofada and pounded yam for the estate’s lunch crowd.', hours: [8, 21] }),
+
+  // Kubwa
+  v({ id: 'kubwa-market', name: 'Kubwa Market', type: 'market', districtId: 'kubwa', blurb: 'The satellite town’s market: cheap foodstuff, second-hand clothes and expressway noise.', hours: [7, 19] }),
+  v({ id: 'kubwa-pharmacy', name: 'Phase 4 Pharmacy Kubwa', type: 'pharmacy', districtId: 'kubwa', blurb: 'The pharmacy on the expressway side: malaria tests, paracetamol and advice for free.', hours: [7, 22] }),
+  v({ id: 'kubwa-general-hospital', name: 'Kubwa General Hospital', type: 'hospital-public', districtId: 'kubwa', blurb: 'Public hospital on the Kubwa Expressway: bring patience and a file.' }),
+
+  // Lugbe / Airport Road
+  v({ id: 'university-of-abuja', name: 'University of Abuja', type: 'campus', districtId: 'lugbe', blurb: 'The federal university along the Airport Road: Uniabuja’s lecture theatres and ASUU strikes.' }),
+  v({ id: 'dunamis-glory-dome', name: 'Dunamis International Gospel Centre (Glory Dome)', type: 'church', districtId: 'lugbe', blurb: 'One of Africa’s largest church auditoriums, on the Airport Road.', hours: [6, 22] }),
+  v({ id: 'lugbe-market', name: 'Lugbe Market', type: 'market', districtId: 'lugbe', blurb: 'Foodstuff and second-hand clothes for the Airport Road estates.', hours: [7, 19] }),
+
+  // Asokoro
+  v({ id: 'national-assembly', name: 'National Assembly Complex', type: 'government', districtId: 'asokoro', blurb: 'The Senate and the House of Representatives under the green dome: visitors in the gallery, lobbyists in the corridors.', hours: [8, 18] }),
+  v({ id: 'abuja-club', name: 'Abuja Club', type: 'gym', districtId: 'asokoro', blurb: 'Members-only gym, golf course and handshakes that move ministries.', minStatus: 450, hours: [5, 23] }),
+  v({ id: 'asokoro-district-hospital', name: 'Asokoro District Hospital', type: 'hospital-public', districtId: 'asokoro', blurb: 'The district hospital under Aso Rock: cleaner than most, still a queue.' }),
 ] as const satisfies readonly VenueDefinition[];
 
 export type VenueId = (typeof VENUES)[number]['id'];

@@ -44,6 +44,8 @@ export interface HousingTypeDefinition {
 const ALL_DISTRICTS: readonly DistrictId[] = DISTRICT_IDS;
 const except = (...excluded: readonly DistrictId[]): readonly DistrictId[] => ALL_DISTRICTS.filter((id) => !excluded.includes(id));
 const PREMIUM_ISLAND: readonly DistrictId[] = ['ikoyi', 'banana-island', 'victoria-island', 'lekki'];
+/** Abuja's diplomatic and presidential quarters: detached mansions, no face-me rooms. */
+const PREMIUM_ABUJA: readonly DistrictId[] = ['maitama', 'asokoro'];
 
 export const HOUSING_TYPES: Readonly<Record<HousingTypeId, HousingTypeDefinition>> = {
   'face-me': {
@@ -55,7 +57,7 @@ export const HOUSING_TYPES: Readonly<Record<HousingTypeId, HousingTypeDefinition
     bedrooms: 1,
     comfort: 0,
     prestige: 0.2,
-    allowedDistricts: except(...PREMIUM_ISLAND),
+    allowedDistricts: except(...PREMIUM_ISLAND, ...PREMIUM_ABUJA),
     listingsPerWeek: 3,
     generator: { litresPerHour: 0.35, fuel: 'petrol' },
   },
@@ -133,7 +135,7 @@ export const HOUSING_TYPES: Readonly<Record<HousingTypeId, HousingTypeDefinition
     bedrooms: 5,
     comfort: 15,
     prestige: 2.5,
-    allowedDistricts: PREMIUM_ISLAND,
+    allowedDistricts: [...PREMIUM_ISLAND, ...PREMIUM_ABUJA],
     listingsPerWeek: 2,
     generator: { litresPerHour: 4.5, fuel: 'diesel' },
   },

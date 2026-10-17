@@ -20,6 +20,13 @@ const LAGOS_CAMPUSES: Readonly<Record<string, string>> = {
   'pan-atlantic': 'ajah',
 };
 
+/** The Abuja campuses: the federal university on the Airport Road (Lugbe) and two private universities in Jabi. */
+const ABUJA_CAMPUSES: Readonly<Record<string, string>> = {
+  'university-of-abuja': 'lugbe',
+  'baze-university': 'jabi',
+  'nile-university': 'jabi',
+};
+
 describe('schools in the education catalog', () => {
   it('sits every institution at a campus venue', () => {
     for (const institution of INSTITUTIONS) {
@@ -42,9 +49,22 @@ describe('schools in the education catalog', () => {
     }
   });
 
-  it('has no school outside Lagos', () => {
-    expect(INSTITUTIONS.map((entry) => entry.id).sort()).toEqual(Object.keys(LAGOS_CAMPUSES).sort());
-    for (const institution of INSTITUTIONS) expect(DISTRICTS[findVenue(institution.venueId)!.districtId].cityId, institution.id).toBe('lagos');
+  it('puts the Abuja institutions in their real districts, on the Abuja map, reachable by road from the airport', () => {
+    const from = venueEntrance('naia-airport')!.position;
+    for (const [id, districtId] of Object.entries(ABUJA_CAMPUSES)) {
+      const institution = INSTITUTIONS.find((entry) => entry.id === id);
+      expect(institution, id).toBeDefined();
+      const venue = findVenue(institution!.venueId)!;
+      expect(DISTRICTS[venue.districtId].cityId, id).toBe('abuja');
+      expect(venue.districtId, id).toBe(districtId);
+      expect(venueLot(venue.id)?.districtId, id).toBe(districtId);
+      expect(findRoute(from, venueEntrance(venue.id)!.position), id).not.toBeNull();
+    }
+  });
+
+  it('has schools only in Lagos and Abuja, each city with its own', () => {
+    expect(INSTITUTIONS.map((entry) => entry.id).sort()).toEqual([...Object.keys(LAGOS_CAMPUSES), ...Object.keys(ABUJA_CAMPUSES)].sort());
+    for (const institution of INSTITUTIONS) expect(['lagos', 'abuja']).toContain(DISTRICTS[findVenue(institution.venueId)!.districtId].cityId);
   });
 
   it('offers study actions at campuses', () => {

@@ -1,6 +1,7 @@
 import {
   CITY_MAP,
   DIR_E,
+  DISTRICTS,
   LAGOS_ROWS,
   ROAD_LINE_WIDTH,
   cellBounds,
@@ -18,6 +19,7 @@ import {
   type VenueType,
 } from '@insidelife/shared';
 import { KIT_MANIFEST } from '../assets/kit-manifest';
+import { ABUJA_GOVERNMENT_LOOKS, ABUJA_MARKET_STYLES, ABUJA_PARK_STYLES, ABUJA_PROCEDURAL, ABUJA_SHOP_LOOKS, ABUJA_TOWER_LOOKS } from './abuja-looks';
 import { PROC_MODELS, type ProcModelId } from './proc-models';
 import { estateSite, refinerySite, type Rect } from './showcase-sites';
 import { DISTRICT_STYLES, type BuildingRef, type KitId } from './styles';
@@ -248,6 +250,17 @@ function addRoads(plan: PlanBuilder): void {
   for (const chain of poleChains.values()) if (chain.length > 1) plan.wires.push(chain);
 }
 
+/** A tree on each pavement of an Abuja arterial (every third cell), just behind the kerb. */
+function boulevardTrees(plan: PlanBuilder, tile: CityRoadTile, px: number, pz: number, half: number): void {
+  const random = rng(Math.imul(tile.col, 73856093) ^ Math.imul(tile.row, 19349663));
+  for (const side of [-1, 1]) {
+    const x = tile.x + px * side * (half + 0.9);
+    const z = tile.z + pz * side * (half + 0.9);
+    if (random() < 0.8) plan.tree(x, z, random);
+    else plan.bush(x, z, random);
+  }
+}
+
 function streetFurniture(plan: PlanBuilder, tile: CityRoadTile, poleChains: Map<string, (readonly [number, number, number])[]>): void {
   const alongX = (tile.mask & DIR_E) !== 0;
   const step = (alongX ? tile.col : tile.row) % 3;
@@ -267,6 +280,8 @@ function streetFurniture(plan: PlanBuilder, tile: CityRoadTile, poleChains: Map<
     return;
   }
   if (big) {
+    // Abuja's boulevards are lined with trees on both pavements (the capital was planned as a garden city).
+    if (step === 1 && cityOfCell(tile.col, tile.row) === 'abuja') boulevardTrees(plan, tile, px, pz, half);
     if (step !== 0) return;
     const side = (alongX ? tile.col : tile.row) % 2 === 0 ? 1 : -1;
     const x = tile.x + px * side * (half - 0.5);
@@ -512,7 +527,7 @@ export const at = (frame: LotFrame, u: number, v: number): readonly [number, num
  * How one market looks from the road (venues of one type share an archetype, so without this every market is the same
  * rows of striped stalls): its ground, what its stalls are painted, how many parasols and kiosks, the building behind.
  */
-interface MarketStyle {
+export interface MarketStyle {
   readonly ground: number;
   readonly stalls: readonly number[];
   /** Share of the rows' slots that are parasols; the rest are stalls. */
@@ -533,7 +548,7 @@ const MARKET_STYLES: Readonly<Record<string, MarketStyle>> = {
 const DEFAULT_MARKET: MarketStyle = { ground: 0xa38663, stalls: [0xd94b3b, 0x2f7fc1, 0xf2b81d, 0x3c9a5f, 0xe07a2f], parasols: 0.5, kiosks: 0, back: 'c:building-c', backTint: 0xffffff };
 
 /** A park, a stadium ground or a nature reserve: its lawn, how many trees, and what stands in it. */
-interface ParkStyle {
+export interface ParkStyle {
   readonly ground: number;
   /** Trees per 55 m²: 1 is a plain park, 2 a forest. */
   readonly density: number;
@@ -549,7 +564,7 @@ const PARK_STYLES: Readonly<Record<string, ParkStyle>> = {
 const DEFAULT_PARK: ParkStyle = { ground: 0x6f9a48, density: 1, wall: false, poles: 0 };
 
 /** What sets a neighbourhood shop apart from the road: its paint and the thing out front. */
-interface ShopFlavour {
+export interface ShopFlavour {
   readonly tint: number;
   readonly accessory?: 'kiosk' | 'stall' | 'flagpole' | 'hut';
   readonly accent?: number;
@@ -580,6 +595,8 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     return plan.building(ref, x, z, lot.front ?? 'S', width, depth, stretch, colour, 0);
   };
   const venue = lot.venueId ? findVenue(lot.venueId) : undefined;
+  // Abuja's plots one cell deep (a bank, a mall, a tower on its street) are built to the pavement; Lagos's lots are as they were.
+  const shallow = DISTRICTS[lot.districtId].cityId === 'abuja' && frame.depth < 14;
   // Beaches are parks to the map but have sand, parasols and a hut.
   const archetype = lot.archetype === 'park' && venue?.type === 'beach' ? 'beach' : lot.archetype;
   switch (archetype) {
@@ -616,7 +633,7 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       return;
     }
     case 'market': {
-      const style = (lot.venueId ? MARKET_STYLES[lot.venueId] : undefined) ?? DEFAULT_MARKET;
+      const style = (lot.venueId ? (MARKET_STYLES[lot.venueId] ?? ABUJA_MARKET_STYLES[lot.venueId]) : undefined) ?? DEFAULT_MARKET;
       plan.lotGround.set(lotIndex, style.ground);
       const rows = Math.max(1, Math.floor((frame.depth - 6) / 6));
       for (let r = 0; r < rows; r++) {
@@ -635,8 +652,11 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     }
     case 'mall': {
       plan.lotGround.set(lotIndex, 0x9c9a95);
-      const placed = building(frame.width >= 25 ? 'c:building-n' : 'c:building-j', 0, frontLine - 7, frame.width - 1, frame.depth - 9, 1, 0xf2ece0);
-      if (placed === null) building('c:building-k', 0, frontLine - 7, frame.width - 1, frame.depth - 9, 1, 0xf2ece0);
+      const mallTint = lot.venueId === 'silverbird-galleria' ? 0xf6efe0 : lot.venueId === 'ceddi-plaza' ? 0xe6dccb : 0xf2ece0;
+      const mallDepth = shallow ? frame.depth - APRON - 0.3 : frame.depth - 9;
+      const mallV = shallow ? frontLine : frontLine - 7;
+      const placed = building(frame.width >= 25 ? 'c:building-n' : 'c:building-j', 0, mallV, frame.width - 1, mallDepth, shallow ? 1.5 : 1, mallTint);
+      if (placed === null) building('c:building-k', 0, mallV, frame.width - 1, mallDepth, shallow ? 1.5 : 1, mallTint);
       for (let i = 0; i < 3; i++) {
         const [x, z] = at(frame, -frame.width / 2 + 4 + i * 6, frontLine - 1.5);
         plan.vehicle(pick(['sedan', 'suv', 'hatchback-sports', 'suv-luxury'], random), x, z, Math.atan2(frame.az, frame.ax));
@@ -656,11 +676,17 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     case 'office-tower':
     case 'hotel': {
       plan.lotGround.set(lotIndex, 0xb3aea4);
-      const towers: BuildingRef[] = lot.archetype === 'hotel' ? ['c:building-skyscraper-a', 'c:building-skyscraper-e'] : ['c:building-skyscraper-d', 'c:building-skyscraper-b', 'c:building-skyscraper-c'];
-      const count = Math.max(1, Math.floor(frame.width / 10));
+      const look = lot.venueId ? ABUJA_TOWER_LOOKS[lot.venueId] : undefined;
+      const towers: readonly BuildingRef[] = look?.towers ?? (lot.archetype === 'hotel' ? ['c:building-skyscraper-a', 'c:building-skyscraper-e'] : ['c:building-skyscraper-d', 'c:building-skyscraper-b', 'c:building-skyscraper-c']);
+      const count = look ? Math.min(look.count, Math.max(1, Math.floor(frame.width / 10))) : Math.max(1, Math.floor(frame.width / 10));
+      // A tower one cell deep stands on the whole lot to the pavement.
+      const towerDepth = shallow ? frame.depth - APRON - 0.3 : frame.depth - 3;
+      const towerV = shallow ? frontLine : frontLine - 1;
       for (let i = 0; i < count; i++) {
         const u = ((i + 0.5) / count - 0.5) * frame.width;
-        building(towers[i % towers.length] as BuildingRef, u, frontLine - 1, frame.width / count - 0.6, frame.depth - 3, 1.25 + random() * 0.35, pick([0xf4f1ea, 0xdfe6ec, 0xe9e1d2], random));
+        const width = frame.width / count - 0.6;
+        if (look) building(towers[i % towers.length] as BuildingRef, u, towerV, width, towerDepth, look.stretch + i * 0.12, look.tint);
+        else building(towers[i % towers.length] as BuildingRef, u, towerV, width, towerDepth, 1.25 + random() * 0.35, pick([0xf4f1ea, 0xdfe6ec, 0xe9e1d2], random));
       }
       return;
     }
@@ -668,8 +694,18 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     case 'government':
     case 'school': {
       plan.lotGround.set(lotIndex, lot.archetype === 'school' ? 0x9fa36c : 0xaaa498);
-      const ref: BuildingRef = lot.archetype === 'office' ? 'c:building-i' : frame.width >= 25 ? 'c:building-k' : 'c:building-e';
-      if (building(ref, 0, frontLine, frame.width - 1, frame.depth - 3, 1, lot.archetype === 'government' ? 0xf1ead8 : tint) === null) building('c:building-c', 0, frontLine, frame.width - 1, frame.depth - 3, 1, tint);
+      if (lot.venueId && ABUJA_PROCEDURAL.has(lot.venueId)) {
+        proceduralSolid(plan, frame, lot.venueId);
+        return;
+      }
+      const gov = lot.venueId ? ABUJA_GOVERNMENT_LOOKS[lot.venueId] : undefined;
+      const office = lot.venueId && lot.archetype === 'office' ? ABUJA_SHOP_LOOKS[lot.venueId] : undefined;
+      const ref: BuildingRef = gov?.ref ?? office?.refs?.[0] ?? (lot.archetype === 'office' ? 'c:building-i' : frame.width >= 25 ? 'c:building-k' : 'c:building-e');
+      // Shallow plots (one cell deep) build to the pavement; the others keep a yard behind the front.
+      const officeDepth = shallow ? frame.depth - APRON - 0.3 : frame.depth - 3;
+      const officeTint = gov?.tint ?? office?.tint ?? (lot.archetype === 'government' ? 0xf1ead8 : tint);
+      if (building(ref, 0, frontLine, frame.width - 1, officeDepth, gov?.stretch ?? 1, officeTint) === null) building('c:building-c', 0, frontLine, frame.width - 1, officeDepth, 1, officeTint);
+      if (gov?.walled) embassyWalls(plan, frame);
       for (const u of [-frame.width / 2 + 1.6, frame.width / 2 - 1.6]) {
         const [x, z] = at(frame, u, frontLine - 0.8);
         plan.palm(x, z, random);
@@ -677,6 +713,9 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       if (lot.archetype !== 'office') {
         const [x, z] = at(frame, frame.width / 2 - 3, frontLine - 1);
         plan.proc('flagpole', x, 0, z, frontFace);
+      } else if (office?.accessory) {
+        const [x, z] = at(frame, frame.width / 2 - 2.4, frontLine - 1.2);
+        plan.proc(office.accessory, x, 0, z, frontFace, 1, office.accent ?? 0xffffff);
       }
       // Big lots: a staff car park on one side and shade trees at the back.
       if (frame.width >= 25) {
@@ -693,7 +732,7 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       return;
     }
     case 'park': {
-      const style = (lot.venueId ? PARK_STYLES[lot.venueId] : undefined) ?? DEFAULT_PARK;
+      const style = (lot.venueId ? (PARK_STYLES[lot.venueId] ?? ABUJA_PARK_STYLES[lot.venueId]) : undefined) ?? DEFAULT_PARK;
       plan.lotGround.set(lotIndex, style.ground);
       const count = Math.round(((frame.width * frame.depth) / 55) * style.density);
       if (style.wall) {
@@ -743,10 +782,16 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       plan.lotGround.set(lotIndex, 0x9a9a8c);
       return;
     case 'mosque':
-      plan.lotGround.set(lotIndex, 0xc9c0ad);
+      plan.lotGround.set(lotIndex, lot.venueId === 'national-mosque' ? 0xdad3c1 : 0xc9c0ad);
+      proceduralSolid(plan, frame, lot.venueId);
       return;
     case 'church': {
       plan.lotGround.set(lotIndex, 0xa9a59a);
+      // Abuja's churches (the National Christian Centre, the Glory Dome, RCCG) are drawn whole by the landmarks.
+      if (lot.venueId && ABUJA_PROCEDURAL.has(lot.venueId)) {
+        proceduralSolid(plan, frame, lot.venueId);
+        return;
+      }
       building(frame.width >= 25 ? 'c:building-k' : 'c:building-e', 0, frontLine - 2, frame.width - 1, frame.depth - 5, 1, 0xf3efe6);
       return;
     }
@@ -766,7 +811,7 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     case 'car-dealer': {
       plan.lotGround.set(lotIndex, 0xa7a49c);
       building('c:building-e', 0, -halfDepth + 7, frame.width - 1, 9, 1, 0xf0f0f0);
-      const models = lot.venueId === 'lekki-car-mart' ? ['suv-luxury', 'sedan-sports', 'suv', 'hatchback-sports'] : ['sedan', 'suv', 'taxi', 'hatchback-sports', 'van'];
+      const models = lot.venueId === 'lekki-car-mart' || lot.venueId === 'jabi-auto-gallery' ? ['suv-luxury', 'sedan-sports', 'suv', 'hatchback-sports'] : lot.venueId === 'garki-auto-mart' ? ['sedan', 'sedan', 'van', 'taxi', 'suv'] : ['sedan', 'suv', 'taxi', 'hatchback-sports', 'van'];
       for (let u = -frame.width / 2 + 3.5; u <= frame.width / 2 - 3.5; u += 4.4) {
         const [x, z] = at(frame, u, frontLine - 2.6);
         plan.vehicle(pick(models, random), x, z, Math.atan2(frame.fz, frame.fx) + Math.PI * 0.15);
@@ -777,9 +822,10 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     case 'shop':
     default: {
       const refs: BuildingRef[] = venue?.type === 'club' || venue?.type === 'bar' ? ['c:building-h', 'c:building-d', 'c:building-g'] : ['c:building-a', 'c:building-b', 'c:building-d', 'c:building-h', 'c:building-c'];
-      const flavour = venue ? SHOP_FLAVOURS[venue.type] : undefined;
+      const authored = lot.venueId ? ABUJA_SHOP_LOOKS[lot.venueId] : undefined;
+      const flavour: ShopFlavour | undefined = authored ?? (venue ? SHOP_FLAVOURS[venue.type] : undefined);
       let placed: number | null = null;
-      for (let attempt = 0; attempt < 5 && placed === null; attempt++) placed = building(pick(refs, random), 0, frontLine, frame.width - 0.8, frame.depth - APRON - 0.3, 1, flavour?.tint ?? tint);
+      for (let attempt = 0; attempt < 5 && placed === null; attempt++) placed = building(pick(authored?.refs ?? refs, random), 0, frontLine, frame.width - 0.8, frame.depth - APRON - 0.3, 1, flavour?.tint ?? tint);
       if (flavour?.accessory) {
         // Something out front that says what the place is: a kiosk, a food stall, a flagpole.
         const [x, z] = at(frame, frame.width / 2 - 2.4, frontLine - 1.2);
@@ -788,6 +834,33 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       return;
     }
   }
+}
+
+/** A solid block for a place the landmarks draw whole: inside the lot, clear of the pavement and the front yard. */
+function proceduralSolid(plan: PlanBuilder, frame: LotFrame, venueId: string | undefined): void {
+  const spec = venueId ? ABUJA_PROCEDURAL.get(venueId) : undefined;
+  if (!spec) return;
+  const [x0, z0] = at(frame, -frame.width / 2 + 1.5, -frame.depth / 2 + 1.5);
+  const [x1, z1] = at(frame, frame.width / 2 - 1.5, frame.depth / 2 - APRON - 4.5);
+  plan.colliders.push({ minX: Math.min(x0, x1), maxX: Math.max(x0, x1), minZ: Math.min(z0, z1), maxZ: Math.max(z0, z1), height: spec.height });
+}
+
+/** An embassy's compound wall round its lot, with the gate gap on the front. */
+function embassyWalls(plan: PlanBuilder, frame: LotFrame): void {
+  const hw = frame.width / 2 - 0.4;
+  const back = -frame.depth / 2 + 0.4;
+  const front = frame.depth / 2 - APRON - 0.2;
+  const gate = 2.6;
+  const line = (u0: number, v0: number, u1: number, v1: number): void => {
+    const [x0, z0] = at(frame, u0, v0);
+    const [x1, z1] = at(frame, u1, v1);
+    plan.walls.push({ x0, z0, x1, z1, height: 2.6, color: 0xe6e1d3 });
+  };
+  line(-hw, back, hw, back);
+  line(-hw, back, -hw, front);
+  line(hw, back, hw, front);
+  line(-hw, front, -gate, front);
+  line(gate, front, hw, front);
 }
 
 function sideOf(dx: number, dz: number): CompassSide {
@@ -872,6 +945,12 @@ function refineryWorks(plan: PlanBuilder, lotIndex: number): void {
 }
 
 function landmarkLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
+  if (lot.id === 'landmark:aso-rock') {
+    // The granite monolith over Asokoro: bare rock under a ring of scrub, solid to walk into.
+    plan.lotGround.set(lotIndex, 0x8a8470);
+    const frame = frameOf(lot);
+    solid(plan, { minX: frame.cx - 11, maxX: frame.cx + 11, minZ: frame.cz - 11, maxZ: frame.cz + 11 }, 70);
+  }
   if (lot.id === 'landmark:obo-apron') plan.lotGround.set(lotIndex, 0x55595e);
   if (lot.id === 'landmark:dangote-works') refineryWorks(plan, lotIndex);
   if (lot.id === 'landmark:vi-towers') {

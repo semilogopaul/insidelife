@@ -384,6 +384,25 @@ export const INSTITUTIONS = [
     hostelFee: 0, acceptanceFee: 120_000, screeningFee: 15_000,
     courses: [offer('medicine', 70), offer('nursing', 62)],
   }),
+  // Abuja (docs/MULTI_CITY.md): the federal university on the Airport Road and two private universities in Jabi.
+  i({
+    id: 'university-of-abuja', venueId: 'university-of-abuja', name: 'University of Abuja', shortName: 'UniAbuja', kind: 'federal', prestige: 74, strike: 'asuu', minUtme: 190,
+    tuition: { medicine: 240_000, health: 200_000, law: 180_000, engineering: 185_000, science: 175_000, social: 165_000, arts: 150_000 },
+    hostelFee: 0, acceptanceFee: 60_000, screeningFee: 2_000, catchment: { stateId: 'fct', bonus: 3 },
+    courses: [offer('medicine', 80), offer('nursing', 72), offer('law', 74), offer('engineering', 70), offer('computer-science', 70), offer('accounting', 68), offer('economics', 64), offer('banking-finance', 62), offer('business-admin', 62), offer('mass-communication', 64), offer('political-science', 58), offer('education', 50)],
+  }),
+  i({
+    id: 'baze-university', venueId: 'baze-university', name: 'Baze University', shortName: 'Baze', kind: 'private', prestige: 72, strike: 'none', minUtme: 160,
+    tuition: { medicine: 5_500_000, health: 3_000_000, law: 2_800_000, engineering: 2_600_000, science: 2_200_000, social: 1_900_000, arts: 1_300_000 },
+    hostelFee: 0, acceptanceFee: 150_000, screeningFee: 20_000,
+    courses: [offer('medicine', 68), offer('nursing', 60), offer('law', 62), offer('engineering', 58), offer('computer-science', 56), offer('architecture', 56), offer('accounting', 54), offer('economics', 52), offer('banking-finance', 52), offer('business-admin', 50), offer('mass-communication', 52), offer('political-science', 50)],
+  }),
+  i({
+    id: 'nile-university', venueId: 'nile-university', name: 'Nile University of Nigeria', shortName: 'Nile', kind: 'private', prestige: 70, strike: 'none', minUtme: 160,
+    tuition: { engineering: 2_700_000, science: 2_300_000, social: 2_000_000, arts: 1_400_000, law: 2_900_000 },
+    hostelFee: 0, acceptanceFee: 140_000, screeningFee: 20_000,
+    courses: [offer('engineering', 58), offer('computer-science', 56), offer('architecture', 56), offer('accounting', 54), offer('economics', 52), offer('banking-finance', 52), offer('business-admin', 50), offer('law', 62), offer('mass-communication', 52), offer('political-science', 50)],
+  }),
 ] as const satisfies readonly InstitutionDefinition[];
 
 export type InstitutionId = (typeof INSTITUTIONS)[number]['id'];

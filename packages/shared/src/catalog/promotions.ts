@@ -1,6 +1,6 @@
 import { formatNaira } from '../money/money.js';
 import type { DistrictId } from './geography.js';
-import { VENUES, type VenueDefinition, type VenueType } from './venues.js';
+import { VENUES, cityOfVenue, type VenueDefinition, type VenueType } from './venues.js';
 
 /**
  * Promotions catalog — owned by the promotions domain.
@@ -13,7 +13,7 @@ import { VENUES, type VenueDefinition, type VenueType } from './venues.js';
 // ----- Billboards ---------------------------------------------------------------------------------------------------
 
 /**
- * The 12 hand-placed premium billboards. Stable ids — the 3D world places a board per id. Never rename; add new ids at
+ * The 17 hand-placed premium billboards (12 in Lagos, 5 in Abuja). Stable ids — the 3D world places a board per id. Never rename; add new ids at
  * the end. Every other ad surface (street boards, bus shelters, lightboxes, Lagos TV, phone apps) is in `AD_SLOTS`.
  */
 export const BILLBOARD_SLOT_IDS = [
@@ -29,6 +29,12 @@ export const BILLBOARD_SLOT_IDS = [
   'vi-towers',
   'ajah-roundabout',
   'ikorodu-garage',
+  // Abuja's hand-placed premium boards (docs/MULTI_CITY.md).
+  'abuja-airport-road',
+  'abuja-ibb-boulevard',
+  'abuja-central-area',
+  'abuja-jabi-lake',
+  'abuja-wuse-banex',
 ] as const;
 export type PremiumBillboardId = (typeof BILLBOARD_SLOT_IDS)[number];
 /** Any bookable ad slot id (premium boards, generated placements, Lagos TV, phone apps). */
@@ -259,6 +265,61 @@ export const BILLBOARD_SLOTS: readonly BillboardSlot[] = [
     weekPriceKobo: weekOf(2_500),
     maxConcurrentAds: 4,
   }),
+  slot({
+    id: 'abuja-airport-road',
+    name: 'Airport Road Gantry',
+    districtId: 'lugbe',
+    description: 'On the Airport Road beside the Glory Dome, the road every arrival and every Lugbe commuter takes into Abuja.',
+    placement: 'roadside',
+    format: 'landscape',
+    tier: 'high',
+    weekPriceKobo: weekOf(8_000),
+    maxConcurrentAds: 4,
+  }),
+  slot({
+    id: 'abuja-ibb-boulevard',
+    name: 'IBB Boulevard, Maitama',
+    districtId: 'maitama',
+    description: 'On Ibrahim Babangida Boulevard between the embassies and the Hilton. Diplomats, senators and their drivers.',
+    placement: 'roadside',
+    format: 'landscape',
+    tier: 'high',
+    weekPriceKobo: weekOf(9_000),
+    maxConcurrentAds: 4,
+  }),
+  slot({
+    id: 'abuja-central-area',
+    name: 'Central Area, Ahmadu Bello Way',
+    districtId: 'abuja-cbd',
+    description: 'Beside Eagle Square and the National Mosque on Ahmadu Bello Way: ministries, banks and every parade.',
+    placement: 'roadside',
+    format: 'landscape',
+    tier: 'high',
+    weekPriceKobo: weekOf(9_500),
+    maxConcurrentAds: 4,
+  }),
+  slot({
+    id: 'abuja-jabi-lake',
+    name: 'Jabi Lake Gateway',
+    districtId: 'jabi',
+    description: 'At the lake on the way to the mall and the universities. Joggers, students and weekend families.',
+    placement: 'roadside',
+    format: 'square',
+    tier: 'standard',
+    weekPriceKobo: weekOf(5_500),
+    maxConcurrentAds: 4,
+  }),
+  slot({
+    id: 'abuja-wuse-banex',
+    name: 'Wuse 2 near Banex',
+    districtId: 'wuse',
+    description: 'Wuse 2’s shopping strip by Banex Plaza and the bars: phone shoppers by day, nightlife by night.',
+    placement: 'roadside',
+    format: 'square',
+    tier: 'standard',
+    weekPriceKobo: weekOf(6_000),
+    maxConcurrentAds: 4,
+  }),
 ];
 
 const SLOT_INDEX: ReadonlyMap<string, BillboardSlot> = new Map(BILLBOARD_SLOTS.map((entry) => [entry.id, entry]));
@@ -368,9 +429,13 @@ export function adRateSummary(weekPriceKobo: number, blockDays: number = adBlock
 /** Venue types whose sound system plays paid tracks: clubs, and bars (the lounges and rooftop bars). */
 export const CLUB_PLAY_VENUE_TYPES: readonly VenueType[] = ['club', 'bar'];
 
-/** Clubs and lounges that run a paid rotation (derived from the venue catalog, so new clubs join automatically). */
+/**
+ * Clubs and lounges that run a paid rotation (derived from the venue catalog, so new Lagos clubs join automatically).
+ * The club-song product is Lagos nightlife: Abuja's bars and clubs play the game's own music until it gets a rotation of
+ * its own, so the lanes and the plays-a-day guarantee stay as they were sold.
+ */
 export function clubPlayVenues(): VenueDefinition[] {
-  return VENUES.filter((venue) => CLUB_PLAY_VENUE_TYPES.includes(venue.type));
+  return VENUES.filter((venue) => CLUB_PLAY_VENUE_TYPES.includes(venue.type) && cityOfVenue(venue) === 'lagos');
 }
 
 export function isClubPlayVenue(venueId: string): boolean {

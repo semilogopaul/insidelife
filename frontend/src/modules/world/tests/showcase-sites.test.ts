@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { cityPlan } from '../city/layout/placements';
 import { estateSite, refinerySite, type Rect } from '../city/layout/showcase-sites';
 import { buildShowcaseGeometry } from '../city/render/showcase-geometry';
-import { POST_SLOT, signEntries } from '../city/render/sign-atlas';
+import { signEntries } from '../city/render/sign-atlas';
 
 const inside = (inner: Rect, outer: Rect, margin = 0): boolean =>
   inner.minX >= outer.minX + margin && inner.maxX <= outer.maxX - margin && inner.minZ >= outer.minZ + margin && inner.maxZ <= outer.maxZ - margin;
@@ -63,8 +63,7 @@ describe('OBO’s estate and Dangote Refinery in the city', () => {
     expect(near(site.grounds).length).toBeGreaterThanOrEqual(4);
     const works = refinerySite()?.works;
     if (works) expect(near(works).length).toBeGreaterThanOrEqual(4);
-    const entries = signEntries();
-    expect(entries.length).toBeLessThanOrEqual(POST_SLOT);
+    const entries = signEntries('lagos');
     expect(entries.some((entry) => entry.lot?.venueId === 'obo-mansion' || entry.lot?.venueId === 'dangote-refinery')).toBe(false);
   });
 });

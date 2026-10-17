@@ -1,8 +1,10 @@
-import { CITY_MAP, ROAD_LINE_WIDTH, cellCentreZ, rowDepth, venueLot } from '@insidelife/shared';
+import { CITY_MAP, DISTRICTS, ROAD_LINE_WIDTH, cellCentreZ, rowDepth, venueLot, type CityId } from '@insidelife/shared';
 import { BoxGeometry, ConeGeometry, CylinderGeometry, Matrix4, Quaternion, SphereGeometry, Vector3, type BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { APRON, frameOf, PAVEMENT_Y, type LotFrame } from '../layout/placements';
+import { APRON, frameOf, PAVEMENT_Y } from '../layout/placements';
+import { buildAbujaLandmarkParts } from './abuja-geometry';
 import { WATER_Y } from './ground-geometry';
+import { frameMatrix } from './lot-frame';
 import { paint } from './paint';
 
 /**
@@ -14,10 +16,7 @@ import { paint } from './paint';
 
 const parts: BufferGeometry[] = [];
 
-/** Local (x right, z towards the road) → world for a lot frame; a proper rotation (no mirroring). */
-export function frameMatrix(frame: LotFrame): Matrix4 {
-  return new Matrix4().makeBasis(new Vector3(frame.fz, 0, -frame.fx), new Vector3(0, 1, 0), new Vector3(frame.fx, 0, frame.fz)).setPosition(frame.cx, 0, frame.cz);
-}
+export { frameMatrix };
 
 function add(geometry: BufferGeometry, hex: number, matrix: Matrix4, shade = 1): void {
   parts.push(paint(geometry, hex, shade).applyMatrix4(matrix));
@@ -172,9 +171,9 @@ function tollPlaza(): void {
   add(box(2.4, 2.8, 1.8, 2.5, PAVEMENT_Y, half + 1.6), 0xe9e4d8, m);
 }
 
-function campusGates(): void {
+function campusGates(cityId: CityId): void {
   for (const lot of CITY_MAP.lots) {
-    if (lot.archetype !== 'campus' || !lot.entrance) continue;
+    if (lot.archetype !== 'campus' || !lot.entrance || DISTRICTS[lot.districtId].cityId !== cityId) continue;
     const frame = frameOf(lot);
     const m = frameMatrix(frame);
     // Door position in local x (right of centre when facing the lot from the road is +x).
@@ -187,23 +186,31 @@ function campusGates(): void {
   }
 }
 
-let cached: BufferGeometry | null = null;
+const cache = new Map<CityId, BufferGeometry>();
 
-/** All landmarks as one geometry (built once per page; the caller owns disposal of clones). */
-export function buildLandmarkGeometry(): BufferGeometry {
+/**
+ * One city's landmarks as one geometry (built once per page; the caller owns disposal of clones). A city's mesh holds
+ * only its own landmarks, so the other city's triangles are never drawn or kept in memory.
+ */
+export function buildLandmarkGeometry(cityId: CityId = 'lagos'): BufferGeometry {
+  const cached = cache.get(cityId);
   if (cached) return cached.clone();
   parts.length = 0;
-  airport();
-  stadium();
-  mosque();
-  linkBridge();
-  tollPlaza();
-  campusGates();
+  if (cityId === 'lagos') {
+    airport();
+    stadium();
+    mosque();
+    linkBridge();
+    tollPlaza();
+  } else {
+    parts.push(...buildAbujaLandmarkParts());
+  }
+  campusGates(cityId);
   const merged = mergeGeometries(parts, false);
   for (const part of parts) part.dispose();
   parts.length = 0;
   if (!merged) throw new Error('landmark merge failed');
   merged.computeBoundingSphere();
-  cached = merged;
+  cache.set(cityId, merged);
   return merged.clone();
 }

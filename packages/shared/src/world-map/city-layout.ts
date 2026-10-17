@@ -32,6 +32,12 @@ export const LAGOS_ROWS = 42;
 export const ABUJA_COLS = 56;
 export const ABUJA_ROWS = 40;
 export const ABUJA_GAP = 60;
+/**
+ * How far past a city's grid its scenery reaches (metres): scrub, trees and the flat land around it. The client never draws
+ * more than ~385 m (fog far on high quality), and `CITY_SCENERY_REACH` plus that stays well inside the water between the cities,
+ * so nothing of the other city is ever on screen (`abuja-city.spec.ts` and the frontend's `city-visibility.test.ts` check it).
+ */
+export const CITY_SCENERY_REACH: Readonly<Record<CityId, number>> = { lagos: 70, abuja: 160 };
 /** Grid cell of Abuja's local `[0, 0]`. */
 export const ABUJA_ORIGIN_COL = LAGOS_COLS + ABUJA_GAP;
 export const ABUJA_ORIGIN_ROW = LAGOS_ROWS + ABUJA_GAP;
@@ -550,10 +556,88 @@ const ABUJA_VENUE_LOTS: readonly VenueLotSpec[] = [
   // Garki
   lot('garki-buka', aRect(33, 29, 33, 29), 'N', 'shop'),
   lot('garki-police-command', aRect(29, 29, 31, 31), 'N', 'government'),
+
+  // ----- The full city: ~60 real places added after the skeleton (the lots above keep their indices) -----
+  // Central Business District: ministries, banks, the national mosque and church, Eagle Square, the Galleria.
+  lot('silverbird-galleria', aRect(29, 17, 31, 18), 'N', 'mall'),
+  lot('silverbird-cinemas-abuja', aRect(29, 19, 31, 19), 'S', 'shop'),
+  lot('eagle-square', aRect(37, 17, 39, 19), 'N', 'park'),
+  lot('national-mosque', aRect(33, 21, 35, 23), 'S', 'mosque'),
+  lot('national-christian-centre', aRect(37, 21, 39, 23), 'S', 'church'),
+  lot('federal-secretariat', aRect(26, 17, 27, 19), 'E', 'government'),
+  lot('nnpc-towers', aRect(26, 21, 27, 23), 'E', 'office-tower'),
+  lot('cbn-hq', aRect(29, 25, 31, 25), 'N', 'office-tower'),
+  lot('us-embassy-abuja', aRect(33, 25, 35, 25), 'N', 'government'),
+  lot('ceddi-plaza', aRect(37, 25, 39, 25), 'N', 'mall'),
+  // Maitama: embassies, the Hilton, Millennium Park.
+  lot('transcorp-hilton', aRect(45, 5, 47, 7), 'N', 'hotel'),
+  lot('millennium-park', aRect(49, 5, 51, 7), 'N', 'park'),
+  lot('uk-high-commission', aRect(41, 9, 43, 11), 'W', 'government'),
+  lot('canada-high-commission', aRect(45, 9, 47, 11), 'S', 'government'),
+  lot('maitama-district-hospital', aRect(49, 9, 51, 11), 'S', 'hospital'),
+  lot('jevinik-restaurant', aRect(41, 13, 42, 13), 'N', 'shop'),
+  lot('medplus-maitama', aRect(45, 13, 45, 13), 'N', 'shop'),
+  // Wuse: Banex, nightlife, the shops of Wuse 2.
+  lot('banex-plaza', aRect(33, 9, 35, 11), 'S', 'market'),
+  lot('cubana-abuja', aRect(29, 5, 31, 6), 'N', 'club'),
+  lot('sheraton-abuja', aRect(33, 5, 35, 7), 'N', 'hotel'),
+  lot('healthplus-wuse', aRect(29, 13, 29, 13), 'N', 'shop'),
+  lot('wuse-fitness', aRect(31, 13, 31, 13), 'N', 'shop'),
+  lot('zone4-suya', aRect(33, 13, 33, 13), 'N', 'shop'),
+  lot('wuse-salon', aRect(35, 13, 35, 13), 'N', 'shop'),
+  lot('wuse-police-division', aRect(33, 15, 35, 15), 'S', 'government'),
+  lot('gtbank-wuse', aRect(26, 5, 27, 6), 'E', 'office'),
+  lot('rhapsodys-abuja', aRect(26, 9, 27, 10), 'E', 'shop'),
+  lot('wuse-sports-bar', aRect(29, 15, 31, 15), 'S', 'club'),
+  // Garki: the old market, hospital, Force Headquarters.
+  lot('garki-market', aRect(29, 26, 31, 27), 'S', 'market'),
+  lot('garki-hospital', aRect(33, 26, 35, 27), 'S', 'hospital'),
+  lot('garki-central-mosque', aRect(37, 26, 39, 27), 'S', 'mosque'),
+  lot('jamb-cbt-garki', aRect(35, 29, 35, 29), 'E', 'shop'),
+  lot('force-headquarters', aRect(37, 29, 39, 31), 'E', 'government'),
+  lot('garki-pharmacy', aRect(33, 31, 33, 31), 'W', 'shop'),
+  lot('first-bank-garki', aRect(35, 31, 35, 31), 'E', 'office'),
+  lot('garki-gym', aRect(33, 33, 34, 33), 'W', 'shop'),
+  lot('garki-salon', aRect(33, 35, 34, 35), 'W', 'shop'),
+  lot('garki-auto-mart', aRect(37, 33, 39, 35), 'S', 'car-dealer'),
+  // Jabi / Utako: the lake, the universities, offices.
+  lot('jabi-lake-park', aRect(21, 9, 23, 11), 'W', 'park'),
+  lot('baze-university', aRect(17, 5, 19, 7), 'N', 'campus'),
+  lot('nile-university', aRect(21, 5, 23, 7), 'N', 'campus'),
+  lot('brains-and-hammers', aRect(17, 17, 18, 17), 'N', 'shop'),
+  lot('jabi-lake-lounge', aRect(19, 17, 19, 17), 'N', 'club'),
+  lot('access-bank-utako', aRect(21, 17, 22, 17), 'N', 'office'),
+  lot('jabi-auto-gallery', aRect(17, 19, 19, 19), 'S', 'car-dealer'),
+  // Gwarinpa and Kubwa: estates and satellite-town basics.
+  lot('gwarinpa-general-hospital', aRect(5, 13, 7, 15), 'E', 'hospital'),
+  lot('rccg-gwarinpa', aRect(9, 13, 11, 15), 'E', 'church'),
+  lot('gwarinpa-central-mosque', aRect(5, 17, 7, 19), 'E', 'mosque'),
+  lot('gwarinpa-school', aRect(9, 17, 11, 19), 'E', 'school'),
+  lot('gwarinpa-buka', aRect(5, 11, 5, 11), 'S', 'shop'),
+  lot('kubwa-market', aRect(5, 5, 7, 7), 'S', 'market'),
+  lot('kubwa-general-hospital', aRect(9, 5, 11, 7), 'S', 'hospital'),
+  lot('kubwa-pharmacy', aRect(9, 9, 9, 9), 'N', 'shop'),
+  // Lugbe / Airport Road: the University of Abuja, the Glory Dome, the market.
+  lot('university-of-abuja', aRect(6, 32, 14, 35), 'N', 'campus'),
+  lot('dunamis-glory-dome', aRect(17, 32, 24, 35), 'N', 'church'),
+  lot('lugbe-market', aRect(5, 22, 7, 23), 'S', 'market'),
+  // Asokoro: the National Assembly in the shadow of Aso Rock, the Abuja Club.
+  lot('national-assembly', aRect(45, 17, 47, 19), 'S', 'government'),
+  lot('abuja-club', aRect(45, 21, 47, 23), 'N', 'park'),
+  lot('asokoro-district-hospital', aRect(49, 21, 51, 23), 'N', 'hospital'),
 ];
 
-const ABUJA_LANDMARKS: readonly LandmarkSpec[] = [];
-const ABUJA_BILLBOARD_SPECS: readonly BillboardSpec[] = [];
+const ABUJA_LANDMARKS: readonly LandmarkSpec[] = [
+  // Aso Rock: the granite monolith over Asokoro that the whole capital is laid out around (drawn by `abuja-geometry.ts`).
+  { id: 'aso-rock', rect: aRect(49, 17, 51, 19), front: 'S' },
+];
+const ABUJA_BILLBOARD_SPECS: readonly BillboardSpec[] = [
+  { slotId: 'abuja-airport-road', cell: A(26, 32), offset: [0, -2], faces: 'N', mount: 'pole', elevation: 6.5, width: 9 },
+  { slotId: 'abuja-ibb-boulevard', cell: A(39, 7), offset: [0, 1.5], faces: 'S', mount: 'pole', elevation: 6.5, width: 9 },
+  { slotId: 'abuja-central-area', cell: A(41, 19), offset: [0, 1.5], faces: 'S', mount: 'pole', elevation: 6.5, width: 9 },
+  { slotId: 'abuja-jabi-lake', cell: A(25, 9), offset: [-1.5, 0], faces: 'W', mount: 'pole', elevation: 5.5, width: 8 },
+  { slotId: 'abuja-wuse-banex', cell: A(37, 13), offset: [-1.5, 0], faces: 'W', mount: 'pole', elevation: 5.5, width: 8 },
+];
 const ABUJA_ROUNDABOUTS: readonly RoundaboutSpec[] = [];
 
 // ----- Everything, both cities ---------------------------------------------------------------------------------------

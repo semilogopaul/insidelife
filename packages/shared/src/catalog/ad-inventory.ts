@@ -17,7 +17,7 @@ import { findVenue } from './venues.js';
 import { DEFAULT_USD_RATE_NGN, USD_RATE_KEY, USD_RATE_MAX_NGN, USD_RATE_MIN_NGN, isValidUsdRateNgn } from './payments.js';
 
 /**
- * Everything an advertiser can book with real money, one list: the 12 hand-placed premium billboards, the ~540
+ * Everything an advertiser can book with real money, one list: the 17 hand-placed premium billboards, the ~600
  * generated street surfaces (roadside boards, bus shelters, lightbox totems, stadium LEDs, market banners, motor-park
  * boards), Lagos TV (every TV in every home and venue) and the phone's Sponsored apps shelf. Each slot is booked the
  * same way (creative + 1–4 consecutive weeks from its next free day + Flutterwave checkout) and rotates up to
