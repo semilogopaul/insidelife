@@ -7,6 +7,8 @@ import {
   actionProfile,
   awayProfile,
   AUTOPILOT_TARGET,
+  aircraftIdOfLocation,
+  isAircraftLocation,
   COLLAPSE_TARGET,
   HABIT_TARGET,
   cityOfDistrict,
@@ -391,14 +393,31 @@ export class TimelinePlanner {
         return { districtId, cityId: cityOfDistrict(districtId) };
       });
     }
+    const aircraftId = aircraftIdOfLocation(locationId);
+    if (aircraftId !== null) {
+      // Aboard a parked aircraft: the place is the terminal it stands at (the planner needs only its district and city).
+      const terminal = await this.aircraftTerminal(ctx, aircraftId);
+      if (terminal) return { districtId: terminal.districtId, cityId: cityOfVenue(terminal) };
+    }
     const venue = findVenue(locationId);
     const districtId = venue?.districtId ?? ctx.character.homeDistrictId;
     return { districtId, cityId: venue ? cityOfVenue(venue) : cityOfDistrict(districtId) };
   }
 
+  /** The terminal an aircraft is parked at (null for an unknown aircraft). Cached for the session. */
+  private async aircraftTerminal(ctx: SimulationContext, aircraftId: string) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(aircraftId)) return null;
+    return ctx.memo(`aircraft-terminal:${aircraftId}`, async () => {
+      const rows: Array<{ parked_at: string }> = await ctx.manager.query('SELECT parked_at FROM aircraft WHERE id = $1', [aircraftId]);
+      const venue = rows[0] ? findVenue(rows[0].parked_at) : undefined;
+      return venue ?? null;
+    });
+  }
+
   async placeLabel(ctx: SimulationContext, locationId: string): Promise<string> {
     const street = streetDistrict(locationId);
     if (street) return 'the streets';
+    if (isAircraftLocation(locationId)) return 'your aircraft';
     if (isHomeLocation(locationId)) return locationId === homeLocationId(ctx.character.id) ? 'home' : 'a friend’s place';
     return findVenue(locationId)?.name ?? 'somewhere';
   }

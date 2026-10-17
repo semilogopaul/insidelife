@@ -3,7 +3,7 @@
 import { Plane, PlaneLanding, PlaneTakeoff, Ticket } from 'lucide-react';
 import { useEffect, type ReactNode } from 'react';
 import { CITIES, GAT_NAMES, cityOfVenueId, findVenue, formatClock12, formatGameDuration, formatNaira, type CharacterSnapshotDto, type FlightBookingDto, type OwnedAircraftDto } from '@insidelife/shared';
-import { useAboard, useFlightsState, useFlyAircraft, useGateAction } from '@/common/aviation';
+import { useAboard, useAircraftBoarding, useFlightsState, useFlyAircraft, useGateAction } from '@/common/aviation';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useGameMinute } from '@/common/game/use-game-clock';
@@ -80,6 +80,7 @@ function SkyOverlay({ scene, snapshot }: { readonly scene: Extract<AviationScene
 
 function ParkedCabinPanel({ plane }: { readonly plane: OwnedAircraftDto }) {
   const fly = useFlyAircraft();
+  const boarding = useAircraftBoarding();
   const roomId = useHomeView((state) => state.roomId);
   const title = plane.callName ? `${plane.callName} · ${plane.registration}` : plane.registration;
   return (
@@ -90,7 +91,7 @@ function ParkedCabinPanel({ plane }: { readonly plane: OwnedAircraftDto }) {
           <p className="type-title truncate text-base leading-tight">{title}</p>
           <p className="truncate text-xs text-on-ink-soft">{plane.name} · {GAT_NAMES[plane.parkedAt]}</p>
         </div>
-        <button type="button" onClick={() => useAboard.getState().deplane()} className="ml-auto h-9 shrink-0 rounded-card border border-white/30 px-3 text-sm font-semibold">
+        <button type="button" onClick={() => boarding.deplane(plane.id)} disabled={boarding.pending} className="ml-auto h-9 shrink-0 rounded-card border border-white/30 px-3 text-sm font-semibold">
           Step out
         </button>
       </div>

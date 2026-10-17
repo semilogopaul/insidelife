@@ -24,6 +24,7 @@ export const PROGRESSION_SIGNALS = [
   'owambe-hosted',
   'black-tax-paid',
   'checkpoint-survived',
+  'race-won',
 ] as const;
 export type ProgressionSignal = (typeof PROGRESSION_SIGNALS)[number];
 
@@ -916,6 +917,7 @@ export const ACHIEVEMENTS = [
   { id: 'welcome-to-abuja', title: 'Welcome to Abuja', description: 'Landed in the capital. Aso Rock is that way, and everything is a little quieter.', icon: 'landmark', rarity: 'uncommon', category: 'city', condition: count(progressionCounter.city('abuja')) },
   { id: 'earned-your-wings', title: 'Earned your wings', description: 'Passed the check-ride and earned a Private Pilot Licence.', icon: 'plane-takeoff', rarity: 'rare', category: 'city', condition: certified('ppl') },
   { id: 'aircraft-owner', title: 'Aircraft owner', description: 'Owns an aeroplane with a 5N- registration. The neighbours can see it from the runway.', icon: 'plane', rarity: 'epic', category: 'status', condition: owns('aircraft') },
+  { id: 'race-to-abuja', title: 'First to Abuja', description: 'Won a race to the other city against your friends. Plane, coach or an Air Peace seat: the fastest got there first.', icon: 'trophy', rarity: 'rare', category: 'city', condition: signalled('race-won') },
   { id: 'server-don-down', title: 'Server don down', description: 'Visited a CBT centre. The generator was louder than the invigilator.', icon: 'monitor', rarity: 'common', category: 'city', condition: visited('cbt-centre') },
   { id: 'inside-obo-mansion', title: 'Inside OBO’s house', description: 'Walked into OBO Mansion in Ikoyi. Shekpe!', icon: 'castle', rarity: 'common', category: 'city', condition: count(progressionCounter.venue('obo-mansion')) },
   { id: 'movie-night-at-obos', title: 'Movie night at OBO’s', description: 'Watched a movie in OBO’s cinema. Recliner, popcorn, surround sound.', icon: 'clapperboard', rarity: 'uncommon', category: 'city', condition: anyOf(did('obo-movie'), did('obo-vip-screening')) },

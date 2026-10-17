@@ -1,4 +1,5 @@
 import type {
+  AircraftBoardingResultDto,
   AircraftFlightRequest,
   AircraftFlightResultDto,
   ApronDto,
@@ -24,6 +25,10 @@ export const aviationApi = {
     tapOnce(`aircraft-flight:${aircraftId}:${body.destination}`, (idempotencyKey) =>
       api.post<AircraftFlightResultDto>(`/aircraft/${id(aircraftId)}/flights`, { ...body, idempotencyKey }),
     ),
+  /** Step aboard your parked aircraft (the server puts you in its cabin, `aircraft:<id>`). */
+  boardAircraft: (aircraftId: string) => api.post<AircraftBoardingResultDto>(`/aircraft/${id(aircraftId)}/boarding`),
+  /** Step out onto the terminal floor. */
+  deplaneAircraft: (aircraftId: string) => api.delete<AircraftBoardingResultDto>(`/aircraft/${id(aircraftId)}/boarding`),
   flights: () => api.get<FlightsOverviewDto>('/flights'),
   checkIn: (bookingId: string) => api.post<TravelActionResultDto>(`/flights/bookings/${id(bookingId)}/check-in`),
   board: (bookingId: string) => api.post<TravelActionResultDto>(`/flights/bookings/${id(bookingId)}/board`),

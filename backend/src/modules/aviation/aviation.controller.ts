@@ -1,6 +1,7 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type {
+  AircraftBoardingResultDto,
   AircraftChangeResultDto,
   AircraftFlightResultDto,
   AircraftPurchaseResultDto,
@@ -74,6 +75,19 @@ export class AviationController {
   @Post(':id/reinstatement')
   reinstate(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: TapOnceDto): Promise<AircraftReinstatementResultDto> {
     return this.session.run({ userId: user.userId }, (ctx) => ctx.once('aircraft-reinstatement', body.idempotencyKey, { id }, () => this.aviation.reinstate(ctx, id)), { touch: true });
+  }
+
+  /** Step aboard your parked aircraft from its terminal (your location becomes `aircraft:<id>`). Boarding twice is fine. */
+  @HttpCode(HttpStatus.OK)
+  @Post(':id/boarding')
+  board(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<AircraftBoardingResultDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.aviation.board(ctx, id), { touch: true });
+  }
+
+  /** Step out of your aircraft onto the terminal floor. */
+  @Delete(':id/boarding')
+  deplane(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string): Promise<AircraftBoardingResultDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.aviation.deplane(ctx, id), { touch: true });
   }
 
   /** Fly to the other terminal. You must be standing at the aircraft's terminal. */

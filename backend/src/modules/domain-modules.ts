@@ -16,6 +16,7 @@ import { InvestmentsModule } from './investments/investments.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
 import { ProgressionModule } from './progression/progression.module.js';
 import { PromotionsModule } from './promotions/promotions.module.js';
+import { RacesModule } from './races/races.module.js';
 import { ShopModule } from './shop/shop.module.js';
 import { SocialModule } from './social/social.module.js';
 import { TravelModule } from './travel/travel.module.js';
@@ -47,6 +48,7 @@ export const DOMAIN_MODULES: Type[] = [
   SocialModule,
   VisitsModule,
   TravelModule,
+  RacesModule,
   PromotionsModule,
   BettingModule,
   ProgressionModule,

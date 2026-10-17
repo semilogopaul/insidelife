@@ -1,4 +1,4 @@
-import { REGISTRATION_PREFIX, aircraftNeedsLicence, registrationIssue, type AircraftDefinition, type GameMinute, type Rng } from '@insidelife/shared';
+import { REGISTRATION_PREFIX, aircraftLocationId, aircraftNeedsLicence, registrationIssue, type AircraftDefinition, type GameMinute, type Rng } from '@insidelife/shared';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -13,6 +13,8 @@ export function randomRegistration(rng: Rng): string {
 }
 
 export interface FlyCheck {
+  /** The aircraft's id: standing aboard it (`aircraft:<id>`) counts as being at its terminal. */
+  readonly aircraftId?: string;
   readonly aircraft: Pick<AircraftDefinition, 'class'>;
   readonly parkedAt: string;
   readonly arrivesAt: GameMinute | null;
@@ -29,7 +31,25 @@ export function flyBlocker(check: FlyCheck): string | null {
   if (check.arrivesAt !== null && check.arrivesAt > check.now) return 'Your aircraft is still in the air or on its ferry flight';
   if (check.grounded) return 'Grounded for unpaid hangar, crew or maintenance bills. Settle them first';
   if (check.travelling) return 'You’re on the move. Get to the terminal first';
-  if (check.locationId !== check.parkedAt) return 'Your aircraft is parked at another terminal. Go there to fly it';
+  const aboard = check.aircraftId !== undefined && check.locationId === aircraftLocationId(check.aircraftId);
+  if (check.locationId !== check.parkedAt && !aboard) return 'Your aircraft is parked at another terminal. Go there to fly it';
   if (aircraftNeedsLicence(check.aircraft) && !check.licenceHeld) return 'You need a Private Pilot Licence to fly this one yourself';
+  return null;
+}
+
+export interface BoardCheck {
+  readonly aircraftId: string;
+  readonly parkedAt: string;
+  readonly arrivesAt: GameMinute | null;
+  readonly now: GameMinute;
+  readonly locationId: string;
+  readonly travelling: boolean;
+}
+
+/** Why the owner can't step aboard their aircraft right now (player-facing), or null when they can. */
+export function boardBlocker(check: BoardCheck): string | null {
+  if (check.arrivesAt !== null && check.arrivesAt > check.now) return 'Your aircraft is still in the air or on its ferry flight';
+  if (check.travelling) return 'You’re on the move. Get to the terminal first';
+  if (check.locationId !== check.parkedAt && check.locationId !== aircraftLocationId(check.aircraftId)) return 'Your aircraft is parked at another terminal. Go there to board it';
   return null;
 }
