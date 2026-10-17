@@ -132,7 +132,39 @@ const SPRAY_MONEY: PlaceService = {
 };
 const NIGHT_OUT: readonly PlaceService[] = [SEND_A_BOTTLE, DJ_SHOUTOUT, NIGHT_EXTRAS, SPRAY_MONEY];
 
-export const PLACE_SERVICES: Readonly<Partial<Record<VenueType, readonly PlaceService[]>>> = {
+/**
+ * The General Aviation Terminals (docs/MULTI_CITY.md): the aircraft sales desk, the flight school and your own
+ * aircraft. Keyed by the venue type the multi-city work adds (`aviation-terminal`), so both GATs get them.
+ */
+const AVIATION_TERMINAL: readonly PlaceService[] = [
+  {
+    id: 'aircraft-sales',
+    label: 'Aircraft sales desk',
+    emoji: '🛩️',
+    blurb: 'Cessnas to Gulfstreams, bought and parked on the apron — in the Hangar app.',
+    opens: { app: 'hangar', param: 'buy' },
+    at: 'desk',
+  },
+  {
+    id: 'flight-school',
+    label: 'Flight school',
+    emoji: '🎓',
+    blurb: 'Private Pilot Licence: enrol, lessons and the check-ride — in the Hangar app.',
+    opens: { app: 'hangar', param: 'licence' },
+    at: 'counter',
+  },
+  {
+    id: 'my-aircraft',
+    label: 'Your aircraft',
+    emoji: '✈️',
+    blurb: 'Walk out to your stand and fly — in the Hangar app.',
+    opens: { app: 'hangar', param: 'fleet' },
+    at: { object: 'spot' },
+  },
+];
+
+export const PLACE_SERVICES: Readonly<Partial<Record<VenueType | 'aviation-terminal', readonly PlaceService[]>>> = {
+  'aviation-terminal': AVIATION_TERMINAL,
   club: NIGHT_OUT,
   bar: NIGHT_OUT,
   'event-centre': NIGHT_OUT,
