@@ -37,6 +37,15 @@ export const INTERIOR_TEMPLATE_IDS = [
   'mansion',
   'private-jet',
   'refinery',
+  // Aviation (docs/MULTI_CITY.md): the General Aviation Terminal and the walkable cabin of each aircraft class.
+  'aviation-terminal',
+  'aircraft-piston-single',
+  'aircraft-piston-twin',
+  'aircraft-turboprop',
+  'aircraft-light-jet',
+  'aircraft-midsize-jet',
+  'aircraft-long-range-jet',
+  'aircraft-airliner-jet',
 ] as const;
 export type InteriorTemplateId = (typeof INTERIOR_TEMPLATE_IDS)[number];
 
@@ -61,6 +70,7 @@ const VENUE_TEMPLATES: Readonly<Partial<Record<Exclude<VenueType, 'home'>, Inter
   // The open ground dressed as a stadium (track, stands, floodlights) by its venue look.
   stadium: 'park',
   'cbt-centre': 'cbt-centre',
+  'aviation-terminal': 'aviation-terminal',
   airport: 'airport',
   'motor-park': 'motor-park',
   'event-centre': 'event-centre',

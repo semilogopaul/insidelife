@@ -36,6 +36,7 @@ import { useHomeView } from './home-view-store';
 import { HomeWalkRuntime, buildRoomPhysics } from './home-walk-runtime';
 import { PortalMarkers } from './PortalMarkers';
 import { PrebakeRooms } from './PrebakeRooms';
+import { setActiveWalkRuntime } from './walk-pose';
 import type { HomeRoom } from './use-home-room';
 
 export interface HomeWalkProps {
@@ -268,6 +269,12 @@ export function HomeWalk({
       });
     }, 300);
     return () => window.clearInterval(id);
+  }, [runtime]);
+
+  // Scene content that reacts to where you stand (the apron's boarding door) reads the walker through this.
+  useEffect(() => {
+    setActiveWalkRuntime(runtime);
+    return () => setActiveWalkRuntime(null);
   }, [runtime]);
 
   useEffect(() => {

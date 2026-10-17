@@ -1,3 +1,5 @@
+import { AIRCRAFT_LAYOUTS } from '../../aviation/cabin/cabin-layouts';
+import { AVIATION_TERMINAL_LAYOUT } from '../../aviation/terminal/terminal-layout';
 import {
   DUPLEX_BEDROOM,
   DUPLEX_KITCHEN,
@@ -465,6 +467,9 @@ export const VENUE_ROOM_LAYOUTS: Readonly<Partial<Record<InteriorTemplateId, Hom
   mansion: OBO_MANSION_LAYOUT,
   'private-jet': AIR_OBO_LAYOUT,
   refinery: DANGOTE_REFINERY_LAYOUT,
+  // Aviation: the General Aviation Terminal (lounge + airside) and the cabin of each aircraft class (`modules/world/aviation`).
+  'aviation-terminal': AVIATION_TERMINAL_LAYOUT,
+  ...AIRCRAFT_LAYOUTS,
 };
 
 const VENUE_LAYOUTS = new Map<string, HomeLayout>();

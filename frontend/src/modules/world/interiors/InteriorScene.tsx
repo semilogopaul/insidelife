@@ -10,6 +10,10 @@ import { useDecorEdit } from '@/common/decor';
 import { isBusy, isPlaceAction, placeActions, servicesAt, useActionAvailability, servicesWithGoal, useGoalHere, type GoalHere, type PlaceService } from '@/common/places';
 import { useHomePeople, useVisits } from '@/common/visits';
 import { animationForSegment } from '@/common/three/avatar';
+import { withApronColliders } from '../aviation/terminal/apron-colliders';
+import { layoutApron, type ApronPlane } from '../aviation/terminal/apron-layout';
+import { Apron, type AirsideProps } from '../aviation/terminal/Apron';
+import { AIRSIDE_ID } from '../aviation/terminal/terminal-templates';
 import { ClubLights } from './effects/ClubLights';
 import { DollhouseCamera } from './components/DollhouseCamera';
 import { FurnitureLayer } from './components/FurnitureLayer';
@@ -31,6 +35,7 @@ import { furnish } from './templates/furnish';
 import { getTemplate } from './templates/registry';
 import { isNepaOff, resolveTemplateId, type HomeInfo, type InteriorTemplateId } from './templates/resolve';
 import { HomeWalkLayer } from './walk/HomeWalk';
+import { walkerFoot } from './walk/walk-pose';
 import { peopleInRoom, useHomeRoom } from './walk/use-home-room';
 
 export interface InteriorSceneProps {
@@ -62,6 +67,11 @@ export interface InteriorSceneProps {
   readonly services?: readonly PlaceService[];
   /** The life goal that brought you here and what advances it; defaults to the player's goals. Previews pass one. */
   readonly goal?: GoalHere | null;
+  /**
+   * The General Aviation Terminal's airside: your plane on your stand, other players' planes (at most six are drawn) and
+   * what happens when you walk up to your plane's door. Ignored in every other room.
+   */
+  readonly airside?: AirsideProps;
   /** Extra scene content (e.g. `<MoneyRain />` triggered by the play layer). */
   readonly children?: ReactNode;
 }
@@ -75,11 +85,12 @@ export interface InteriorSceneProps {
 const NO_PLAYERS: readonly PresencePlayerDto[] = [];
 const NO_ACTIONS: readonly ActionDefinition[] = [];
 const NO_SERVICES: readonly PlaceService[] = [];
+const NO_PLANES: readonly ApronPlane[] = [];
 const NO_HOTSPOTS: ReturnType<typeof buildHotspots> = [];
 /** Far below the floor (its light has a 5 m reach): keeps the light rig identical across a home's rooms. */
 const SPARE_LANTERN = [0, -20, 0] as const;
 
-export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, actions: actionsOverride, busy: busyOverride, services: servicesOverride, goal: goalOverride, children }: InteriorSceneProps) {
+export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, actions: actionsOverride, busy: busyOverride, services: servicesOverride, goal: goalOverride, airside, children }: InteriorSceneProps) {
   const snapshot = useSnapshot().data;
   const minute = useGameMinute(4000);
   const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
@@ -150,7 +161,11 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const template = useMemo(() => (atHome ? furnished : withSeating(furnished, { action: seatAction, others: players.length })), [furnished, atHome, seatAction, players.length]);
   // The walker bumps into the solid decor pieces (on top of the room, seats included).
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature stands for the placed pieces
-  const walkTemplate = useMemo(() => withDecorColliders(template, roomDecor.placed), [template, decorSignature]);
+  const decorTemplate = useMemo(() => withDecorColliders(template, roomDecor.placed), [template, decorSignature]);
+  // On the airside apron the parked planes are solid too (the same layout the apron draws).
+  const onApron = template.id === AIRSIDE_ID;
+  const apronPlanes = useMemo(() => (onApron ? layoutApron(airside?.own ?? null, airside?.others ?? NO_PLANES) : null), [onApron, airside?.own, airside?.others]);
+  const walkTemplate = useMemo(() => (apronPlanes ? withApronColliders(decorTemplate, apronPlanes) : decorTemplate), [decorTemplate, apronPlanes]);
 
   // Hotspots: the place's own actions (not the do-anywhere ones) anchored where they happen in this room.
   const here = snapshot !== undefined && snapshot.character.locationId === locationId;
@@ -199,6 +214,7 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
         )}
         <TvScreens furniture={template.furniture} powerCut={powerCut} />
         {template.extras?.cars && <ShowroomCars cars={template.extras.cars} />}
+        {onApron && <Apron own={airside?.own ?? null} others={airside?.others ?? NO_PLANES} onBoard={airside?.onBoard} getPlayer={walkerFoot} />}
       </Suspense>
       {template.extras?.clubLights && <ClubLights floor={template.extras.clubLights} ceiling={room.height} />}
       <InteriorPeople template={template} locationId={locationId} player={walking ? null : resolvedPlayer} players={players} />
