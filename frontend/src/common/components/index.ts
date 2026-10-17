@@ -30,3 +30,4 @@ export { Stepper, type StepperProps } from './Stepper';
 export { NamedIcon, type NamedIconProps } from './NamedIcon';
 export { CodeField, codeDigits, type CodeFieldProps } from './CodeField';
 export { TakeMeThere, type TakeMeThereProps } from './TakeMeThere';
+export { JetHero } from './JetHero';

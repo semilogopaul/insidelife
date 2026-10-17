@@ -33,6 +33,7 @@ const baseUser = (overrides: Partial<UserEntity> = {}): UserEntity => ({
   welcomeSeenAt: null,
   welcomeReaction: null,
   featuredSeenAt: null,
+  lastAnnouncementSeen: null,
   tourCompletedAt: null,
   tourSkipped: false,
   createdAt: new Date(),

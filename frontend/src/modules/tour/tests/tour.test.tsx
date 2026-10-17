@@ -8,7 +8,7 @@ import { placeCard } from '../services/layout';
 import { TOUR_STEPS } from '../services/steps';
 import { IDLE, shouldAutoStart, tourReducer, type TourAction, type TourState } from '../services/tour-state';
 
-const NEW: OnboardingDto = { welcomeSeen: true, welcomeReaction: 'na-you-sabi', featuredSeen: true, tourOutcome: null };
+const NEW: OnboardingDto = { welcomeSeen: true, welcomeReaction: 'na-you-sabi', featuredSeen: true, tourOutcome: null, lastAnnouncementSeen: null };
 const total = TOUR_STEPS.length;
 const run = (actions: readonly TourAction[], from: TourState = IDLE): TourState => actions.reduce((state, action) => tourReducer(state, action, total), from);
 const rect = (top: number, left: number, width: number, height: number): DOMRect => ({ top, left, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}) });

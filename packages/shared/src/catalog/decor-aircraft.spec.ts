@@ -37,7 +37,7 @@ describe('aircraft room table', () => {
 
   it('gives every room a door, sane size and a cap under the home cap', () => {
     for (const [templateId, rooms] of Object.entries(DECOR_AIRCRAFT_ROOMS)) {
-      for (const [roomId, spec] of Object.entries(rooms as Record<string, { width: number; depth: number; height: number; doors: unknown[] }>)) {
+      for (const [roomId, spec] of Object.entries(rooms as Readonly<Record<string, { readonly width: number; readonly depth: number; readonly height: number; readonly doors: readonly unknown[] }>>)) {
         const where = `${templateId}/${roomId}`;
         expect(spec.doors.length, where).toBeGreaterThan(0);
         expect(spec.width, where).toBeGreaterThan(2);

@@ -80,6 +80,10 @@ export class UserEntity {
   @Column({ type: 'timestamptz', nullable: true })
   featuredSeenAt: Date | null;
 
+  /** Id of the last "What's new" announcement seen (shown once to every account; see the shared announcements catalog). */
+  @Column({ type: 'varchar', length: 64, nullable: true })
+  lastAnnouncementSeen: string | null;
+
   /** When the guided walkthrough ended (existing accounts were marked completed when it launched). */
   @Column({ type: 'timestamptz', nullable: true })
   tourCompletedAt: Date | null;

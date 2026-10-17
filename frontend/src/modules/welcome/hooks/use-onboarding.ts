@@ -28,5 +28,10 @@ export function useOnboarding() {
     onMutate: () => update({ featuredSeen: true }),
     onSuccess: (dto) => client.setQueryData(KEY, dto),
   });
-  return { onboarding: query.data, answerWelcome: answerWelcome.mutate, markFeaturedSeen: featuredSeen.mutate };
+  const announcementSeen = useMutation({
+    mutationFn: onboardingApi.announcementSeen,
+    onMutate: (id: string) => update({ lastAnnouncementSeen: id }),
+    onSuccess: (dto) => client.setQueryData(KEY, dto),
+  });
+  return { onboarding: query.data, answerWelcome: answerWelcome.mutate, markFeaturedSeen: featuredSeen.mutate, markAnnouncementSeen: announcementSeen.mutate };
 }

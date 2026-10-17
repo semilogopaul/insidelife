@@ -8,6 +8,7 @@ import { ReqMeta, type RequestMeta } from '../../common/decorators/request-meta.
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { REFRESH_COOKIE, REFRESH_COOKIE_PATH } from '../auth/auth.controller.js';
 import { AccountLifecycleService } from './account-lifecycle.service.js';
+import { AnnouncementSeenDto } from './dto/announcement-seen.dto.js';
 import { DeleteAccountDto } from './dto/delete-account.dto.js';
 import { TourOutcomeDto } from './dto/tour-outcome.dto.js';
 import { WelcomeReactionDto } from './dto/welcome-reaction.dto.js';
@@ -39,6 +40,13 @@ export class AccountsController {
   @Post('onboarding/featured')
   featuredSeen(@CurrentUser() user: AuthUser): Promise<OnboardingDto> {
     return this.users.markFeaturedSeen(user.userId);
+  }
+
+  /** A "What's new" announcement was dismissed or used. */
+  @HttpCode(HttpStatus.OK)
+  @Post('onboarding/announcement')
+  announcementSeen(@CurrentUser() user: AuthUser, @Body() body: AnnouncementSeenDto): Promise<OnboardingDto> {
+    return this.users.markAnnouncementSeen(user.userId, body.id);
   }
 
   /** The guided walkthrough ended (finished or skipped). */
