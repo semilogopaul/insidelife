@@ -17,6 +17,8 @@ import {
   PROGRESSION_SIGNALS,
   SKILL_KEYS,
   TRANSPORT_MODES,
+  INTERCITY_MODES,
+  CITY_IDS,
   VENUES,
   VENUE_TYPES,
   findMilestoneMoment,
@@ -77,11 +79,13 @@ function isKnownCounter(key: string): boolean {
       return ACTION_LIST.some((action) => action.id === value);
     case 'trip':
     case 'rain-trip':
-      return (TRANSPORT_MODES as readonly string[]).includes(value);
+      return ([...TRANSPORT_MODES, ...INTERCITY_MODES] as readonly string[]).includes(value);
     case 'venue-type':
       return (VENUE_TYPES as readonly string[]).includes(value);
     case 'venue':
       return VENUE_LIST.some((venue) => venue.id === value);
+    case 'city':
+      return (CITY_IDS as readonly string[]).includes(value);
     case 'district':
       return (DISTRICT_IDS as readonly string[]).includes(value);
     case 'signal':

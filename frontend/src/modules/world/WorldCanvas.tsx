@@ -9,22 +9,29 @@ import {
   isIntercityMode,
   isStreetLocation,
   venueEntrance,
+  type ActionDefinition,
   type CharacterSnapshotDto,
   type DistrictId,
+  type PresencePlayerDto,
   type WeatherCondition,
   type WorldPoint,
 } from '@insidelife/shared';
 import { PerformanceMonitor } from '@react-three/drei';
 import { Canvas } from '@react-three/fiber';
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useAboard } from '@/common/aviation';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi, type GraphicsQuality } from '@/common/game/ui-store';
 import { useWorld, type PlayerMode } from '@/common/game/world-store';
+import type { PlaceService } from '@/common/places';
 import { CityScene } from './city/CityScene';
 import { isCoarseDevice, resolveQuality, type QualityProfile } from './city/lib/quality';
 import { setWorldTimeOverride } from './city/lib/world-time';
 import { Diagnostics } from './city/stage/Diagnostics';
 import { ReviewCamera } from './city/stage/ReviewCamera';
+import { FlightScene } from './aviation/flight/FlightScene';
+import { AviationOverlay } from './aviation/flow/AviationOverlay';
+import { useAviationScene, type AviationScene } from './aviation/flow/use-aviation-scene';
 import { InteriorOverlay, InteriorScene } from './interiors';
 import { useVenueGuests } from './interiors/use-venue-guests';
 import { NavigationLayer } from './navigation/NavigationLayer';
@@ -61,6 +68,8 @@ export function WorldCanvas() {
   const presence: Presence = snapshot?.travel && !isIntercityMode(snapshot.travel.mode) ? 'riding' : !locationId || isStreetLocation(locationId) ? 'outside' : 'inside';
   // Other players at the venue you're in are drawn at its guest spots (homes get their host and guests from visits).
   const guests = useVenueGuests(presence === 'inside' && locationId && !isHomeLocation(locationId) ? locationId : null);
+  // Flying: the apron's planes, your plane's cabin, the sky itself (see `modules/world/aviation/flow`).
+  const aviation = useAviationScene();
 
   useEffect(() => {
     const mode: PlayerMode = presence === 'outside' ? 'walking' : presence;
@@ -75,11 +84,16 @@ export function WorldCanvas() {
   return (
     <>
       <WorldStage>
-        {presence === 'inside' && locationId ? (
-          <InteriorScene locationId={locationId} players={guests}>
-            {!isHomeLocation(locationId) && <InteriorSpray venueId={locationId} />}
-            {!isHomeLocation(locationId) && <InteriorMoments venueId={locationId} />}
-          </InteriorScene>
+        {presence === 'inside' && aviation.kind === 'sky' ? (
+          <FlightScene
+            key={aviation.key}
+            cls={aviation.flight.cls}
+            livery={aviation.flight.livery}
+            durationMs={aviation.durationMs}
+            onDone={() => useAboard.getState().skipFlight(aviation.key)}
+          />
+        ) : presence === 'inside' && locationId ? (
+          <InteriorOrCabin locationId={locationId} guests={guests} aviation={aviation} />
         ) : (
           <OutsideWorld focus={focus} play={PLAY_LAYER_OWNS_CAMERA ? 'game' : null} />
         )}
@@ -88,7 +102,24 @@ export function WorldCanvas() {
       <PlayOverlay presence={presence} />
       <SpeechBubbles inside={presence === 'inside'} />
       {presence === 'inside' && <InteriorOverlay />}
+      {presence === 'inside' && <AviationOverlay scene={aviation} />}
     </>
+  );
+}
+
+const NO_ACTIONS: readonly ActionDefinition[] = [];
+const NO_SERVICES: readonly PlaceService[] = [];
+
+/** The venue's interior, or the cabin of the plane you are sitting in (parked on the apron, or in the air). */
+function InteriorOrCabin({ locationId, guests, aviation }: { readonly locationId: string; readonly guests: readonly PresencePlayerDto[]; readonly aviation: AviationScene }) {
+  if (aviation.kind === 'cabin') {
+    return <InteriorScene key={aviation.templateId} locationId={locationId} templateId={aviation.templateId} players={aviation.players} actions={NO_ACTIONS} services={NO_SERVICES} goal={null} busy={false} />;
+  }
+  return (
+    <InteriorScene locationId={locationId} players={guests} airside={aviation.kind === 'terminal' ? aviation.airside : undefined}>
+      {!isHomeLocation(locationId) && <InteriorSpray venueId={locationId} />}
+      {!isHomeLocation(locationId) && <InteriorMoments venueId={locationId} />}
+    </InteriorScene>
   );
 }
 

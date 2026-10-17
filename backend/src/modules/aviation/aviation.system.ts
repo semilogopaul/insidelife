@@ -40,6 +40,11 @@ export class AviationSystem implements SimulationSystem, OnModuleInit {
     await this.aviation.chargeMonthly(ctx, monthIndex);
   }
 
+  /** `aircraft` for anyone who owns a plane (the "buy a plane" life goal and badge read it). */
+  async itemTags(ctx: SimulationContext): Promise<readonly string[]> {
+    return (await this.aviation.fleet(ctx)).length > 0 ? ['aircraft'] : [];
+  }
+
   netWorth(ctx: SimulationContext): Promise<number> {
     return this.aviation.netWorth(ctx);
   }

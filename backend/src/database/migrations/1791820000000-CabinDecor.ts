@@ -1,8 +1,8 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 /** Cabin decor: a decor piece can be fitted in one of the owner's aircraft instead of a home. */
-export class CabinDecor1791810000000 implements MigrationInterface {
-  name = 'CabinDecor1791810000000';
+export class CabinDecor1791820000000 implements MigrationInterface {
+  name = 'CabinDecor1791820000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`ALTER TABLE "decor_pieces" ADD "aircraft_id" uuid`);

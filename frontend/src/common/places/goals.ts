@@ -95,6 +95,10 @@ export function goalStepAt(condition: ProgressionCondition, here: Here): GoalSte
         );
         return action ? { kind: 'action', actionId: action.id } : null;
       }
+      if (key === 'trip:flight' || key === 'city:abuja') {
+        const flights = byApp(here, 'flights');
+        return flights ? { kind: 'service', service: flights } : null;
+      }
       if (key === 'promotions') {
         const jobs = byApp(here, 'jobs');
         return jobs
@@ -112,6 +116,10 @@ export function goalStepAt(condition: ProgressionCondition, here: Here): GoalSte
       return action ? { kind: 'action', actionId: action.id } : null;
     }
     case 'item-tag': {
+      if (condition.tag === 'aircraft') {
+        const desk = byApp(here, 'hangar', 'buy');
+        return desk ? { kind: 'service', service: desk } : null;
+      }
       if (condition.tag === 'car') {
         const cars = byApp(here, 'motors', 'dealer');
         return cars ? { kind: 'service', service: cars } : null;
@@ -128,6 +136,10 @@ export function goalStepAt(condition: ProgressionCondition, here: Here): GoalSte
         : null;
     }
     case 'certification': {
+      if (condition.anyOf.includes('ppl')) {
+        const school = byApp(here, 'hangar', 'licence');
+        return school ? { kind: 'service', service: school } : null;
+      }
       const licence = condition.anyOf.includes('drivers-licence')
         ? byApp(here, 'motors', 'licence')
         : undefined;

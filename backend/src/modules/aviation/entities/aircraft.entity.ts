@@ -40,6 +40,7 @@ export class AircraftEntity {
   acquiredAt: number;
 
   /** GAT venue id where it is parked (or heading). */
+  @Index('aircraft_parked_at')
   @Column({ type: 'varchar', length: 24 })
   parkedAt: string;
 

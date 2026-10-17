@@ -1,4 +1,5 @@
 import type { CharacterSnapshotDto } from './core.js';
+import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
 import type { AirlineId, FlightCabin, FlightChannel, FlightPhase } from '../catalog/flights.js';
 import type { CityId } from '../catalog/geography.js';
 import type { GameMinute } from '../time/calendar.js';
@@ -110,6 +111,26 @@ export interface ChangeFlightRequest {
   readonly flightId: string;
   readonly idempotencyKey?: string;
 }
+
+/** Another passenger on your flight (drawn in the cabin). Only the public look and handle. */
+export interface FlightPassengerDto {
+  readonly id: string;
+  readonly handle: string;
+  readonly firstName: string;
+  readonly gender: Gender;
+  readonly appearance: Appearance;
+  readonly outfit: Outfit;
+}
+
+/** `GET /v1/flights/:flightId/passengers`: the others aboard the flight you are on (blocked players left out). */
+export interface FlightPassengersDto {
+  readonly flightId: string;
+  readonly total: number;
+  readonly passengers: readonly FlightPassengerDto[];
+}
+
+/** The most fellow passengers drawn in a cabin. */
+export const FLIGHT_PASSENGERS_MAX = 11;
 
 /** `POST /v1/travel/bus` */
 export interface BookBusRequest {

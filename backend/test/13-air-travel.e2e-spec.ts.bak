@@ -1,0 +1,278 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  APRON_OTHERS_MAX,
+  FLIGHT_PASSENGERS_MAX,
+  GAT_ROUTE_KM,
+  MINUTES_PER_DAY,
+  findAircraft,
+  flightMinutes,
+  flightWindows,
+  type AchievementsOverviewDto,
+  type AircraftFlightResultDto,
+  type AircraftPurchaseResultDto,
+  type ApronDto,
+  type CharacterSnapshotDto,
+  type FlightDto,
+  type FlightPassengersDto,
+  type FlightsOverviewDto,
+  type HangarDto,
+  type TravelActionResultDto,
+} from '@insidelife/shared';
+import { bootApp, type E2eApp } from './support/app.js';
+import { fund } from './support/game.js';
+import { ledgerViolations, NO_VIOLATIONS } from './support/ledger.js';
+import { createPlayer, key, moveTo, ok, refused, type Player } from './support/players.js';
+
+/**
+ * Flying for real: no fake city-travel port. A private flight goes through the travel module (the character is in the
+ * air for the flight time, then inside the other terminal in the other city), the apron shows other players' planes,
+ * commercial flights fill their cabin with fellow passengers, and flights send their reminders.
+ */
+let e2e: E2eApp;
+
+beforeAll(async () => {
+  e2e = await bootApp();
+});
+
+afterAll(async () => {
+  if (e2e) expect(await ledgerViolations(e2e.dataSource)).toEqual(NO_VIOLATIONS);
+  await e2e?.close();
+});
+
+const snapshot = (player: Player): Promise<CharacterSnapshotDto> => player.snapshot();
+const hangar = async (player: Player): Promise<HangarDto> => ok<HangarDto>(await player.get('/aircraft'));
+
+async function pilot(funds = 40_000_000_000, at = 'mmia-gat'): Promise<Player> {
+  e2e.clock.at(10);
+  const player = await createPlayer(e2e, { age: 30 });
+  await fund(e2e, player, funds);
+  await moveTo(player, at);
+  return player;
+}
+
+const buy = async (player: Player, aircraftId: string): Promise<AircraftPurchaseResultDto> => ok<AircraftPurchaseResultDto>(await player.post('/aircraft/purchases', { aircraftId }));
+
+async function befriend(a: Player, b: Player): Promise<void> {
+  const pairKey = a.characterId < b.characterId ? `${a.characterId}:${b.characterId}` : `${b.characterId}:${a.characterId}`;
+  await e2e.dataSource.query(`INSERT INTO social_friendships (pair_key, requester_id, addressee_id, status, accepted_at) VALUES ($1, $2, $3, 'accepted', now())`, [pairKey, a.characterId, b.characterId]);
+}
+
+async function block(blocker: Player, blocked: Player): Promise<void> {
+  await e2e.dataSource.query(`INSERT INTO social_blocks (blocker_id, blocked_id) VALUES ($1, $2)`, [blocker.characterId, blocked.characterId]);
+}
+
+describe('private flight through the travel module', () => {
+  it('flies a jet Lagos to Abuja for real: in the air for the flight time, then inside Abuja’s terminal, and back', async () => {
+    const player = await pilot();
+    const jet = await buy(player, 'phenom-300e');
+    const def = findAircraft('phenom-300e')!;
+    const minutes = flightMinutes(def, GAT_ROUTE_KM);
+    const start = e2e.clock.now;
+
+    const flown = ok<AircraftFlightResultDto>(await player.post(`/aircraft/${jet.aircraft.id}/flights`, { destination: 'naia-gat', idempotencyKey: key() }));
+    expect(flown).toMatchObject({ minutes, arrivesAt: start + minutes });
+
+    // In the air: a flight trip, still Lagos, the plane is airborne and cannot fly again.
+    const flying = await snapshot(player);
+    expect(flying.travel).toMatchObject({ mode: 'flight', toLocationId: 'naia-gat', arriveAt: start + minutes });
+    expect(flying.character.cityId).toBe('lagos');
+    expect(flying.timeline.some((entry) => entry.kind === 'flight')).toBe(true);
+    expect((await hangar(player)).mine[0]).toMatchObject({ airborne: true, parkedAt: 'naia-gat' });
+    refused(await player.post(`/aircraft/${jet.aircraft.id}/flights`, { destination: 'mmia-gat' }), 422);
+
+    // Landed: inside the Abuja terminal, in Abuja, the plane parked on its apron.
+    e2e.clock.advance(minutes + 1);
+    const landed = await snapshot(player);
+    expect(landed.travel).toBeNull();
+    expect(landed.character).toMatchObject({ locationId: 'naia-gat', cityId: 'abuja' });
+    const view = await hangar(player);
+    expect(view.atGat).toBe('naia-gat');
+    expect(view.mine[0]).toMatchObject({ parkedAt: 'naia-gat', airborne: false });
+
+    // The first flight and the first trip to Abuja are badges; the flight counts as a trip like any other.
+    const badges = ok<AchievementsOverviewDto>(await player.get('/progression/achievements')).achievements;
+    expect(badges.find((badge) => badge.id === 'wheels-up')?.unlocked).toBe(true);
+    expect(badges.find((badge) => badge.id === 'welcome-to-abuja')?.unlocked).toBe(true);
+
+    // And home again.
+    const back = ok<AircraftFlightResultDto>(await player.post(`/aircraft/${jet.aircraft.id}/flights`, { destination: 'mmia-gat' }));
+    e2e.clock.advance(back.minutes + 1);
+    expect(await snapshot(player)).toMatchObject({ character: { locationId: 'mmia-gat', cityId: 'lagos' } });
+  });
+
+  it('counts an owned aircraft as the "aircraft" item tag the life goal and badge read', async () => {
+    const player = await pilot(20_000_000_000);
+    await buy(player, 'cessna-172');
+    e2e.clock.advance(MINUTES_PER_DAY + 5);
+    await snapshot(player);
+    e2e.clock.advance(MINUTES_PER_DAY + 5);
+    await snapshot(player);
+    const badges = ok<AchievementsOverviewDto>(await player.get('/progression/achievements')).achievements;
+    expect(badges.find((badge) => badge.id === 'aircraft-owner')?.unlocked).toBe(true);
+  });
+});
+
+describe('the apron: other players’ planes', () => {
+  it('shows friends’ planes first, then players in the terminal, hides blocked owners, and counts the rest as hangared', async () => {
+    const viewer = await pilot(2_000_000_000);
+    const mine = await buy(viewer, 'cessna-172');
+
+    const friend = await pilot(2_000_000_000);
+    await buy(friend, 'cessna-172');
+    await befriend(viewer, friend);
+    await moveTo(friend, 'ikeja-city-mall'); // the friend's plane is on the apron even though they're elsewhere
+
+    const here = await pilot(2_000_000_000);
+    await buy(here, 'piper-seneca');
+
+    const stranger = await pilot(2_000_000_000);
+    await buy(stranger, 'cessna-172');
+    await moveTo(stranger, 'ikeja-city-mall');
+
+    const enemy = await pilot(2_000_000_000);
+    await buy(enemy, 'cessna-172');
+    await block(viewer, enemy);
+
+    const apron = ok<ApronDto>(await viewer.get('/aircraft/apron/mmia-gat'));
+    expect(apron.gat).toBe('mmia-gat');
+    expect(apron.planes[0]).toMatchObject({ ownerHandle: friend.handle, relation: 'friend', aircraftClass: 'piston-single' });
+    expect(apron.planes.find((plane) => plane.ownerHandle === here.handle)).toMatchObject({ relation: 'present', aircraftClass: 'piston-twin' });
+    expect(apron.planes.some((plane) => plane.id === mine.aircraft.id)).toBe(false);
+    expect(apron.planes.some((plane) => plane.ownerHandle === enemy.handle || plane.ownerHandle === stranger.handle)).toBe(false);
+    // The stranger's plane is parked here but its owner is neither a friend nor in the terminal: "in a hangar".
+    expect(apron.hangared).toBeGreaterThanOrEqual(1);
+    // Nothing private leaks: no owner ids, only the public handle.
+    expect(JSON.stringify(apron)).not.toContain(friend.characterId);
+
+    refused(await viewer.get('/aircraft/apron/lekki-gat'), 404);
+  });
+
+  it('draws at most six other planes however many friends park there', async () => {
+    const viewer = await pilot(1_000_000_000);
+    for (let index = 0; index < APRON_OTHERS_MAX + 2; index++) {
+      const friend = await pilot(1_000_000_000);
+      await buy(friend, 'cessna-172');
+      await befriend(viewer, friend);
+    }
+    const apron = ok<ApronDto>(await viewer.get('/aircraft/apron/mmia-gat'));
+    expect(apron.planes).toHaveLength(APRON_OTHERS_MAX);
+    expect(apron.hangared).toBeGreaterThanOrEqual(2);
+  });
+
+  it('leaves out planes in the air and grounded ones', async () => {
+    const viewer = await pilot(1_000_000_000);
+    const owner = await pilot(40_000_000_000);
+    await befriend(viewer, owner);
+    const jet = await buy(owner, 'phenom-300e');
+    const grounded = await buy(owner, 'cessna-172');
+    await e2e.dataSource.query(`UPDATE aircraft SET grounded_at = $1 WHERE id = $2`, [e2e.clock.now, grounded.aircraft.id]);
+    const before = ok<ApronDto>(await viewer.get('/aircraft/apron/mmia-gat'));
+    expect(before.planes.filter((plane) => plane.ownerHandle === owner.handle).map((plane) => plane.id)).toEqual([jet.aircraft.id]);
+
+    const flown = ok<AircraftFlightResultDto>(await owner.post(`/aircraft/${jet.aircraft.id}/flights`, { destination: 'naia-gat' }));
+    expect(ok<ApronDto>(await viewer.get('/aircraft/apron/mmia-gat')).planes.some((plane) => plane.id === jet.aircraft.id)).toBe(false);
+    // Once it lands it is parked on Abuja's apron, where a friend can see it.
+    e2e.clock.advance(flown.minutes + 1);
+    expect(ok<ApronDto>(await viewer.get('/aircraft/apron/naia-gat')).planes.map((plane) => plane.id)).toEqual([jet.aircraft.id]);
+  });
+});
+
+describe('commercial flights: the cabin and the reminders', () => {
+  async function traveller(): Promise<Player> {
+    const player = await createPlayer(e2e, { age: 25 });
+    await fund(e2e, player, 3_000_000);
+    await moveTo(player, 'mmia-airport');
+    return player;
+  }
+
+  const overview = async (player: Player): Promise<FlightsOverviewDto> => ok<FlightsOverviewDto>(await player.get('/flights'));
+  const book = (player: Player, flight: FlightDto) => player.post('/flights/bookings', { flightId: flight.id, cabin: 'economy', channel: 'app' });
+  const titles = async (player: Player): Promise<string[]> => {
+    const rows = await e2e.dataSource.query<Array<{ title: string }>>(`SELECT title FROM notifications WHERE character_id = $1 ORDER BY created_at`, [player.characterId]);
+    return rows.map((row) => row.title);
+  };
+  const laterFlight = async (player: Player): Promise<FlightDto> => {
+    const { flights, now } = await overview(player);
+    return flights.find((candidate) => candidate.departAt - now > 6 * 60 && candidate.departAt - now < 14 * 60)!;
+  };
+
+  async function boardTogether(players: readonly Player[]): Promise<FlightDto> {
+    const flight = await laterFlight(players[0]!);
+    const bookings = new Map<Player, string>();
+    for (const player of players) bookings.set(player, ok<TravelActionResultDto>(await book(player, flight)).overview.bookings[0]!.id);
+    const w = flightWindows(flight);
+    e2e.clock.advance(w.checkInOpensAt - e2e.clock.now + 2);
+    for (const [player, id] of bookings) ok(await player.post(`/flights/bookings/${id}/check-in`));
+    e2e.clock.advance(w.boardingOpensAt - e2e.clock.now + 2);
+    for (const [player, id] of bookings) ok(await player.post(`/flights/bookings/${id}/board`));
+    return flight;
+  }
+
+  it('lists the others aboard your flight (not yourself, not blocked players, not other flights)', async () => {
+    e2e.clock.at(10);
+    const a = await traveller();
+    const b = await traveller();
+    const c = await traveller();
+    const blocked = await traveller();
+    await block(a, blocked);
+    const flight = await boardTogether([a, b, c, blocked]);
+
+    const seenByA = ok<FlightPassengersDto>(await a.get(`/flights/${encodeURIComponent(flight.id)}/passengers`));
+    expect(seenByA.flightId).toBe(flight.id);
+    expect(seenByA.passengers.map((passenger) => passenger.handle).toSorted()).toEqual([b.handle, c.handle].toSorted());
+    expect(seenByA.total).toBe(2);
+    expect(Object.keys(seenByA.passengers[0]!).toSorted()).toEqual(['appearance', 'firstName', 'gender', 'handle', 'id', 'outfit']);
+    expect(seenByA.passengers.length).toBeLessThanOrEqual(FLIGHT_PASSENGERS_MAX);
+
+    // Someone who is not on that flight sees an empty cabin, and an unknown flight is a 404.
+    const outsider = await traveller();
+    expect(ok<FlightPassengersDto>(await outsider.get(`/flights/${encodeURIComponent(flight.id)}/passengers`)).passengers).toEqual([]);
+    refused(await a.get('/flights/nonsense/passengers'), 404);
+
+    // After landing the cabin is empty.
+    e2e.clock.advance(flight.arriveAt - e2e.clock.now + 1);
+    expect(ok<FlightPassengersDto>(await a.get(`/flights/${encodeURIComponent(flight.id)}/passengers`)).passengers).toEqual([]);
+    expect((await snapshot(a)).character.locationId).toBe('naia-airport');
+  });
+
+  it('reminds once each: check-in closing, boarding now (and a gate change on some bookings)', async () => {
+    e2e.clock.at(10);
+    const player = await traveller();
+    const flight = await laterFlight(player);
+    const booked = ok<TravelActionResultDto>(await book(player, flight)).overview.bookings[0]!;
+    const w = flightWindows(flight);
+
+    expect((await titles(player)).filter((title) => /Check-in closes|Boarding now|Gate change/.test(title))).toEqual([]);
+    e2e.clock.advance(w.checkInClosesAt - 30 - e2e.clock.now + 1);
+    await snapshot(player);
+    await snapshot(player);
+    expect((await titles(player)).filter((title) => title.startsWith('Check-in closes in'))).toHaveLength(1);
+
+    ok(await player.post(`/flights/bookings/${booked.id}/check-in`));
+    e2e.clock.advance(w.boardingOpensAt - e2e.clock.now + 1);
+    await snapshot(player);
+    await snapshot(player);
+    const all = await titles(player);
+    expect(all.filter((title) => title.startsWith('Boarding now'))).toHaveLength(1);
+    expect(all.filter((title) => title.startsWith('Gate change')).length).toBeLessThanOrEqual(1);
+    expect((await overview(player)).bookings[0]!.gate).toMatch(/^[AB][1-8]$/);
+    ok(await player.post(`/flights/bookings/${booked.id}/board`));
+    expect((await snapshot(player)).travel).toMatchObject({ mode: 'flight' });
+  });
+
+  it('does not nag a player who was away through the window, and a missed flight still says so', async () => {
+    e2e.clock.at(10);
+    const player = await traveller();
+    const flight = await laterFlight(player);
+    ok(await book(player, flight));
+    const w = flightWindows(flight);
+    // Away until 45 game minutes after the warning was due: it is old news by now.
+    e2e.clock.advance(w.checkInClosesAt - 30 - e2e.clock.now + 45);
+    await snapshot(player);
+    expect((await titles(player)).filter((title) => title.startsWith('Check-in closes in'))).toEqual([]);
+    e2e.clock.advance(w.gateClosesAt - e2e.clock.now + 5);
+    await snapshot(player);
+    await overview(player);
+    expect((await titles(player)).some((title) => title.startsWith('You missed'))).toBe(true);
+  });
+});

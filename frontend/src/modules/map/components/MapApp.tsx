@@ -5,6 +5,7 @@ import { useMemo, useState } from 'react';
 import {
   CITIES,
   DISTRICTS,
+  GAT_NAMES,
   OTHER_CITY_REASON,
   VENUES,
   cityOfDistrict,
@@ -18,6 +19,7 @@ import {
 import { ApiError, errorMessage } from '@/common/api/api-error';
 import { PlaceIcon, propertyPlaceKind, venuePlaceKind } from '@/common/brand/place-icons';
 import { Button, Money, Spinner, toast } from '@/common/components';
+import { useOwnFleet } from '@/common/aviation';
 import { gameEvents } from '@/common/game/game-events';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
@@ -197,6 +199,29 @@ export function MapApp() {
 }
 
 /** "Berger Car Mart will be closed when you get there (opens 8 AM)". */
+/** "Or fly your own": where each of your planes is parked, and the Hangar to fly it from. Renders nothing without a plane. */
+function OwnPlanes() {
+  const openPhone = useUi((state) => state.openPhone);
+  const fleet = useOwnFleet();
+  const mine = fleet.data?.mine ?? [];
+  if (mine.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2 border-t border-danfo/60 pt-2.5" data-testid="map-own-planes">
+      <p className="text-sm font-bold">Or fly your own</p>
+      <ul className="flex flex-col gap-1 text-sm text-text-soft">
+        {mine.map((plane) => (
+          <li key={plane.id}>
+            <span className="font-semibold text-text">{plane.registration}</span> · {plane.name} · {plane.airborne ? 'in the air' : `at the ${GAT_NAMES[plane.parkedAt]}`}
+          </li>
+        ))}
+      </ul>
+      <Button variant="paper" onClick={() => openPhone('hangar', 'fleet')}>
+        Open Hangar
+      </Button>
+    </div>
+  );
+}
+
 const closedCopy = (name: string, opens: number): string => `${name} will be closed when you get there (opens ${formatHour(opens)})`;
 
 function Destination({ target, destinationId, onBack }: { readonly target: MapTarget; readonly destinationId: string; readonly onBack: () => void }) {
@@ -265,8 +290,9 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
           <p className="font-bold">{name} is in another city.</p>
           <p className="text-sm text-text-soft">{OTHER_CITY_REASON} There are no roads between Lagos and Abuja, so the map and GPS stop at the city limits.</p>
           <Button variant="ink" onClick={() => openPhone('flights')}>
-            Open Flights
+            Book a flight
           </Button>
+          <OwnPlanes />
         </div>
       )}
       <div className={cn('grid gap-2', otherCity && 'hidden')} role="group" aria-label={`Go to ${name} yourself`} data-tour="map-gps">

@@ -40,6 +40,8 @@ const GRIEF_DAYS = 30;
 const BELONGINGS: ReadonlyArray<{ readonly system: string; readonly tables: readonly string[] }> = [
   { system: 'shop', tables: ['inventory_items'] },
   { system: 'vehicles', tables: ['owned_vehicles'] },
+  // Aircraft keep their registration, livery and parking; the heir pays the hangar bills (and needs their own licence).
+  { system: 'aviation', tables: ['aircraft'] },
   { system: 'investments', tables: ['investment_holdings', 'investment_deposits', 'investment_savings_accruals', 'investment_ponzi_stakes'] },
 ];
 

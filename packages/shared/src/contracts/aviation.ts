@@ -164,3 +164,34 @@ export interface PilotTrainingStepResultDto {
   readonly fee: number;
   readonly balance: number;
 }
+
+// ----- The apron: other players' planes ---------------------------------------------------------------------------------
+
+/** How you know the owner of a parked plane: a friend, or someone standing in the same terminal. */
+export type ApronRelation = 'friend' | 'present';
+
+/** One of other players' planes parked at a General Aviation Terminal (only the owner's public handle is shown). */
+export interface ApronPlaneDto {
+  /** The aircraft's own id (stable key for drawing). */
+  readonly id: string;
+  readonly aircraftId: string;
+  readonly aircraftClass: AircraftClass;
+  readonly liveryBase: string;
+  readonly liveryAccent: string;
+  readonly callName: string | null;
+  readonly registration: string;
+  readonly ownerHandle: string;
+  readonly relation: ApronRelation;
+}
+
+/** `GET /v1/aircraft/apron/:gat` */
+export interface ApronDto {
+  readonly gat: GatId;
+  /** At most `APRON_OTHERS_MAX`: friends' planes first, then those of players in the terminal. */
+  readonly planes: readonly ApronPlaneDto[];
+  /** Other players' planes parked here that are not drawn: "in a hangar". */
+  readonly hangared: number;
+}
+
+/** The most other-player planes drawn on one apron. */
+export const APRON_OTHERS_MAX = 6;

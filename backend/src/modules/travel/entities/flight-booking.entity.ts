@@ -49,6 +49,10 @@ export class FlightBookingEntity {
   @Column({ type: 'bigint', transformer: bigintNumber })
   arriveAt: number;
 
+  /** Which reminders were sent (bit flags, see `REMINDER`): check-in closing, gate change, boarding. */
+  @Column({ type: 'smallint', default: 0 })
+  notified: number;
+
   /** The booking this one replaced (a missed or changed flight). */
   @Column({ type: 'uuid', nullable: true })
   changedFrom: string | null;

@@ -1,7 +1,8 @@
-import { CITY_MAP, DISTRICTS, ROAD_LINE_WIDTH, cellCentreZ, rowDepth, venueLot, type CityId } from '@insidelife/shared';
+import { CITY_MAP, DISTRICTS, ROAD_LINE_WIDTH, cellCentreZ, cityOfVenueId, rowDepth, venueLot, type CityId } from '@insidelife/shared';
 import { BoxGeometry, ConeGeometry, CylinderGeometry, Matrix4, Quaternion, SphereGeometry, Vector3, type BufferGeometry } from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { APRON, frameOf, PAVEMENT_Y } from '../layout/placements';
+import { AIRPORT_TERMINAL_IDS, airportSpec, GAT_TERMINAL_IDS, gatSpec } from '../layout/aviation-landmarks';
+import { APRON, frameOf, PAVEMENT_Y, type LotFrame } from '../layout/placements';
 import { buildAbujaLandmarkParts } from './abuja-geometry';
 import { WATER_Y } from './ground-geometry';
 import { frameMatrix } from './lot-frame';
@@ -34,22 +35,58 @@ function rod(a: Vector3, b: Vector3, radius: number): BufferGeometry {
   return geometry.applyMatrix4(new Matrix4().compose(new Vector3().addVectors(a, b).multiplyScalar(0.5), quaternion, new Vector3(1, 1, 1)));
 }
 
-function airport(): void {
-  const lot = venueLot('mmia-airport');
-  if (!lot) return;
-  const frame = frameOf(lot);
-  const m = frameMatrix(frame);
-  const back = -frame.depth / 2;
-  add(box(60, 11, 18, 0, 0, back + 13), 0xe9e5dc, m);
-  add(box(58, 7, 0.4, 0, 2, back + 22.1), 0x5f84a0, m);
-  add(box(66, 0.9, 28, 0, 11, back + 15), 0xdcd9d2, m);
-  add(box(66, 0.9, 0.5, 0, 11, back + 29), 0x1a8a4a, m);
-  for (let x = -30; x <= 30; x += 10) add(cylinder(0.35, 11, x, 0, back + 28), 0xf2f0ea, m);
+/** A commercial terminal and its control tower (`mmia-airport` as ever; `naia-airport` wider, with a second storey). */
+function airport(venueId: string): void {
+  const spec = airportSpec(venueId);
+  if (!spec) return;
+  const m = frameMatrix(spec.frame);
+  const back = -spec.frame.depth / 2;
+  const { width: w, depth: d, tower } = spec;
+  const extra = d - 18;
+  add(box(w, 11, d, 0, 0, back + 4 + d / 2), 0xe9e5dc, m);
+  add(box(w - 2, 7, 0.4, 0, 2, back + 4 + d + 0.1), 0x5f84a0, m);
+  add(box(w + 6, 0.9, 28 + extra, 0, 11, back + 15 + extra / 2), 0xdcd9d2, m);
+  add(box(w + 6, 0.9, 0.5, 0, 11, back + 29 + extra), venueId === 'naia-airport' ? 0x0b6b3a : 0x1a8a4a, m);
+  for (let x = -Math.floor(w / 20) * 10; x <= w / 2; x += 10) add(cylinder(0.35, 11, x, 0, back + 28 + extra), 0xf2f0ea, m);
+  if (spec.twoStorey) {
+    add(box(w * 0.6, 4.5, d - 6, 0, 11.9, back + 4 + d / 2), 0xf1eee6, m);
+    add(box(w * 0.6 + 2, 0.7, d - 4, 0, 16.4, back + 4 + d / 2), 0xdcd9d2, m);
+    add(box(w * 0.6 - 2, 2.4, 0.3, 0, 12.6, back + 4 + d - 2.9), 0x5f84a0, m);
+  }
   // Control tower.
-  add(cylinder(2.2, 30, 34, 0, back + 9), 0xe2ddd2, m);
-  add(cylinder(4.2, 4, 34, 30, back + 9), 0x4b6f86, m);
-  add(cylinder(4.6, 0.8, 34, 34, back + 9), 0xf2f0ea, m);
-  add(new ConeGeometry(1.2, 3, 8).translate(34, 36.3, back + 9), 0xd9452f, m);
+  add(cylinder(2.2, tower.height - 4, tower.x, 0, tower.z), 0xe2ddd2, m);
+  add(cylinder(4.2, 4, tower.x, tower.height - 4, tower.z), 0x4b6f86, m);
+  add(cylinder(4.6, 0.8, tower.x, tower.height, tower.z), 0xf2f0ea, m);
+  add(new ConeGeometry(1.2, 3, 8).translate(tower.x, tower.height + 2.3, tower.z), 0xd9452f, m);
+}
+
+/** A General Aviation Terminal: a glassy lounge by the road, a barrel-roofed hangar behind it, a small control cab. */
+function aviationTerminal(venueId: string): void {
+  const spec = gatSpec(venueId);
+  if (!spec) return;
+  const m = frameMatrix(spec.frame);
+  const { lounge, hangar, tower } = spec;
+  add(box(lounge.halfW * 2, lounge.height, lounge.halfD * 2, lounge.x, 0, lounge.z), 0xf0ece2, m);
+  add(box(lounge.halfW * 2 - 1.2, lounge.height * 0.55, 0.3, lounge.x, 1, lounge.z + lounge.halfD + 0.05), 0x4f7e94, m);
+  add(box(lounge.halfW * 2 + 1.4, 0.6, lounge.halfD * 2 + 1.4, lounge.x, lounge.height, lounge.z), 0x0e4a54, m);
+  add(box(lounge.halfW * 2 + 1.4, 0.35, 0.4, lounge.x, lounge.height + 0.6, lounge.z + lounge.halfD + 0.7), 0xe8c35a, m);
+  // Hangar: walls, a half-cylinder roof along its width and a dark door.
+  const wall = hangar.height - 3;
+  add(box(hangar.halfW * 2, wall, hangar.halfD * 2, hangar.x, 0, hangar.z), 0xd8dadb, m);
+  add(
+    new CylinderGeometry(1, 1, hangar.halfD * 2, 20, 1, false, -Math.PI / 2, Math.PI).rotateX(-Math.PI / 2).scale(hangar.halfW, 3, 1).translate(hangar.x, wall, hangar.z),
+    0xc4c8ca,
+    m,
+  );
+  add(box(hangar.halfW * 1.5, wall - 0.8, 0.3, hangar.x, 0, hangar.z + hangar.halfD + 0.05), 0x2b3a42, m);
+  add(box(hangar.halfW * 2 + 0.2, 0.5, 0.35, hangar.x, wall - 0.9, hangar.z + hangar.halfD + 0.1), 0x0e4a54, m);
+  // Control cab.
+  add(cylinder(0.9, tower.height - 2.4, tower.x, 0, tower.z, 10), 0xe2ddd2, m);
+  add(cylinder(2.1, 2.4, tower.x, tower.height - 2.4, tower.z, 10), 0x4b6f86, m);
+  add(cylinder(2.4, 0.5, tower.x, tower.height, tower.z, 10), 0xf2f0ea, m);
+  // Windsock mast on the lounge roof.
+  add(box(0.12, 4, 0.12, lounge.x - lounge.halfW + 1.2, lounge.height, lounge.z), 0xbfc2c4, m);
+  add(new ConeGeometry(0.4, 1.6, 8).rotateZ(-Math.PI / 2).translate(lounge.x - lounge.halfW + 2.1, lounge.height + 3.6, lounge.z), 0xe65a1e, m);
 }
 
 function stadium(): void {
@@ -196,8 +233,10 @@ export function buildLandmarkGeometry(cityId: CityId = 'lagos'): BufferGeometry 
   const cached = cache.get(cityId);
   if (cached) return cached.clone();
   parts.length = 0;
+  // Each city builds only its own landmarks (its airport terminals and General Aviation Terminals included).
+  for (const id of AIRPORT_TERMINAL_IDS) if (cityOfVenueId(id) === cityId) airport(id);
+  for (const id of GAT_TERMINAL_IDS) if (cityOfVenueId(id) === cityId) aviationTerminal(id);
   if (cityId === 'lagos') {
-    airport();
     stadium();
     mosque();
     linkBridge();

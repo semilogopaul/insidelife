@@ -19,7 +19,7 @@ export const FOBES_LISTS: Readonly<Record<FobesListId, FobesListDefinition>> = {
     id: 'rich-list',
     title: 'The Lagos Rich List',
     short: 'Rich List',
-    blurb: 'Everything they own: cash, savings, property, cars, businesses and investments.',
+    blurb: 'Everything they own: cash, savings, property, cars, private aircraft, businesses and investments.',
   },
   'self-made': {
     id: 'self-made',

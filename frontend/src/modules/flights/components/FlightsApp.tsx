@@ -55,6 +55,7 @@ export function FlightsApp() {
       <Header overview={data} />
       <Tabs
         label="Flights sections"
+        tour="flights-tabs"
         value={current}
         onChange={setTab}
         items={[

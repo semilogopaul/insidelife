@@ -4,6 +4,7 @@ import {
   AIRCRAFT,
   AIRCRAFT_CLASS_INFO,
   AIRCRAFT_SALES_GAT,
+  APRON_OTHERS_MAX,
   DEFAULT_LIVERY,
   FERRY_DELIVERY_MINUTES,
   GAT_IDS,
@@ -34,6 +35,8 @@ import {
   type AircraftCatalogEntryDto,
   type AircraftChangeResultDto,
   type AircraftDefinition,
+  type ApronDto,
+  type ApronPlaneDto,
   type AircraftFlightOptionDto,
   type AircraftFlightResultDto,
   type AircraftPurchaseRequest,
@@ -68,6 +71,18 @@ const REGISTRY_LOCK = "SELECT pg_advisory_xact_lock(hashtext('aircraft-registry'
 
 /** Secondary aircraft add this share of their prestige. */
 const SECONDARY_STATUS = 0.25;
+
+interface ApronRow {
+  readonly id: string;
+  readonly aircraftId: string;
+  readonly callName: string | null;
+  readonly registration: string;
+  readonly liveryBase: string;
+  readonly liveryAccent: string;
+  readonly ownerHandle: string;
+  readonly friend: boolean;
+  readonly present: boolean;
+}
 
 /** An owned aircraft resolved against the catalog. */
 export interface FleetAircraft {
@@ -129,6 +144,55 @@ export class AviationService {
 
   airborne(ctx: SimulationContext, plane: FleetAircraft): boolean {
     return plane.row.arrivesAt !== null && plane.row.arrivesAt > ctx.time;
+  }
+
+  // ----- The apron -------------------------------------------------------------------------------------------------
+
+  /**
+   * Other players' planes parked at a GAT, for the apron: friends' planes first, then those of players standing in the
+   * terminal (your instance); at most `APRON_OTHERS_MAX` are drawn, every other plane parked here is "in a hangar" (a
+   * head count only). Owners you blocked (or who blocked you), hidden or dead characters and planes in the air or grounded
+   * are left out. Only the public handle of an owner is revealed.
+   */
+  async apron(ctx: SimulationContext, gat: string): Promise<ApronDto> {
+    if (!isGatId(gat)) throw new ResourceNotFoundException('Terminal');
+    const viewer = ctx.character.id;
+    const rows: ApronRow[] = await ctx.manager.query(
+      `SELECT a.id, a.aircraft_id AS "aircraftId", a.call_name AS "callName", a.registration,
+              a.livery_base AS "liveryBase", a.livery_accent AS "liveryAccent", c.handle AS "ownerHandle",
+              EXISTS (SELECT 1 FROM social_friendships f
+                       WHERE f.status = 'accepted'
+                         AND ((f.requester_id = $2 AND f.addressee_id = c.id) OR (f.addressee_id = $2 AND f.requester_id = c.id))) AS friend,
+              (c.location_id = $1 AND c.travel IS NULL) AS present
+         FROM aircraft a
+         JOIN characters c ON c.id = a.character_id
+        WHERE a.parked_at = $1 AND a.character_id <> $2 AND a.grounded_at IS NULL
+          AND (a.arrives_at IS NULL OR a.arrives_at <= $3)
+          AND c.alive AND c.hidden_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM social_blocks b
+                           WHERE (b.blocker_id = $2 AND b.blocked_id = c.id) OR (b.blocker_id = c.id AND b.blocked_id = $2))
+        ORDER BY friend DESC, present DESC, a.acquired_at ASC, a.id ASC
+        LIMIT 200`,
+      [gat, viewer, ctx.time],
+    );
+    const known = rows.filter((row) => row.friend || row.present);
+    const planes: ApronPlaneDto[] = [];
+    for (const row of known) {
+      const def = findAircraft(row.aircraftId);
+      if (!def || planes.length >= APRON_OTHERS_MAX) continue;
+      planes.push({
+        id: row.id,
+        aircraftId: def.id,
+        aircraftClass: def.class,
+        liveryBase: row.liveryBase,
+        liveryAccent: row.liveryAccent,
+        callName: row.callName,
+        registration: row.registration,
+        ownerHandle: row.ownerHandle,
+        relation: row.friend ? 'friend' : 'present',
+      });
+    }
+    return { gat, planes, hangared: rows.length - planes.length };
   }
 
   // ----- Purchase --------------------------------------------------------------------------------------------------

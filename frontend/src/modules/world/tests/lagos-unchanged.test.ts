@@ -6,6 +6,7 @@ import { cityPlan } from '../city/layout/placements';
 /**
  * Lagos's plan (every model instance, lamp, wall, collider and lot colour) is pinned: adding Abuja's places, looks and
  * landmarks must never move a tree, a building or a lamp in Lagos. If you change Lagos on purpose, re-pin the hash.
+ * (Re-pinned once: the Lagos General Aviation Terminal lot got its own dressing; lots draw from per-lot random streams.)
  */
 describe('Lagos on the plan', () => {
   it('is exactly what it was before Abuja became a full city', () => {
@@ -22,6 +23,6 @@ describe('Lagos on the plan', () => {
       colliders: plan.colliders.filter((c) => lagos(c.minZ)).map((c) => [round(c.minX), round(c.minZ), round(c.maxX), round(c.maxZ), round(c.height)]),
       ground: CITY_MAP.lots.flatMap((lot, i) => (DISTRICTS[lot.districtId].cityId === 'lagos' ? [[i, plan.lotGround.get(i) ?? -1]] : [])),
     };
-    expect(createHash('sha256').update(JSON.stringify(data)).digest('hex')).toBe('16ca181fddabd4d0b4127662ea44743bd060b4121c21a20aa1039816a7f2e6ed');
+    expect(createHash('sha256').update(JSON.stringify(data)).digest('hex')).toBe('0d3b7b20934fd01981c4f0fc08cd34ddb95c91208af02f3dab5c83945842e858');
   });
 });

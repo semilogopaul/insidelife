@@ -6,7 +6,7 @@
 import type { ActionCategory, ActionHook, ActionId } from './actions.js';
 import type { DistrictId } from './geography.js';
 import type { BackgroundId, LifestyleTier, SkillKey } from './life.js';
-import type { TransportMode } from './transport.js';
+import type { TransportMode, TravelMode } from './transport.js';
 import type { VenueType } from './venues.js';
 import { boosted } from '../money/income-multiplier.js';
 import { MINUTES_PER_DAY } from '../time/calendar.js';
@@ -43,7 +43,7 @@ export type ProgressionCounterKey =
   | `action:${string}`
   | `category:${ActionCategory}`
   | `hook:${ActionHook}`
-  | `trip:${TransportMode}`
+  | `trip:${TravelMode}`
   | `rain-trip:${TransportMode}`
   | 'trips'
   | `venue:${string}`
@@ -73,7 +73,7 @@ export const progressionCounter = {
   action: (id: ActionId): ProgressionCounterKey => `action:${id}`,
   category: (category: ActionCategory): ProgressionCounterKey => `category:${category}`,
   hook: (hook: ActionHook): ProgressionCounterKey => `hook:${hook}`,
-  trip: (mode: TransportMode): ProgressionCounterKey => `trip:${mode}`,
+  trip: (mode: TravelMode): ProgressionCounterKey => `trip:${mode}`,
   rainTrip: (mode: TransportMode): ProgressionCounterKey => `rain-trip:${mode}`,
   venue: (venueId: string): ProgressionCounterKey => `venue:${venueId}`,
   venueType: (type: VenueType): ProgressionCounterKey => `venue-type:${type}`,
@@ -707,6 +707,48 @@ export const LIFE_GOALS = [
     celebration: 'toast',
     doneText: 'Butterflies and data subscriptions. Love is sweet!',
   },
+  {
+    id: 'first-flight',
+    chapter: 3,
+    order: 6,
+    title: 'Take your first flight',
+    description: 'Lagos to Abuja in about an hour. Window seat or aisle, your call.',
+    hint: 'Open Phone → Flights, book an Air Peace, Ibom Air, Arik or United Nigeria flight, check in at Murtala Muhammed Airport and board at your gate.',
+    targetVenueTypes: ['airport'],
+    optional: true,
+    condition: count(progressionCounter.trip('flight')),
+    reward: { cash: boosted(10_000), clout: 2 },
+    celebration: 'toast',
+    doneText: 'Wheels up! Please keep your seat belt fastened and your plantain chips ready.',
+  },
+  {
+    id: 'visit-abuja',
+    chapter: 3,
+    order: 7,
+    title: 'Visit the capital',
+    description: 'Maitama, Wuse, Jabi Lake: Abuja is cleaner, calmer and a lot more expensive. Go and see for yourself.',
+    hint: 'Fly or take the coach from Lagos: Phone → Flights, or the Map’s “Other city” panel.',
+    targetVenueTypes: ['airport'],
+    optional: true,
+    condition: count(progressionCounter.city('abuja')),
+    reward: { cash: boosted(10_000), clout: 3 },
+    celebration: 'toast',
+    doneText: 'Welcome to the FCT. The roads here are suspiciously smooth.',
+  },
+  {
+    id: 'earn-your-wings',
+    chapter: 3,
+    order: 8,
+    title: 'Earn your wings',
+    description: 'A Private Pilot Licence: sixteen lessons and a check-ride, and the sky is yours.',
+    hint: 'Go to the MMA2 General Aviation Terminal and open Phone → Hangar → Licence to enrol at the flight school.',
+    targetVenueTypes: ['aviation-terminal'],
+    optional: true,
+    condition: certified('ppl'),
+    reward: { cash: boosted(20_000), clout: 4 },
+    celebration: 'toast',
+    doneText: 'Licensed to fly. Nobody can call you “just a passenger” again.',
+  },
 
   // ===== Chapter 4 — Legacy =====================================================================================
   {
@@ -776,6 +818,20 @@ export const LIFE_GOALS = [
     reward: { cash: boosted(150_000), clout: 10 },
     celebration: 'moment',
     doneText: 'Your heir is ready. The dynasty is secure.',
+  },
+  {
+    id: 'own-a-plane',
+    chapter: 4,
+    order: 6,
+    title: 'Buy a plane',
+    description: 'From a second-hand Cessna to a Gulfstream: your own name and 5N- registration on a fuselage.',
+    hint: 'Visit the sales desk at the MMA2 General Aviation Terminal (or open Phone → Hangar) and buy an aircraft. Fly it yourself with a licence, or hire a crew with a jet.',
+    targetVenueTypes: ['aviation-terminal'],
+    optional: true,
+    condition: owns('aircraft'),
+    reward: { cash: boosted(30_000), clout: 5 },
+    celebration: 'moment',
+    doneText: 'Your own aircraft. The hangar fees start now.',
   },
 ] as const satisfies readonly LifeGoalDefinition[];
 
@@ -856,6 +912,10 @@ export const ACHIEVEMENTS = [
   { id: 'eko-o-ni-baje', title: 'Eko o ni baje', description: 'Set foot in 12 Lagos districts. You know this city like your palm.', icon: 'map-pinned', rarity: 'epic', category: 'city', condition: count('districts', 12) },
   { id: 'interstate', title: 'Interstate', description: 'Left Lagos for another city: fly, or take the coach and mind the potholes on the expressway.', icon: 'map', rarity: 'uncommon', category: 'city', condition: count('cities') },
   { id: 'departure-lounge', title: 'Departure lounge', description: 'Visited the airport. Just looking. For now.', icon: 'plane', rarity: 'common', category: 'city', condition: visited('airport') },
+  { id: 'wheels-up', title: 'Wheels up', description: 'Took your first flight. The snack was a small bag of groundnuts, and you loved it.', icon: 'plane', rarity: 'uncommon', category: 'city', condition: count(progressionCounter.trip('flight')) },
+  { id: 'welcome-to-abuja', title: 'Welcome to Abuja', description: 'Landed in the capital. Aso Rock is that way, and everything is a little quieter.', icon: 'landmark', rarity: 'uncommon', category: 'city', condition: count(progressionCounter.city('abuja')) },
+  { id: 'earned-your-wings', title: 'Earned your wings', description: 'Passed the check-ride and earned a Private Pilot Licence.', icon: 'plane-takeoff', rarity: 'rare', category: 'city', condition: certified('ppl') },
+  { id: 'aircraft-owner', title: 'Aircraft owner', description: 'Owns an aeroplane with a 5N- registration. The neighbours can see it from the runway.', icon: 'plane', rarity: 'epic', category: 'status', condition: owns('aircraft') },
   { id: 'server-don-down', title: 'Server don down', description: 'Visited a CBT centre. The generator was louder than the invigilator.', icon: 'monitor', rarity: 'common', category: 'city', condition: visited('cbt-centre') },
   { id: 'inside-obo-mansion', title: 'Inside OBO’s house', description: 'Walked into OBO Mansion in Ikoyi. Shekpe!', icon: 'castle', rarity: 'common', category: 'city', condition: count(progressionCounter.venue('obo-mansion')) },
   { id: 'movie-night-at-obos', title: 'Movie night at OBO’s', description: 'Watched a movie in OBO’s cinema. Recliner, popcorn, surround sound.', icon: 'clapperboard', rarity: 'uncommon', category: 'city', condition: anyOf(did('obo-movie'), did('obo-vip-screening')) },
