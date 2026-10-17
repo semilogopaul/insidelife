@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AppMark, Wordmark } from '@/common/components';
+import { AppMark, JetHero, Wordmark } from '@/common/components';
 import { InstallAppButton } from '@/common/pwa';
 import { site } from '@/config/site';
 import { LagosNow, LifePath, LiveSkyline } from '@/modules/landing';
@@ -41,6 +41,24 @@ export default function LandingPage() {
           </div>
           <div className="mt-10 border-t border-white/15 pt-5">
             <LagosNow />
+          </div>
+        </div>
+      </section>
+
+      <section aria-labelledby="new-heading" className="px-5 pt-12 sm:px-10">
+        <div className="grid overflow-hidden rounded-card bg-ink-2 ring-1 ring-white/10 sm:grid-cols-2">
+          <JetHero className="h-48 sm:h-full sm:min-h-64" />
+          <div className="flex flex-col items-start justify-center gap-3 p-6 sm:p-8">
+            <span className="rounded-chip bg-danfo px-2.5 py-0.5 text-xs font-bold uppercase tracking-wide text-ink">New</span>
+            <h2 id="new-heading" className="type-title text-2xl sm:text-3xl">
+              Private jets and Abuja
+            </h2>
+            <p className="max-w-md text-on-ink-soft">
+              Buy a plane from a Cessna to a Gulfstream, paint it your colours and fly it to Abuja, our new city. Or book Air Peace or Ibom Air, and race your friends to see who lands first.
+            </p>
+            <Link href="/sign-up" className="mt-1 inline-flex h-12 items-center rounded-card bg-danfo px-6 font-bold text-ink shadow-[0_3px_0_var(--color-danfo-deep)] hover:bg-danfo-deep">
+              Start flying
+            </Link>
           </div>
         </div>
       </section>

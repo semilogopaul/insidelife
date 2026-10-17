@@ -58,6 +58,7 @@ export * from './catalog/payments.js';
 export * from './contracts/payments.js';
 export * from './catalog/social.js';
 export * from './catalog/onboarding.js';
+export * from './catalog/announcements.js';
 export * from './contracts/social.js';
 export * from './catalog/fobes.js';
 export * from './contracts/fobes.js';

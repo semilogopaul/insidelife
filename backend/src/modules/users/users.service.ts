@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import type { OnboardingDto, TourOutcome, WelcomeReaction } from '@insidelife/shared';
+import { advancesAnnouncement, type OnboardingDto, TourOutcome, WelcomeReaction } from '@insidelife/shared';
 import { IsNull, type EntityManager, type Repository } from 'typeorm';
 import { UserEntity } from './entities/user.entity.js';
 
@@ -53,6 +53,7 @@ export class UsersService {
       welcomeReaction: user?.welcomeReaction ?? null,
       featuredSeen: (user?.featuredSeenAt ?? null) !== null,
       tourOutcome: user?.tourCompletedAt ? (user.tourSkipped ? 'skipped' : 'completed') : null,
+      lastAnnouncementSeen: user?.lastAnnouncementSeen ?? null,
     };
   }
 
@@ -64,6 +65,15 @@ export class UsersService {
 
   async markFeaturedSeen(id: string): Promise<OnboardingDto> {
     await this.users.update({ id, featuredSeenAt: IsNull() }, { featuredSeenAt: new Date() });
+    return this.onboarding(id);
+  }
+
+  /** Records a "What's new" announcement as seen; only ever moves forward, so a stale device can't bring one back. */
+  async markAnnouncementSeen(id: string, announcementId: string): Promise<OnboardingDto> {
+    const user = await this.findById(id);
+    if (user && advancesAnnouncement(user.lastAnnouncementSeen ?? null, announcementId)) {
+      await this.users.update({ id }, { lastAnnouncementSeen: announcementId });
+    }
     return this.onboarding(id);
   }
 

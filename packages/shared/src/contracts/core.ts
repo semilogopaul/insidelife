@@ -532,6 +532,12 @@ export interface OnboardingDto {
   readonly featuredSeen: boolean;
   /** How the guided walkthrough ended, or null while it hasn't (accounts that existed before it launched count as completed). */
   readonly tourOutcome: 'completed' | 'skipped' | null;
+  /** Id of the last "What's new" announcement this account has seen (null: none yet). */
+  readonly lastAnnouncementSeen: string | null;
+}
+
+export interface AnnouncementSeenRequest {
+  readonly id: string;
 }
 
 export interface TourOutcomeRequest {
