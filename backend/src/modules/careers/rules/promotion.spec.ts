@@ -1,6 +1,6 @@
 import { MINUTES_PER_DAY, MINUTES_PER_YEAR, findJob, type JobDefinition } from '@insidelife/shared';
 import { PROMOTION_COOLDOWN_DAYS, promotionChance, promotionOutlook, type PromotionState } from './promotion.js';
-import { profile, skills } from './fixtures-spec.js';
+import { graduate, profile, skills } from './fixtures-spec.js';
 
 const job = (id: string): JobDefinition => {
   const definition = findJob(id);
@@ -19,7 +19,7 @@ const state = (overrides: Partial<PromotionState> = {}): PromotionState => ({
 
 describe('promotion rules', () => {
   const swe = job('software-engineer');
-  const ready = profile({ skills: skills({ tech: 50 }) });
+  const ready = profile({ skills: skills({ tech: 50 }), credentials: graduate() });
 
   it('waits for time in level', () => {
     expect(promotionOutlook(swe, state(), ready, MINUTES_PER_YEAR / 2).blockedReason).toMatch(/time/);

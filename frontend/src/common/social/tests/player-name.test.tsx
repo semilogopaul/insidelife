@@ -39,13 +39,13 @@ describe('PlayerName', () => {
 describe('WealthBadge', () => {
   it('explains why the name is gold', () => {
     render(<WealthBadge wealthClass="nepo" />);
-    expect(screen.getByText('Nepo 👑 — over ₦20M in the bank')).toBeTruthy();
+    expect(screen.getByText('Nepo 👑 — over ₦100M in the bank')).toBeTruthy();
     expect(screen.getByText(/Gold names belong to nepos/)).toBeTruthy();
   });
 
   it('explains blue for lapo', () => {
     render(<WealthBadge wealthClass="lapo" />);
-    expect(screen.getByText('Lapo — under ₦20M')).toBeTruthy();
+    expect(screen.getByText('Lapo — under ₦100M')).toBeTruthy();
     expect(screen.getByText(/Blue names belong to lapos/)).toBeTruthy();
   });
 });

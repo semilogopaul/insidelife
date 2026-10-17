@@ -3,9 +3,9 @@ import { NEPO_THRESHOLD, bankMoneyOf, wealthClass } from './social.js';
 import { FEATURED_PLACES, featuredHeadline, liveFeaturedPlaces } from './onboarding.js';
 
 describe('wealth class', () => {
-  it('is nepo above ₦20M and lapo at or under it', () => {
-    expect(NEPO_THRESHOLD).toBe(20_000_000);
-    expect(wealthClass(20_000_001)).toBe('nepo');
+  it('is nepo above ₦100M and lapo at or under it', () => {
+    expect(NEPO_THRESHOLD).toBe(100_000_000);
+    expect(wealthClass(100_000_001)).toBe('nepo');
     expect(wealthClass(NEPO_THRESHOLD)).toBe('lapo');
     expect(wealthClass(0)).toBe('lapo');
   });
@@ -14,7 +14,7 @@ describe('wealth class', () => {
     expect(bankMoneyOf({ cash: 5_000_000, savings: 5_000_000, usdCents: 0 }, 1500)).toBe(10_000_000);
     // $5,000 at ₦1,500 = ₦7.5M
     expect(bankMoneyOf({ cash: 0, savings: 0, usdCents: 500_000 }, 1500)).toBe(7_500_000);
-    expect(wealthClass(bankMoneyOf({ cash: 10_000_000, savings: 5_000_000, usdCents: 400_000 }, 1500))).toBe('nepo');
+    expect(wealthClass(bankMoneyOf({ cash: 80_000_000, savings: 20_000_000, usdCents: 400_000 }, 1500))).toBe('nepo');
   });
 });
 

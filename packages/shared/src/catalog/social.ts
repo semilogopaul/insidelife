@@ -43,7 +43,7 @@ export function wealthBandLabel(amount: number): string {
 // ----- Nepo vs Lapo --------------------------------------------------------------------------------------------------
 
 /** Bank money (cash + savings + dollars at the going rate) from which a player is a "nepo" (gold name). */
-export const NEPO_THRESHOLD = 20_000_000;
+export const NEPO_THRESHOLD = 100_000_000;
 
 export const WEALTH_CLASSES = ['nepo', 'lapo'] as const;
 export type WealthClass = (typeof WEALTH_CLASSES)[number];
@@ -53,7 +53,7 @@ export function bankMoneyOf(balances: { readonly cash: number; readonly savings:
   return Math.round(balances.cash + balances.savings + (balances.usdCents / 100) * usdRate);
 }
 
-/** Over ₦20M in the bank is nepo (gold); anything less is lapo (blue). */
+/** Over ₦100M in the bank is nepo (gold); anything less is lapo (blue). */
 export function wealthClass(amount: number): WealthClass {
   return amount > NEPO_THRESHOLD ? 'nepo' : 'lapo';
 }
@@ -61,13 +61,13 @@ export function wealthClass(amount: number): WealthClass {
 export const WEALTH_CLASS_COPY: Readonly<Record<WealthClass, { readonly label: string; readonly badge: string; readonly explainer: string }>> = {
   nepo: {
     label: 'Nepo',
-    badge: 'Nepo 👑 — over ₦20M in the bank',
-    explainer: 'Gold names belong to nepos: players with more than ₦20M in the bank (cash, savings and dollars).',
+    badge: 'Nepo 👑 — over ₦100M in the bank',
+    explainer: 'Gold names belong to nepos: players with more than ₦100M in the bank (cash, savings and dollars).',
   },
   lapo: {
     label: 'Lapo',
-    badge: 'Lapo — under ₦20M',
-    explainer: 'Blue names belong to lapos: players with less than ₦20M in the bank. Grow your money and your name turns gold.',
+    badge: 'Lapo — under ₦100M',
+    explainer: 'Blue names belong to lapos: players with less than ₦100M in the bank. Grow your money and your name turns gold.',
   },
 };
 

@@ -21,6 +21,7 @@ const AT_X120: Readonly<Record<string, readonly number[]>> = {
   'obo-vip-screening': [150], 'obo-chef-table': [60], 'obo-fifa': [60, 120], 'obo-snooker': [60], 'obo-arcade': [30, 60],
   'obo-listen': [60, 120], 'obo-record': [120], 'obo-suite-rest': [60, 120], 'obo-freshen-up': [20], 'obo-drip': [30],
   'air-obo-cabin': [60], 'air-obo-champagne': [60], 'air-obo-captain': [30], 'air-obo-selfie': [30], 'air-obo-toilet': [20],
+  'football-training': [120, 180], 'football-match': [180],
   'refinery-tour': [120], 'refinery-learn': [60, 120], 'refinery-gift-shop': [30], 'refinery-view': [60],
 };
 const realSeconds = (gameMinutes: number, scale: number): number => (gameMinutes / scale) * 60;

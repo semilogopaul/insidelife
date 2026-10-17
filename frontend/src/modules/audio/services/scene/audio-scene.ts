@@ -41,6 +41,7 @@ const VENUE_CONTEXT: Readonly<Record<VenueType, MusicContext>> = {
   buka: 'city',
   restaurant: 'city',
   park: 'city',
+  stadium: 'city',
   'motor-park': 'city',
   airport: 'city',
   gym: 'city',

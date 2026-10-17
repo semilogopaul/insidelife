@@ -10,15 +10,15 @@ const cards = new PlayerCardsService(undefined as never, {} as PresenceService, 
 const row = (extra: Partial<CardRow>): CardRow => ({ id: 'c1', handle: 'ada', first_name: 'Ada', last_name: 'B', status: 10, title: null, ...extra });
 
 describe('wealth class from bank rows', () => {
-  it('is lapo at or under ₦20M and nepo above', () => {
-    expect(wealthClassOfRow({ bank_naira: '20000000', bank_usd_cents: '0' }, 1500)).toBe('lapo');
-    expect(wealthClassOfRow({ bank_naira: '20000001', bank_usd_cents: '0' }, 1500)).toBe('nepo');
+  it('is lapo at or under ₦100M and nepo above', () => {
+    expect(wealthClassOfRow({ bank_naira: '100000000', bank_usd_cents: '0' }, 1500)).toBe('lapo');
+    expect(wealthClassOfRow({ bank_naira: '100000001', bank_usd_cents: '0' }, 1500)).toBe('nepo');
   });
 
   it('counts dollars at the going rate', () => {
-    // $10,000 at ₦1,500 = ₦15M, plus ₦6M cash = ₦21M
-    expect(wealthClassOfRow({ bank_naira: 6_000_000, bank_usd_cents: 1_000_000 }, 1500)).toBe('nepo');
-    expect(wealthClassOfRow({ bank_naira: 4_000_000, bank_usd_cents: 1_000_000 }, 1500)).toBe('lapo');
+    // $10,000 at ₦1,500 = ₦15M, plus ₦86M cash = ₦101M
+    expect(wealthClassOfRow({ bank_naira: 86_000_000, bank_usd_cents: 1_000_000 }, 1500)).toBe('nepo');
+    expect(wealthClassOfRow({ bank_naira: 84_000_000, bank_usd_cents: 1_000_000 }, 1500)).toBe('lapo');
   });
 
   it('defaults to lapo when the row has no bank figures', () => {
@@ -28,9 +28,9 @@ describe('wealth class from bank rows', () => {
 
 describe('player cards', () => {
   it('carry the class but never the amount', () => {
-    const card = cards.toCard(row({ bank_naira: '90000000', bank_usd_cents: '0' }), true);
+    const card = cards.toCard(row({ bank_naira: '150000000', bank_usd_cents: '0' }), true);
     expect(card.wealthClass).toBe('nepo');
-    expect(JSON.stringify(card)).not.toContain('90000000');
+    expect(JSON.stringify(card)).not.toContain('150000000');
     expect(cards.toCard(row({ bank_naira: '5', bank_usd_cents: '0' }), false).wealthClass).toBe('lapo');
   });
 });

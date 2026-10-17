@@ -262,6 +262,9 @@ export interface EconomyState {
   readonly fareMultiplier: number;
 }
 
+/** The game's reference exchange rate (₦ per US$1): the centre the simulated parallel rate moves around. */
+export const BASE_USD_RATE = 1360;
+
 /** Economy on a given world day. Mean-reverting by construction; shocks come from world events. */
 export function economyOn(seed: string, dayIndex: number): EconomyState {
   const t = dayIndex * MINUTES_PER_DAY + MINUTES_PER_DAY / 2;
@@ -284,7 +287,7 @@ export function economyOn(seed: string, dayIndex: number): EconomyState {
   }
 
   const usdRate = Math.round(
-    1360 * (1 + 0.07 * valueNoise(seed, 'fx-slow', dayIndex / 75) + 0.02 * valueNoise(seed, 'fx-fast', dayIndex / 7)) *
+    BASE_USD_RATE * (1 + 0.07 * valueNoise(seed, 'fx-slow', dayIndex / 75) + 0.02 * valueNoise(seed, 'fx-fast', dayIndex / 7)) *
       devaluationFactor,
   );
   const fuelPrice = Math.round(1350 * (1 + 0.08 * valueNoise(seed, 'fuel', dayIndex / 30)) * (fuelScarcity ? 1.6 : 1));

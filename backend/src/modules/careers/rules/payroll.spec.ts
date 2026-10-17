@@ -1,4 +1,4 @@
-import { boosted, computePayslip, findJob, type JobDefinition } from '@insidelife/shared';
+import { JOB_MAX_MONTHLY_USD, boosted, computePayslip, findJob, type JobDefinition } from '@insidelife/shared';
 import { VOLATILITY_BOUNDS, attendancePayFactor, monthlyGross, payslipFor, volatilityMultiplier, type PayInput } from './payroll.js';
 
 const job = (id: string): JobDefinition => {
@@ -65,10 +65,10 @@ describe('payroll', () => {
   it('converts remote USD pay at the payday rate and taxes it', () => {
     const remote = job('remote-software-engineer');
     const pay = monthlyGross(input(remote, { usdRate: 1_380 }));
-    expect(pay.grossUsd).toBe(boosted(1_200, 1));
-    expect(pay.gross).toBe(boosted(1_200, 1) * 1_380);
+    expect(pay.grossUsd).toBe(JOB_MAX_MONTHLY_USD);
+    expect(pay.gross).toBe(JOB_MAX_MONTHLY_USD * 1_380);
     const slip = payslipFor(input(remote, { usdRate: 1_380, level: 4 }));
-    expect(slip.grossUsd).toBe(boosted(11_000, 1));
+    expect(slip.grossUsd).toBe(JOB_MAX_MONTHLY_USD);
     expect(slip.pensionEmployee).toBe(0);
     expect(slip.tax).toBeGreaterThan(slip.gross * 0.15);
   });

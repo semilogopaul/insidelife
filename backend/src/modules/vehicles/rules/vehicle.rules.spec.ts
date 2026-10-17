@@ -92,6 +92,12 @@ describe('dealer purchase location rules', () => {
     expect(dealerHere(position('lekki-car-mart'), corolla)).toBe('lekki-car-mart');
   });
 
+  it('sells brand-new and clean tokunbo cars at Polanco, never Naija-used', () => {
+    expect(dealerHere(position('polanco-motors'), accord)).toBeNull();
+    expect(dealerHere(position('polanco-motors'), corolla)).toBe('polanco-motors');
+    expect(dealerHere(position('polanco-motors'), gWagon)).toBe('polanco-motors');
+  });
+
   it('requires being inside an open dealer (otherwise it is a remote purchase)', () => {
     expect(dealerHere(position('ikeja-city-mall'), accord)).toBeNull();
     expect(dealerHere(position('street:ikeja'), accord)).toBeNull();

@@ -147,6 +147,13 @@ export function levelGateChecks(level: JobLevelDefinition, profile: CandidatePro
     ...skillChecks('gate:', level.skills, profile),
     ...certificationChecks('gate:', level.certifications, profile),
   ];
+  if (level.education && level.education !== 'none') {
+    checks.push({
+      key: 'gate:education',
+      label: `${CAREER_EDUCATION_LABELS[level.education]} or higher`,
+      met: educationRank(profile.credentials.highestLevel) >= educationRank(level.education),
+    });
+  }
   if (level.nysc) checks.push({ key: 'gate:nysc', label: 'NYSC completed (or exempted)', met: hasNysc(profile.credentials) });
   if (level.minConnections !== undefined) {
     checks.push({
@@ -162,6 +169,7 @@ export function levelGateChecks(level: JobLevelDefinition, profile: CandidatePro
 export function levelGateLabels(level: JobLevelDefinition): string[] {
   const labels = (Object.entries(level.skills ?? {}) as Array<[SkillKey, number]>).map(([skill, minimum]) => `${SKILL_LABELS[skill]} ${minimum}+`);
   for (const certification of level.certifications ?? []) labels.push(jobCertificationLabel(certification));
+  if (level.education && level.education !== 'none') labels.push(`${CAREER_EDUCATION_LABELS[level.education]} or higher`);
   if (level.nysc) labels.push('NYSC completed');
   if (level.minConnections !== undefined) labels.push(`Connections ${level.minConnections}+`);
   if (level.breakout) labels.push('A breakout moment (luck + talent)');
