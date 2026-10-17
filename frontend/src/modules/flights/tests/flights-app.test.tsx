@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { CharacterSnapshotDto, FlightBookingDto, FlightDto, FlightsOverviewDto } from '@insidelife/shared';
+import type { CharacterSnapshotDto, FlightBookingDto, FlightDto, FlightsOverviewDto, RacesOverviewDto } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
 import { useUi } from '@/common/game/ui-store';
 import { FlightsApp } from '../components/FlightsApp';
@@ -71,12 +71,14 @@ const overviewOf = (overrides: Partial<FlightsOverviewDto> = {}): FlightsOvervie
   ...overrides,
 });
 
+const RACES: RacesOverviewDto = { active: null, invitations: [], recent: [], friends: [], canChallenge: true, blocker: null, cityId: 'lagos', toCity: 'abuja', maxRacers: 4, durationDays: 3 };
+
 const snapshot = { asOf: NOW } as unknown as CharacterSnapshotDto;
 let client: QueryClient;
 
 function mockServer(overview: FlightsOverviewDto, flights: readonly FlightDto[] = [flight('f-7001'), flight('f-7002', { phase: 'departed', bookable: false })]): void {
   http.get.mockImplementation((path: string) =>
-    Promise.resolve(path === '/flights' ? overview : { cityId: 'lagos', day: 0, flights }),
+    Promise.resolve(path === '/flights' ? overview : path === '/races' ? RACES : { cityId: 'lagos', day: 0, flights }),
   );
   http.post.mockResolvedValue({ overview, snapshot });
 }

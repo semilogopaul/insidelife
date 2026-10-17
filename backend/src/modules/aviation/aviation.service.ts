@@ -13,6 +13,7 @@ import {
   MINUTES_PER_DAY,
   aircraftBrokerOffer,
   aircraftFerryFee,
+  aircraftLocationId,
   aircraftLiveryFee,
   aircraftMarketValue,
   aircraftMonthlyCosts,
@@ -26,6 +27,7 @@ import {
   flightMinutes,
   formatNaira,
   gatDistanceKm,
+  isAircraftLocation,
   isGatId,
   isInterruptibleActivity,
   isValidLivery,
@@ -33,6 +35,7 @@ import {
   normaliseRegistration,
   registrationIssue,
   type AircraftCatalogEntryDto,
+  type AircraftBoardingResultDto,
   type AircraftChangeResultDto,
   type AircraftDefinition,
   type ApronDto,
@@ -53,10 +56,11 @@ import { GameRuleException, InsufficientFundsException, ResourceNotFoundExceptio
 import { AIRCRAFT_DECOR_PORT, type AircraftDecorPort } from '../../common/ports/aircraft-decor.port.js';
 import { CITY_TRAVEL_PORT, type CityTravelPort } from '../../common/ports/city-travel.port.js';
 import type { RowProbe } from '../simulation/row-presence.js';
+import { SimulationEngine } from '../simulation/simulation-engine.service.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { AircraftEntity } from './entities/aircraft.entity.js';
 import { PilotTrainingService } from './pilot-training.service.js';
-import { flyBlocker, randomRegistration } from './rules/aviation.rules.js';
+import { boardBlocker, flyBlocker, randomRegistration } from './rules/aviation.rules.js';
 
 /** A General Aviation Terminal planes can use: it exists in the world as an aviation terminal (Lagos and Abuja). */
 const gatOpen = (venueId: string): boolean => findVenue(venueId)?.type === 'aviation-terminal';
@@ -102,6 +106,7 @@ export class AviationService {
     @Inject(CITY_TRAVEL_PORT) private readonly cities: CityTravelPort,
     @Inject(AIRCRAFT_DECOR_PORT) private readonly cabinDecor: AircraftDecorPort,
     private readonly training: PilotTrainingService,
+    private readonly engine: SimulationEngine,
   ) {}
 
   // ----- Reads -----------------------------------------------------------------------------------------------------
@@ -256,6 +261,8 @@ export class AviationService {
   async sell(ctx: SimulationContext, id: string): Promise<AircraftSaleResultDto> {
     const plane = await this.find(ctx, id);
     if (this.airborne(ctx, plane)) throw new GameRuleException('IN_THE_AIR', 'Wait for it to land before you sell it');
+    // Sitting in it when it goes: you are put back on the terminal floor.
+    if (ctx.character.locationId === aircraftLocationId(plane.row.id)) ctx.character.locationId = plane.row.parkedAt;
     const amount = this.saleOffer(ctx, plane);
     const arrears = plane.row.arrears;
     // Whatever was fitted in the cabin goes back to the owner's decor inventory.
@@ -350,6 +357,59 @@ export class AviationService {
     return { aircraft: this.toDto(ctx, plane, licenceHeld), fuelCost, minutes, arrivesAt: ctx.time + minutes, balance: ctx.wallet.cash };
   }
 
+  // ----- Boarding --------------------------------------------------------------------------------------------------
+
+  /** The aircraft of yours the character is sitting in (their location is its `aircraft:<id>`), if any. */
+  async aboardPlane(ctx: SimulationContext): Promise<FleetAircraft | null> {
+    if (ctx.character.travel || !isAircraftLocation(ctx.character.locationId)) return null;
+    return (await this.fleet(ctx)).find(({ row }) => ctx.character.locationId === aircraftLocationId(row.id)) ?? null;
+  }
+
+  /**
+   * Step aboard your own parked aircraft from its terminal. The character's location becomes `aircraft:<id>`: the cabin
+   * (with your decor) is the room you are in, and `fly` works from it. Boarding twice is a no-op.
+   */
+  async board(ctx: SimulationContext, id: string): Promise<AircraftBoardingResultDto> {
+    this.assertAlive(ctx);
+    const licenceHeld = await this.training.held(ctx);
+    const plane = await this.find(ctx, id);
+    const character = ctx.character;
+    if (character.locationId !== aircraftLocationId(plane.row.id)) {
+      const blocker = boardBlocker({
+        aircraftId: plane.row.id,
+        parkedAt: plane.row.parkedAt,
+        arrivesAt: plane.row.arrivesAt,
+        now: ctx.time,
+        locationId: character.locationId,
+        travelling: character.travel !== null,
+      });
+      if (blocker) throw new GameRuleException('CANNOT_BOARD', blocker);
+      if (character.activity && !isInterruptibleActivity(character.activity)) {
+        throw new GameRuleException('BUSY', 'You’re busy. Finish that before you head to the aircraft');
+      }
+      character.activity = null;
+      character.locationId = aircraftLocationId(plane.row.id);
+      // Like any place you walk into on purpose: the autopilot leaves you be for a while.
+      this.engine.hangAround(ctx, ctx.time);
+    }
+    return { aircraft: this.toDto(ctx, plane, licenceHeld), aboard: true, locationId: character.locationId };
+  }
+
+  /** Step out of your aircraft onto the terminal floor (its GAT). Stepping out when you are not aboard is a no-op. */
+  async deplane(ctx: SimulationContext, id: string): Promise<AircraftBoardingResultDto> {
+    this.assertAlive(ctx);
+    const licenceHeld = await this.training.held(ctx);
+    const plane = await this.find(ctx, id);
+    const character = ctx.character;
+    if (character.locationId === aircraftLocationId(plane.row.id)) {
+      if (character.travel) throw new GameRuleException('IN_THE_AIR', 'Stay in your seat until you land');
+      character.activity = null;
+      character.locationId = plane.row.parkedAt;
+      this.engine.hangAround(ctx, ctx.time);
+    }
+    return { aircraft: this.toDto(ctx, plane, licenceHeld), aboard: false, locationId: character.locationId };
+  }
+
   // ----- Unpaid bills ----------------------------------------------------------------------------------------------
 
   /** Pay the arrears and put a grounded aircraft back on the line. */
@@ -434,7 +494,10 @@ export class AviationService {
   async view(ctx: SimulationContext, training: PilotTrainingDto): Promise<HangarDto> {
     const priceIndex = ctx.world.economy(ctx.time).priceIndex;
     const fuelPrice = ctx.world.economy(ctx.time).fuelPrice;
-    const atGat = this.atGat(ctx);
+    const standing = this.atGat(ctx);
+    const aboard = await this.aboardPlane(ctx);
+    // Aboard your plane you are, for the app's purposes, at its terminal.
+    const atGat = standing ?? (aboard ? (aboard.row.parkedAt as GatId) : null);
     const licenceHeld = training.licence;
     const catalogue: AircraftCatalogEntryDto[] = AIRCRAFT.map((aircraft) => {
       const price = ctx.world.price(aircraft.price, ctx.time);
@@ -447,7 +510,7 @@ export class AviationService {
         routeFuelCost: flightFuelCost(aircraft, gatDistanceKm('mmia-gat', 'naia-gat'), fuelPrice),
         routeMinutes: flightMinutes(aircraft, gatDistanceKm('mmia-gat', 'naia-gat')),
         canFly: !aircraftNeedsLicence(aircraft) || licenceHeld,
-        buyHere: atGat === AIRCRAFT_SALES_GAT,
+        buyHere: standing === AIRCRAFT_SALES_GAT,
       };
     });
     const mine = (await this.fleet(ctx)).map((plane) => this.toDto(ctx, plane, licenceHeld));
@@ -501,6 +564,7 @@ export class AviationService {
   private blocker(ctx: SimulationContext, plane: FleetAircraft, licenceHeld: boolean): string | null {
     return flyBlocker({
       aircraft: plane.def,
+      aircraftId: plane.row.id,
       parkedAt: plane.row.parkedAt,
       arrivesAt: plane.row.arrivesAt,
       grounded: plane.row.groundedAt !== null,

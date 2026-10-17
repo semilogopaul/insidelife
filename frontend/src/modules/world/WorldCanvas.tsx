@@ -5,6 +5,7 @@ import {
   homeEntrance,
   homeKey,
   homeLocationId,
+  isAircraftLocation,
   isHomeLocation,
   isIntercityMode,
   isStreetLocation,
@@ -67,7 +68,7 @@ export function WorldCanvas() {
   // A ride plays on the city's roads; a flight or the coach is spent inside the departure venue until the landing.
   const presence: Presence = snapshot?.travel && !isIntercityMode(snapshot.travel.mode) ? 'riding' : !locationId || isStreetLocation(locationId) ? 'outside' : 'inside';
   // Other players at the venue you're in are drawn at its guest spots (homes get their host and guests from visits).
-  const guests = useVenueGuests(presence === 'inside' && locationId && !isHomeLocation(locationId) ? locationId : null);
+  const guests = useVenueGuests(presence === 'inside' && locationId && !isHomeLocation(locationId) && !isAircraftLocation(locationId) ? locationId : null);
   // Flying: the apron's planes, your plane's cabin, the sky itself (see `modules/world/aviation/flow`).
   const aviation = useAviationScene();
 
@@ -113,7 +114,7 @@ const NO_SERVICES: readonly PlaceService[] = [];
 /** The venue's interior, or the cabin of the plane you are sitting in (parked on the apron, or in the air). */
 function InteriorOrCabin({ locationId, guests, aviation }: { readonly locationId: string; readonly guests: readonly PresencePlayerDto[]; readonly aviation: AviationScene }) {
   if (aviation.kind === 'cabin') {
-    return <InteriorScene key={aviation.templateId} locationId={locationId} templateId={aviation.templateId} players={aviation.players} actions={NO_ACTIONS} services={NO_SERVICES} goal={null} busy={false} />;
+    return <InteriorScene key={aviation.templateId} locationId={locationId} templateId={aviation.templateId} aircraftId={aviation.plane?.id} players={aviation.players} actions={NO_ACTIONS} services={NO_SERVICES} goal={null} busy={false} />;
   }
   return (
     <InteriorScene locationId={locationId} players={guests} airside={aviation.kind === 'terminal' ? aviation.airside : undefined}>

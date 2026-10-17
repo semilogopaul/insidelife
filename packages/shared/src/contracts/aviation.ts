@@ -153,6 +153,13 @@ export interface AircraftFlightResultDto {
   readonly balance: number;
 }
 
+/** Boarding or stepping out of your own parked aircraft: where you stand now (`aircraft:<id>` aboard, else the GAT). */
+export interface AircraftBoardingResultDto {
+  readonly aircraft: OwnedAircraftDto;
+  readonly aboard: boolean;
+  readonly locationId: string;
+}
+
 export interface AircraftReinstatementResultDto {
   readonly aircraft: OwnedAircraftDto;
   readonly paid: number;

@@ -6,6 +6,7 @@ import {
   findVenue,
   formatNaira,
   homeLocationId,
+  isAircraftLocation,
   isHomeLocation,
   isInterruptibleAction,
   isStreetLocation,
@@ -78,7 +79,7 @@ export function placeActions(
           blurb: 'You’re a guest here. Make yourself at home (small small).',
           venue: null,
         }
-      : { kind: 'venue', name: venue?.name ?? 'Somewhere', blurb: venue?.blurb ?? '', venue };
+      : { kind: 'venue', name: venue?.name ?? (isAircraftLocation(locationId) ? 'Your aircraft' : 'Somewhere'), blurb: venue?.blurb ?? '', venue };
   const actions = actionsAt(
     place.kind === 'venue' ? { kind: 'venue', venueType: venue?.type ?? null } : { kind: place.kind },
   );

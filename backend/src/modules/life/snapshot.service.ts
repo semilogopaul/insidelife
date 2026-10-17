@@ -3,6 +3,7 @@ import {
   MINUTES_PER_DAY,
   findVenue,
   homeLocationId,
+  isAircraftLocation,
   isStreetLocation,
   yearsBetween,
   type CharacterDto,
@@ -146,6 +147,7 @@ export class SnapshotService {
   /** Human label for any location id. */
   static locationLabel(locationId: string, characterId: string): string {
     if (locationId === homeLocationId(characterId)) return 'Home';
+    if (isAircraftLocation(locationId)) return 'Aboard a private aircraft';
     return findVenue(locationId)?.name ?? 'Out and about';
   }
 }

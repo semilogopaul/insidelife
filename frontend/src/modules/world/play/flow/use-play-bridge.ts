@@ -3,6 +3,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef } from 'react';
 import {
+  aircraftIdOfLocation,
   districtAt,
   homeEntrance,
   homeKey,
@@ -16,7 +17,7 @@ import {
   type SpawnPoint,
 } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
-import { useAboard } from '@/common/aviation';
+import { useAboard, useAircraftBoarding } from '@/common/aviation';
 import { queryKeys } from '@/common/api/query-keys';
 import { toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
@@ -56,6 +57,7 @@ export function usePlayBridge(presence: WorldPresence): void {
   const locationId = snapshot?.character.locationId ?? null;
   const lastInside = useRef<string | null>(null);
   const exiting = useRef(false);
+  const { deplane } = useAircraftBoarding();
 
   useEffect(() => {
     ensurePresenceDirectory();
@@ -70,8 +72,9 @@ export function usePlayBridge(presence: WorldPresence): void {
     const current = client.getQueryData<CharacterSnapshotDto>(queryKeys.snapshot);
     if (!current || exiting.current) return;
     // Sitting in your plane on the apron: the cabin door steps out onto the apron, not onto the street.
-    if (useAboard.getState().aircraftId) {
-      useAboard.getState().deplane();
+    const aboard = useAboard.getState().aircraftId ?? aircraftIdOfLocation(current.character.locationId);
+    if (aboard && !current.travel) {
+      deplane(aboard);
       gameEvents.emit('sfx', { id: 'door-open' });
       return;
     }
@@ -100,7 +103,7 @@ export function usePlayBridge(presence: WorldPresence): void {
     } finally {
       exiting.current = false;
     }
-  }, [client]);
+  }, [client, deplane]);
 
   useEffect(
     () =>

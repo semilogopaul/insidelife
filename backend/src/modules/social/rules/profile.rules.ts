@@ -4,6 +4,7 @@ import {
   SOCIAL_BADGE_IDS,
   SOCIAL_BADGES,
   findVenue,
+  isAircraftLocation,
   isHomeLocation,
   isStreetLocation,
   statusTier,
@@ -117,5 +118,6 @@ export function statusTierDto(status: number): StatusTierDto {
 export function friendlyLocationLabel(locationId: string, ownerId: string): string {
   if (isHomeLocation(locationId)) return locationId === `home:${ownerId}` ? 'Home' : 'At a friend’s place';
   if (isStreetLocation(locationId)) return 'Out and about';
+  if (isAircraftLocation(locationId)) return 'Aboard a private aircraft';
   return findVenue(locationId)?.name ?? 'Out and about';
 }

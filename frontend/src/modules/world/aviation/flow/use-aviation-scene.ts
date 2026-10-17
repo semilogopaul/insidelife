@@ -1,8 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { isGatId, type GatId, type OwnedAircraftDto, type PresencePlayerDto } from '@insidelife/shared';
-import { useAboard, useApron, useFlightPassengers, useFlightsState, useOwnFleet } from '@/common/aviation';
+import { aircraftIdOfLocation, isGatId, type GatId, type OwnedAircraftDto, type PresencePlayerDto } from '@insidelife/shared';
+import { useAboard, useAircraftBoarding, useApron, useFlightPassengers, useFlightsState, useOwnFleet } from '@/common/aviation';
 import { gameClock } from '@/common/game/game-clock';
 import { useSnapshot } from '@/common/game/snapshot';
 import type { AircraftClass } from '../contract';
@@ -44,17 +44,21 @@ const msUntil = (gameMinute: number): number => gameClock.localMsAt(gameMinute) 
 export function useAviationScene(): AviationScene {
   const { data: snapshot } = useSnapshot();
   const aboardId = useAboard((state) => state.aircraftId);
+  const syncing = useAboard((state) => state.syncing);
+  const boarding = useAircraftBoarding();
   const chosenId = useAboard((state) => state.chosenId);
   const skipped = useAboard((state) => state.skippedFlight);
   const travel = snapshot?.travel ?? null;
   const flying = travel?.mode === 'flight';
   const locationId = snapshot?.character.locationId ?? null;
-  const gat: GatId | null = !travel && locationId && isGatId(locationId) ? locationId : null;
-
-  const fleet = useOwnFleet(gat !== null || flying);
+  // Aboard your plane the server's location is `aircraft:<id>`; the terminal you are at is where that plane is parked.
+  const sittingIn = locationId ? aircraftIdOfLocation(locationId) : null;
+  const fleet = useOwnFleet((!travel && locationId !== null && isGatId(locationId)) || flying || sittingIn !== null);
   const flights = useFlightsState(flying);
-  const apron = useApron(gat);
   const mine = fleet.data?.mine ?? NO_PLANES;
+  const serverAboard = !travel && sittingIn !== null ? (mine.find((plane) => plane.id === sittingIn) ?? null) : null;
+  const gat: GatId | null = !travel ? (locationId && isGatId(locationId) ? locationId : (serverAboard?.parkedAt ?? null)) : null;
+  const apron = useApron(serverAboard ? null : gat);
 
   const flight = useMemo(() => (travel && flying ? resolveFlight(flights.data?.bookings, mine, travel.arriveAt) : null), [travel, flying, flights.data, mine]);
   const key = travel && flying ? flightKey(travel) : null;
@@ -70,17 +74,25 @@ export function useAviationScene(): AviationScene {
   const split = useMemo(() => chooseStand(parked, chosenId), [parked, chosenId]);
   const placed = useMemo(() => apronPlanes(split, apron.data?.planes ?? []), [split, apron.data]);
   const standId = split.own?.id ?? null;
+  const board = boarding.board;
   const onBoard = useCallback(() => {
-    if (standId) useAboard.getState().board(standId);
-  }, [standId]);
+    if (standId) board(standId);
+  }, [standId, board]);
   const airside = useMemo<AirsideProps>(() => ({ own: placed.own, others: placed.others, onBoard }), [placed, onBoard]);
 
   // The plane you were sitting in has gone (it took off, or you were moved): forget the boarding.
   const aboardPlane = aboardId ? parked.find((plane) => plane.id === aboardId) ?? null : null;
-  const lostPlane = aboardId !== null && !flying && fleet.isSuccess && (gat === null || aboardPlane === null);
+  const lostPlane = aboardId !== null && !syncing && !flying && fleet.isSuccess && (gat === null || aboardPlane === null);
   useEffect(() => {
     if (lostPlane) useAboard.getState().reset();
   }, [lostPlane]);
+  // The server is the truth for where you sit (a reload, another device, the autopilot taking you home): follow it
+  // whenever no boarding request is on its way.
+  const followed = serverAboard?.id ?? null;
+  useEffect(() => {
+    if (syncing || flying || !fleet.isSuccess || useAboard.getState().aircraftId === followed) return;
+    useAboard.getState().follow(followed);
+  }, [syncing, flying, fleet.isSuccess, followed]);
   // Taking off ends the boarding: the cabin you fly in comes from the flight itself.
   useEffect(() => {
     if (flying && useAboard.getState().aircraftId) useAboard.getState().reset();

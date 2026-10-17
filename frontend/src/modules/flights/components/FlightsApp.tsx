@@ -17,10 +17,15 @@ import { Badge, Button, ConfirmSheet, EmptyState, ErrorState, FilterChips, Loadi
 import { useUi } from '@/common/game/ui-store';
 import { useGameMinute } from '@/common/game/use-game-clock';
 import { useFlightAction, useFlightSearch, useFlightsOverview } from '../hooks/use-flights';
+import { useRacesOverview } from '../hooks/use-races';
+import { raceDeepLink } from '../services/race-format';
 import { dayChipLabel } from '../services/flights-format';
 import { FlightCard, TicketCard, venueName } from './parts';
+import { RaceTab } from './RaceTab';
 
-type FlightsTab = 'flights' | 'tickets' | 'coach';
+type FlightsTab = 'flights' | 'tickets' | 'coach' | 'race';
+
+const TAB_LABELS: Readonly<Record<FlightsTab, string>> = { flights: 'Flights', tickets: 'Tickets', coach: 'Coach', race: 'Race' };
 
 const DAY_OPTIONS = Array.from({ length: FLIGHT_BOOKING_HORIZON_DAYS }, (_, day) => ({ id: String(day), label: dayChipLabel(day) }));
 
@@ -34,16 +39,21 @@ interface PendingBooking {
 
 /**
  * Flights: book Lagos <-> Abuja flights (from the app anywhere, or at the airport counter), check in and board at the
- * airport, change a missed flight, or take the slow coach. The server decides every price and every rule.
+ * airport, change a missed flight, take the slow coach, or race a friend to the other city (the Race tab, opened by
+ * `openPhone('flights', 'race')`). The server decides every price and every rule.
  */
 export function FlightsApp() {
   const overview = useFlightsOverview();
   const deepLink = useUi((state) => state.phoneParam);
   const [tab, setTab] = useState<FlightsTab | null>(null);
+  const races = useRacesOverview();
+  const challenges = races.data?.invitations?.length;
   const data = overview.data;
 
   // Opened from the airport counter: the Tickets tab when you already hold a ticket, otherwise the search.
-  const defaultTab: FlightsTab = deepLink === 'counter' && data && data.bookings.some((b) => OPEN_STATUSES.has(b.status)) ? 'tickets' : 'flights';
+  const defaultTab: FlightsTab = raceDeepLink(deepLink).open
+    ? 'race'
+    : deepLink === 'counter' && data && data.bookings.some((b) => OPEN_STATUSES.has(b.status)) ? 'tickets' : 'flights';
   const current = tab ?? defaultTab;
   const openTickets = data?.bookings.filter((booking) => OPEN_STATUSES.has(booking.status)).length;
 
@@ -62,12 +72,14 @@ export function FlightsApp() {
           { id: 'flights', label: 'Flights' },
           { id: 'tickets', label: 'Tickets', badge: openTickets || undefined },
           { id: 'coach', label: 'Coach' },
+          { id: 'race', label: 'Race', badge: challenges || undefined },
         ]}
       />
-      <div role="tabpanel" aria-label={current === 'flights' ? 'Flights' : current === 'tickets' ? 'Tickets' : 'Coach'}>
+      <div role="tabpanel" aria-label={TAB_LABELS[current]}>
         {current === 'flights' && <SearchTab overview={data} />}
         {current === 'tickets' && <TicketsTab overview={data} />}
         {current === 'coach' && <CoachTab overview={data} />}
+        {current === 'race' && <RaceTab />}
       </div>
     </div>
   );

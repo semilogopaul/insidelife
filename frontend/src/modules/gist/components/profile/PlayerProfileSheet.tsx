@@ -1,8 +1,8 @@
 'use client';
 
-import { Ban, Banknote, Check, Flag, GraduationCap, Heart, HeartHandshake, House, MapPin, MessageCircle, UserCheck, UserPlus, Users, Wallet } from 'lucide-react';
+import { Ban, Banknote, Check, Flag, GraduationCap, Heart, HeartHandshake, House, MapPin, MessageCircle, Plane, UserCheck, UserPlus, Users, Wallet } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { RING_LIMITS, formatNaira, type PlayerProfileDto } from '@insidelife/shared';
+import { RING_LIMITS, formatNaira, getCity, otherCity, type PlayerProfileDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { Badge, Button, HoldButton, Sheet, Spinner, toast } from '@/common/components';
 import { PlayerName, WealthBadge } from '@/common/social';
@@ -139,6 +139,7 @@ function Actions({ profile, onView, onDone }: { readonly profile: PlayerProfileD
   const visits = useVisitActions();
   const relationships = useRelationships(true);
   const myAge = useSnapshot().data?.character.age ?? 18;
+  const myCity = useSnapshot().data?.character.cityId ?? 'lagos';
   const tooYoung = profile.age < 18 || myAge < 18;
   const openThread = useGistNav((state) => state.openThread);
   const openPhone = useUi((state) => state.openPhone);
@@ -281,6 +282,20 @@ function Actions({ profile, onView, onDone }: { readonly profile: PlayerProfileD
       >
         Invite to my place
       </Button>
+      {profile.relationship === 'friends' && (
+        <Button
+          variant="paper"
+          icon={<Plane size={18} aria-hidden />}
+          disabled={profile.blockedByYou}
+          onClick={() => {
+            gameEvents.emit('sfx', { id: 'ui-open' });
+            openPhone('flights', `race:${profile.id}`);
+            onDone();
+          }}
+        >
+          Race to {getCity(otherCity(myCity)).name}
+        </Button>
+      )}
       {tooYoung && !romance && <p className="text-xs text-text-soft">Dating unlocks at 18 — for both of you.</p>}
       <div className="flex justify-end gap-1 pt-1">
         {profile.relationship === 'friends' && (

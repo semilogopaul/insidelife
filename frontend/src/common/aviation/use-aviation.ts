@@ -1,12 +1,13 @@
 'use client';
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { GatId, HangarDto } from '@insidelife/shared';
+import type { CharacterSnapshotDto, GatId, HangarDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
 import { toast } from '@/common/components';
 import { useWriteSnapshot } from '@/common/game/snapshot';
 import { useCurrentPlace } from '@/common/hooks/use-current-place';
+import { useAboard } from './aboard-store';
 import { aviationApi } from './aviation-api';
 
 /** The Hangar phone app caches the same endpoint under the same keys, so both read one cache. */
@@ -49,6 +50,50 @@ export function useFlyAircraft() {
     },
     onError: (error) => toast({ title: 'Can’t take off', body: errorMessage(error), tone: 'bad' }),
   });
+}
+
+/**
+ * Step aboard, or out of, your own parked aircraft. The server owns the location (`aircraft:<id>` aboard: the cabin
+ * with your decor, and the Hangar's "Decorate cabin"); the cabin responds at once through the `useAboard` mirror and the
+ * snapshot is patched when the server answers.
+ */
+export function useAircraftBoarding() {
+  const client = useQueryClient();
+  const patchLocation = (locationId: string): void => {
+    client.setQueryData<CharacterSnapshotDto>(queryKeys.snapshot, (old) => (old ? { ...old, character: { ...old.character, locationId } } : old));
+  };
+  const board = useMutation({
+    mutationFn: (aircraftId: string) => aviationApi.boardAircraft(aircraftId),
+    onMutate: (aircraftId) => useAboard.getState().board(aircraftId),
+    onSuccess: (result) => {
+      patchLocation(result.locationId);
+      void client.invalidateQueries({ queryKey: queryKeys.snapshot });
+    },
+    onError: (error) => {
+      useAboard.getState().reset();
+      toast({ title: 'Can’t board', body: errorMessage(error), tone: 'bad' });
+    },
+    onSettled: () => useAboard.getState().settled(),
+  });
+  const deplane = useMutation({
+    mutationFn: (aircraftId: string) => aviationApi.deplaneAircraft(aircraftId),
+    onMutate: () => useAboard.getState().deplane(),
+    onSuccess: (result) => {
+      patchLocation(result.locationId);
+      void client.invalidateQueries({ queryKey: queryKeys.snapshot });
+    },
+    onError: (error, aircraftId) => {
+      useAboard.setState({ aircraftId, returnToAirside: false });
+      toast({ title: 'Can’t step out', body: errorMessage(error), tone: 'bad' });
+    },
+    onSettled: () => useAboard.getState().settled(),
+  });
+  return {
+    // `mutate` is stable between renders, so these are safe in effect and callback dependencies.
+    board: board.mutate as (aircraftId: string) => void,
+    deplane: deplane.mutate as (aircraftId: string) => void,
+    pending: board.isPending || deplane.isPending,
+  };
 }
 
 /** The commercial flights overview (shared with the Flights app): bookings, check-in and gate state. */
