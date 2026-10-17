@@ -15,6 +15,7 @@ import {
   type DecorWall,
   type OrientedRect,
   type PlacedDecor,
+  type PlacementVerdict,
 } from '@insidelife/shared';
 import type { Fixture, WallMount } from './fixtures';
 
@@ -35,7 +36,12 @@ export interface DropContext {
   readonly rot: number;
   /** Turn oriented pieces to face away from the wall they're snapped to. */
   readonly autoFace: boolean;
+  /** The server's rule for this place when it isn't a home's (a cabin adds what's secured for flight, ceilings…). */
+  readonly check?: (room: DecorRoom, item: DecorItem, pose: DecorPose, others: readonly PlacedDecor[]) => PlacementVerdict;
 }
+
+const verdictOf = (context: DropContext, pose: DecorPose): PlacementVerdict =>
+  (context.check ?? checkDecorPlacement)(context.room, context.item, pose, context.others);
 
 export interface Drop {
   readonly pose: DecorPose;
@@ -159,14 +165,14 @@ export function resolveDrop(context: DropContext, target: DropTarget): Drop {
   if (!isFlatDecor(item) && turn % 90 === 0) ({ x, z } = snapToNeighbours(x, z, ex, ez, neighbours));
   x = round2(Math.min(Math.max(x, minX), maxX));
   z = round2(Math.min(Math.max(z, minZ), maxZ));
-  const verdict = checkDecorPlacement(room, item, { x, z, y: 0, rot: turn, wall: null, onId: null }, others);
+  const verdict = verdictOf(context, { x, z, y: 0, rot: turn, wall: null, onId: null });
   if (!verdict.ok) return fail({ x, z, y: 0, rot: turn, wall: null, onId: null }, verdict.reason);
   if (!isFlatDecor(item) && hitsFixture(decorRect(room, item, verdict.pose), fixtures)) return fail(verdict.pose, 'That’s in the way of the furniture.');
   return { pose: verdict.pose, ok: true, reason: null };
 }
 
 function dropOnWall(context: DropContext, target: Extract<DropTarget, { kind: 'wall' }>): Drop {
-  const { room, item, others, fixtures, mounts } = context;
+  const { room, item, fixtures, mounts } = context;
   if (item.placement !== 'wall') {
     return fail(wallPose(room, target.wall, target.u, target.y), `${item.name} doesn’t hang on a wall.`);
   }
@@ -177,7 +183,7 @@ function dropOnWall(context: DropContext, target: Extract<DropTarget, { kind: 'w
   const wanted = target.y - item.height / 2;
   const y = round2(snapGrid(Math.min(Math.max(wanted, 0.1), room.height - item.height - 0.1)));
   const pose = wallPose(room, target.wall, u, y);
-  const verdict = checkDecorPlacement(room, item, pose, others);
+  const verdict = verdictOf(context, pose);
   if (!verdict.ok) return fail(pose, verdict.reason);
   for (const mount of mounts) {
     if (mount.wall === target.wall && Math.abs(mount.u - u) < mount.halfWidth + half && y < mount.y1 && y + item.height > mount.y0) {
@@ -211,7 +217,7 @@ function dropOnSurface(context: DropContext, target: Extract<DropTarget, { kind:
   const x = round2(surface.x + px * c + pz * s);
   const z = round2(surface.z - px * s + pz * c);
   const pose: DecorPose = { x, z, y: 0, rot, wall: null, onId: parent.id };
-  const verdict = checkDecorPlacement(room, item, pose, others);
+  const verdict = verdictOf(context, pose);
   if (!verdict.ok) return fail(pose, verdict.reason);
   return { pose: verdict.pose, ok: true, reason: null };
 }

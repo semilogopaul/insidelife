@@ -7,6 +7,7 @@ import { decorApi } from './decor.api';
 
 export const decorKey = queryKeys.domain('decor', 'mine');
 const hostKey = (hostId: string) => queryKeys.domain('decor', 'home', hostId);
+const aircraftKey = (aircraftId: string) => queryKeys.domain('decor', 'aircraft', aircraftId);
 
 /** What you own and where it stands, plus today's prices. */
 export function useDecor(enabled = true) {
@@ -25,6 +26,18 @@ export function useHostDecor(hostId: string | null) {
   });
 }
 
+/** What is fitted in an aircraft's cabin (the owner's or a passenger's view), polled so a change shows up for those aboard. */
+export function useAircraftDecor(aircraftId: string | null) {
+  return useQuery({
+    queryKey: aircraftKey(aircraftId ?? ''),
+    queryFn: () => decorApi.aircraft(aircraftId ?? ''),
+    enabled: aircraftId !== null,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+    retry: false,
+  });
+}
+
 /** Overwrite pieces in the cached state with what the server says changed. */
 function mergePieces(client: QueryClient, changed: readonly DecorPieceDto[]): void {
   client.setQueryData<DecorStateDto>(decorKey, (state) => {
@@ -34,9 +47,18 @@ function mergePieces(client: QueryClient, changed: readonly DecorPieceDto[]): vo
   });
 }
 
-function setSpot(client: QueryClient, pieceId: string, spot: DecorSpotDto | null): void {
+function setSpot(client: QueryClient, pieceId: string, spot: DecorSpotDto | null, aircraftId?: string): void {
   client.setQueryData<DecorStateDto>(decorKey, (state) =>
-    state ? { ...state, pieces: state.pieces.map((piece) => (piece.id === pieceId ? { ...piece, spot } : piece)) } : state,
+    state
+      ? {
+          ...state,
+          pieces: state.pieces.map((piece) =>
+            piece.id === pieceId
+              ? { id: piece.id, itemId: piece.itemId, variant: piece.variant, recolours: piece.recolours, spot, ...(aircraftId ? { aircraftId } : {}) }
+              : piece,
+          ),
+        }
+      : state,
   );
 }
 
@@ -58,8 +80,9 @@ export function useDecorCommands() {
       },
     }),
     place: useMutation({
-      mutationFn: ({ pieceId, request }: { pieceId: string; request: DecorPlaceRequest }) => decorApi.place(pieceId, request),
-      onMutate: ({ pieceId, request }) => {
+      mutationFn: ({ pieceId, request, aircraftId }: { pieceId: string; request: DecorPlaceRequest; aircraftId?: string }) =>
+        aircraftId ? decorApi.placeInAircraft(aircraftId, pieceId, request) : decorApi.place(pieceId, request),
+      onMutate: ({ pieceId, request, aircraftId }) => {
         const previous = client.getQueryData<DecorStateDto>(decorKey);
         setSpot(client, pieceId, {
           templateId: request.templateId,
@@ -70,12 +93,13 @@ export function useDecorCommands() {
           rot: request.rot,
           wall: request.wall ?? null,
           onId: request.onId ?? null,
-        });
+        }, aircraftId);
         return { previous };
       },
       onSuccess: (change: DecorChangeDto) => {
         mergePieces(client, change.pieces);
         void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'home') });
+        void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'aircraft') });
       },
       onError: (_error, _vars, context) => {
         if (context?.previous) client.setQueryData(decorKey, context.previous);
@@ -95,6 +119,7 @@ export function useDecorCommands() {
       onSuccess: (change: DecorChangeDto) => {
         mergePieces(client, change.pieces);
         void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'home') });
+        void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'aircraft') });
       },
       onError: (_error, _vars, context) => {
         if (context?.previous) client.setQueryData(decorKey, context.previous);

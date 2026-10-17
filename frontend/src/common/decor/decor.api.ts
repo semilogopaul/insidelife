@@ -1,4 +1,5 @@
 import type {
+  DecorAircraftDto,
   DecorChangeDto,
   DecorHomeDto,
   DecorPlaceRequest,
@@ -26,4 +27,9 @@ export const decorApi = {
       api.post<DecorRecolourResultDto>(`/decor/pieces/${id(pieceId)}/recolour`, { variant, idempotencyKey }),
     ),
   home: (hostId: string) => api.get<DecorHomeDto>(`/decor/homes/${id(hostId)}`),
+  /** An aircraft's cabin decor: its owner's and whoever is aboard. */
+  aircraft: (aircraftId: string) => api.get<DecorAircraftDto>(`/decor/aircraft/${id(aircraftId)}`),
+  /** Fit a piece in a room of one of your aircraft (or move/turn one already there). */
+  placeInAircraft: (aircraftId: string, pieceId: string, request: DecorPlaceRequest) =>
+    api.put<DecorChangeDto>(`/decor/aircraft/${id(aircraftId)}/pieces/${id(pieceId)}/spot`, request),
 };

@@ -6,9 +6,10 @@ export {
   groupPieces,
   piecesInRoom,
   resolvePiece,
+  unplacedForCabin,
   unplacedPieces,
   type PieceGroup,
   type PieceLike,
   type PlacedPiece,
 } from './decor-pieces';
-export { decorKey, useDecor, useDecorCommands, useHostDecor } from './use-decor';
+export { decorKey, useAircraftDecor, useDecor, useDecorCommands, useHostDecor } from './use-decor';

@@ -1,8 +1,8 @@
 'use client';
 
-import { Suspense, useCallback, useMemo, useState, type ReactNode } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { MeshStandardMaterial } from 'three';
-import { findAction, homeLocationId, isHomeLocation, toDateParts, type ActionDefinition, type HomePersonDto, type HostTreatId, type PresencePlayerDto } from '@insidelife/shared';
+import { aircraftIdOfLocation, findAction, homeLocationId, isAircraftDecorTemplate, isHomeLocation, toDateParts, type ActionDefinition, type HomePersonDto, type HostTreatId, type PresencePlayerDto } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
@@ -72,6 +72,12 @@ export interface InteriorSceneProps {
    * what happens when you walk up to your plane's door. Ignored in every other room.
    */
   readonly airside?: AirsideProps;
+  /**
+   * The aircraft whose cabin is on screen (one of the `aircraft-<class>` layouts): draws its owner's cabin decor for the
+   * owner and for anyone aboard, and lets the owner rearrange it in Decorate mode. Defaults to the aircraft named by
+   * the location (`aircraft:<id>`, i.e. while you are aboard); previews pass nothing and show the bare cabin.
+   */
+  readonly aircraftId?: string;
   /** Extra scene content (e.g. `<MoneyRain />` triggered by the play layer). */
   readonly children?: ReactNode;
 }
@@ -90,7 +96,7 @@ const NO_HOTSPOTS: ReturnType<typeof buildHotspots> = [];
 /** Far below the floor (its light has a 5 m reach): keeps the light rig identical across a home's rooms. */
 const SPARE_LANTERN = [0, -20, 0] as const;
 
-export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, homeItems: previewItems, actions: actionsOverride, busy: busyOverride, services: servicesOverride, goal: goalOverride, airside, children }: InteriorSceneProps) {
+export function InteriorScene({ locationId, players: present = NO_PLAYERS, player, templateId, home, hour, nepa, camera = 'dollhouse', interactiveCamera = true, aircraftId: aircraftProp, homeItems: previewItems, actions: actionsOverride, busy: busyOverride, services: servicesOverride, goal: goalOverride, airside, children }: InteriorSceneProps) {
   const snapshot = useSnapshot().data;
   const minute = useGameMinute(4000);
   const ownHome = snapshot !== undefined && locationId === homeLocationId(snapshot.character.id) && templateId === undefined;
@@ -127,11 +133,26 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
     return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname, treats }), decor) : base;
   }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname, decor, treats]);
   // Decor: yours in your own home, the host's when you're a guest. The walker bumps into the solid pieces.
-  const decorMode: DecorMode = templateId !== undefined || previewItems ? null : ownHome ? 'own' : visit && hostId ? { hostId } : null;
+  const aircraftId = previewItems ? null : (aircraftProp ?? aircraftIdOfLocation(locationId));
+  const decorMode: DecorMode = aircraftId
+    ? { aircraftId }
+    : templateId !== undefined || previewItems
+      ? null
+      : ownHome
+        ? 'own'
+        : visit && hostId
+          ? { hostId }
+          : null;
   const decorTemplateId = house?.layout.id;
   const decorRoomId = house?.room.id;
   const roomDecor = useRoomDecor(decorMode, decorTemplateId, decorRoomId);
   const decorating = useDecorEdit((state) => state.active) && roomDecor.editable;
+  // The overlay (DOM) needs to know which cabin this is; it is client view state, cleared when the cabin goes.
+  const cabinAircraftId = aircraftId && decorTemplateId && isAircraftDecorTemplate(decorTemplateId) ? aircraftId : null;
+  useEffect(() => {
+    useDecorEdit.getState().setCabin(cabinAircraftId);
+    return () => useDecorEdit.getState().setCabin(null);
+  }, [cabinAircraftId]);
   const decorSignature = piecesSignature(roomDecor.placed);
   const everyone = useMemo(() => (people ? [...present, ...people.map((person) => asPresence(person, locationId))] : present), [present, people, locationId]);
   const homeLayout = house?.layout ?? null;

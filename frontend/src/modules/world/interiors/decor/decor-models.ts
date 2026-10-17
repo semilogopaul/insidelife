@@ -554,6 +554,44 @@ const table: Recipe = (kit, { w, d, h, c1, c2, style }) => {
   }
 };
 
+// ----- Cabin & aviation ------------------------------------------------------------------------------------------
+
+/** A bolted-down lounge bench: padded seat on a dark base, a piped edge. */
+const bench: Recipe = (kit, { w, d, h, c1, c2 }) => {
+  const seat = 0.13;
+  kit.box([w - 0.04, h - seat - 0.04, d - 0.06], [0, 0.04 + (h - seat - 0.04) / 2, 0], shadeHex(c1, -0.35), 'wood', NO_ROT, 0.1);
+  for (const sx of [-1, 1]) kit.box([0.06, 0.04, d - 0.1], [sx * (w / 2 - 0.1), 0.02, 0], '#2b2b2e', 'metal');
+  kit.box([w, seat, d], [0, h - seat / 2, 0], c1, 'plastic', NO_ROT, 0.35);
+  kit.box([w - 0.02, 0.012, d - 0.02], [0, h - seat + 0.006, 0], c2, 'plastic', NO_ROT, 0.2);
+  kit.box([w - 0.2, 0.012, 0.012], [0, h - 0.002, 0], shadeHex(c1, 0.12), 'plastic', NO_ROT, 0.1);
+};
+
+/** A galley minibar: a latched cabinet with a marble top, a glass-fronted rack and a gold rail. */
+const minibar: Recipe = (kit, { w, d, h, c1, c2 }) => {
+  const top = 0.045;
+  kit.box([w, h - top, d], [0, (h - top) / 2, 0], c1, 'wood', NO_ROT, 0.1);
+  kit.box([w + 0.01, top, d + 0.01], [0, h - top / 2, 0], '#ece9e2', 'stone', NO_ROT, 0.1);
+  kit.box([w * 0.46, h * 0.5, 0.012], [-w * 0.24, h * 0.5, d / 2 + 0.003], GLASS, 'gloss', NO_ROT, 0.1);
+  kit.box([w * 0.4, h * 0.22, 0.012], [w * 0.26, h * 0.68, d / 2 + 0.003], shadeHex(c1, -0.12), 'wood', NO_ROT, 0.1);
+  kit.box([w * 0.4, h * 0.22, 0.012], [w * 0.26, h * 0.38, d / 2 + 0.003], shadeHex(c1, -0.12), 'wood', NO_ROT, 0.1);
+  for (const y of [h * 0.68, h * 0.38]) kit.box([0.14, 0.014, 0.02], [w * 0.26, y, d / 2 + 0.016], c2, 'metal');
+  kit.box([w - 0.04, 0.014, 0.014], [0, h - top - 0.04, d / 2 + 0.01], c2, 'metal');
+  kit.box([w, 0.05, d], [0, 0.025, 0], '#1d1b1a', 'wood', NO_ROT, 0.05);
+};
+
+/** A desk model of an aircraft on a round stand: fuselage, swept wings, tail fin. */
+const aircraftModel: Recipe = (kit, { w, d, h, c1, c2 }) => {
+  const baseR = Math.min(w, d) * 0.34;
+  kit.cylinder(baseR, baseR * 1.05, 0.02, [0, 0, 0], '#2b2b2e', 'stone', NO_ROT, 24);
+  kit.cylinder(0.012, 0.012, h * 0.55, [0, 0.02, 0], c2, 'metal', NO_ROT, 8, false);
+  const y = 0.02 + h * 0.55 + 0.02;
+  kit.box([w * 0.9, 0.04, 0.045], [0, y, 0], c1, 'metal', NO_ROT, 0.4);
+  kit.box([0.1, 0.012, d * 0.82], [w * 0.03, y - 0.004, 0], c1, 'metal', NO_ROT, 0.1);
+  kit.box([0.07, 0.01, d * 0.34], [-w * 0.4, y, 0], c1, 'metal', NO_ROT, 0.1);
+  kit.box([0.08, h * 0.32, 0.01], [-w * 0.42, y + h * 0.16, 0], c2, 'metal', NO_ROT, 0.1);
+  kit.sphere(0.024, [w * 0.45, y, 0], c2, 'metal', [1.4, 1, 1], 8);
+};
+
 const RECIPES: Readonly<Record<DecorShape, Recipe>> = {
   'rug-rect': rugRect,
   'rug-round': rugRound,
@@ -585,6 +623,9 @@ const RECIPES: Readonly<Record<DecorShape, Recipe>> = {
   'shelf-cube': shelfCube,
   mirror,
   table,
+  minibar,
+  bench,
+  'aircraft-model': aircraftModel,
 };
 
 /** Draw one piece in the kit's current frame (call `kit.place(...)` first). */

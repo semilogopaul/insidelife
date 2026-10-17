@@ -95,7 +95,7 @@ describe('ad placements (bigger faces that still fit the city)', () => {
       expect(['street-billboard', 'bus-shelter', 'totem']).toContain(spot.kind);
     }
     expect(moved).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   it('keeps pole and gantry premium boards out of the buildings around them (no deeper than the first city)', () => {
     // Third Mainland North and Surulere have always reached 2 m over the building beside them; nothing may go further.

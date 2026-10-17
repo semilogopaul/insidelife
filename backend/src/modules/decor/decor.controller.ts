@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import type {
+  DecorAircraftDto,
   DecorChangeDto,
   DecorHomeDto,
   DecorPurchaseResultDto,
@@ -63,5 +64,23 @@ export class DecorController {
   @Get('homes/:hostId')
   home(@CurrentUser() user: AuthUser, @Param('hostId', ParseUUIDPipe) hostId: string): Promise<DecorHomeDto> {
     return this.session.run({ userId: user.userId }, (ctx) => this.decor.homeView(ctx, hostId));
+  }
+
+  /** A plane's cabin decor, for its owner and whoever is aboard. */
+  @Get('aircraft/:aircraftId')
+  aircraft(@CurrentUser() user: AuthUser, @Param('aircraftId', ParseUUIDPipe) aircraftId: string): Promise<DecorAircraftDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.decor.aircraftView(ctx, aircraftId));
+  }
+
+  /** Fit a piece in a room of one of your aircraft, or move/turn one that is there. */
+  @Throttle({ default: { limit: 240, ttl: 60_000 } })
+  @Put('aircraft/:aircraftId/pieces/:id/spot')
+  placeInAircraft(
+    @CurrentUser() user: AuthUser,
+    @Param('aircraftId', ParseUUIDPipe) aircraftId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: DecorPlaceDto,
+  ): Promise<DecorChangeDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.decor.placeInAircraft(ctx, aircraftId, id, body));
   }
 }

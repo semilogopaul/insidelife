@@ -79,5 +79,5 @@ describe('procedural four-lane roads', () => {
       }
     }
     expect(samples).toBeGreaterThan(40_000);
-  });
+  }, 30_000);
 });

@@ -47,6 +47,7 @@ import {
 } from '@insidelife/shared';
 import { containsProfanity } from '../../common/moderation/profanity.js';
 import { GameRuleException, InsufficientFundsException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import { AIRCRAFT_DECOR_PORT, type AircraftDecorPort } from '../../common/ports/aircraft-decor.port.js';
 import { CITY_TRAVEL_PORT, type CityTravelPort } from '../../common/ports/city-travel.port.js';
 import type { RowProbe } from '../simulation/row-presence.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
@@ -84,6 +85,7 @@ export class AviationService {
 
   constructor(
     @Inject(CITY_TRAVEL_PORT) private readonly cities: CityTravelPort,
+    @Inject(AIRCRAFT_DECOR_PORT) private readonly cabinDecor: AircraftDecorPort,
     private readonly training: PilotTrainingService,
   ) {}
 
@@ -192,6 +194,8 @@ export class AviationService {
     if (this.airborne(ctx, plane)) throw new GameRuleException('IN_THE_AIR', 'Wait for it to land before you sell it');
     const amount = this.saleOffer(ctx, plane);
     const arrears = plane.row.arrears;
+    // Whatever was fitted in the cabin goes back to the owner's decor inventory.
+    await this.cabinDecor.releaseAircraft(ctx, plane.row.id);
     await ctx.manager.delete(AircraftEntity, { id: plane.row.id });
     this.changed(ctx);
     await ctx.wallet.receive(amount, 'sale', `Sold ${plane.def.name} (${plane.row.registration}) to a broker`, `aircraft-sale:${plane.row.id}`, {

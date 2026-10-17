@@ -3,6 +3,7 @@ import { AIRCRAFT, LIVERY_COLOURS, type AircraftCatalogEntryDto, type OwnedAircr
 import { servicesAt } from '@/common/places/services';
 import {
   airframeFor,
+  cabinDecorEntry,
   formatFlightTime,
   lessonProgress,
   liveryHex,
@@ -114,5 +115,16 @@ describe('place services', () => {
     const app = (id: string) => services.find((service) => service.id === id)?.opens;
     for (const id of ['aircraft-sales', 'flight-school', 'my-aircraft']) expect(app(id)).toMatchObject({ app: 'hangar' });
     expect(app('gat-flights')).toMatchObject({ app: 'flights' });
+  });
+});
+
+describe('decorate cabin entry', () => {
+  it('is offered only aboard your plane with its cabin on screen', () => {
+    expect(cabinDecorEntry('p1', 'aircraft:p1', 'p1')).toBe('decorate');
+    expect(cabinDecorEntry('p1', 'aircraft:p1', null)).toBe('step-in');
+    expect(cabinDecorEntry('p1', 'aircraft:p1', 'p2')).toBe('step-in');
+    expect(cabinDecorEntry('p1', 'mmia-gat', 'p1')).toBeNull();
+    expect(cabinDecorEntry('p1', 'aircraft:p2', 'p2')).toBeNull();
+    expect(cabinDecorEntry('p1', undefined, null)).toBeNull();
   });
 });

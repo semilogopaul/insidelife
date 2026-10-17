@@ -4,9 +4,15 @@ import {
   DECOR_MAX_OWNED,
   DECOR_MAX_PER_PURCHASE,
   DECOR_MAX_PER_ROOM,
+  aircraftDecorTemplateId,
+  aircraftLocationId,
+  aircraftRoomCap,
+  checkAircraftDecorPlacement,
   checkDecorPlacement,
   decorPoseOf,
   decorRect,
+  findAircraft,
+  findAircraftDecorRoom,
   findDecorItem,
   findDecorRoom,
   findDecorVariant,
@@ -15,8 +21,11 @@ import {
   homeLocationId,
   recolourPrice,
   surfaceTop,
+  type DecorAircraftDto,
   type DecorChangeDto,
   type DecorHomeDto,
+  type DecorItem,
+  type DecorRoom,
   type DecorPieceDto,
   type DecorPlaceRequest,
   type DecorPlacedDto,
@@ -25,7 +34,10 @@ import {
   type DecorRecolourResultDto,
   type DecorStateDto,
   type PlacedDecor,
+  type PlacementVerdict,
 } from '@insidelife/shared';
+import type { FindOptionsWhere } from 'typeorm';
+import type { AircraftDecorPort } from '../../common/ports/aircraft-decor.port.js';
 import {
   ForbiddenActionException,
   GameRuleException,
@@ -38,6 +50,19 @@ import type { SimulationContext } from '../simulation/simulation-context.js';
 import { carriedPose } from './decor.rules.js';
 import { DecorPieceEntity } from './entities/decor-piece.entity.js';
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Where a piece is being put: a room of a home or of an aircraft, and how that place validates and records it. */
+interface PlaceTarget {
+  readonly room: DecorRoom;
+  readonly cap: number;
+  /** The pieces already in that room. */
+  readonly scope: FindOptionsWhere<DecorPieceEntity>;
+  readonly isHere: (row: DecorPieceEntity) => boolean;
+  readonly apply: (row: DecorPieceEntity, pose: DecorPose) => void;
+  readonly check: (item: DecorItem, pose: DecorPose, others: readonly PlacedDecor[]) => PlacementVerdict;
+}
+
 const NOT_YOUR_HOME = 'Decorating is for a home you rent or own — the family house and hostels stay as they are.';
 
 /**
@@ -46,7 +71,7 @@ const NOT_YOUR_HOME = 'Decorating is for a home you rent or own — the family h
  * surfaces), caps rooms and collections, and shows a home's pieces to its visitors.
  */
 @Injectable()
-export class DecorService {
+export class DecorService implements AircraftDecorPort {
   constructor(
     @Inject(HOUSEHOLD_PORT) private readonly household: HouseholdPort,
     @Inject(HOME_ACCESS_PORT) private readonly access: HomeAccessPort,
@@ -96,6 +121,7 @@ export class DecorService {
           pricePaid: unitPrice,
           boughtAt: ctx.time,
           recolours: 0,
+          aircraftId: null,
           homeKey: null,
           templateId: null,
           roomId: null,
@@ -121,24 +147,54 @@ export class DecorService {
     const piece = await this.own(ctx, pieceId);
     const home = await this.eligibility(ctx);
     if (!home.eligible) throw new GameRuleException('NOT_YOUR_HOME', home.reason ?? NOT_YOUR_HOME);
-    const item = findDecorItem(piece.itemId);
-    if (!item) throw new ResourceNotFoundException('Decor item');
     const room = findDecorRoom(request.templateId, request.roomId);
     if (!room) throw new GameRuleException('NO_SUCH_ROOM', 'You can’t decorate that room.');
-
     const key = this.homeKeyOf(ctx);
-    const inRoom = await ctx.manager.find(DecorPieceEntity, {
-      where: { characterId: ctx.character.id, homeKey: key, templateId: request.templateId, roomId: request.roomId },
+    return this.settle(ctx, piece, request, {
+      room,
+      cap: DECOR_MAX_PER_ROOM,
+      scope: { characterId: ctx.character.id, homeKey: key, templateId: request.templateId, roomId: request.roomId },
+      isHere: (row) => row.homeKey === key && row.templateId === request.templateId && row.roomId === request.roomId,
+      apply: (row, pose) => this.setSpot(row, key, request.templateId, request.roomId, pose),
+      check: (item, pose, others) => checkDecorPlacement(room, item, pose, others),
     });
-    const here = piece.homeKey === key && piece.templateId === request.templateId && piece.roomId === request.roomId;
+  }
+
+  /**
+   * Fit an inventory piece (or one from a home or another of your planes) in a room of one of your aircraft, or move
+   * and turn one already there. The same rules as a home plus the cabin's: only pieces secured for flight, beds in a
+   * suite, a bare flight deck, a lower ceiling and fewer pieces per room. Owner only.
+   */
+  async placeInAircraft(ctx: SimulationContext, aircraftId: string, pieceId: string, request: DecorPlaceRequest): Promise<DecorChangeDto> {
+    const plane = await this.ownedAircraft(ctx, aircraftId);
+    const piece = await this.own(ctx, pieceId);
+    if (request.templateId !== plane.templateId) throw new GameRuleException('NO_SUCH_ROOM', 'That isn’t this aircraft’s cabin.');
+    const room = findAircraftDecorRoom(plane.templateId, request.roomId);
+    if (!room) throw new GameRuleException('NO_SUCH_ROOM', 'This aircraft has no such room to decorate.');
+    return this.settle(ctx, piece, request, {
+      room,
+      cap: aircraftRoomCap(request.roomId),
+      scope: { characterId: ctx.character.id, aircraftId, templateId: plane.templateId, roomId: request.roomId },
+      isHere: (row) => row.aircraftId === aircraftId && row.roomId === request.roomId,
+      apply: (row, pose) => this.setAircraftSpot(row, aircraftId, plane.templateId, request.roomId, pose),
+      check: (item, pose, others) => checkAircraftDecorPlacement(request.roomId, room, item, pose, others),
+    });
+  }
+
+  /** The shared body of placing: caps, validation, moving what sits on a moved table, stranding what is left behind. */
+  private async settle(ctx: SimulationContext, piece: DecorPieceEntity, request: DecorPlaceRequest, target: PlaceTarget): Promise<DecorChangeDto> {
+    const item = findDecorItem(piece.itemId);
+    if (!item) throw new ResourceNotFoundException('Decor item');
+    const { room } = target;
+    const inRoom = await ctx.manager.find(DecorPieceEntity, { where: target.scope });
+    const here = target.isHere(piece);
     const children = here ? inRoom.filter((other) => other.onId === piece.id) : [];
     const others = inRoom.filter((other) => other.id !== piece.id && !children.includes(other));
-    if (!here && inRoom.length >= DECOR_MAX_PER_ROOM) {
-      throw new GameRuleException('ROOM_FULL', `This room is full (${DECOR_MAX_PER_ROOM} pieces). Put something back first.`);
+    if (!here && inRoom.length >= target.cap) {
+      throw new GameRuleException('ROOM_FULL', `This room is full (${target.cap} pieces). Put something back first.`);
     }
 
-    const verdict = checkDecorPlacement(
-      room,
+    const verdict = target.check(
       item,
       {
         x: request.x,
@@ -158,7 +214,7 @@ export class DecorService {
     const stranded = !here
       ? await ctx.manager.find(DecorPieceEntity, { where: { characterId: ctx.character.id, onId: piece.id } })
       : [];
-    this.setSpot(piece, key, request.templateId, request.roomId, verdict.pose);
+    target.apply(piece, verdict.pose);
     const changed: DecorPieceEntity[] = [piece];
     for (const child of stranded) {
       this.putAway(child);
@@ -171,9 +227,9 @@ export class DecorService {
       const settled: PlacedDecor[] = [...this.placedOf(others), { id: piece.id, itemId: piece.itemId, pose: verdict.pose }];
       for (const child of children) {
         const childItem = findDecorItem(child.itemId);
-        const carried = childItem && top !== null ? checkDecorPlacement(room, childItem, carriedPose(from, to, decorPoseOf(child), top), settled) : null;
+        const carried = childItem && top !== null ? target.check(childItem, carriedPose(from, to, decorPoseOf(child), top), settled) : null;
         if (carried?.ok) {
-          this.setSpot(child, key, request.templateId, request.roomId, carried.pose);
+          target.apply(child, carried.pose);
           settled.push({ id: child.id, itemId: child.itemId, pose: carried.pose });
         } else {
           this.putAway(child);
@@ -231,6 +287,33 @@ export class DecorService {
     return { hostId, placed };
   }
 
+  /**
+   * What is fitted in an aircraft's cabin: for its owner and for whoever is aboard (their location is the aircraft's,
+   * `aircraftLocationId`). The pieces are the owner's; passengers only see them.
+   */
+  async aircraftView(ctx: SimulationContext, aircraftId: string): Promise<DecorAircraftDto> {
+    const plane = await this.aircraftRow(ctx, aircraftId);
+    if (!plane) throw new ResourceNotFoundException('Aircraft');
+    if (plane.ownerId !== ctx.character.id && ctx.character.locationId !== aircraftLocationId(aircraftId)) {
+      throw new ForbiddenActionException('You’re not aboard that aircraft.');
+    }
+    const rows = await ctx.manager.find(DecorPieceEntity, { where: { characterId: plane.ownerId, aircraftId }, order: { createdAt: 'ASC', id: 'ASC' } });
+    const placed: DecorPlacedDto[] = [];
+    for (const row of rows) {
+      if (!row.templateId || !row.roomId) continue;
+      placed.push({ id: row.id, itemId: row.itemId, variant: row.variant, spot: this.spotOf(row)! });
+    }
+    return { aircraftId, aircraftClass: plane.aircraftClass, ownerId: plane.ownerId, placed };
+  }
+
+  /** The aircraft is leaving its owner (sold): everything fitted in it goes back to their decor inventory. */
+  async releaseAircraft(ctx: SimulationContext, aircraftId: string): Promise<number> {
+    const rows = await ctx.manager.find(DecorPieceEntity, { where: { characterId: ctx.character.id, aircraftId } });
+    for (const row of rows) this.putAway(row);
+    if (rows.length > 0) await ctx.manager.save(rows);
+    return rows.length;
+  }
+
   // ----- Internals ---------------------------------------------------------------------------------------------
 
   private unitPrice(ctx: SimulationContext, base: number): number {
@@ -247,6 +330,23 @@ export class DecorService {
       [hostId],
     );
     return rows.length > 0 ? homeKey(hostId, rows[0]!.home_property_id) : null;
+  }
+
+  /** The aircraft row (the aviation module owns the table; the decor module only needs who owns it and its class). */
+  private async aircraftRow(ctx: SimulationContext, aircraftId: string): Promise<{ ownerId: string; aircraftClass: string } | null> {
+    if (!UUID.test(aircraftId)) return null;
+    const rows = await ctx.manager.query<Array<{ character_id: string; aircraft_id: string }>>(
+      'SELECT character_id, aircraft_id FROM aircraft WHERE id = $1',
+      [aircraftId],
+    );
+    const def = rows.length > 0 ? findAircraft(rows[0]!.aircraft_id) : undefined;
+    return def ? { ownerId: rows[0]!.character_id, aircraftClass: def.class } : null;
+  }
+
+  private async ownedAircraft(ctx: SimulationContext, aircraftId: string): Promise<{ templateId: string; aircraftClass: string }> {
+    const plane = await this.aircraftRow(ctx, aircraftId);
+    if (!plane || plane.ownerId !== ctx.character.id) throw new ResourceNotFoundException('Aircraft');
+    return { templateId: aircraftDecorTemplateId(plane.aircraftClass), aircraftClass: plane.aircraftClass };
   }
 
   private async eligibility(ctx: SimulationContext): Promise<{ readonly eligible: boolean; readonly reason: string | null }> {
@@ -266,6 +366,7 @@ export class DecorService {
   }
 
   private setSpot(row: DecorPieceEntity, key: string, templateId: string, roomId: string, pose: DecorPose): void {
+    row.aircraftId = null;
     row.homeKey = key;
     row.templateId = templateId;
     row.roomId = roomId;
@@ -277,7 +378,14 @@ export class DecorService {
     row.onId = pose.onId;
   }
 
+  private setAircraftSpot(row: DecorPieceEntity, aircraftId: string, templateId: string, roomId: string, pose: DecorPose): void {
+    this.setSpot(row, '', templateId, roomId, pose);
+    row.homeKey = null;
+    row.aircraftId = aircraftId;
+  }
+
   private putAway(row: DecorPieceEntity): void {
+    row.aircraftId = null;
     row.homeKey = null;
     row.templateId = null;
     row.roomId = null;
@@ -294,9 +402,11 @@ export class DecorService {
     return { templateId: row.templateId, roomId: row.roomId, x: row.x, z: row.z, y: row.y, rot: row.rot, wall: row.wall, onId: row.onId };
   }
 
-  /** A piece is shown placed only while you still live in the home it was put in. */
+  /** A piece is shown placed only while you still live in the home it was put in (or while it is fitted in a plane). */
   private toDto(ctx: SimulationContext, row: DecorPieceEntity, eligible: boolean): DecorPieceDto {
     const here = eligible && row.homeKey === this.homeKeyOf(ctx);
-    return { id: row.id, itemId: row.itemId, variant: row.variant, spot: here ? this.spotOf(row) : null, recolours: row.recolours };
+    const base = { id: row.id, itemId: row.itemId, variant: row.variant, recolours: row.recolours };
+    if (row.aircraftId) return { ...base, spot: this.spotOf(row), aircraftId: row.aircraftId };
+    return { ...base, spot: here ? this.spotOf(row) : null };
   }
 }

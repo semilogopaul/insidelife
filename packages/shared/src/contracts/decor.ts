@@ -22,6 +22,8 @@ export interface DecorPieceDto {
   readonly spot: DecorSpotDto | null;
   /** How many times it has been re-coloured (each costs money). */
   readonly recolours: number;
+  /** Set while the piece is fitted in one of your aircraft (its `spot` is then a cabin room); absent otherwise. */
+  readonly aircraftId?: string;
 }
 
 export interface DecorHomeStatusDto {
@@ -96,5 +98,14 @@ export interface DecorPlacedDto {
 /** GET /v1/decor/homes/:hostId */
 export interface DecorHomeDto {
   readonly hostId: string;
+  readonly placed: readonly DecorPlacedDto[];
+}
+
+/** GET /v1/decor/aircraft/:aircraftId — an aircraft's cabin decor, for its owner and whoever is aboard. */
+export interface DecorAircraftDto {
+  readonly aircraftId: string;
+  /** Shared catalog class of the aircraft (`light-jet`…); the cabin layout is `aircraft-<class>`. */
+  readonly aircraftClass: string;
+  readonly ownerId: string;
   readonly placed: readonly DecorPlacedDto[];
 }

@@ -13,14 +13,18 @@ import {
   type Mesh,
 } from 'three';
 import {
+  checkAircraftDecorPlacement,
   decorRect,
+  findAircraftDecorRoom,
   findDecorItem,
   findDecorRoom,
   findDecorVariant,
   type DecorItem,
   type DecorPieceDto,
+  type DecorPose,
   type DecorRoom,
   type DecorVariant,
+  type PlacedDecor,
 } from '@insidelife/shared';
 import { asPlacedDecor, useDecorCommands, useDecorEdit, type PlacedPiece } from '@/common/decor';
 import { errorMessage } from '@/common/api/api-error';
@@ -42,6 +46,7 @@ interface Live {
   readonly room: DecorRoom;
   readonly templateId: string;
   readonly roomId: string;
+  readonly aircraftId: string | undefined;
   readonly placed: readonly PlacedPiece[];
   readonly own: readonly DecorPieceDto[];
   readonly fixtures: readonly Fixture[];
@@ -71,17 +76,20 @@ interface Held {
 export function DecorEditor({
   templateId,
   roomId,
+  aircraftId,
   template,
   placed,
   own,
 }: {
   readonly templateId: string;
   readonly roomId: string;
+  /** Set when the room is a cabin of one of your aircraft: placements go to the aircraft, with the cabin's rules. */
+  readonly aircraftId?: string;
   readonly template: InteriorTemplate;
   readonly placed: readonly PlacedPiece[];
   readonly own: readonly DecorPieceDto[];
 }) {
-  const room = findDecorRoom(templateId, roomId);
+  const room = aircraftId ? findAircraftDecorRoom(templateId, roomId) : findDecorRoom(templateId, roomId);
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
   const controls = useThree((state) => state.controls) as unknown as { enabled: boolean } | null;
@@ -133,7 +141,7 @@ export function DecorEditor({
   const selection = useRef<Group>(null);
   const live = useRef<Live | null>(null);
   useLayoutEffect(() => {
-    live.current = room ? { room, templateId, roomId, placed, own, fixtures, mounts, place } : null;
+    live.current = room ? { room, templateId, roomId, aircraftId, placed, own, fixtures, mounts, place } : null;
   });
 
   // The selected piece's outline follows it (it moves when the server answers).
@@ -391,13 +399,16 @@ function dropContext(L: Live, item: DecorItem, excludeId: string, rot: number, a
   const everyone = asPlacedDecor(L.placed);
   // What's on a piece moves with it, so it isn't an obstacle to its own table.
   const others = everyone.filter((other) => other.id !== excludeId && other.pose.onId !== excludeId);
-  return { room: L.room, item, others, fixtures: L.fixtures, mounts: L.mounts, rot, autoFace };
+  const cabinRoomId = L.aircraftId ? L.roomId : null;
+  const check = cabinRoomId ? (room: DecorRoom, piece: DecorItem, pose: DecorPose, near: readonly PlacedDecor[]) => checkAircraftDecorPlacement(cabinRoomId, room, piece, pose, near) : undefined;
+  return { room: L.room, item, others, fixtures: L.fixtures, mounts: L.mounts, rot, autoFace, ...(check ? { check } : {}) };
 }
 
 function commit(L: Live, pieceId: string, drop: Drop): void {
   L.place.mutate(
     {
       pieceId,
+      ...(L.aircraftId ? { aircraftId: L.aircraftId } : {}),
       request: {
         templateId: L.templateId,
         roomId: L.roomId,

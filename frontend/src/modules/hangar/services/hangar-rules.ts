@@ -2,6 +2,7 @@ import {
   AIRCRAFT_NAME_MAX,
   GAT_NAMES,
   LIVERY_COLOURS,
+  aircraftLocationId,
   aircraftNameIssue,
   findLiveryColour,
   isGatId,
@@ -115,4 +116,15 @@ export function lessonProgress(training: PilotTrainingDto): number {
 /** Fleet sorted: ones you can fly right now first, then by value. */
 export function sortFleet(fleet: readonly OwnedAircraftDto[]): readonly OwnedAircraftDto[] {
   return fleet.toSorted((a, b) => Number(a.flyBlocker !== null) - Number(b.flyBlocker !== null) || b.value - a.value);
+}
+
+/**
+ * The "Decorate cabin" entry of a plane in your fleet: `decorate` when you are aboard it and its cabin is the room on
+ * screen (Decorate mode works there), `step-in` when you are aboard but not in the cabin yet, null otherwise (you can
+ * only dress a cabin you are standing in). `locationId` is the character's; `cabinOnScreen` the aircraft id the 3D
+ * scene is drawing a cabin of (`useDecorEdit.cabinId`), if any.
+ */
+export function cabinDecorEntry(aircraftId: string, locationId: string | undefined, cabinOnScreen: string | null): 'decorate' | 'step-in' | null {
+  if (locationId !== aircraftLocationId(aircraftId)) return null;
+  return cabinOnScreen === aircraftId ? 'decorate' : 'step-in';
 }
