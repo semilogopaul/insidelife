@@ -5,6 +5,8 @@ import { KIT_TEST } from './catalog/kit-test';
 import { CAMPUS, CBT_CENTRE, ESTATE_AGENCY, GOVERNMENT, OFFICE, SCHOOL } from './catalog/learning-work';
 import { BAR, BUKA, CLUB, EVENT_CENTRE, RESTAURANT, SALON } from './catalog/social';
 import { JET_CABIN, MANSION_PARLOUR, REFINERY_CENTRE } from './catalog/showcase';
+import { AIRCRAFT_LAYOUTS, AIRCRAFT_TEMPLATE_IDS } from '../../aviation/cabin/cabin-layouts';
+import { AVIATION_LOUNGE } from '../../aviation/terminal/terminal-templates';
 import type { InteriorTemplateId } from './resolve';
 import type { InteriorTemplate } from './types';
 
@@ -45,6 +47,8 @@ export const TEMPLATES: Readonly<Record<InteriorTemplateId, InteriorTemplate>> =
   mansion: MANSION_PARLOUR,
   'private-jet': JET_CABIN,
   refinery: REFINERY_CENTRE,
+  'aviation-terminal': AVIATION_LOUNGE,
+  ...(Object.fromEntries(AIRCRAFT_TEMPLATE_IDS.map((id) => [id, AIRCRAFT_LAYOUTS[id].rooms[0]?.template])) as Record<(typeof AIRCRAFT_TEMPLATE_IDS)[number], InteriorTemplate>),
 };
 
 /** Template by id (`kit-test` is a dev-only orientation check). */

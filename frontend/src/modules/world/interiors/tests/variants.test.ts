@@ -24,7 +24,7 @@ const look = (template: InteriorTemplate): string =>
 describe('venue interiors', () => {
   it('has a name board in every one-room venue type', () => {
     for (const id of INTERIOR_TEMPLATE_IDS) {
-      if (id.startsWith('home-') || placeLayoutFor(id).rooms.length > 1) continue;
+      if (id.startsWith('home-') || id.startsWith('aircraft-') || placeLayoutFor(id).rooms.length > 1) continue;
       expect(nameBoards(getTemplate(id)).length, id).toBeGreaterThan(0);
     }
   });

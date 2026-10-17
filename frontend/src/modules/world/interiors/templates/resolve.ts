@@ -37,6 +37,15 @@ export const INTERIOR_TEMPLATE_IDS = [
   'mansion',
   'private-jet',
   'refinery',
+  // Aviation (docs/MULTI_CITY.md): the General Aviation Terminal and the walkable cabin of each aircraft class.
+  'aviation-terminal',
+  'aircraft-piston-single',
+  'aircraft-piston-twin',
+  'aircraft-turboprop',
+  'aircraft-light-jet',
+  'aircraft-midsize-jet',
+  'aircraft-long-range-jet',
+  'aircraft-airliner-jet',
 ] as const;
 export type InteriorTemplateId = (typeof INTERIOR_TEMPLATE_IDS)[number];
 
@@ -77,6 +86,14 @@ const VENUE_TEMPLATES: Readonly<Partial<Record<Exclude<VenueType, 'home'>, Inter
   refinery: 'refinery',
 };
 
+/**
+ * Venue types the shared catalog does not list on this branch yet (the multi-city workstream adds `aviation-terminal`).
+ * Keyed by string so it compiles before and after; fold into `VENUE_TEMPLATES` once `VenueType` has it.
+ */
+const PENDING_VENUE_TEMPLATES: Readonly<Record<string, InteriorTemplateId>> = {
+  'aviation-terminal': 'aviation-terminal',
+};
+
 /** A sensible walkable room for a venue type without its own interior yet (by what its name suggests). */
 export function genericTemplateFor(type: string): InteriorTemplateId {
   if (/club|disco/.test(type)) return 'club';
@@ -101,7 +118,7 @@ export function genericTemplateFor(type: string): InteriorTemplateId {
 
 /** The venue type a (venue) template is the interior of, or null for homes and dev templates. */
 export function venueTypeFor(templateId: string): Exclude<VenueType, 'home'> | null {
-  const entry = Object.entries(VENUE_TEMPLATES).find(([, template]) => template === templateId);
+  const entry = Object.entries({ ...VENUE_TEMPLATES, ...PENDING_VENUE_TEMPLATES }).find(([, template]) => template === templateId);
   return entry ? (entry[0] as Exclude<VenueType, 'home'>) : null;
 }
 
@@ -129,7 +146,7 @@ export function resolveTemplateId(locationId: string, home?: HomeInfo | null): I
   const venue = findVenue(locationId);
   if (!venue) return (INTERIOR_TEMPLATE_IDS as readonly string[]).includes(locationId) ? (locationId as InteriorTemplateId) : 'home-family';
   if (venue.type === 'home') return homeTemplateFor(home);
-  return VENUE_TEMPLATES[venue.type] ?? genericTemplateFor(venue.type);
+  return VENUE_TEMPLATES[venue.type] ?? PENDING_VENUE_TEMPLATES[venue.type] ?? genericTemplateFor(venue.type);
 }
 
 /** NEPA (power) cut: deterministic per location and game day, only at night. */

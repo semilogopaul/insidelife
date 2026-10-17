@@ -55,7 +55,7 @@ const action = (id: string): ActionDefinition => {
 const foot = (spot: Spot): At => [spot.at[0], spot.at[spot.at.length - 1] as number];
 const near = (a: At, b: At, distance = 0.05): boolean => Math.hypot(a[0] - b[0], a[1] - b[1]) < distance;
 /** One-room venues (the multi-room showcase places are checked room by room in `showcase.test.ts`). */
-const VENUE_TEMPLATES = INTERIOR_TEMPLATE_IDS.filter((id) => !id.startsWith('home-') && placeLayoutFor(id).rooms.length === 1);
+const VENUE_TEMPLATES = INTERIOR_TEMPLATE_IDS.filter((id) => !id.startsWith('home-') && !id.startsWith('aircraft-') && placeLayoutFor(id).rooms.length === 1);
 
 /** A treatment the hospital might offer, described only by animation and category (no template knows its id). */
 const treatment = (
