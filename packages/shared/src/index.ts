@@ -75,3 +75,7 @@ export * from './catalog/ad-views.js';
 export * from './catalog/club-schedule.js';
 export * from './catalog/betting.js';
 export * from './contracts/betting.js';
+export * from './catalog/decor.js';
+export * from './catalog/decor-rooms.js';
+export * from './catalog/decor-placement.js';
+export * from './contracts/decor.js';

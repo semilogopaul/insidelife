@@ -7,15 +7,17 @@ import { useUi } from '@/common/game/ui-store';
 import { useHousing } from '../hooks/use-housing';
 import { MyHomeTab } from './home/MyHomeTab';
 import { ErrorState, LoadingRows } from '@/common/components';
+import { DecorTab } from './decor/DecorTab';
 import { HousesTab } from './houses/HousesTab';
 import { LandTab } from './land/LandTab';
 import { PropertiesTab } from './property/PropertiesTab';
 import { RentTab } from './rent/RentTab';
 
-type HomesTab = 'home' | 'rent' | 'houses' | 'land' | 'property';
-const TABS: readonly HomesTab[] = ['home', 'rent', 'houses', 'land', 'property'];
+type HomesTab = 'home' | 'decor' | 'rent' | 'houses' | 'land' | 'property';
+const TABS: readonly HomesTab[] = ['home', 'decor', 'rent', 'houses', 'land', 'property'];
 const LABELS: Record<HomesTab, string> = {
   home: 'My home',
+  decor: 'Decor',
   rent: 'Rent',
   houses: 'Houses',
   land: 'Land',
@@ -46,7 +48,9 @@ export function HomesApp() {
         />
       </div>
       <div role="tabpanel" aria-label={LABELS[tab]}>
-        {tab === 'rent' ? (
+        {tab === 'decor' ? (
+          <DecorTab />
+        ) : tab === 'rent' ? (
           <RentTab />
         ) : tab === 'houses' ? (
           <HousesTab onSeeProperty={() => setTab('property')} />

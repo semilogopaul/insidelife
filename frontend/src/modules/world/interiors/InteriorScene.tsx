@@ -6,6 +6,7 @@ import { homeLocationId, isHomeLocation, toDateParts, type ActionDefinition, typ
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
+import { useDecorEdit } from '@/common/decor';
 import { isBusy, isPlaceAction, placeActions, servicesAt, useActionAvailability, servicesWithGoal, useGoalHere, type GoalHere, type PlaceService } from '@/common/places';
 import { useHomePeople, useVisits } from '@/common/visits';
 import { animationForSegment } from '@/common/three/avatar';
@@ -17,6 +18,10 @@ import { InteriorPeople, type InteriorPlayer } from './components/InteriorPeople
 import { RoomShell } from './components/RoomShell';
 import { ShowroomCars } from './components/ShowroomCars';
 import { TvScreens } from './components/TvScreens';
+import { DecorWorld } from './decor/DecorWorld';
+import { piecesSignature } from './decor/DecorLayer';
+import { withDecorColliders } from './decor/decor-scene';
+import { useRoomDecor, type DecorMode } from './decor/use-room-decor';
 import { buildHotspots, hotspotRoom, type ActionStatus } from './hotspots/hotspots';
 import { placeLayoutFor } from './layouts/catalog';
 import { applyDecor } from './templates/decor';
@@ -68,6 +73,7 @@ export interface InteriorSceneProps {
 const NO_PLAYERS: readonly PresencePlayerDto[] = [];
 const NO_ACTIONS: readonly ActionDefinition[] = [];
 const NO_SERVICES: readonly PlaceService[] = [];
+const NO_HOTSPOTS: ReturnType<typeof buildHotspots> = [];
 /** Far below the floor (its light has a 5 m reach): keeps the light rig identical across a home's rooms. */
 const SPARE_LANTERN = [0, -20, 0] as const;
 
@@ -107,6 +113,15 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
     if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname, treats }), visit.home.decor);
     return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname, treats }), decor) : base;
   }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname, decor, treats]);
+  // Decor: yours in your own home, the host's when you're a guest. The walker bumps into the solid pieces.
+  const decorMode: DecorMode = templateId !== undefined || previewItems ? null : ownHome ? 'own' : visit && hostId ? { hostId } : null;
+  const decorTemplateId = house?.layout.id;
+  const decorRoomId = house?.room.id;
+  const roomDecor = useRoomDecor(decorMode, decorTemplateId, decorRoomId);
+  const decorating = useDecorEdit((state) => state.active) && roomDecor.editable;
+  const decorSignature = piecesSignature(roomDecor.placed);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature stands for the placed pieces
+  const walkTemplate = useMemo(() => withDecorColliders(template, roomDecor.placed), [template, decorSignature]);
   const everyone = useMemo(() => (people ? [...present, ...people.map((person) => asPresence(person, locationId))] : present), [present, people, locationId]);
   const homeLayout = house?.layout ?? null;
   const homeRoomId = house?.room.id ?? null;
@@ -141,12 +156,12 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const houseLayout = house?.layout;
   const houseRoom = house?.room;
   const hotspots = useMemo(() => {
-    if (!houseLayout || !houseRoom) return [];
+    if (!houseLayout || !houseRoom || decorating) return NO_HOTSPOTS;
     const own = listed.filter((action) => isPlaceAction(action) && (houseLayout.rooms.length <= 1 || hotspotRoom(houseLayout, action) === houseRoom.id));
     // Services belong to the room you come in by (a venue's only room); the goal's own one joins them there.
     const here = houseRoom.id === houseLayout.entry ? servicesWithGoal(services, goal) : NO_SERVICES;
     return buildHotspots(template, own, houseRoom.template, here, goal);
-  }, [houseLayout, houseRoom, listed, template, services, goal]);
+  }, [houseLayout, houseRoom, listed, template, services, goal, decorating]);
 
   const h = currentHour(hour);
   const dayIndex = gameClock.ready ? toDateParts(minute).dayIndex : 0;
@@ -164,12 +179,15 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
       <RoomShell template={template} onGlass={onGlass} />
       <Suspense fallback={null}>
         <FurnitureLayer placements={template.furniture} />
+        {decorMode !== null && decorTemplateId && decorRoomId && (
+          <DecorWorld template={template} templateId={decorTemplateId} roomId={decorRoomId} decor={roomDecor} />
+        )}
         <TvScreens furniture={template.furniture} powerCut={powerCut} />
         {template.extras?.cars && <ShowroomCars cars={template.extras.cars} />}
       </Suspense>
       {template.extras?.clubLights && <ClubLights floor={template.extras.clubLights} ceiling={room.height} />}
       <InteriorPeople template={template} locationId={locationId} player={walking ? null : resolvedPlayer} players={players} />
-      {walking && house && resolvedPlayer && <HomeWalkLayer home={house} template={template} player={resolvedPlayer} guests={players.length} hotspots={hotspots} busy={busy} status={status} goal={goal} />}
+      {walking && house && resolvedPlayer && <HomeWalkLayer home={house} template={walkTemplate} player={resolvedPlayer} guests={players.length} hotspots={hotspots} busy={busy} status={status} goal={goal} />}
       {camera === 'dollhouse' && !(walking && house?.camera === 'walk') && <DollhouseCamera width={room.width} depth={room.depth} height={room.height} interactive={interactiveCamera} />}
       {children}
     </group>

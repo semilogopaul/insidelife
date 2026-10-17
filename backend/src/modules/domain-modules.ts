@@ -5,6 +5,7 @@ import { AuditModule } from './audit/audit.module.js';
 import { BettingModule } from './betting/betting.module.js';
 import { BusinessesModule } from './businesses/businesses.module.js';
 import { CareersModule } from './careers/careers.module.js';
+import { DecorModule } from './decor/decor.module.js';
 import { EducationModule } from './education/education.module.js';
 import { EventsModule } from './events/events.module.js';
 import { FamilyModule } from './family/family.module.js';
@@ -33,6 +34,7 @@ export const DOMAIN_MODULES: Type[] = [
   BusinessesModule,
   ShopModule,
   HousingModule,
+  DecorModule,
   VehiclesModule,
   HealthModule,
   FamilyModule,

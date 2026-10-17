@@ -1,0 +1,75 @@
+/**
+ * The rooms of the homes you can decorate (rented or owned: never the family house or a hostel), as the server needs
+ * them to validate placements: floor size, openings and what's built in. The 3D templates in the frontend draw the
+ * same rooms; a frontend test (`decor-rooms.test.ts`) fails if a template's size, doors or windows drift from this
+ * table. Room space: centred on the origin, back wall at -z, left wall at -x, y up.
+ */
+
+export interface DecorOpening {
+  readonly wall: 'back' | 'left';
+  /** Centre along the wall (x for the back wall, z for the left wall). */
+  readonly at: number;
+  readonly width: number;
+}
+
+export interface DecorWindow extends DecorOpening {
+  readonly sill: number;
+  readonly height: number;
+}
+
+export interface DecorKeepOut {
+  readonly minX: number;
+  readonly maxX: number;
+  readonly minZ: number;
+  readonly maxZ: number;
+}
+
+export interface DecorRoom {
+  readonly label: string;
+  readonly width: number;
+  readonly depth: number;
+  readonly height: number;
+  readonly doors: readonly DecorOpening[];
+  readonly windows: readonly DecorWindow[];
+  /** Staircases and stairwells: nothing is placed there. */
+  readonly keepOut: readonly DecorKeepOut[];
+}
+
+/** Door opening height (m). */
+export const DECOR_DOOR_HEIGHT = 2.05;
+
+export const DECOR_HOME_ROOMS = {
+  'home-face-me': {
+    room: { label: 'Face-me-I-face-you room', width: 4.8, depth: 4.2, height: 2.4, doors: [{ wall: 'left', at: 1.2, width: 0.85 }], windows: [{ wall: 'back', at: 0.9, width: 1, sill: 1, height: 0.85 }], keepOut: [] },
+  },
+  'home-self-contain': {
+    room: { label: 'Self-contain', width: 5.2, depth: 4.6, height: 2.5, doors: [{ wall: 'left', at: -0.6, width: 0.85 }], windows: [{ wall: 'back', at: -0.55, width: 0.9, sill: 1, height: 0.9 }], keepOut: [] },
+  },
+  'home-flat': {
+    living: { label: 'Living room', width: 6.6, depth: 5.4, height: 2.6, doors: [{ wall: 'left', at: 1.55, width: 1 }, { wall: 'back', at: -0.6, width: 0.9 }, { wall: 'back', at: 2.4, width: 0.9 }], windows: [{ wall: 'back', at: 1.05, width: 1.1, sill: 1, height: 0.95 }, { wall: 'left', at: -0.9, width: 1.3, sill: 1, height: 1.05 }], keepOut: [] },
+    kitchen: { label: 'Kitchen', width: 4.6, depth: 3.8, height: 2.6, doors: [{ wall: 'left', at: 0.8, width: 0.9 }], windows: [{ wall: 'back', at: 0.07, width: 1, sill: 1.15, height: 0.8 }], keepOut: [] },
+    bedroom: { label: 'Bedroom', width: 5.4, depth: 4.6, height: 2.6, doors: [{ wall: 'left', at: -1.3, width: 0.9 }], windows: [{ wall: 'back', at: 1.6, width: 1.1, sill: 1, height: 0.95 }], keepOut: [] },
+  },
+  'home-duplex': {
+    living: { label: 'Living room', width: 8.4, depth: 6.2, height: 2.9, doors: [{ wall: 'left', at: -0.9, width: 1.2 }, { wall: 'back', at: 3.3, width: 1 }], windows: [{ wall: 'back', at: 0.75, width: 1.8, sill: 0.45, height: 1.9 }, { wall: 'left', at: 2.55, width: 1, sill: 1, height: 1.05 }], keepOut: [{ minX: -3.9, maxX: -0.8, minZ: -3.1, maxZ: -2.15 }] },
+    kitchen: { label: 'Kitchen', width: 5.6, depth: 4.4, height: 2.9, doors: [{ wall: 'left', at: 1, width: 1 }], windows: [{ wall: 'back', at: 1, width: 1.3, sill: 1.1, height: 0.95 }], keepOut: [] },
+    bedroom: { label: 'Master bedroom', width: 6.4, depth: 5.2, height: 2.9, doors: [], windows: [{ wall: 'back', at: 0.8, width: 1.6, sill: 0.85, height: 1.4 }, { wall: 'left', at: 2, width: 1, sill: 1, height: 1.05 }], keepOut: [{ minX: -3.2, maxX: -2.04, minZ: -2.28, maxZ: 0.2 }] },
+  },
+  'home-mansion': {
+    living: { label: 'Living room', width: 10, depth: 7, height: 3.2, doors: [{ wall: 'left', at: -1.4, width: 1.4 }, { wall: 'back', at: 2.4, width: 1.4 }], windows: [{ wall: 'back', at: 0, width: 2, sill: 0.25, height: 2.5 }], keepOut: [{ minX: -4.6, maxX: -1, minZ: -3.5, maxZ: -2.4 }] },
+    kitchen: { label: 'Kitchen', width: 7, depth: 5.4, height: 3.2, doors: [{ wall: 'left', at: 1.1, width: 1.4 }], windows: [{ wall: 'back', at: 0.98, width: 2, sill: 1.05, height: 1.4 }], keepOut: [] },
+    cinema: { label: 'Cinema lounge', width: 7.2, depth: 5.6, height: 3, doors: [{ wall: 'back', at: 2.2, width: 1 }], windows: [], keepOut: [{ minX: -3.58, maxX: -2.42, minZ: -2.68, maxZ: 0 }] },
+    master: { label: 'Master suite', width: 8, depth: 6, height: 3, doors: [{ wall: 'left', at: -1.6, width: 1 }], windows: [{ wall: 'back', at: -0.6, width: 2.2, sill: 0.25, height: 2.4 }], keepOut: [] },
+  },
+} as const satisfies Readonly<Record<string, Readonly<Record<string, DecorRoom>>>>;
+
+export type DecorHomeTemplateId = keyof typeof DECOR_HOME_ROOMS;
+
+/** The room of a decorable home template, or undefined (family house, hostel, venues, typos). */
+export function findDecorRoom(templateId: string, roomId: string): DecorRoom | undefined {
+  const rooms = (DECOR_HOME_ROOMS as Readonly<Record<string, Readonly<Record<string, DecorRoom>> | undefined>>)[templateId];
+  return rooms ? Object.hasOwn(rooms, roomId) ? rooms[roomId] : undefined : undefined;
+}
+
+export const isDecorTemplate = (templateId: string): templateId is DecorHomeTemplateId =>
+  Object.hasOwn(DECOR_HOME_ROOMS, templateId);

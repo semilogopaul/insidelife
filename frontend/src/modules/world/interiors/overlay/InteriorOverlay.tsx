@@ -9,6 +9,7 @@ import { useTouchUi } from '@/common/hooks/use-touch-ui';
 import { cn } from '@/common/utils/cn';
 import { isTypingTarget } from '../../play/input/controls';
 import { PointerLayer } from '../../play/overlay/PointerLayer';
+import { DecorPanel, DecorateButton } from '../decor/DecorOverlay';
 import { levelLabel } from '../layouts/geometry';
 import { HotspotCardPanel } from './HotspotCardPanel';
 import { useHotspotDo, type HotspotHandlers } from './use-hotspot-do';
@@ -62,6 +63,7 @@ export function InteriorOverlay({ onStartAction, onOpenService }: InteriorOverla
       {!phoneOpen && !hudHidden && <HotspotMarkers />}
       {!phoneOpen && !hudHidden && <HomeControls />}
       {!phoneOpen && <HotspotCardPanel run={run} />}
+      {!phoneOpen && <DecorPanel />}
       {camera === 'walk' && !touchUi && !hudHidden && <KeysHint key={house} />}
       <div
         aria-hidden
@@ -355,6 +357,7 @@ function HomeControls() {
         {walk ? <Eye size={20} aria-hidden /> : <Footprints size={20} aria-hidden />}
         <span className="text-2xs font-bold">{walk ? 'Overview' : 'Walk'}</span>
       </button>
+      <DecorateButton />
     </div>
   );
 }
