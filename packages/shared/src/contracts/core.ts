@@ -6,8 +6,8 @@ import type { NeedProfile, Needs } from '../needs/needs.js';
 import type { Appearance, Gender, Outfit } from '../catalog/appearance.js';
 import type { BackgroundId, LifestyleTier, Skills } from '../catalog/life.js';
 import type { Habit } from '../catalog/habits.js';
-import type { DistrictId, RegionId } from '../catalog/geography.js';
-import type { TransportMode } from '../catalog/transport.js';
+import type { CityId, DistrictId } from '../catalog/geography.js';
+import type { TransportMode, TravelMode } from '../catalog/transport.js';
 import type { EconomyState, Weather, WorldEvent } from '../world/world.js';
 import type { WorldPoint } from '../world-map/types.js';
 
@@ -132,7 +132,7 @@ export interface CreateCharacterRequest {
   readonly appearance: Appearance;
 }
 
-export const ACTIVITY_KINDS = ['sleep', 'idle', 'work', 'lecture', 'commute', 'action', 'travel', 'away', 'hospital'] as const;
+export const ACTIVITY_KINDS = ['sleep', 'idle', 'work', 'lecture', 'commute', 'action', 'travel', 'away', 'hospital', 'flight'] as const;
 export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
 /**
@@ -155,7 +155,7 @@ export interface TimelineSegmentDto {
 export interface TravelDto {
   readonly fromLocationId: string;
   readonly toLocationId: string;
-  readonly mode: TransportMode;
+  readonly mode: TravelMode;
   readonly departAt: GameMinute;
   readonly arriveAt: GameMinute;
   readonly fare: number;
@@ -240,7 +240,8 @@ export interface CharacterDto {
   readonly homeDistrictId: DistrictId;
   /** Set while living in a house you built (see `homeKey`). */
   readonly homePropertyId: string | null;
-  readonly regionId: RegionId;
+  /** The city the character is in (Lagos or Abuja). */
+  readonly cityId: CityId;
   /** Daily habits the autopilot keeps while the player is away. */
   readonly habits: readonly Habit[];
 }
@@ -457,6 +458,7 @@ export const NOTIFICATION_KINDS = [
   'system',
   'achievement',
   'promotion',
+  'travel',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

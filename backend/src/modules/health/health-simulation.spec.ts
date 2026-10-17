@@ -159,7 +159,7 @@ function setup(options: SetupOptions = {}) {
     moodModifiers: [],
     homeDistrictId: 'mushin' as DistrictId,
     locationId: homeLocationId(id),
-    regionId: 'lagos',
+    cityId: 'lagos',
     activity: null,
     travel: null,
     settledAt: START,
@@ -179,7 +179,7 @@ function setup(options: SetupOptions = {}) {
   const profiles = new HealthProfileService();
   const context: ProfileContext = { comfort: 40, bedQuality: 0.2, jobStress: 0, energyCap: 100 };
   const planner = {
-    place: async () => ({ districtId: 'mushin', regionId: 'lagos' }),
+    place: async () => ({ districtId: 'mushin', cityId: 'lagos' }),
     profileContext: async () => context,
   } as unknown as TimelinePlanner;
   const engine = { mood: () => 45, start: () => undefined } as unknown as SimulationEngine;

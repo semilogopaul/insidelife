@@ -16,7 +16,6 @@ import {
   degreeClassFor,
   findCourse,
   findInstitution,
-  findVenue,
   formatDate,
   formatNaira,
   levelLabel,
@@ -33,7 +32,7 @@ import {
   type Skills,
 } from '@insidelife/shared';
 import { GameRuleException } from '../../../common/exceptions/domain.exception.js';
-import type { Residence, ScheduleBlock, Segment } from '../../simulation/interfaces/simulation-system.interface.js';
+import type { ScheduleBlock, Segment } from '../../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../../simulation/simulation-context.js';
 import { SimulationEngine } from '../../simulation/simulation-engine.service.js';
 import { LECTURE_PRIORITY, addMoodModifier, dayWindow, isWorkingDay } from '../education.helpers.js';
@@ -54,7 +53,6 @@ import { EDUCATION_MEMO, EducationStore } from './education-store.service.js';
 export const SEMESTER_MINUTES = SEMESTER_MONTHS * MINUTES_PER_MONTH;
 const LECTURE_MINUTES_PER_DAY = (LECTURE_END_HOUR - LECTURE_START_HOUR) * MINUTES_PER_HOUR;
 /** Beats the home (10) while a session runs; a hospital ward (30) still wins. */
-const HOSTEL_RESIDENCE_PRIORITY = 20;
 /** Mastery points for a top grade on a typical (difficulty 1) course. */
 const MASTERY_BASE = 100;
 
@@ -65,7 +63,7 @@ export interface ResolvedEnrolment {
 }
 
 /**
- * University and polytechnic life: lectures on the weekday routine, hostel during out-of-town sessions, attendance
+ * University and polytechnic life: lectures on the weekday routine, attendance
  * and mastery, semester results every six months of effective (non-strike) time, session fees with a 30-day grace
  * period, and graduation with a class of degree.
  */
@@ -162,21 +160,6 @@ export class EnrolmentService {
       label: `Lectures at ${resolved.institution.shortName}`,
       priority: LECTURE_PRIORITY,
       commute: true,
-    };
-  }
-
-  /** Out-of-town campuses mean hostel life while the session runs (home during strikes and suspension). */
-  async residence(ctx: SimulationContext, t: GameMinute): Promise<Residence | null> {
-    const resolved = await this.current(ctx);
-    if (!resolved) return null;
-    const venue = findVenue(resolved.institution.venueId);
-    if (!venue?.regionId || venue.regionId === 'lagos' || !this.inSession(ctx, resolved, t)) return null;
-    return {
-      locationId: venue.id,
-      districtId: venue.districtId,
-      regionId: venue.regionId,
-      label: `${resolved.institution.shortName} hostel`,
-      priority: HOSTEL_RESIDENCE_PRIORITY,
     };
   }
 
@@ -291,7 +274,6 @@ export class EnrolmentService {
     const { enrolment, institution, course } = resolved;
     const totalSemesters = EnrolmentService.totalSemesters(enrolment, course);
     const requirement = MASTERY_BASE * course.difficulty;
-    const venue = findVenue(institution.venueId);
     return {
       id: enrolment.id,
       institutionId: institution.id,
@@ -322,7 +304,6 @@ export class EnrolmentService {
       expectedGraduationAt: this.expectedEnd(ctx, resolved),
       strikeDelayMinutes: this.strikeMinutesSoFar(ctx, resolved),
       onStrike: this.isOnStrike(ctx, institution, ctx.time),
-      livesInHostel: Boolean(venue?.regionId && venue.regionId !== 'lagos') && this.inSession(ctx, resolved, ctx.time),
       fees: {
         due: enrolment.feesDue,
         dueAt: enrolment.feesDueAt,
@@ -355,12 +336,10 @@ export class EnrolmentService {
     const { enrolment, institution, course } = resolved;
     enrolment.status = 'active';
     this.invalidateRoutine(ctx);
-    const venue = findVenue(institution.venueId);
-    const hostel = venue?.regionId && venue.regionId !== 'lagos' ? ' Pack your bucket — you’re in the hostel this session.' : '';
     ctx.notify({
       kind: 'education',
       title: 'Resumption day! 🎒',
-      body: `${levelLabel(enrolment.level, course.credential)} ${course.name} at ${institution.shortName} starts today. Lectures run weekdays 9am-3pm.${hostel}`,
+      body: `${levelLabel(enrolment.level, course.credential)} ${course.name} at ${institution.shortName} starts today. Lectures run weekdays 9am-3pm.`,
       tone: 'good',
     });
   }

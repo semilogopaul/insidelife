@@ -43,8 +43,6 @@ export const SEMESTER_MONTHS = 6;
 export const FEES_GRACE_DAYS = 30;
 /** Carry-over semesters allowed before a student is withdrawn for poor performance. */
 export const MAX_EXTRA_SEMESTERS = 2;
-/** Living costs while sleeping in a campus hostel (shared rooms, cheap canteen). */
-export const HOSTEL_LIVING_COST_MULTIPLIER = 0.85;
 
 /** Weekday lecture hours (09:00-15:00). */
 export const LECTURE_START_HOUR = 9;

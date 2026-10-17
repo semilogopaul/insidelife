@@ -2,10 +2,10 @@
 
 import { SearchX } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { JobListingDto } from '@insidelife/shared';
+import { CITIES, CITY_IDS, type JobListingDto } from '@insidelife/shared';
 import { Button, EmptyState } from '@/common/components';
 import { useSnapshot } from '@/common/game/snapshot';
-import { useEmployment, useJobBoard } from '../../hooks/use-jobs-data';
+import { useEmployment, useJobBoard, useJobsCity } from '../../hooks/use-jobs-data';
 import { filterJobs, industriesOf, missingChips, type BoardScope } from '../../services/job-rules';
 import { FilterChips } from '@/common/components';
 import { ErrorState, LoadingRows } from '@/common/components';
@@ -19,6 +19,7 @@ export function JobBoardTab() {
   const board = useJobBoard();
   const employment = useEmployment();
   const { data: snapshot } = useSnapshot();
+  const setCity = useJobsCity((state) => state.set);
   const [scope, setScope] = useState<BoardScope>('eligible');
   const [industry, setIndustry] = useState('all');
   const [openId, setOpenId] = useState<string | null>(null);
@@ -40,6 +41,15 @@ export function JobBoardTab() {
   return (
     <div className="flex flex-col gap-4">
       <FreelanceHint />
+      <FilterChips
+        label="City"
+        value={board.data.cityId}
+        onChange={(id) => setCity(id)}
+        options={CITY_IDS.map((id) => ({ id, label: CITIES[id].name }))}
+      />
+      {snapshot && board.data.cityId !== snapshot.character.cityId && (
+        <p className="text-xs text-text-soft">You are in {CITIES[snapshot.character.cityId].name}. You can only apply for jobs in the city you live in; fly or take the bus there first.</p>
+      )}
       <div className="flex flex-col gap-2.5">
         <FilterChips
           label="Which jobs"

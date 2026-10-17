@@ -1,5 +1,6 @@
 import {
-  REGIONS,
+  cityOfDistrict,
+  cityOfVenue,
   VENUES,
   districtDistance,
   findVenue,
@@ -28,14 +29,13 @@ export function isCareVenueOpen(venue: VenueDefinition, t: GameMinute): boolean 
   return isVenueOpen(venue, toDateParts(t).hour);
 }
 
-const LAGOS_VENUES: readonly VenueDefinition[] = VENUES.filter((venue: VenueDefinition) => (venue.regionId ?? 'lagos') === REGIONS.lagos.id);
-
-/** Closest Lagos venue of a facility type to a district (null if the catalog has none). */
+/** Closest venue of a facility type to a district, in the district's own city (null if the city has none). */
 export function nearestCareVenue(facility: CareFacilityType, districtId: DistrictId): VenueDefinition | null {
   let best: VenueDefinition | null = null;
   let bestDistance = Number.POSITIVE_INFINITY;
-  for (const venue of LAGOS_VENUES) {
-    if (venue.type !== facility) continue;
+  const city = cityOfDistrict(districtId);
+  for (const venue of VENUES) {
+    if (venue.type !== facility || cityOfVenue(venue) !== city) continue;
     const distance = districtDistance(districtId, venue.districtId);
     if (distance < bestDistance) {
       best = venue;

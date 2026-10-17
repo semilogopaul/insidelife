@@ -1,16 +1,17 @@
-import { CITY_MAP, findVenue, type CityLot, type LotArchetype, type VenueType } from '@insidelife/shared';
+import { CITY_MAP, DISTRICTS, findVenue, type CityLot, type LotArchetype, type VenueType } from '@insidelife/shared';
 import { CanvasTexture, SRGBColorSpace } from 'three';
 
 /**
  * One canvas atlas with a painted signboard per venue (Lagos signwriting: bold condensed names, a small trade label,
- * strong flat colours). 4 × 16 slots of 512 × 128 px; slot 63 is a solid dark swatch for posts.
+ * strong flat colours). 4 × 32 slots of 512 × 128 px (two cities' venues); the last slot is a solid dark swatch for posts.
  */
 
 export const ATLAS_SIZE = 2048;
+export const ATLAS_HEIGHT = 4096;
 export const SLOT_W = 512;
 export const SLOT_H = 128;
 export const SLOTS_PER_ROW = ATLAS_SIZE / SLOT_W;
-export const POST_SLOT = 63;
+export const POST_SLOT = SLOTS_PER_ROW * (ATLAS_HEIGHT / SLOT_H) - 1;
 
 export interface SignStyle {
   readonly background: string;
@@ -36,13 +37,14 @@ const BY_TYPE: Partial<Readonly<Record<VenueType, Omit<SignStyle, 'label'> & { l
 
 const BY_ARCHETYPE: Readonly<Record<LotArchetype, SignStyle>> = {
   airport: { background: '#13606b', text: '#ffffff', accent: '#f6b90b', label: 'INTERNATIONAL AIRPORT' },
+  'aviation-terminal': { background: '#0e4a54', text: '#ffffff', accent: '#e8c35a', label: 'GENERAL AVIATION · PRIVATE FLIGHTS' },
   campus: { background: '#0f5132', text: '#ffffff', accent: '#f6d36b', label: 'UNIVERSITY' },
   market: { background: '#b8321e', text: '#fff7e0', accent: '#f6b90b', label: 'MARKET' },
   mall: { background: '#ffffff', text: '#0e2733', accent: '#f6b90b', label: 'SHOPPING MALL' },
   hospital: { background: '#ffffff', text: '#c62828', accent: '#c62828', label: 'HOSPITAL', icon: 'cross' },
   'office-tower': { background: '#0e2733', text: '#ffffff', accent: '#9fd3df', label: 'CORPORATE OFFICES' },
   office: { background: '#0e2733', text: '#ffffff', accent: '#f6b90b', label: 'TECH HUB' },
-  government: { background: '#1a8a4a', text: '#ffffff', accent: '#ffffff', label: 'LAGOS STATE GOVERNMENT' },
+  government: { background: '#1a8a4a', text: '#ffffff', accent: '#ffffff', label: 'GOVERNMENT' },
   stadium: { background: '#1a8a4a', text: '#ffffff', accent: '#f6b90b', label: 'SPORTS COMPLEX' },
   park: { background: '#2f6b3a', text: '#f6f0d8', accent: '#f6b90b', label: 'PARK' },
   beach: { background: '#f6b90b', text: '#0e2733', accent: '#0e2733', label: 'BEACH' },
@@ -67,6 +69,8 @@ export function signStyleFor(lot: CityLot): SignStyle {
   if (venue?.type === 'campus' && /college|technology/i.test(venue.name)) return { ...base, label: 'COLLEGE OF TECHNOLOGY' };
   if (venue?.type === 'hospital-private') return { ...base, label: 'SPECIALIST HOSPITAL' };
   if (venue?.type === 'gym' && lot.archetype === 'park') return { ...base, background: '#0e2733', label: 'MEMBERS CLUB · EST. 1938' };
+  if (venue?.type === 'government' && lot.districtId && DISTRICTS[lot.districtId].cityId === 'lagos' && !/passport/i.test(venue.name)) return { ...base, label: 'LAGOS STATE GOVERNMENT' };
+  if (venue?.type === 'government' && /police/i.test(venue.name)) return { ...base, label: 'NIGERIA POLICE FORCE' };
   if (venue?.type === 'government' && /passport/i.test(venue.name)) return { ...base, label: 'NIGERIA IMMIGRATION SERVICE' };
   return base;
 }
@@ -165,7 +169,7 @@ export function paintAtlas(canvas: HTMLCanvasElement, entries: readonly SignEntr
   if (!ctx) return;
   const display = fontFamily('--font-anybody', "'Arial Narrow', Arial, sans-serif");
   const body = fontFamily('--font-atkinson', 'Arial, sans-serif');
-  ctx.clearRect(0, 0, ATLAS_SIZE, ATLAS_SIZE);
+  ctx.clearRect(0, 0, ATLAS_SIZE, ATLAS_HEIGHT);
   for (const entry of entries) drawSign(ctx, entry, display, body);
   const px = (POST_SLOT % SLOTS_PER_ROW) * SLOT_W;
   const py = Math.floor(POST_SLOT / SLOTS_PER_ROW) * SLOT_H;
@@ -176,7 +180,7 @@ export function paintAtlas(canvas: HTMLCanvasElement, entries: readonly SignEntr
 export function createAtlasTexture(): { canvas: HTMLCanvasElement; texture: CanvasTexture } {
   const canvas = document.createElement('canvas');
   canvas.width = ATLAS_SIZE;
-  canvas.height = ATLAS_SIZE;
+  canvas.height = ATLAS_HEIGHT;
   const texture = new CanvasTexture(canvas);
   texture.colorSpace = SRGBColorSpace;
   texture.anisotropy = 4;
@@ -188,5 +192,5 @@ export function slotUv(slot: number): readonly [number, number, number, number] 
   const x = (slot % SLOTS_PER_ROW) * SLOT_W;
   const y = Math.floor(slot / SLOTS_PER_ROW) * SLOT_H;
   const inset = 2;
-  return [(x + inset) / ATLAS_SIZE, 1 - (y + SLOT_H - inset) / ATLAS_SIZE, (x + SLOT_W - inset) / ATLAS_SIZE, 1 - (y + inset) / ATLAS_SIZE];
+  return [(x + inset) / ATLAS_SIZE, 1 - (y + SLOT_H - inset) / ATLAS_HEIGHT, (x + SLOT_W - inset) / ATLAS_SIZE, 1 - (y + inset) / ATLAS_HEIGHT];
 }

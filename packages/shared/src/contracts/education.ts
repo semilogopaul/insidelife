@@ -174,7 +174,6 @@ export interface EducationEnrolmentDto {
   readonly expectedGraduationAt: GameMinute;
   readonly strikeDelayMinutes: number;
   readonly onStrike: boolean;
-  readonly livesInHostel: boolean;
   readonly fees: EnrolmentFeesDto;
 }
 
@@ -269,7 +268,6 @@ export interface InstitutionOptionDto {
   readonly acceptanceFee: number;
   readonly screeningFee: number;
   readonly hostelFee: number;
-  readonly outOfTown: boolean;
   readonly courses: readonly InstitutionCourseOptionDto[];
 }
 

@@ -161,6 +161,14 @@ const AVIATION_TERMINAL: readonly PlaceService[] = [
     opens: { app: 'hangar', param: 'fleet' },
     at: { object: 'spot' },
   },
+  {
+    id: 'gat-flights',
+    label: 'Commercial flights',
+    emoji: '✈️',
+    blurb: 'No plane of your own? Book Air Peace, Ibom Air, Arik or United Nigeria, or the coach, in the Flights app.',
+    opens: { app: 'flights' },
+    at: 'counter',
+  },
 ];
 
 export const PLACE_SERVICES: Readonly<Partial<Record<VenueType | 'aviation-terminal', readonly PlaceService[]>>> = {
@@ -245,6 +253,14 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType | 'aviation-termi
     },
   ],
   airport: [
+    {
+      id: 'ticket-counter',
+      label: 'Ticket counter & gate',
+      emoji: '🎫',
+      blurb: 'Walk-up tickets, check-in and boarding — in the Flights app.',
+      opens: { app: 'flights', param: 'counter' },
+      at: 'counter',
+    },
     {
       id: 'book-trip',
       label: 'Travel',

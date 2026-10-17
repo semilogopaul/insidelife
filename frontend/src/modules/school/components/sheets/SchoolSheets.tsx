@@ -139,7 +139,7 @@ function FeesForm({
           {
             label: `${enrolment.institutionName} — session fees`,
             amount: due,
-            note: enrolment.livesInHostel ? 'Tuition + hostel' : 'Tuition',
+            note: 'Tuition',
           },
         ]}
         total={{ label: 'You pay now', amount: due }}

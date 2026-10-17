@@ -1,4 +1,4 @@
-import type { DistrictId, RegionId } from './geography.js';
+import { DISTRICTS, type CityId, type DistrictId } from './geography.js';
 
 /**
  * Venues are the places a character can be. Actions, shops and jobs reference venue *types* (so new venues slot in
@@ -22,6 +22,7 @@ export const VENUE_TYPES = [
   'park',
   'cbt-centre',
   'airport',
+  'aviation-terminal',
   'motor-park',
   'event-centre',
   'estate-agency',
@@ -44,8 +45,6 @@ export interface VenueDefinition {
   readonly name: string;
   readonly type: VenueType;
   readonly districtId: DistrictId;
-  /** Region for out-of-town venues (campuses outside Lagos). Defaults to Lagos. */
-  readonly regionId?: RegionId;
   readonly blurb: string;
   /** Minimum status (clout) to get past the gate. */
   readonly minStatus?: number;
@@ -58,6 +57,8 @@ const v = (def: VenueDefinition): VenueDefinition => def;
 export const VENUES = [
   // Ikeja
   v({ id: 'mmia-airport', name: 'Murtala Muhammed Airport', type: 'airport', districtId: 'ikeja', blurb: 'Japa terminal. Also Dubai.' }),
+  // General Aviation Terminal: private flights, hangars, aircraft sales and the flight school (docs/MULTI_CITY.md).
+  v({ id: 'mmia-gat', name: 'MMA2 General Aviation Terminal', type: 'aviation-terminal', districtId: 'ikeja', blurb: 'Private flights, hangars, aircraft sales and the flight school.' }),
   v({ id: 'computer-village', name: 'Computer Village', type: 'market', districtId: 'ikeja', blurb: 'Phones, laptops and "original" chargers.', hours: [8, 19] }),
   v({ id: 'ikeja-city-mall', name: 'Ikeja City Mall', type: 'mall', districtId: 'ikeja', blurb: 'Shopping, cinema and AC.', hours: [9, 22] }),
   v({ id: 'ikeja-cinema', name: 'Ikeja Cinemas', type: 'cinema', districtId: 'ikeja', blurb: 'Nollywood premieres and popcorn.', hours: [10, 24] }),
@@ -154,6 +155,17 @@ export const VENUES = [
   v({ id: 'epe-land-office', name: 'Epe Land Bureau', type: 'estate-agency', districtId: 'epe', blurb: 'Plots, surveys and family-land wahala.', hours: [8, 17] }),
   v({ id: 'augustine', name: 'Augustine University', type: 'campus', districtId: 'epe', blurb: 'Catholic private university at Ilara-Epe.' }),
   v({ id: 'dangote-refinery', name: 'Dangote Refinery', type: 'refinery', districtId: 'epe', blurb: 'Africa’s biggest refinery on the Lekki lagoon. The visitor centre runs tours by day.', hours: [8, 17] }),
+  // Abuja skeleton: just enough to live there. The full city content is a later workstream.
+  v({ id: 'naia-airport', name: 'Nnamdi Azikiwe International Airport', type: 'airport', districtId: 'lugbe', blurb: 'Abuja’s gateway on Airport Road: flights to Lagos, Port Harcourt and Dubai.' }),
+  v({ id: 'naia-gat', name: 'Abuja General Aviation Terminal', type: 'aviation-terminal', districtId: 'lugbe', blurb: 'Private flights, hangars and charter desks beside the main terminal.' }),
+  v({ id: 'wuse-market', name: 'Wuse Market', type: 'market', districtId: 'wuse', blurb: 'Abuja’s biggest open market: foodstuff, fabrics and hard bargains.', hours: [7, 19] }),
+  v({ id: 'jabi-lake-mall', name: 'Jabi Lake Mall', type: 'mall', districtId: 'jabi', blurb: 'Shopping, cinema and the lake just outside.', hours: [9, 22] }),
+  v({ id: 'garki-buka', name: 'Garki Local Buka', type: 'buka', districtId: 'garki', blurb: 'Tuwo shinkafa, moi-moi and fura da nono at civil-servant prices.', hours: [8, 21] }),
+  v({ id: 'national-hospital-abuja', name: 'National Hospital Abuja', type: 'hospital-public', districtId: 'abuja-cbd', blurb: 'Federal teaching and referral hospital in the Central Area.' }),
+  v({ id: 'central-area-towers', name: 'Central Area Business Towers', type: 'office', districtId: 'abuja-cbd', blurb: 'Banks, consultants and ministries’ favourite contractors.', hours: [7, 20] }),
+  v({ id: 'garki-police-command', name: 'Garki Area Command (Police)', type: 'government', districtId: 'garki', blurb: 'Report it, get a case file number, bring your own pen.', hours: [0, 24] }),
+  v({ id: 'maitama-realty', name: 'Maitama Realty', type: 'estate-agency', districtId: 'maitama', blurb: 'Abuja rentals and land with real C of O.', hours: [8, 18] }),
+  v({ id: 'utako-motor-park', name: 'Utako Motor Park', type: 'motor-park', districtId: 'jabi', blurb: 'Interstate coaches to Lagos and everywhere else.' }),
 ] as const satisfies readonly VenueDefinition[];
 
 export type VenueId = (typeof VENUES)[number]['id'];
@@ -215,4 +227,31 @@ export function isStreetLocation(locationId: string): boolean {
 }
 export function streetDistrict(locationId: string): DistrictId | null {
   return isStreetLocation(locationId) ? (locationId.slice(STREET_LOCATION_PREFIX.length) as DistrictId) : null;
+}
+
+/** The city a venue is in (from its district). */
+export function cityOfVenue(venue: Pick<VenueDefinition, 'districtId'>): CityId {
+  return DISTRICTS[venue.districtId].cityId;
+}
+
+/** City of a venue id, or null for an unknown id. */
+export function cityOfVenueId(venueId: string): CityId | null {
+  const venue = findVenue(venueId);
+  return venue ? cityOfVenue(venue) : null;
+}
+
+/**
+ * The city a location id is in. Venues and streets know theirs; a home (`home:<id>`) is wherever its owner lives, so
+ * the caller passes the district of the home it means (your own: `character.homeDistrictId`). Null if it can't be told.
+ */
+export function cityOfLocation(locationId: string, homeDistrictId?: DistrictId | null): CityId | null {
+  const street = streetDistrict(locationId);
+  if (street) return DISTRICTS[street]?.cityId ?? null;
+  if (isHomeLocation(locationId)) return homeDistrictId ? DISTRICTS[homeDistrictId].cityId : null;
+  return cityOfVenueId(locationId);
+}
+
+/** Venues of a city. */
+export function venuesOfCity(cityId: CityId): VenueDefinition[] {
+  return VENUES.filter((venue) => cityOfVenue(venue) === cityId);
 }

@@ -372,7 +372,7 @@ export function vehicleMarketValue(
   return Math.round(value / 1_000) * 1_000;
 }
 
-/** Lagos registration prefixes by district (plates look like `KJA-482-KJ`). */
+/** Registration prefixes by district (plates look like `KJA-482-KJ`; Abuja's are `ABC`-style FCT codes). */
 export const PLATE_PREFIXES: Readonly<Record<DistrictId, string>> = {
   ikeja: 'KJA',
   ikorodu: 'KRD',
@@ -387,4 +387,13 @@ export const PLATE_PREFIXES: Readonly<Record<DistrictId, string>> = {
   lekki: 'EKY',
   ajah: 'EKY',
   epe: 'EPE',
+  'abuja-cbd': 'ABC',
+  maitama: 'ABJ',
+  asokoro: 'ABJ',
+  wuse: 'ABC',
+  garki: 'GWA',
+  jabi: 'ABC',
+  gwarinpa: 'GWA',
+  kubwa: 'KWB',
+  lugbe: 'LUG',
 };

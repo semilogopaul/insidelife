@@ -2,6 +2,7 @@ import type {
   BlueprintId,
   BuyHouseResultDto,
   BuyLandRequest,
+  CityId,
   ConstructionPaymentPlan,
   DecorMakeoverRequest,
   ExteriorMakeoverRequest,
@@ -23,9 +24,9 @@ const id = (value: string): string => encodeURIComponent(value);
  */
 export const homesApi = {
   overview: () => api.get<HousingOverviewDto>('/housing'),
-  listings: () => api.get<RentalListingDto[]>('/housing/listings'),
-  land: () => api.get<LandOfferDto[]>('/housing/land'),
-  houses: () => api.get<HouseListingDto[]>('/housing/houses'),
+  listings: (cityId: CityId) => api.get<RentalListingDto[]>(`/housing/listings?cityId=${cityId}`),
+  land: (cityId: CityId) => api.get<LandOfferDto[]>(`/housing/land?cityId=${cityId}`),
+  houses: (cityId: CityId) => api.get<HouseListingDto[]>(`/housing/houses?cityId=${cityId}`),
   signLease: (listingId: string) =>
     tapOnce(`lease:${listingId}`, (idempotencyKey) =>
       api.post<HousingActionResultDto>('/housing/leases', { listingId, idempotencyKey }),

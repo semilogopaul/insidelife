@@ -100,7 +100,7 @@ export class CharacterCreationService {
         status: 0,
         connections: background === 'nepo-baby' ? 35 : background === 'ajebota' ? 15 : 5,
         locationId: homeLocationId(id),
-        regionId: 'lagos',
+        cityId: 'lagos',
         homeDistrictId,
         activity: null,
         travel: null,

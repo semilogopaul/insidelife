@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  findVenue,
   AIRCRAFT,
   AIRCRAFT_CLASS_INFO,
   AIRCRAFT_SALES_GAT,
@@ -52,6 +53,9 @@ import type { SimulationContext } from '../simulation/simulation-context.js';
 import { AircraftEntity } from './entities/aircraft.entity.js';
 import { PilotTrainingService } from './pilot-training.service.js';
 import { flyBlocker, randomRegistration } from './rules/aviation.rules.js';
+
+/** A General Aviation Terminal planes can use: it exists in the world as an aviation terminal (Lagos and Abuja). */
+const gatOpen = (venueId: string): boolean => findVenue(venueId)?.type === 'aviation-terminal';
 
 /** Memo key for the character's fleet (invalidate after every change). */
 export const FLEET_MEMO = 'aviation-fleet';
@@ -142,7 +146,7 @@ export class AviationService {
     const inPerson = this.atGat(ctx) === AIRCRAFT_SALES_GAT;
     const deliverTo = inPerson ? AIRCRAFT_SALES_GAT : (request.deliverTo ?? AIRCRAFT_SALES_GAT);
     if (!isGatId(deliverTo)) throw new GameRuleException('NO_SUCH_TERMINAL', 'Pick a General Aviation Terminal to deliver to');
-    if (!this.cities.isAirportOpen(deliverTo)) {
+    if (!gatOpen(deliverTo)) {
       throw new GameRuleException('CITY_NOT_OPEN', `${GAT_NAMES[deliverTo]} isn’t open yet. Deliver to Lagos for now`);
     }
 
@@ -259,7 +263,7 @@ export class AviationService {
       throw new GameRuleException('BUSY', 'You’re busy. Finish that before you head to the aircraft');
     }
     if (!isGatId(destination) || destination === plane.row.parkedAt) throw new GameRuleException('NO_SUCH_TERMINAL', 'Pick the other General Aviation Terminal');
-    if (!this.cities.isAirportOpen(destination)) throw new GameRuleException('CITY_NOT_OPEN', `${GAT_NAMES[destination]} isn’t open yet`);
+    if (!gatOpen(destination)) throw new GameRuleException('CITY_NOT_OPEN', `${GAT_NAMES[destination]} isn’t open yet`);
     const km = gatDistanceKm(plane.row.parkedAt, destination);
     if (km > plane.def.rangeKm) throw new GameRuleException('OUT_OF_RANGE', `That is ${km} km; the ${plane.def.name} manages ${plane.def.rangeKm} km`);
 
@@ -269,12 +273,8 @@ export class AviationService {
       refuseRepeat: 'The fuel truck is still at your aircraft. Give it a moment',
       metadata: { aircraftId: plane.def.id, from: plane.row.parkedAt, to: destination, km, litres: flightFuelLitres(plane.def, km) },
     });
-    await this.cities.flyToAirport(ctx, {
-      fromVenueId: plane.row.parkedAt,
-      toVenueId: destination,
-      durationMinutes: minutes,
-      label: `${plane.row.registration} · ${plane.def.name}`,
-    });
+    // The travel module flies the character there and lands them in the other city's terminal at the arrival minute.
+    await this.cities.relocateToCity(ctx, destination, ctx.time + minutes, `${plane.row.registration} · ${plane.def.name}`);
     plane.row.parkedAt = destination;
     plane.row.arrivesAt = ctx.time + minutes;
     await ctx.manager.save(plane.row);
@@ -398,7 +398,7 @@ export class AviationService {
         minutes: flightMinutes(def, km),
         fuelLitres: flightFuelLitres(def, km),
         fuelCost: flightFuelCost(def, km, economy.fuelPrice),
-        open: this.cities.isAirportOpen(destination),
+        open: gatOpen(destination),
       };
     });
     return {

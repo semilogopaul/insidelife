@@ -8,7 +8,7 @@ import type { Entrance, WorldPoint } from './types.js';
 /**
  * Open-world geometry contract shared by the server (validation, fuel) and the client (rendering, GPS).
  *
- * World units are metres; +x is east, +z is south. The playable city is a compact, stylised Lagos of about 750 × 510 m
+ * World units are metres; +x is east, +z is south. Lagos and Abuja share one frame (Abuja is 60 cells south-east of Lagos's corner, the water between them unreachable). Each playable city is a compact, stylised Lagos of about 750 × 510 m
  * with four-lane roads (`city-layout.ts` → `city-map.ts`; the layout grid is 640 × 420 m and every road line widens to
  * `ROAD_LINE_WIDTH`): a cross-town drive is ~50-70 real seconds at 15 m/s. Fuel and fares use map km: one world metre is
  * `MAP_KM_PER_WORLD_METRE` km, so crossing the city costs fuel like a 35-40 km Lagos drive.
@@ -29,6 +29,8 @@ export {
   DIR_W,
   billboardPlacement,
   cellBounds,
+  cityAt,
+  cityBounds,
   cellCentreX,
   cellCentreZ,
   cellIndex,
@@ -62,10 +64,19 @@ export {
   type DistrictBounds,
 } from './city-map.js';
 export {
+  ABUJA_COLS,
+  ABUJA_GAP,
+  ABUJA_ORIGIN_COL,
+  ABUJA_ORIGIN_ROW,
+  ABUJA_ROWS,
   CARRIAGEWAY_HALF_WIDTH,
   CITY_CELL_SIZE,
   CITY_COLS,
+  CITY_GRID_RECTS,
   CITY_ROWS,
+  LAGOS_COLS,
+  LAGOS_ROWS,
+  cityOfCell,
   LANE_WIDTH,
   LANES_PER_DIRECTION,
   ROAD_LINE_WIDTH,
@@ -115,10 +126,10 @@ function districtFallbackEntrance(districtId: DistrictId, key: string): Entrance
   return { position: point, heading, parking: { x: point.x, z: point.z, heading: heading + Math.PI / 2 } };
 }
 
-/** Door of a catalog venue, or null for out-of-town venues (reached by interstate bus, not on foot). */
+/** Door of a catalog venue (null for an unknown id). */
 export function venueEntrance(venueId: string): Entrance | null {
   const venue = findVenue(venueId);
-  if (!venue || venue.regionId) return null;
+  if (!venue) return null;
   return venueLot(venueId)?.entrance ?? districtFallbackEntrance(venue.districtId, venueId);
 }
 

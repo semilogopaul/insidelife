@@ -22,6 +22,7 @@ const CATEGORY_OF: Readonly<Record<NotificationKind, AwayCategory>> = {
   social: 'events',
   world: 'events',
   system: 'other',
+  travel: 'events',
 };
 
 export const CATEGORY_LABELS: Readonly<Record<AwayCategory, string>> = {

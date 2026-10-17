@@ -133,7 +133,7 @@ function teleport(ctx: SimulationContext, venueId: string): void {
   ctx.character.travel = null;
   ctx.character.activity = null;
   ctx.character.locationId = venueId;
-  ctx.character.regionId = 'lagos';
+  ctx.character.cityId = 'lagos';
 }
 
 /** `maxShiftHours` keeps evenings free for a study/coding habit (a 12-hour danfo shift leaves nothing). */

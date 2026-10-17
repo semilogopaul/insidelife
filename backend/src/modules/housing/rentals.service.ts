@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
+  CITIES,
   DISTRICTS,
-  DISTRICT_IDS,
   HOUSING_TYPES,
   HOUSING_TYPE_IDS,
   MINUTES_PER_YEAR,
@@ -56,7 +56,8 @@ export class RentalsService {
 
   listings(ctx: SimulationContext, query: RentalListingsQuery): RentalListingDto[] {
     const week = weekIndexOf(ctx.time);
-    const districts = query.districtId ? [query.districtId] : DISTRICT_IDS;
+    // One city at a time: the one asked for, else the one you are in.
+    const districts = query.districtId ? [query.districtId] : CITIES[query.cityId ?? ctx.character.cityId].districtIds;
     const types = query.type ? [query.type] : HOUSING_TYPE_IDS;
     const results: RentalListingDto[] = [];
     for (const districtId of districts) {
@@ -79,6 +80,9 @@ export class RentalsService {
     if (!listing) throw new ResourceNotFoundException('Listing');
     if (listing.weekIndex !== weekIndexOf(ctx.time)) {
       throw new GameRuleException('LISTING_GONE', 'Omo, that place don go — somebody paid before you. Check this week’s listings.');
+    }
+    if (DISTRICTS[listing.districtId].cityId !== ctx.character.cityId) {
+      throw new GameRuleException('OTHER_CITY', `That place is in ${DISTRICTS[listing.districtId].name}, in another city. Fly or take the bus there first, then sign.`);
     }
     const current = await this.store.lease(ctx);
     if (current && current.listingId === listing.id) throw new GameRuleException('ALREADY_RENTED', 'You already live there — enjoy am!');

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   MAP_KM_PER_WORLD_METRE,
+  OTHER_CITY_REASON,
   MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
   SERVICE_RADIUS,
@@ -72,7 +73,7 @@ function hourLabel(hour: number): string {
 }
 
 /**
- * Moving around Lagos. Two ways:
+ * Moving around the city you are in (Lagos or Abuja; between cities you fly or take the interstate coach: `TravelService`). Two ways:
  * - **Open world**: exit a building, walk or drive yourself (client-simulated, server-validated), enter another.
  * - **Ride**: pick a destination and a mode (danfo, Bolt, okada…); the server times the trip and the client plays it.
  */
@@ -91,7 +92,7 @@ export class MovementService {
     const character = ctx.character;
     this.assertCanMove(ctx);
     const entrance = await this.entranceOf(ctx, character.locationId, 'exit');
-    if (!entrance) throw new GameRuleException('NO_EXIT', 'You can only step outside in Lagos — take a bus back first');
+    if (!entrance) throw new GameRuleException('NO_EXIT', 'There is no way out of here');
 
     const district = character.locationId === homeLocationId(character.id) ? character.homeDistrictId : districtAt(entrance.position);
     character.locationId = streetLocationId(district);
@@ -218,18 +219,21 @@ export class MovementService {
         continue;
       }
       const quote = await this.planner.quote(ctx, character.locationId, destinationId, mode, ctx.time);
-      const available = quote.mode === mode || quote.intercity;
+      // A destination in the other city has no road to it: nothing here goes there.
+      if (quote.intercity) {
+        return TRANSPORT_MODES.map((each) => ({ mode: each, label: TRANSPORT[each].label, minutes: 0, fare: 0, available: false, reason: OTHER_CITY_REASON }));
+      }
+      const available = quote.mode === mode;
       const opens = available ? await this.closedWhenYouArrive(ctx, destinationId, ctx.time + quote.minutes) : null;
       results.push({
         mode,
-        label: quote.intercity ? 'Interstate bus' : definition.label,
+        label: definition.label,
         minutes: available ? quote.minutes : 0,
         fare: available ? quote.fare : 0,
         available,
         reason: available ? undefined : `${definition.label} can’t make this trip`,
         ...(opens !== null ? { closedOnArrival: opens } : {}),
       });
-      if (quote.intercity) break;
     }
     return results;
   }
@@ -248,7 +252,8 @@ export class MovementService {
     if (TRANSPORT[mode].requiresVehicle && !tags.includes('car')) throw new GameRuleException('NO_CAR', 'You don’t own a car yet');
 
     const quote = await this.planner.quote(ctx, character.locationId, destinationId, mode, ctx.time);
-    if (quote.mode !== mode && !quote.intercity) {
+    if (quote.intercity) throw new GameRuleException('OTHER_CITY', OTHER_CITY_REASON);
+    if (quote.mode !== mode) {
       throw new GameRuleException('MODE_UNAVAILABLE', `${TRANSPORT[mode].label} can’t make this trip — try danfo or Bolt`);
     }
     const destination = findVenue(destinationId)?.name ?? (destinationId === homeLocationId(character.id) ? 'home' : 'a friend’s place');
@@ -259,7 +264,7 @@ export class MovementService {
       }
     }
     if (quote.fare > 0) {
-      await ctx.wallet.pay(quote.fare, 'transport', `${quote.intercity ? 'Interstate bus' : TRANSPORT[mode].label} to ${destination}`, `trip:${ctx.time}:${destinationId}`);
+      await ctx.wallet.pay(quote.fare, 'transport', `${TRANSPORT[mode].label} to ${destination}`, `trip:${ctx.time}:${destinationId}`);
     }
     await this.tracker.clear(character.id);
     character.activity = null;

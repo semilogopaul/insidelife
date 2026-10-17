@@ -80,7 +80,6 @@ export function CampusStage({
         <Badge>
           {enrolment.level} · semester {enrolment.semester} of {enrolment.totalSemesters}
         </Badge>
-        {enrolment.livesInHostel && <Badge tone="info">Hostel life</Badge>}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
@@ -142,7 +141,7 @@ export function CampusStage({
           there; skipping hurts attendance.
         </p>
         <div className="flex flex-wrap gap-2">
-          {institution && !enrolment.livesInHostel && (
+          {institution && (
             <GoThere venueId={institution.venueId} venueName={institution.shortName} rideOption={false} />
           )}
           <StudyButton />

@@ -15,6 +15,7 @@ import {
   type EstateDto,
   type Rng,
   type SuccessionDto,
+  cityOfDistrict,
 } from '@insidelife/shared';
 import { HOUSEHOLD_PORT, type HouseholdPort } from '../../../common/ports/household.port.js';
 import { CharacterEntity } from '../../characters/entities/character.entity.js';
@@ -196,7 +197,7 @@ export class SuccessionService {
       status: Math.round(deceased.status * 0.2),
       connections: Math.max(5, Math.round(deceased.connections * 0.3)),
       locationId: homeLocationId(id),
-      regionId: 'lagos',
+      cityId: cityOfDistrict(deceased.homeDistrictId),
       homeDistrictId: deceased.homeDistrictId,
       homePropertyId: deceased.homePropertyId,
       activity: null,

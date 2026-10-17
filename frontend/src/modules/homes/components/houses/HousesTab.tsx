@@ -3,6 +3,7 @@
 import { KeyRound, SearchX } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
+  CITIES,
   DISTRICTS,
   LAND_TITLES,
   type BlueprintId,
@@ -21,6 +22,7 @@ import {
 } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { useHouseListings } from '../../hooks/use-housing';
+import { useHomesCity } from '../../hooks/use-homes-city';
 import { filterHouses, houseCondition } from '../../services/homes-rules';
 import { HouseSheet } from './HouseSheet';
 
@@ -34,7 +36,8 @@ const KINDS: readonly { readonly id: BlueprintId | 'all'; readonly label: string
 
 /** Ready-built houses for sale this week: pay once, get the keys, move in or let it out. */
 export function HousesTab({ onSeeProperty }: { readonly onSeeProperty: () => void }) {
-  const query = useHouseListings();
+  const { cityId } = useHomesCity();
+  const query = useHouseListings(cityId);
   const listings = useMemo(() => query.data ?? [], [query.data]);
   const districts = useMemo(() => [...new Set(listings.map((listing) => listing.districtId))], [listings]);
   const [district, setDistrict] = useState<DistrictId | 'all'>('all');
@@ -59,7 +62,7 @@ export function HousesTab({ onSeeProperty }: { readonly onSeeProperty: () => voi
           value={district}
           onChange={setDistrict}
           options={[
-            { value: 'all', label: 'All of Lagos' },
+            { value: 'all', label: `All of ${CITIES[cityId].name}` },
             ...districts.map((id) => ({ value: id, label: DISTRICTS[id].name })),
           ]}
         />

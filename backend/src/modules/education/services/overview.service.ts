@@ -232,7 +232,6 @@ export class EducationOverviewService {
   private async institutionOptions(ctx: SimulationContext): Promise<InstitutionOptionDto[]> {
     const profile = await this.admissions.profile(ctx);
     return INSTITUTIONS.map((institution) => {
-      const venue = findVenue(institution.venueId);
       return {
         id: institution.id,
         venueId: institution.venueId,
@@ -245,7 +244,6 @@ export class EducationOverviewService {
         acceptanceFee: ctx.world.price(institution.acceptanceFee, ctx.time),
         screeningFee: ctx.world.price(institution.screeningFee, ctx.time),
         hostelFee: ctx.world.price(institution.hostelFee, ctx.time),
-        outOfTown: Boolean(venue?.regionId && venue.regionId !== 'lagos'),
         courses: institution.courses.flatMap((offer) => {
           const course = findCourse(offer.courseId);
           if (!course) return [];

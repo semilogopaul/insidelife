@@ -3,8 +3,8 @@
 import { SearchX, ShieldAlert } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
+  CITIES,
   DISTRICTS,
-  DISTRICT_IDS,
   HOUSING_TYPE_IDS,
   type DistrictId,
   type HousingTypeId,
@@ -13,6 +13,7 @@ import {
 import { Badge, Button, EmptyState, Money } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { useListings } from '../../hooks/use-housing';
+import { useHomesCity } from '../../hooks/use-homes-city';
 import { filterListings, looksSuspicious, marketLabel, vsMarket } from '../../services/homes-rules';
 import { FilterChips } from '@/common/components';
 import { ErrorState, LoadingRows } from '@/common/components';
@@ -31,7 +32,8 @@ const SHORT_TYPE: Record<HousingTypeId, string> = {
 
 /** This week's rentals: filter by district and type; every card shows rent, the day-one total and how it compares. */
 export function RentTab() {
-  const query = useListings();
+  const { cityId } = useHomesCity();
+  const query = useListings(cityId);
   const [district, setDistrict] = useState<DistrictId | 'all'>('all');
   const [type, setType] = useState<HousingTypeId | 'all'>('all');
   const [affordableOnly, setAffordableOnly] = useState(true);
@@ -55,8 +57,8 @@ export function RentTab() {
           value={district}
           onChange={setDistrict}
           options={[
-            { value: 'all', label: 'All of Lagos' },
-            ...DISTRICT_IDS.map((id) => ({ value: id, label: DISTRICTS[id].name })),
+            { value: 'all', label: `All of ${CITIES[cityId].name}` },
+            ...CITIES[cityId].districtIds.map((id) => ({ value: id, label: DISTRICTS[id].name })),
           ]}
         />
         <FilterChips

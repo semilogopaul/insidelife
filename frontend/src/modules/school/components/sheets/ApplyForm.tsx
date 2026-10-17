@@ -59,7 +59,6 @@ export function ApplyForm({
             {institution.strike !== 'none' && (
               <Badge tone="warn">{institution.strike.toUpperCase()} strikes happen</Badge>
             )}
-            {institution.outOfTown && <Badge tone="info">Out of town · hostel</Badge>}
           </div>
           <ul className="flex flex-col divide-y divide-line">
             {institution.courses.map((course) => {

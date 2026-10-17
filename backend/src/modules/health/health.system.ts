@@ -22,6 +22,7 @@ import {
   type ConditionSeverity,
   type FoodRiskHook,
   type ProfileContext,
+  isIntercityMode,
 } from '@insidelife/shared';
 import { INVENTORY_PORT, type InventoryPort } from '../../common/ports/inventory.port.js';
 import type { ActivityState, TravelState } from '../characters/entities/character.entity.js';
@@ -218,7 +219,7 @@ export class HealthSystem implements SimulationSystem, OnModuleInit {
    * crashes belong to the vehicles domain; open-world movement is player-controlled, so it never rolls here.
    */
   private async roadIncident(ctx: SimulationContext, travel: TravelState): Promise<void> {
-    if (travel.source === 'open-world') return;
+    if (travel.source === 'open-world' || isIntercityMode(travel.mode)) return;
     const profile = ROAD_INJURY[travel.mode];
     if (!profile) return;
     const rng = ctx.rng('road-injury', travel.departAt, travel.toLocationId);

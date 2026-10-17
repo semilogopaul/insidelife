@@ -6,6 +6,7 @@ import {
   homeKey,
   homeLocationId,
   isHomeLocation,
+  isIntercityMode,
   isStreetLocation,
   venueEntrance,
   type CharacterSnapshotDto,
@@ -56,7 +57,8 @@ export function WorldCanvas() {
   const { data: snapshot } = useSnapshot();
   const setMode = useWorld((state) => state.setMode);
   const locationId = snapshot?.character.locationId ?? null;
-  const presence: Presence = snapshot?.travel ? 'riding' : !locationId || isStreetLocation(locationId) ? 'outside' : 'inside';
+  // A ride plays on the city's roads; a flight or the coach is spent inside the departure venue until the landing.
+  const presence: Presence = snapshot?.travel && !isIntercityMode(snapshot.travel.mode) ? 'riding' : !locationId || isStreetLocation(locationId) ? 'outside' : 'inside';
   // Other players at the venue you're in are drawn at its guest spots (homes get their host and guests from visits).
   const guests = useVenueGuests(presence === 'inside' && locationId && !isHomeLocation(locationId) ? locationId : null);
 

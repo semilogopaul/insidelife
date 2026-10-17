@@ -14,6 +14,7 @@ import {
   type BuyLandRequest,
   type ConstructionPaymentPlan,
   type DecorMakeoverRequest,
+  type CityId,
   type DistrictId,
   type ExteriorMakeoverRequest,
   type HouseListingDto,
@@ -182,8 +183,8 @@ export class HousingService implements HouseholdPort {
     return this.rentals.listings(ctx, query);
   }
 
-  landOffers(ctx: SimulationContext, districtId?: DistrictId): LandOfferDto[] {
-    return this.land.offers(ctx, districtId);
+  landOffers(ctx: SimulationContext, districtId?: DistrictId, cityId?: CityId): LandOfferDto[] {
+    return this.land.offers(ctx, districtId, cityId);
   }
 
   // ----- Commands ---------------------------------------------------------------------------------------------------
@@ -305,8 +306,8 @@ export class HousingService implements HouseholdPort {
 
   // ----- Houses for sale (ready-built) ------------------------------------------------------------------------------
 
-  houseListings(ctx: SimulationContext, districtId?: DistrictId): Promise<HouseListingDto[]> {
-    return this.houses.listings(ctx, districtId);
+  houseListings(ctx: SimulationContext, districtId?: DistrictId, cityId?: CityId): Promise<HouseListingDto[]> {
+    return this.houses.listings(ctx, districtId, cityId);
   }
 
   async buyHouse(ctx: SimulationContext, listingId: string): Promise<BuyHouseResultDto> {

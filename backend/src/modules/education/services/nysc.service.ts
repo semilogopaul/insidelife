@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
+  cityOfVenue,
   MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
   NYSC_EXEMPTION_AGE,
@@ -30,7 +31,7 @@ import { EDUCATION_MEMO, EducationStore } from './education-store.service.js';
 
 /** Monthly PPA stipend on top of the federal allowance (₦, before the price index): private offices pay best. */
 const PPA_STIPEND: Readonly<Partial<Record<VenueType, number>>> = { office: 30_000, government: 10_000, school: 5_000 };
-const PPA_VENUES: readonly VenueDefinition[] = VENUES.filter((venue) => venue.type in PPA_STIPEND && !('regionId' in venue));
+const PPA_VENUES: readonly VenueDefinition[] = VENUES.filter((venue) => venue.type in PPA_STIPEND && cityOfVenue(venue) === 'lagos');
 const PPA_MINUTES_PER_DAY = (NYSC_PPA_END_HOUR - NYSC_PPA_START_HOUR) * MINUTES_PER_HOUR;
 /** Thursday is Community Development Service day. */
 const CDS_WEEKDAY = 3;

@@ -51,7 +51,7 @@ export class HousingController {
 
   @Get('land')
   land(@CurrentUser() user: AuthUser, @Query() query: LandQueryDto): Promise<LandOfferDto[]> {
-    return this.session.run({ userId: user.userId }, async (ctx) => this.housing.landOffers(ctx, query.districtId));
+    return this.session.run({ userId: user.userId }, async (ctx) => this.housing.landOffers(ctx, query.districtId, query.cityId));
   }
 
   @Post('land')
@@ -99,7 +99,7 @@ export class HousingController {
 
   @Get('houses')
   houses(@CurrentUser() user: AuthUser, @Query() query: HouseListingsQueryDto): Promise<HouseListingDto[]> {
-    return this.session.run({ userId: user.userId }, (ctx) => this.housing.houseListings(ctx, query.districtId));
+    return this.session.run({ userId: user.userId }, (ctx) => this.housing.houseListings(ctx, query.districtId, query.cityId));
   }
 
   @Post('houses')

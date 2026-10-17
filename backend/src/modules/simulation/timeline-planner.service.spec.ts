@@ -35,7 +35,7 @@ function character(overrides: Partial<CharacterEntity> = {}): CharacterEntity {
     homeDistrictId: 'surulere',
     defaultTransport: 'danfo',
     locationId: homeLocationId('c1'),
-    regionId: 'lagos',
+    cityId: 'lagos',
     travel: null,
     activity: null,
     settledAt: MONDAY,

@@ -93,7 +93,7 @@ export class SnapshotService {
       locationId: c.locationId,
       homeDistrictId: c.homeDistrictId,
       homePropertyId: c.homePropertyId,
-      regionId: c.regionId,
+      cityId: c.cityId,
       habits: c.habits ?? [],
     };
   }

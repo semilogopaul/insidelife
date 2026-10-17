@@ -1,8 +1,8 @@
-import { CARRIAGEWAY_HALF_WIDTH, CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, SERVICE_POINTS, cellBounds, findVenue } from '@insidelife/shared';
+import { CARRIAGEWAY_HALF_WIDTH, CITY_GRID_RECTS, CITY_MAP, DIR_E, DIR_N, DIR_S, DIR_W, SERVICE_POINTS, cellBounds, cityBounds, cityOfCell, findVenue, type CityId } from '@insidelife/shared';
 import { placeKindOfArchetype, propertyPlaceKind, venuePlaceKind, type PlaceKind } from '@/common/brand/place-icons';
 
 /**
- * The city drawn once into an offscreen canvas (2 px per metre, north up): water, land, parks, beaches and roads with
+ * Each city drawn once (on first use) into its own offscreen canvas (2 px per metre, north up): water, land, parks, beaches and roads with
  * casings. The minimap blits a rotated window of it every frame.
  */
 
@@ -19,13 +19,15 @@ const ROAD = '#fffdf6';
 const ARTERIAL = '#ffe9a8';
 const BRIDGE_CASING = '#6d7b80';
 
-let cached: HTMLCanvasElement | null = null;
+const cached = new Map<CityId, HTMLCanvasElement>();
 
 const toRaster = (value: number, min: number): number => (value - min) * RASTER_PX_PER_METRE;
 
-export function cityRaster(): HTMLCanvasElement {
-  if (cached) return cached;
-  const { minX, minZ, maxX, maxZ } = CITY_MAP.bounds;
+export function cityRaster(cityId: CityId): HTMLCanvasElement {
+  const existing = cached.get(cityId);
+  if (existing) return existing;
+  const { minX, minZ, maxX, maxZ } = cityBounds(cityId);
+  const [c0, r0, c1, r1] = CITY_GRID_RECTS[cityId];
   const canvas = document.createElement('canvas');
   canvas.width = Math.round((maxX - minX) * RASTER_PX_PER_METRE);
   canvas.height = Math.round((maxZ - minZ) * RASTER_PX_PER_METRE);
@@ -34,8 +36,8 @@ export function cityRaster(): HTMLCanvasElement {
   ctx.fillStyle = WATER;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  for (let row = 0; row < CITY_MAP.rows; row++) {
-    for (let col = 0; col < CITY_MAP.cols; col++) {
+  for (let row = r0; row <= r1; row++) {
+    for (let col = c0; col <= c1; col++) {
       const index = row * CITY_MAP.cols + col;
       const kind = CITY_MAP.cells[index] as number;
       if (kind === 1 || kind === 4) continue;
@@ -56,6 +58,7 @@ export function cityRaster(): HTMLCanvasElement {
   const strokeRoads = (width: (roadClass: string, bridge: boolean) => number, color: (roadClass: string, bridge: boolean) => string): void => {
     ctx.lineCap = 'round';
     for (const tile of CITY_MAP.roadTiles) {
+      if (cityOfCell(tile.col, tile.row) !== cityId) continue;
       const x = toRaster(tile.x, minX);
       const z = toRaster(tile.z, minZ);
       ctx.strokeStyle = color(tile.roadClass, tile.bridge);
@@ -82,6 +85,7 @@ export function cityRaster(): HTMLCanvasElement {
   );
   strokeRoads(roadWidth, (roadClass) => (roadClass === 'street' ? ROAD : ARTERIAL));
   for (const roundabout of CITY_MAP.roundabouts) {
+    if (roundabout.centre.x < minX || roundabout.centre.x > maxX || roundabout.centre.z < minZ || roundabout.centre.z > maxZ) continue;
     const x = toRaster(roundabout.centre.x, minX);
     const z = toRaster(roundabout.centre.z, minZ);
     const ring = (roundabout.outerRadius - roundabout.islandRadius) * RASTER_PX_PER_METRE;
@@ -94,7 +98,7 @@ export function cityRaster(): HTMLCanvasElement {
     ctx.lineWidth = ring;
     ctx.stroke();
   }
-  cached = canvas;
+  cached.set(cityId, canvas);
   return canvas;
 }
 

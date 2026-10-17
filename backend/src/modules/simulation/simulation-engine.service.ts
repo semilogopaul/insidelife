@@ -102,7 +102,7 @@ export class SimulationEngine {
       state.activity = character.activity;
       state.travel = character.travel;
       state.locationId = character.locationId;
-      state.regionId = character.regionId;
+      state.cityId = character.cityId;
       state.energy = character.needs.energy;
       state.hunger = character.needs.hunger;
       state.lastSleptAt = character.lastSleptAt;
@@ -240,13 +240,32 @@ export class SimulationEngine {
     for (const system of this.registry.all) if (system.onActionComplete) await hookProfiler.time(`${system.key}.onActionComplete`, () => system.onActionComplete!(ctx, action, activity));
   }
 
+  /**
+   * Land the character at an airport right now (a flight whose arrival is not in the future): the normal arrival runs, so
+   * their location, city and every system's `onArrival` hook see it exactly as for a timed trip.
+   */
+  async landAt(ctx: SimulationContext, airportVenueId: string, flightId?: string): Promise<void> {
+    const character = ctx.character;
+    character.travel = {
+      fromLocationId: character.locationId,
+      toLocationId: airportVenueId,
+      mode: 'flight',
+      ...(flightId ? { flightId } : {}),
+      departAt: ctx.time,
+      arriveAt: ctx.time,
+      fare: 0,
+      explicit: true,
+    };
+    await this.arrive(ctx);
+  }
+
   private async arrive(ctx: SimulationContext): Promise<void> {
     const character = ctx.character;
     const travel = character.travel;
     if (!travel) return;
     character.travel = null;
     character.locationId = travel.toLocationId;
-    character.regionId = (await this.planner.place(ctx, travel.toLocationId)).regionId;
+    character.cityId = (await this.planner.place(ctx, travel.toLocationId)).cityId;
     // Anywhere but your own home (a venue, a friend's place): autopilot waits a while before taking you home.
     if (travel.explicit && travel.toLocationId !== homeLocationId(character.id)) this.hangAround(ctx, travel.arriveAt);
     for (const system of this.registry.all) if (system.onArrival) await hookProfiler.time(`${system.key}.onArrival`, () => system.onArrival!(ctx, travel));

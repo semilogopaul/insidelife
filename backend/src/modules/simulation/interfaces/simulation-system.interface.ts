@@ -31,7 +31,7 @@ export interface ScheduleBlock {
 export interface Residence {
   readonly locationId: string;
   readonly districtId: string;
-  readonly regionId: string;
+  readonly cityId: string;
   readonly label: string;
   /**
    * Higher wins when several systems offer a residence (hostel during an out-of-town session = 20, a hospital ward

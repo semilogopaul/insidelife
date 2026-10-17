@@ -14,6 +14,7 @@ import {
   type HomeOwnership,
   type HousingTypeId,
 } from '@insidelife/shared';
+import { GameRuleException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import type { BuildingEntity } from './entities/building.entity.js';
 import type { LeaseEntity } from './entities/lease.entity.js';
@@ -85,6 +86,11 @@ export class HomeService {
    * at home right now they simply wake up at the new address.
    */
   async relocate(ctx: SimulationContext, to: Relocation): Promise<void> {
+    const destination = to.kind === 'family' ? (await this.store.residence(ctx)).familyDistrictId : to.kind === 'rented' ? to.lease.districtId : to.property.districtId;
+    // A home is moved into where you are: another city's front door is a flight away (no teleporting by signing a lease).
+    if (DISTRICTS[destination].cityId !== ctx.character.cityId) {
+      throw new GameRuleException('OTHER_CITY', `That home is in ${DISTRICTS[destination].name}, in another city. Fly or take the bus there first, then move in.`);
+    }
     const residence = await this.store.residence(ctx);
     residence.kind = to.kind;
     residence.leaseId = to.kind === 'rented' ? to.lease.id : null;

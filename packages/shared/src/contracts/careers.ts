@@ -1,5 +1,5 @@
 import type { GameMinute } from '../time/calendar.js';
-import type { DistrictId } from '../catalog/geography.js';
+import type { CityId, DistrictId } from '../catalog/geography.js';
 import type { JobCurrency, JobPerks, JobSector, WorkMode } from '../catalog/careers.js';
 
 /**
@@ -113,6 +113,8 @@ export interface JobDetailDto extends JobListingDto {
 }
 
 export interface JobBoardDto {
+  /** The city whose board this is (remote jobs are on both). */
+  readonly cityId: CityId;
   readonly jobs: readonly JobListingDto[];
   readonly applications: readonly JobApplicationDto[];
   readonly currentJobId: string | null;

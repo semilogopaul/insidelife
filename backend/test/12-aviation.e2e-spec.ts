@@ -19,7 +19,7 @@ import {
   type HangarDto,
   type PilotTrainingStepResultDto,
 } from '@insidelife/shared';
-import { CITY_TRAVEL_PORT, type CityTravelPort, type PrivateFlightRequest } from '../src/common/ports/city-travel.port.js';
+import { CITY_TRAVEL_PORT, type CityTravelPort } from '../src/common/ports/city-travel.port.js';
 import type { SimulationContext } from '../src/modules/simulation/simulation-context.js';
 import { bootApp, type E2eApp } from './support/app.js';
 import { E2E_ENV } from './support/env.js';
@@ -29,13 +29,10 @@ import { createPlayer, key, moveTo, ok, refused, type Player } from './support/p
 
 /** Stands in for the multi-city work: both terminals exist and a flight just puts the character in the other one. */
 class FakeCityTravel implements CityTravelPort {
-  readonly flights: PrivateFlightRequest[] = [];
-  isAirportOpen(): boolean {
-    return true;
-  }
-  flyToAirport(ctx: SimulationContext, flight: PrivateFlightRequest): Promise<void> {
-    this.flights.push(flight);
-    ctx.character.locationId = flight.toVenueId;
+  readonly flights: { readonly airportVenueId: string; readonly arriveAt: number; readonly flightId?: string }[] = [];
+  relocateToCity(ctx: SimulationContext, airportVenueId: string, arriveAt: number, flightId?: string): Promise<void> {
+    this.flights.push({ airportVenueId, arriveAt, ...(flightId ? { flightId } : {}) });
+    ctx.character.locationId = airportVenueId;
     return Promise.resolve();
   }
 }
@@ -203,7 +200,7 @@ describe('aviation: flying', () => {
     expect(flown).toMatchObject({ fuelCost: fuel, minutes, arrivesAt: e2e.clock.now + minutes });
     expect(flown.aircraft).toMatchObject({ parkedAt: 'naia-gat', airborne: true });
     expect(await player.cash()).toBe(before - fuel);
-    expect(cities.flights.at(-1)).toMatchObject({ fromVenueId: 'mmia-gat', toVenueId: 'naia-gat', durationMinutes: minutes });
+    expect(cities.flights.at(-1)).toMatchObject({ airportVenueId: 'naia-gat', arriveAt: e2e.clock.now + minutes });
     expect((await player.character()).location_id).toBe('naia-gat');
 
     const ledger = await e2e.dataSource.query<Array<{ kind: string; idempotency_key: string }>>(

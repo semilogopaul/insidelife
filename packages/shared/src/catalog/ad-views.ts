@@ -1,8 +1,8 @@
 import type { DistrictId } from './geography.js';
-import { VENUES } from './venues.js';
+import { VENUES, cityOfVenue } from './venues.js';
 import { findAdSlot, type AdSlotKind } from './ad-inventory.js';
 import { findAdPlacement } from '../world-map/ad-placements.js';
-import { BILLBOARD_WORLD_PLACEMENTS } from '../world-map/city-map.js';
+import { BILLBOARD_WORLD_PLACEMENTS, cityAt } from '../world-map/city-map.js';
 import { nearestRoadPoint } from '../world-map/routing.js';
 import type { WorldPoint } from '../world-map/types.js';
 import { venueEntrance } from '../world-map/world-map.js';
@@ -118,14 +118,15 @@ export function adViewingPoint(slotId: string): AdViewingPoint | null {
 }
 
 /**
- * The venue nearest to a board by straight distance (rides go to venues; the rest is a short walk). Lagos venues only.
+ * The venue nearest to a board by straight distance (rides go to venues; the rest is a short walk). Venues of the board's own city only.
  */
 export function nearestVenueToAd(slotId: string): { readonly venueId: string; readonly metres: number } | null {
   const point = adViewingPoint(slotId)?.position;
   if (!point) return null;
   let best: { venueId: string; metres: number } | null = null;
+  const city = cityAt(point);
   for (const venue of VENUES) {
-    if (venue.regionId) continue;
+    if (cityOfVenue(venue) !== city) continue;
     const door = venueEntrance(venue.id)?.position;
     if (!door) continue;
     const metres = Math.hypot(door.x - point.x, door.z - point.z);

@@ -108,9 +108,11 @@ describe('fleet order', () => {
 });
 
 describe('place services', () => {
-  it('the GAT has a sales desk, a flight school and your aircraft, all opening the Hangar app', () => {
+  it('the GAT has a sales desk, a flight school and your aircraft (Hangar app), plus commercial flights', () => {
     const services = servicesAt({ kind: 'venue', venueType: 'aviation-terminal' } as never);
-    expect(services.map((service) => service.id)).toEqual(['aircraft-sales', 'flight-school', 'my-aircraft']);
-    for (const service of services) expect('app' in service.opens && service.opens.app).toBe('hangar');
+    expect(services.map((service) => service.id)).toEqual(['aircraft-sales', 'flight-school', 'my-aircraft', 'gat-flights']);
+    const app = (id: string) => services.find((service) => service.id === id)?.opens;
+    for (const id of ['aircraft-sales', 'flight-school', 'my-aircraft']) expect(app(id)).toMatchObject({ app: 'hangar' });
+    expect(app('gat-flights')).toMatchObject({ app: 'flights' });
   });
 });

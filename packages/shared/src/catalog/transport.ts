@@ -4,6 +4,16 @@ import { crossesLagoon, districtDistance, type DistrictId } from './geography.js
 export const TRANSPORT_MODES = ['walk', 'okada', 'keke', 'danfo', 'brt', 'bolt', 'car'] as const;
 export type TransportMode = (typeof TRANSPORT_MODES)[number];
 
+/** Between cities: a commercial or private flight, or the interstate coach. Never a ride on the city's roads. */
+export const INTERCITY_MODES = ['flight', 'coach'] as const;
+export type IntercityMode = (typeof INTERCITY_MODES)[number];
+/** Any way a trip can be made: within a city (`TransportMode`) or between cities. */
+export type TravelMode = TransportMode | IntercityMode;
+
+export function isIntercityMode(mode: string): mode is IntercityMode {
+  return (INTERCITY_MODES as readonly string[]).includes(mode);
+}
+
 export interface TransportDefinition {
   readonly id: TransportMode;
   readonly label: string;

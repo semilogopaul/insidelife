@@ -9,6 +9,7 @@ import type { PictogramName } from './pictograms';
  */
 export const PLACE_KINDS = [
   'airport',
+  'aviation-terminal',
   'university',
   'school',
   'exam-centre',
@@ -63,6 +64,7 @@ const INK = '#0e2733';
 
 export const PLACE_STYLES: Readonly<Record<PlaceKind, PlaceStyle>> = {
   airport: { label: 'Airport', pictogram: 'plane', color: '#13606b', ink: WHITE },
+  'aviation-terminal': { label: 'General aviation terminal', pictogram: 'jet', color: '#0e4a54', ink: WHITE },
   university: { label: 'University', pictogram: 'gradCap', color: '#6a3cb0', ink: WHITE },
   school: { label: 'School', pictogram: 'schoolHouse', color: '#6a3cb0', ink: WHITE },
   'exam-centre': { label: 'CBT centre', pictogram: 'examCentre', color: '#6a3cb0', ink: WHITE },
@@ -120,6 +122,7 @@ const BY_VENUE_TYPE: Readonly<Record<VenueType, PlaceKind>> = {
   stadium: 'stadium',
   'cbt-centre': 'exam-centre',
   airport: 'airport',
+  'aviation-terminal': 'aviation-terminal',
   'motor-park': 'motor-park',
   'event-centre': 'event-centre',
   'estate-agency': 'estate-agency',
@@ -137,6 +140,7 @@ const BY_VENUE_TYPE: Readonly<Record<VenueType, PlaceKind>> = {
 
 const BY_ARCHETYPE: Readonly<Record<LotArchetype, PlaceKind>> = {
   airport: 'airport',
+  'aviation-terminal': 'aviation-terminal',
   campus: 'university',
   market: 'market',
   mall: 'mall',

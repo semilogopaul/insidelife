@@ -15,7 +15,7 @@ export function ActivityBanner({ segment, action, minute, onCancel, cancelling }
   const cancellable = segment.explicit && segment.kind === 'action' && action !== undefined && !action.system;
   return (
     <div className="glass flex min-w-0 items-center gap-3 rounded-card py-2 pl-3.5 pr-2">
-      <span aria-hidden className="text-xl">{action?.emoji ?? '⏳'}</span>
+      <span aria-hidden className="text-xl">{segment.kind === 'flight' ? (segment.label.startsWith('On the coach') ? '🚌' : '✈️') : (action?.emoji ?? '⏳')}</span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-bold text-on-ink">{segment.label}</p>
         <div className="mt-1 flex items-center gap-2">

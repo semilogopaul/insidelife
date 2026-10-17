@@ -1,6 +1,6 @@
 'use client';
 
-import { CITY_MAP, DISTRICTS, districtAt, homeKey, homeLotOf, streetNameAt, type WorldPoint } from '@insidelife/shared';
+import { DISTRICTS, cityAt, cityBounds, districtAt, homeKey, homeLotOf, streetNameAt, type WorldPoint } from '@insidelife/shared';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { drawPlaceMarker } from '@/common/brand/place-icons';
 import { gameEvents } from '@/common/game/game-events';
@@ -39,10 +39,11 @@ function currentPose(): Pose | null {
 }
 
 function drawMinimap(ctx: CanvasRenderingContext2D, size: number, pose: Pose, icons: readonly MapIcon[]): void {
-  const raster = cityRaster();
+  const city = cityAt(pose);
+  const raster = cityRaster(city);
   const scale = size / METRES_ACROSS;
   const radius = size / 2;
-  const { minX, minZ } = CITY_MAP.bounds;
+  const { minX, minZ } = cityBounds(city);
   const rotation = -Math.PI / 2 - pose.heading;
   const cos = Math.cos(rotation);
   const sin = Math.sin(rotation);

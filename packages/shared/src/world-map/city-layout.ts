@@ -1,4 +1,4 @@
-import type { DistrictId } from '../catalog/geography.js';
+import type { CityId, DistrictId } from '../catalog/geography.js';
 import type { BillboardSlotId } from '../catalog/promotions.js';
 
 /**
@@ -21,8 +21,29 @@ export type CellRect = readonly [c0: number, r0: number, c1: number, r1: number]
 export type CellCoord = readonly [col: number, row: number];
 export type CompassSide = 'N' | 'E' | 'S' | 'W';
 
-export const CITY_COLS = 64;
-export const CITY_ROWS = 42;
+/** Lagos's own grid: 64 × 42 cells at the world's origin (everything Lagos is decided here and never moves). */
+export const LAGOS_COLS = 64;
+export const LAGOS_ROWS = 42;
+/**
+ * One world frame, two cities (docs/MULTI_CITY.md): Abuja's 56 × 40 grid sits `ABUJA_GAP` empty (water) cells east and
+ * south of Lagos's corner, so no chunk, cell, route or minimap ever overlaps and no road ever joins them. A cell is
+ * 10 m (roads widen), so the cities are ~600 m apart in the world; the real distance is a flight or an overnight bus.
+ */
+export const ABUJA_COLS = 56;
+export const ABUJA_ROWS = 40;
+export const ABUJA_GAP = 60;
+/** Grid cell of Abuja's local `[0, 0]`. */
+export const ABUJA_ORIGIN_COL = LAGOS_COLS + ABUJA_GAP;
+export const ABUJA_ORIGIN_ROW = LAGOS_ROWS + ABUJA_GAP;
+/** The whole grid (both cities and the water between). */
+export const CITY_COLS = ABUJA_ORIGIN_COL + ABUJA_COLS;
+export const CITY_ROWS = ABUJA_ORIGIN_ROW + ABUJA_ROWS;
+
+/** Inclusive cell rectangle of a city in the grid. */
+export const CITY_GRID_RECTS: Readonly<Record<CityId, CellRect>> = {
+  lagos: [0, 0, LAGOS_COLS - 1, LAGOS_ROWS - 1],
+  abuja: [ABUJA_ORIGIN_COL, ABUJA_ORIGIN_ROW, ABUJA_ORIGIN_COL + ABUJA_COLS - 1, ABUJA_ORIGIN_ROW + ABUJA_ROWS - 1],
+};
 /** Edge of one layout cell (metres); in the world, lot cells keep it and road lines widen to `ROAD_LINE_WIDTH`. */
 export const CITY_CELL_SIZE = 10;
 /** Lanes each way on every road (right-hand traffic: the inner lane is the fast lane). */
@@ -42,7 +63,7 @@ export const ROUNDABOUT_ISLAND_RADIUS = 5.5;
 export const ROUNDABOUT_OUTER_RADIUS = 14.5;
 
 /** District regions, painted in order (later rectangles win). Water left unpainted is assigned to the nearest district. */
-export const DISTRICT_RECTS: ReadonlyArray<readonly [DistrictId, CellRect]> = [
+const LAGOS_DISTRICT_RECTS: ReadonlyArray<readonly [DistrictId, CellRect]> = [
   ['ikeja', [0, 0, 31, 11]],
   ['yaba', [27, 5, 31, 11]],
   ['mushin', [0, 12, 16, 22]],
@@ -67,7 +88,7 @@ export const DISTRICT_RECTS: ReadonlyArray<readonly [DistrictId, CellRect]> = [
 export type TerrainPaint = 'land' | 'water' | 'sand';
 
 /** Terrain, painted in order over an all-land grid. */
-export const TERRAIN_RECTS: ReadonlyArray<readonly [TerrainPaint, CellRect]> = [
+const LAGOS_TERRAIN_RECTS: ReadonlyArray<readonly [TerrainPaint, CellRect]> = [
   // Lagoon arm between Ikeja/Oworonshoki and Ikorodu (crossed by Ikorodu Road).
   ['water', [32, 0, 38, 9]],
   // The Lagos Lagoon.
@@ -111,7 +132,7 @@ const road = (name: string, roadClass: RoadClass, ...points: CellCoord[]): RoadS
  * Named roads. Consecutive points must share a row or a column. Roads crossing water become bridges automatically;
  * a name change along a straight run splits the graph edge so GPS can say "Continue onto …".
  */
-export const ROADS: readonly RoadSpec[] = [
+const LAGOS_ROADS: readonly RoadSpec[] = [
   // ---------------------------------------------------------------- Ikeja
   road('Airport Road', 'arterial', [1, 4], [21, 4]),
   road('Ikorodu Road', 'expressway', [21, 24], [21, 4], [31, 4]),
@@ -202,7 +223,7 @@ export interface RoundaboutSpec {
   readonly centre: CellCoord;
 }
 
-export const ROUNDABOUTS: readonly RoundaboutSpec[] = [{ name: 'Ajah Roundabout', centre: [56, 35] }];
+const LAGOS_ROUNDABOUTS: readonly RoundaboutSpec[] = [{ name: 'Ajah Roundabout', centre: [56, 35] }];
 
 /** How a venue lot looks (the renderer picks models per archetype). */
 export type LotArchetype =
@@ -227,7 +248,8 @@ export type LotArchetype =
   | 'school'
   | 'mansion'
   | 'jet-pad'
-  | 'refinery';
+  | 'refinery'
+  | 'aviation-terminal';
 
 export interface VenueLotSpec {
   readonly venueId: string;
@@ -247,8 +269,8 @@ const lot = (venueId: string, rect: CellRect, front: CompassSide, archetype: Lot
   door,
 });
 
-/** Every in-city venue gets an authored lot. Out-of-town venues (with `regionId`) are not in the city. */
-export const VENUE_LOTS: readonly VenueLotSpec[] = [
+/** Every in-city venue gets an authored lot. Venues of both cities are laid out here (Abuja's after Lagos's). */
+const LAGOS_VENUE_LOTS: readonly VenueLotSpec[] = [
   // Ikeja
   lot('mmia-airport', [1, 0, 8, 3], 'S', 'airport'),
   lot('alausa-secretariat', [14, 2, 16, 3], 'S', 'government'),
@@ -333,6 +355,9 @@ export const VENUE_LOTS: readonly VenueLotSpec[] = [
   lot('anchor', [1, 16, 3, 17], 'E', 'campus', 0),
   lot('augustine', [62, 35, 63, 38], 'W', 'campus', 0),
   lot('ekounimed', [5, 27, 8, 27], 'W', 'campus', 0),
+  // Multi-city: the General Aviation Terminal beside the airport, on infill cells (no house, no filler building another
+  // venue could have taken), its door at the Obafemi Awolowo Way bend where no roadside ad spot stands.
+  lot('mmia-gat', [9, 0, 12, 1], 'E', 'aviation-terminal', 1),
 ];
 
 /** Landmark lots that are not venues (the renderer puts something iconic there and no filler building). */
@@ -342,7 +367,7 @@ export interface LandmarkSpec {
   readonly front: CompassSide;
 }
 
-export const LANDMARKS: readonly LandmarkSpec[] = [
+const LAGOS_LANDMARKS: readonly LandmarkSpec[] = [
   { id: 'vi-towers', rect: [39, 37, 40, 37], front: 'S' },
   { id: 'lekki-toll-plaza', rect: [44, 36, 44, 36], front: 'N' },
   // The jet apron's waterfront (OBO's estate) and the refinery works behind the visitor centre.
@@ -374,7 +399,7 @@ export interface BillboardSpec {
  * offset: the street spots are picked around these positions, so moving one reshuffles spot ids that bookings point at.
  * `ad-placements.spec.ts` checks the ids, and that faces keep clear of each other, the carriageway and doors.
  */
-export const BILLBOARD_SPECS: readonly BillboardSpec[] = [
+const LAGOS_BILLBOARD_SPECS: readonly BillboardSpec[] = [
   { slotId: 'mmia-arrivals', cell: [4, 3], offset: [5, -5.6], faces: 'S', mount: 'roof', elevation: 12.4, width: 17.5 },
   { slotId: 'third-mainland-north', cell: [30, 9], offset: [-1, 0], faces: 'N', mount: 'pole', elevation: 6.5, width: 12 },
   { slotId: 'third-mainland-south', cell: [32, 28], offset: [0, 0], faces: 'S', mount: 'pole', elevation: 7, width: 16 },
@@ -404,4 +429,156 @@ export const HOME_SHARE: Readonly<Record<DistrictId, number>> = {
   lekki: 0.7,
   ajah: 0.75,
   epe: 0.8,
+  'abuja-cbd': 0.2,
+  maitama: 0.8,
+  asokoro: 0.9,
+  wuse: 0.4,
+  garki: 0.55,
+  jabi: 0.5,
+  gwarinpa: 0.8,
+  kubwa: 0.75,
+  lugbe: 0.7,
 };
+
+// =================================================================================================================
+// Abuja (docs/MULTI_CITY.md): a 56 × 40 grid, north up, in the same world frame as Lagos (see ABUJA_ORIGIN_*).
+// The outer two cells are scrub (sand); blocks are 4 cells apart so every lot has road frontage. Coordinates below
+// are Abuja-local; `A()` puts them in the world grid. Kubwa and Gwarinpa to the north-west, Jabi/Utako and Wuse in the
+// north, Maitama north-east, the Central Area in the middle, Asokoro to the east under Aso Rock, Garki to the south
+// and Lugbe with the airport in the south-west.
+// =================================================================================================================
+
+const A = (col: number, row: number): CellCoord => [ABUJA_ORIGIN_COL + col, ABUJA_ORIGIN_ROW + row];
+const aRect = (c0: number, r0: number, c1: number, r1: number): CellRect => [ABUJA_ORIGIN_COL + c0, ABUJA_ORIGIN_ROW + r0, ABUJA_ORIGIN_COL + c1, ABUJA_ORIGIN_ROW + r1];
+
+const ABUJA_DISTRICT_RECTS: ReadonlyArray<readonly [DistrictId, CellRect]> = [
+  ['kubwa', aRect(0, 0, 13, 9)],
+  ['gwarinpa', aRect(0, 10, 13, 21)],
+  ['jabi', aRect(14, 0, 25, 21)],
+  ['wuse', aRect(26, 0, 37, 15)],
+  ['maitama', aRect(38, 0, 55, 15)],
+  ['abuja-cbd', aRect(26, 16, 41, 25)],
+  ['asokoro', aRect(42, 16, 55, 39)],
+  ['garki', aRect(26, 26, 41, 39)],
+  ['lugbe', aRect(0, 22, 25, 39)],
+];
+
+const ABUJA_TERRAIN_RECTS: ReadonlyArray<readonly [TerrainPaint, CellRect]> = [
+  // Dry scrub around the city (the water beyond it is the world's edge).
+  ['sand', aRect(0, 0, ABUJA_COLS - 1, 1)],
+  ['sand', aRect(0, ABUJA_ROWS - 2, ABUJA_COLS - 1, ABUJA_ROWS - 1)],
+  ['sand', aRect(0, 2, 1, ABUJA_ROWS - 3)],
+  ['sand', aRect(ABUJA_COLS - 2, 2, ABUJA_COLS - 1, ABUJA_ROWS - 3)],
+  // Jabi Lake.
+  ['water', aRect(17, 9, 19, 11)],
+];
+
+const aH = (row: number, c0: number, c1: number, name: string, roadClass: RoadClass = 'street'): RoadSpec => road(name, roadClass, A(c0, row), A(c1, row));
+const aV = (col: number, r0: number, r1: number, name: string, roadClass: RoadClass = 'street'): RoadSpec => road(name, roadClass, A(col, r0), A(col, r1));
+
+const ABUJA_ROADS: readonly RoadSpec[] = [
+  // ---------------------------------------------------------------- east-west
+  aH(4, 4, 12, 'Byazhin Road'),
+  aH(4, 12, 24, 'Wole Soyinka Street'),
+  aH(4, 24, 36, 'Aminu Kano Crescent'),
+  aH(4, 36, 52, 'Gana Street'),
+  aH(8, 4, 28, 'Kubwa Expressway', 'expressway'),
+  aH(8, 28, 52, 'Ibrahim Babangida Boulevard', 'arterial'),
+  aH(12, 4, 12, '3rd Avenue'),
+  aH(12, 12, 24, 'Jabi Lake Road'),
+  aH(12, 24, 36, 'Adetokunbo Ademola Street'),
+  aH(12, 36, 52, 'Aguiyi Ironsi Street'),
+  aH(16, 4, 12, '6th Avenue'),
+  aH(16, 12, 24, 'Utako District Road'),
+  aH(16, 24, 40, 'Constitution Avenue'),
+  aH(16, 40, 52, 'Kwame Nkrumah Crescent'),
+  aH(20, 4, 52, 'Ahmadu Bello Way', 'arterial'),
+  aH(24, 4, 24, 'FHA Road'),
+  aH(24, 24, 40, 'Independence Avenue'),
+  aH(24, 40, 52, 'Julius Nyerere Crescent'),
+  aH(28, 28, 40, 'Sokode Crescent'),
+  aH(28, 40, 52, 'Samuel Ogbemudia Street'),
+  aH(31, 4, 28, 'Airport Road', 'expressway'),
+  aH(36, 4, 52, 'Outer Southern Expressway', 'expressway'),
+  // ---------------------------------------------------------------- north-south
+  aV(4, 4, 8, 'Arab Road'),
+  aV(4, 8, 20, '1st Avenue'),
+  aV(4, 20, 36, 'Sauka Road'),
+  aV(8, 4, 8, 'Gado Nasko Road'),
+  aV(8, 8, 24, '12th Avenue'),
+  aV(12, 4, 8, 'Dutse Alhaji Road'),
+  aV(12, 8, 24, 'Gwarinpa Estate Road'),
+  aV(16, 4, 20, 'Ibrahim Babangida Way'),
+  aV(16, 20, 31, 'Karmo Road'),
+  aV(20, 4, 20, 'Mohammed Buhari Way'),
+  aV(20, 20, 24, 'Chika Road'),
+  aV(24, 4, 20, 'Chief Hassan Avenue'),
+  aV(24, 20, 31, 'Pyakasa Road'),
+  aV(28, 4, 20, 'Herbert Macaulay Way', 'arterial'),
+  aV(28, 20, 31, 'Airport Road', 'expressway'),
+  aV(28, 31, 36, 'Gwani Street'),
+  aV(32, 4, 16, 'Aminu Kano Street'),
+  aV(32, 16, 26, 'Shehu Shagari Way'),
+  aV(32, 26, 36, 'Gimbiya Street'),
+  aV(36, 4, 16, 'Zambezi Crescent'),
+  aV(36, 16, 26, 'Moshood Abiola Way'),
+  aV(36, 26, 36, 'Okigwe Street'),
+  aV(40, 4, 16, 'Mississippi Street'),
+  aV(40, 16, 26, 'Tafawa Balewa Way', 'arterial'),
+  aV(40, 26, 36, 'Kano Street'),
+  aV(44, 4, 16, 'Nile Street'),
+  aV(44, 16, 36, 'Nelson Mandela Street'),
+  aV(48, 4, 16, 'Danube Street'),
+  aV(48, 16, 36, 'Jos Street'),
+  aV(52, 4, 36, 'Murtala Muhammed Expressway', 'expressway'),
+];
+
+const ABUJA_VENUE_LOTS: readonly VenueLotSpec[] = [
+  // Lugbe: the airport (door on Airport Road) and the General Aviation Terminal beside it.
+  lot('naia-airport', aRect(5, 25, 15, 30), 'S', 'airport'),
+  lot('naia-gat', aRect(17, 26, 23, 30), 'S', 'aviation-terminal'),
+  // Jabi / Utako
+  lot('jabi-lake-mall', aRect(17, 13, 19, 15), 'S', 'mall'),
+  lot('utako-motor-park', aRect(21, 13, 23, 15), 'S', 'motor-park'),
+  // Wuse
+  lot('wuse-market', aRect(29, 9, 31, 11), 'S', 'market'),
+  // Maitama
+  lot('maitama-realty', aRect(41, 5, 43, 7), 'S', 'shop'),
+  // Central Area
+  lot('national-hospital-abuja', aRect(33, 17, 35, 19), 'S', 'hospital'),
+  lot('central-area-towers', aRect(29, 21, 31, 23), 'N', 'office-tower'),
+  // Garki
+  lot('garki-buka', aRect(33, 29, 33, 29), 'N', 'shop'),
+  lot('garki-police-command', aRect(29, 29, 31, 31), 'N', 'government'),
+];
+
+const ABUJA_LANDMARKS: readonly LandmarkSpec[] = [];
+const ABUJA_BILLBOARD_SPECS: readonly BillboardSpec[] = [];
+const ABUJA_ROUNDABOUTS: readonly RoundaboutSpec[] = [];
+
+// ----- Everything, both cities ---------------------------------------------------------------------------------------
+
+export const DISTRICT_RECTS: ReadonlyArray<readonly [DistrictId, CellRect]> = [...LAGOS_DISTRICT_RECTS, ...ABUJA_DISTRICT_RECTS];
+export const ROADS: readonly RoadSpec[] = [...LAGOS_ROADS, ...ABUJA_ROADS];
+export const ROUNDABOUTS: readonly RoundaboutSpec[] = [...LAGOS_ROUNDABOUTS, ...ABUJA_ROUNDABOUTS];
+/** Lagos's lots first, then Abuja's: lot indices of Lagos never depend on Abuja. */
+export const VENUE_LOTS: readonly VenueLotSpec[] = [...LAGOS_VENUE_LOTS, ...ABUJA_VENUE_LOTS];
+export const LANDMARKS: readonly LandmarkSpec[] = [...LAGOS_LANDMARKS, ...ABUJA_LANDMARKS];
+export const BILLBOARD_SPECS: readonly BillboardSpec[] = [...LAGOS_BILLBOARD_SPECS, ...ABUJA_BILLBOARD_SPECS];
+
+/**
+ * Terrain, painted in order: all water, then each city's land, then the authored rectangles. (Lagos's rectangles were
+ * painted over an all-land grid; they still land on the same cells.)
+ */
+export const TERRAIN_RECTS: ReadonlyArray<readonly [TerrainPaint, CellRect]> = [
+  ['water', [0, 0, CITY_COLS - 1, CITY_ROWS - 1]],
+  ['land', CITY_GRID_RECTS.lagos],
+  ['land', CITY_GRID_RECTS.abuja],
+  ...LAGOS_TERRAIN_RECTS,
+  ...ABUJA_TERRAIN_RECTS,
+];
+
+/** The city a grid cell is in (cells in the water between them count by which side of the midpoint they are on). */
+export function cityOfCell(col: number, row: number): CityId {
+  return col >= ABUJA_ORIGIN_COL - ABUJA_GAP / 2 && row >= ABUJA_ORIGIN_ROW - ABUJA_GAP / 2 ? 'abuja' : 'lagos';
+}

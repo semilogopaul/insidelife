@@ -1,16 +1,14 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import {
   actionHours,
-  HOSTEL_LIVING_COST_MULTIPLIER,
   findCourse,
   findInstitution,
   type ActionDefinition,
   type DegreeClassId,
-  type GameMinute,
 } from '@insidelife/shared';
 import type { ActivityState } from '../characters/entities/character.entity.js';
 import { LifeEventsRegistry } from '../events/life-events.registry.js';
-import type { Residence, ScheduleBlock, Segment, SimulationSystem, SummaryContribution } from '../simulation/interfaces/simulation-system.interface.js';
+import type { ScheduleBlock, Segment, SimulationSystem, SummaryContribution } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
 import { educationEvents } from './education.events.js';
@@ -88,14 +86,6 @@ export class EducationSystem implements SimulationSystem, OnModuleInit {
     if (ppa) blocks.push(ppa);
     blocks.push(...(await this.programmes.classBlocks(ctx, dayIndex)));
     return blocks;
-  }
-
-  residence(ctx: SimulationContext, t: GameMinute): Promise<Residence | null> {
-    return this.enrolments.residence(ctx, t);
-  }
-
-  async livingCostMultiplier(ctx: SimulationContext): Promise<number> {
-    return (await this.enrolments.residence(ctx, ctx.time)) ? HOSTEL_LIVING_COST_MULTIPLIER : 1;
   }
 
   async onSegment(ctx: SimulationContext, segment: Segment): Promise<void> {

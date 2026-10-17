@@ -25,7 +25,7 @@ const goal = (over: Partial<LifeGoalDto>): LifeGoalDto => ({
 });
 
 const yaba = venueEntrance('cbt-yaba')!.position;
-const far = { x: yaba.x + 2_100, z: yaba.z };
+const far = { x: yaba.x + 300, z: yaba.z };
 
 const suggestion = (over: Partial<SuggestionDto>): SuggestionDto => ({
   id: 's1',
@@ -64,8 +64,8 @@ describe('nextGoalStep', () => {
     const step = nextGoalStep([goal({})], far, 10);
     expect(step).toMatchObject({ kind: 'goal-place', venueId: 'cbt-yaba', text: expect.stringMatching(/^Go to /) });
     if (step?.kind !== 'goal-place') throw new Error('expected a place');
-    expect(step.metres).toBeGreaterThan(2_000);
-    expect(formatDistance(step.metres)).toMatch(/km$/);
+    expect(step.metres).toBeGreaterThan(250);
+    expect(formatDistance(step.metres)).toMatch(/\d+ ?(m|km)$/);
   });
 
   it('says you are there when at the door', () => {

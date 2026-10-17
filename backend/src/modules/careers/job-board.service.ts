@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import {
   JOBS,
   findJob,
+  jobInCity,
   jobPayRange,
+  type CityId,
   type JobBoardDto,
   type JobDefinition,
   type JobDetailDto,
@@ -33,13 +35,14 @@ export class JobBoardService {
     private readonly profiles: CandidateProfileService,
   ) {}
 
-  async board(ctx: SimulationContext): Promise<JobBoardDto> {
+  /** One city's board: the city asked for, else the one you are in. */
+  async board(ctx: SimulationContext, cityId: CityId = ctx.character.cityId): Promise<JobBoardDto> {
     const board = await this.context(ctx);
     const recent = await this.store.recentApplications(ctx);
-    const jobs = JOBS.map((job) => this.listing(job, board)).toSorted(
+    const jobs = JOBS.filter((job) => jobInCity(job, cityId)).map((job) => this.listing(job, board)).toSorted(
       (a, b) => Number(b.eligible) - Number(a.eligible) || a.entryPayNaira - b.entryPayNaira,
     );
-    return { jobs, applications: recent.map(applicationDto), currentJobId: board.currentJobId, maxOpenApplications: MAX_OPEN_APPLICATIONS };
+    return { cityId, jobs, applications: recent.map(applicationDto), currentJobId: board.currentJobId, maxOpenApplications: MAX_OPEN_APPLICATIONS };
   }
 
   async detail(ctx: SimulationContext, jobId: string): Promise<JobDetailDto> {

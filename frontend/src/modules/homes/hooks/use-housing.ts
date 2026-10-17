@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   BlueprintId,
   BuyLandRequest,
+  CityId,
   ConstructionPaymentPlan,
   DecorMakeoverRequest,
   ExteriorMakeoverRequest,
@@ -31,18 +32,18 @@ export function useHousing() {
   return useQuery({ queryKey: housingKeys.overview, queryFn: homesApi.overview, refetchInterval: 60_000 });
 }
 
-/** This week's rentals across Lagos (filtered on the client so filters are instant). */
-export function useListings() {
-  return useQuery({ queryKey: housingKeys.listings, queryFn: homesApi.listings, staleTime: 60_000 });
+/** This week's rentals in one city (filtered on the client so filters are instant). */
+export function useListings(cityId: CityId) {
+  return useQuery({ queryKey: [...housingKeys.listings, cityId], queryFn: () => homesApi.listings(cityId), staleTime: 60_000 });
 }
 
-export function useLandOffers() {
-  return useQuery({ queryKey: housingKeys.land, queryFn: homesApi.land, staleTime: 60_000 });
+export function useLandOffers(cityId: CityId) {
+  return useQuery({ queryKey: [...housingKeys.land, cityId], queryFn: () => homesApi.land(cityId), staleTime: 60_000 });
 }
 
 /** This week's ready-built houses for sale across Lagos. */
-export function useHouseListings() {
-  return useQuery({ queryKey: housingKeys.houses, queryFn: homesApi.houses, staleTime: 60_000 });
+export function useHouseListings(cityId: CityId) {
+  return useQuery({ queryKey: [...housingKeys.houses, cityId], queryFn: () => homesApi.houses(cityId), staleTime: 60_000 });
 }
 
 /**

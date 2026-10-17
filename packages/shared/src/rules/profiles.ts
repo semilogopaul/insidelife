@@ -1,6 +1,6 @@
 import type { NeedDrift, NeedKey, NeedProfile } from '../needs/needs.js';
 import type { ActionDefinition } from '../catalog/actions.js';
-import { TRANSPORT, type TransportMode } from '../catalog/transport.js';
+import { TRANSPORT, type TransportMode, type TravelMode } from '../catalog/transport.js';
 import { ACTION_PACE } from './pacing.js';
 
 /**
@@ -106,7 +106,9 @@ export function lectureProfile(ctx: ProfileContext): NeedProfile {
 }
 
 /** On the road. Rides take half the game minutes they did at ×120 (`pacedTripMinutes`), so they drift at the pace. */
-export function commuteProfile(ctx: ProfileContext, mode: TransportMode): NeedProfile {
+export function commuteProfile(ctx: ProfileContext, travelMode: TravelMode): NeedProfile {
+  // A flight rides like a comfortable car, the coach like a danfo that never ends.
+  const mode: TransportMode = travelMode === 'flight' ? 'bolt' : travelMode === 'coach' ? 'danfo' : travelMode;
   const transport = TRANSPORT[mode];
   const energy = transport.energyPerHour < 0 ? d(0, -transport.energyPerHour) : d(100, transport.energyPerHour);
   const fun = transport.funPerHour < 0 ? d(0, -transport.funPerHour) : d(80, transport.funPerHour);

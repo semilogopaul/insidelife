@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ACTIONS } from '../catalog/actions.js';
 import { INSTITUTIONS } from '../catalog/education.js';
+import { DISTRICTS } from '../catalog/geography.js';
 import { findVenue } from '../catalog/venues.js';
 import { findRoute } from './routing.js';
 import { venueEntrance, venueLot } from './world-map.js';
@@ -34,7 +35,7 @@ describe('schools in the education catalog', () => {
       const institution = INSTITUTIONS.find((entry) => entry.id === id);
       expect(institution, id).toBeDefined();
       const venue = findVenue(institution!.venueId)!;
-      expect(venue.regionId, id).toBeUndefined();
+      expect(DISTRICTS[venue.districtId].cityId, id).toBe('lagos');
       expect(venue.districtId, id).toBe(districtId);
       expect(venueLot(venue.id)?.districtId, id).toBe(districtId);
       expect(findRoute(from, venueEntrance(venue.id)!.position), id).not.toBeNull();
@@ -43,7 +44,7 @@ describe('schools in the education catalog', () => {
 
   it('has no school outside Lagos', () => {
     expect(INSTITUTIONS.map((entry) => entry.id).sort()).toEqual(Object.keys(LAGOS_CAMPUSES).sort());
-    for (const institution of INSTITUTIONS) expect(findVenue(institution.venueId)?.regionId, institution.id).toBeUndefined();
+    for (const institution of INSTITUTIONS) expect(DISTRICTS[findVenue(institution.venueId)!.districtId].cityId, institution.id).toBe('lagos');
   });
 
   it('offers study actions at campuses', () => {
