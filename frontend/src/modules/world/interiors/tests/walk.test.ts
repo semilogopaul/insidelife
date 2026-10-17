@@ -155,8 +155,8 @@ describe('interior camera', () => {
   });
 
   it('keeps clear of walls but sees over furniture, even from inside a shower cabin', () => {
-    const master = findRoom(HOME_LAYOUTS['home-mansion'], 'master');
-    if (!master) throw new Error('master suite');
+    const master = findRoom(HOME_LAYOUTS['home-mansion'], 'bathroom');
+    if (!master) throw new Error('master bathroom');
     const physics = buildRoomPhysics(master.template);
     const shower = master.template.player.shower?.at ?? [0, 0];
     const [x, z] = [shower[0], shower[shower.length - 1] ?? 0];

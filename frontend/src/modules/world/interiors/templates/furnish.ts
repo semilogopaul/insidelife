@@ -26,11 +26,11 @@ import { HOME_SLOTS, type At, type Deg, type FurniturePlacement, type HomePiece,
  * - the room itself: walls, floor, windows, doors and curtains (from `RoomSpec`, not pieces);
  * - stairs and stairwells between floors;
  * - the kitchen's built-in units: base and wall cabinets, drawers, the sink, the worktop/island tops (`kitchenBar`);
- * - bathroom fittings: toilet, shower and bathtub, plus pieces flagged `fixture` (shower trays, glass screens);
+ * - bathroom fittings: toilet, shower, bathtub, basin and mirror, plus pieces flagged `fixture` (shower trays, glass screens);
  * - the family sign over the parlour (it carries your surname).
  * The cooker, fridge and every appliance are yours to buy, as in any Lagos flat.
  */
-const FIXTURE_MODELS: ReadonlySet<KitModel> = new Set<KitModel>(['kitchenCabinet', 'kitchenCabinetDrawer', 'kitchenCabinetUpper', 'kitchenSink', 'kitchenBar', 'toilet', 'shower', 'bathtub']);
+const FIXTURE_MODELS: ReadonlySet<KitModel> = new Set<KitModel>(['kitchenCabinet', 'kitchenCabinetDrawer', 'kitchenCabinetUpper', 'kitchenSink', 'kitchenBar', 'toilet', 'shower', 'bathtub', 'bathroomSink', 'bathroomMirror']);
 const FIXTURE_PROPS: ReadonlySet<PropKind> = new Set<PropKind>(['stairs', 'stairwell']);
 
 /** Part of the building (see FIXTURES). */

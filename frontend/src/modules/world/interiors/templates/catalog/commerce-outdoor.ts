@@ -18,7 +18,7 @@ export const MARKET: InteriorTemplate = {
     { kind: 'bucket', at: [-2.6, 0.4], color: '#1e88e5' },
     { kind: 'cooler', at: [0.6, 1.4], rot: 30, color: '#1e88e5' },
     { kind: 'plastic-chair', at: [-4.6, 2.2], rot: 160, color: '#c0392b' },
-    { kind: 'sign', at: [0.0, -4.3], size: [3.4, 0.6], lines: ['BALOGUN MARKET'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'sign', at: [0.0, -4.3], size: [3.4, 0.6], lines: ['BALOGUN MARKET'], bg: '#0e2733', fg: '#f6b90b', venueName: true },
     { kind: 'generator', at: [4.8, 2.2], rot: -40 },
   ],
   player: {
@@ -63,7 +63,7 @@ export const MALL: InteriorTemplate = {
     { kind: 'shelf', at: [0.6, 0.3], rot: -90, size: [2.2, 1.3, 0.5], items: 'boxes', color: '#e0dcd5' },
     { kind: 'mirror', at: [3.0, -3.42], y: 1.1, size: [0.8, 1.6], frame: '#1c1c1c' },
     { kind: 'bar-counter', at: [3.3, -0.4], rot: -90, length: 2.0, color: '#1c1c1c', top: '#c8287a' },
-    { kind: 'sign', at: [-0.6, -3.48], y: 2.8, wall: true, size: [3.6, 0.42], lines: ['LEKKI ATELIER'], bg: '#1c1c1c', fg: '#ffffff' },
+    { kind: 'sign', at: [-0.6, -3.48], y: 2.8, wall: true, size: [3.6, 0.42], lines: ['LEKKI ATELIER'], bg: '#1c1c1c', fg: '#ffffff', venueName: true },
     { kind: 'sign', at: [-4.48, 1.6], rot: 90, y: 2.75, wall: true, size: [2.0, 0.4], lines: ['DETTY DECEMBER SALE −30%'], bg: '#c8287a', fg: '#ffffff' },
   ],
   player: {
@@ -106,7 +106,7 @@ export const CAR_DEALER: InteriorTemplate = {
     { kind: 'car-platform', at: [-1.2, 0.8], r: 2.2 },
     { kind: 'car-platform', at: [3.4, -1.6], r: 2.2 },
     { kind: 'car-platform', at: [3.6, 2.6], r: 1.9 },
-    { kind: 'sign', at: [-0.6, -4.48], y: 2.9, wall: true, size: [4.4, 0.55], lines: ['LEKKI AUTO GALLERY'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'sign', at: [-0.6, -4.48], y: 2.9, wall: true, size: [4.4, 0.55], lines: ['LEKKI AUTO GALLERY'], bg: '#0e2733', fg: '#f6b90b', venueName: true },
     { kind: 'sign', at: [-6.48, -3.2], rot: 90, y: 2.0, wall: true, size: [1.6, 0.9], lines: ['TOKUNBO & BRAND NEW', 'DUTY PAID ✓', 'NO STORY'], bg: '#ffffff', fg: '#0e2733', accent: '#0f8a4f', style: 'poster' },
   ],
   player: {
@@ -153,7 +153,7 @@ export const AIRPORT: InteriorTemplate = {
     { kind: 'luggage', at: [-1.0, 1.6], rot: 20, color: '#c62828' },
     { kind: 'luggage', at: [2.4, -0.6], rot: -30, color: '#263238' },
     { kind: 'luggage', at: [-3.4, -1.3], rot: 60, color: '#f6b90b' },
-    { kind: 'sign', at: [0.2, -3.98], y: 3.2, wall: true, size: [3.6, 0.42], lines: ['MURTALA MUHAMMED INTL • GATE E7'], bg: '#1d4e89', fg: '#ffffff' },
+    { kind: 'sign', at: [0.2, -3.98], y: 3.2, wall: true, size: [3.6, 0.42], lines: ['MURTALA MUHAMMED INTL • GATE E7'], bg: '#1d4e89', fg: '#ffffff', venueName: true },
   ],
   player: {
     default: stand([0.6, 2.2], 200),
@@ -188,7 +188,7 @@ export const MOTOR_PARK: InteriorTemplate = {
     { kind: 'bench', at: [-3.2, 2.2], length: 3.0, color: '#8d6e63' },
     { kind: 'box', at: [3.6, 2.4], size: [1.6, 2.1, 1.3], color: '#f6b90b', surface: 'paint' },
     { kind: 'sign', at: [3.6, 3.06], y: 1.6, wall: true, size: [1.4, 0.7], lines: ['TICKETS', 'OSHODI ₦650', 'CMS ₦900'], bg: '#0e2733', fg: '#f6b90b' },
-    { kind: 'sign', at: [0.0, -4.6], size: [4.4, 0.6], lines: ['IKORODU GARAGE — ENTER WITH YOUR CHANGE'], bg: '#f6b90b', fg: '#0e2733' },
+    { kind: 'sign', at: [0.0, -4.6], size: [4.4, 0.9], lines: ['IKORODU GARAGE', 'ENTER WITH YOUR CHANGE'], bg: '#f6b90b', fg: '#0e2733', venueName: true },
     { kind: 'cooler', at: [0.4, 1.8], rot: 20, color: '#e53935' },
     { kind: 'umbrella', at: [0.6, 2.6], color: '#0f8a4f', color2: '#ffffff' },
     { kind: 'plastic-chair', at: [1.2, 2.2], rot: 230, color: '#c0392b' },
@@ -234,7 +234,7 @@ export const BEACH: InteriorTemplate = {
     { kind: 'cooler', at: [2.6, 3.1], rot: 15, color: '#1e88e5' },
     { kind: 'plastic-chair', at: [-1.0, 2.6], rot: 160, color: '#c0392b' },
     { kind: 'plastic-chair', at: [-0.2, 2.8], rot: 200, color: '#c0392b' },
-    { kind: 'sign', at: [5.0, 3.6], rot: -60, size: [1.4, 0.6], lines: ['ELEGUSHI', 'SUYA • CHAPMAN'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'sign', at: [5.0, 3.6], rot: -60, size: [1.4, 0.6], lines: ['ELEGUSHI', 'SUYA • CHAPMAN'], bg: '#0e2733', fg: '#f6b90b', venueName: true },
   ],
   player: {
     default: stand([0.4, 1.4], 30, 'dance'),
@@ -279,7 +279,7 @@ export const PARK: InteriorTemplate = {
     { kind: 'box', at: [3.4, 0.0], y: -0.01, size: [1.4, 0.03, 10], color: '#c9b48a', surface: 'stone', round: 0.05 },
     { kind: 'canopy', at: [-3.6, 3.0], size: [3.0, 2.4], color: '#f6b90b', trim: '#0e2733', height: 2.6 },
     { kind: 'stage', at: [-3.6, 3.0], size: [3.0, 2.4], height: 0.3, color: '#8d6e63', trim: '#f6b90b' },
-    { kind: 'sign', at: [5.2, 1.4], rot: -70, size: [1.6, 0.6], lines: ['FREEDOM PARK', 'LIVE MUSIC 7PM'], bg: '#0e2733', fg: '#f6b90b' },
+    { kind: 'sign', at: [5.2, 1.4], rot: -70, size: [1.6, 0.6], lines: ['FREEDOM PARK', 'LIVE MUSIC 7PM'], bg: '#0e2733', fg: '#f6b90b', venueName: true },
     { kind: 'cooler', at: [1.2, 2.4], rot: 30, color: '#e53935' },
   ],
   player: {

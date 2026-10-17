@@ -141,6 +141,8 @@ export interface Spot {
 }
 
 export interface NpcSpot extends Spot {
+  /** Who this is (their look): the template index, kept when an NPC gives up their seat so the others don't change face. */
+  readonly id?: number;
   readonly theme: OutfitTheme;
   readonly gender?: Gender;
   readonly lod?: 'high' | 'low';

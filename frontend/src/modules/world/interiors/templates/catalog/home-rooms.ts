@@ -82,7 +82,7 @@ export const FLAT_KITCHEN: InteriorTemplate = {
   },
 };
 
-/** A flat's bedroom: double bed, wardrobe, a study desk under the window and a shower corner. */
+/** A flat's bedroom: double bed, wardrobe and a study desk under the window; the en-suite bathroom is through the left wall. */
 export const FLAT_BEDROOM: InteriorTemplate = {
   id: 'home-flat:bedroom',
   label: 'Bedroom',
@@ -94,7 +94,10 @@ export const FLAT_BEDROOM: InteriorTemplate = {
     floorColor: '#d9cfbe',
     wall: { style: 'paint', color: '#efe4d6', band: '#a1887f' },
     windows: [{ wall: 'back', at: 1.6, width: 1.1, sill: 1.0, height: 0.95 }],
-    doors: [{ wall: 'left', at: -1.3, width: 0.9 }],
+    doors: [
+      { wall: 'left', at: -1.3, width: 0.9 },
+      { wall: 'left', at: 1.8, width: 0.8 },
+    ],
     curtain: '#7b1fa2',
   },
   furniture: [
@@ -111,12 +114,8 @@ export const FLAT_BEDROOM: InteriorTemplate = {
     ...slotted('desk', place('desk', [1.6, -2.0], 0, { palette: { wood: '#a0683a' } }), place('chairDesk', [1.6, -1.35], 180)),
     place('laptop', [1.55, -2.05], 0, { y: 0.57, slot: 'laptop' }),
     place('books', [1.95, -2.1], 0, { y: 0.57, slot: 'books' }),
-    place('shower', [-2.25, 1.85]),
   ],
   props: [
-    // The shower corner's tray.
-    { kind: 'mat', at: [-2.05, 1.55], size: [1.3, 1.5], color: '#cfd8dc', border: '#90a4ae', fixture: true },
-    { kind: 'bucket', at: [-1.55, 2.0], color: '#43a047', slot: 'buckets' },
     { kind: 'aircon', at: [-0.6, -2.28], y: 2.15, slot: 'ac' },
     { kind: 'lantern', at: [0.42, -2.12], y: 0.39, slot: 'lamp' },
     {
@@ -132,7 +131,7 @@ export const FLAT_BEDROOM: InteriorTemplate = {
       frame: '#8d6e63',
       slot: 'art',
     },
-    { kind: 'mirror', at: [-2.68, 0.85], rot: 90, y: 1.35, size: [0.38, 0.6], frame: '#8d6e63', slot: 'mirror' },
+    { kind: 'mirror', at: [-2.68, 0.55], rot: 90, y: 1.35, size: [0.38, 0.6], frame: '#8d6e63', slot: 'mirror' },
   ],
   player: {
     default: stand([0.5, 0.8], 30),
@@ -140,7 +139,6 @@ export const FLAT_BEDROOM: InteriorTemplate = {
     sit: seat([1.6, -1.35], 180, 'sit', { props: false }),
     type: seat([1.6, -1.35], 180, 'type', { props: false }),
     read: seat([1.6, -1.35], 180, 'read'),
-    shower: stand([-2.25, 1.8], 45, 'shower'),
   },
   npcs: [],
   guests: [stand([0.9, 1.3], 220, 'talk')],
@@ -232,7 +230,7 @@ export const DUPLEX_KITCHEN: InteriorTemplate = {
   },
 };
 
-/** Upstairs in the duplex: the master bedroom off the landing, with a study desk and a shower corner. */
+/** Upstairs in the duplex: the master bedroom off the landing, with a study desk and an en-suite bathroom. */
 export const DUPLEX_BEDROOM: InteriorTemplate = {
   id: 'home-duplex:bedroom',
   label: 'Master bedroom',
@@ -247,6 +245,8 @@ export const DUPLEX_BEDROOM: InteriorTemplate = {
       { wall: 'back', at: 0.8, width: 1.6, sill: 0.85, height: 1.4 },
       { wall: 'left', at: 2.0, width: 1.0, sill: 1.0 },
     ],
+    // The en-suite bathroom.
+    doors: [{ wall: 'back', at: 2.75, width: 0.9 }],
     curtain: '#24506b',
   },
   furniture: [
@@ -265,15 +265,10 @@ export const DUPLEX_BEDROOM: InteriorTemplate = {
     ...slotted('desk', place('desk', [-2.88, 2.0], 90, { palette: { wood: '#5d4037' } }), place('chairDesk', [-2.25, 2.0], -90)),
     place('laptop', [-2.9, 1.95], 90, { y: 0.57, slot: 'laptop' }),
     place('books', [-2.95, 2.35], 90, { y: 0.57, slot: 'books' }),
-    place('shower', [2.75, 2.15]),
-    place('pottedPlant', [3.0, -2.35], 0, { slot: 'plants' }),
+    place('pottedPlant', [2.0, 2.3], 0, { slot: 'plants' }),
   ],
   props: [
     { kind: 'stairwell', at: [-2.62, -1.0], size: [1.0, 2.4], color: '#8d6e63', rail: '#3e2723' },
-    // The shower corner: tray and glass screen.
-    { kind: 'mat', at: [2.45, 1.95], size: [1.5, 1.3], color: '#d7e3e8', border: '#90a4ae', fixture: true },
-    { kind: 'box', at: [1.68, 1.95], size: [0.05, 1.8, 1.2], color: '#bfe3f0', surface: 'gloss', round: 0.1, fixture: true },
-    { kind: 'bucket', at: [2.05, 2.35], color: '#1e88e5', slot: 'buckets' },
     { kind: 'aircon', at: [-3.18, 0.6], rot: 90, y: 2.35, slot: 'ac' },
   ],
   player: {
@@ -282,7 +277,6 @@ export const DUPLEX_BEDROOM: InteriorTemplate = {
     sit: seat([-2.25, 2.0], -90, 'sit', { props: false }),
     type: seat([-2.25, 2.0], -90, 'type', { props: false }),
     read: seat([-2.25, 2.0], -90, 'read'),
-    shower: stand([2.75, 2.1], 200, 'shower'),
   },
   npcs: [],
   guests: [stand([0.0, 1.4], 200, 'talk')],
@@ -459,7 +453,7 @@ export const MANSION_CINEMA: InteriorTemplate = {
   },
 };
 
-/** The mansion's master suite: a super-king bed, wardrobes, a study desk and an open en-suite with a bathtub. */
+/** The mansion's master suite: a super-king bed, wardrobes and a study desk; the en-suite bathroom is through the back wall. */
 export const MANSION_MASTER: InteriorTemplate = {
   id: 'home-mansion:master',
   label: 'Master suite',
@@ -470,8 +464,12 @@ export const MANSION_MASTER: InteriorTemplate = {
     floor: 'wood',
     floorColor: '#7a5236',
     wall: { style: 'wallpaper', color: '#efe5d3' },
-    windows: [{ wall: 'back', at: -0.6, width: 2.2, sill: 0.25, height: 2.4, bars: false }],
-    doors: [{ wall: 'left', at: -1.6, width: 1.0 }],
+    windows: [{ wall: 'back', at: -1.1, width: 2.0, sill: 0.25, height: 2.4, bars: false }],
+    // The cinema lounge, and the en-suite bathroom.
+    doors: [
+      { wall: 'left', at: -1.6, width: 1.0 },
+      { wall: 'back', at: 1.0, width: 1.0 },
+    ],
     curtain: '#c9a227',
   },
   furniture: [
@@ -499,18 +497,14 @@ export const MANSION_MASTER: InteriorTemplate = {
     ...slotted('desk', place('desk', [3.0, -2.69], 0, { palette: BLACK }), place('chairDesk', [3.0, -2.05], 180)),
     place('laptop', [2.95, -2.75], 0, { y: 0.57, slot: 'laptop' }),
     place('books', [3.35, -2.8], 0, { y: 0.57, slot: 'books' }),
-    place('bathtub', [2.7, 2.42]),
-    place('shower', [3.5, 0.9]),
   ],
   props: [
-    // The open en-suite: floor tiles and glass screen.
-    { kind: 'mat', at: [2.75, 1.6], size: [2.5, 2.8], color: '#e8eef0', border: '#b0bec5', fixture: true },
-    { kind: 'box', at: [1.45, 1.75], size: [0.05, 2.0, 1.9], color: '#bfe3f0', surface: 'gloss', round: 0.1, fixture: true },
     { kind: 'aircon', at: [-3.98, 0.7], rot: 90, y: 2.45, slot: 'ac' },
     { kind: 'mirror', at: [-3.98, -2.55], rot: 90, y: 1.2, size: [0.5, 1.3], frame: '#c9a227', slot: 'mirror' },
     {
       kind: 'sign',
-      at: [1.45, -2.98],
+      at: [-3.98, 2.3],
+      rot: 90,
       y: 1.7,
       wall: true,
       size: [0.8, 1.0],
@@ -529,7 +523,6 @@ export const MANSION_MASTER: InteriorTemplate = {
     sit: seat([3.0, -2.05], 180, 'sit', { props: false }),
     type: seat([3.0, -2.05], 180, 'type', { props: false }),
     read: seat([3.0, -2.05], 180, 'read'),
-    shower: stand([3.5, 0.9], 270, 'shower'),
   },
   npcs: [],
   guests: [stand([0.4, 1.2], 210, 'talk')],

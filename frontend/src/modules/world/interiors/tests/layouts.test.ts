@@ -33,7 +33,8 @@ describe('home layouts', () => {
       if (id.startsWith('home-')) expect(homeLayoutFor(id)?.id, id).toBe(id);
       else expect(homeLayoutFor(id), id).toBeNull();
     }
-    expect(multiRoom.map((layout) => layout.id).sort()).toEqual(['home-duplex', 'home-flat', 'home-mansion']);
+    // Only the self-contain is a single room; every other home has a bathroom of its own to walk to.
+    expect(multiRoom.map((layout) => layout.id).sort()).toEqual(['home-duplex', 'home-face-me', 'home-family', 'home-flat', 'home-hostel', 'home-mansion']);
     expect(HOME_LAYOUTS['home-mansion'].rooms.length).toBeGreaterThanOrEqual(4);
     // The living room of a layout is the home's registered template (what `resolveTemplateId` names).
     for (const layout of layouts) expect(findRoom(layout, layout.entry)?.template.id).toBe(layout.id);
@@ -94,8 +95,8 @@ describe('home layouts', () => {
         }
       }
       // The essentials have a home somewhere.
-      for (const slot of ['bed', 'cooker', 'fridge', 'tv', 'seating'] as const)
-        expect(seen.has(slot), `${layout.id}: ${slot}`).toBe(true);
+      const essentials = ['home-flat', 'home-duplex', 'home-mansion'].includes(layout.id) ? (['bed', 'cooker', 'fridge', 'tv', 'seating'] as const) : (['bed'] as const);
+      for (const slot of essentials) expect(seen.has(slot), `${layout.id}: ${slot}`).toBe(true);
     }
   });
 
@@ -109,13 +110,15 @@ describe('home layouts', () => {
           `${layout.id}: ${animation} spot in ${roomId}`,
         ).toBeDefined();
       }
-      expect(roomForActivity(layout, 'sleep')).not.toBe(layout.entry);
-      expect(roomForActivity(layout, 'cook')).toBe('kitchen');
+      // Sleeping happens in the room with the bed, washing in the bathroom, and the rest where the layout says.
+      expect(slotsOf(findRoom(layout, roomForActivity(layout, 'sleep'))?.template as InteriorTemplate).has('bed'), layout.id).toBe(true);
+      expect(roomForActivity(layout, 'shower'), layout.id).toBe('bathroom');
+      if (['home-flat', 'home-duplex', 'home-mansion', 'home-family', 'home-hostel'].includes(layout.id)) expect(roomForActivity(layout, 'cook')).toBe('kitchen');
       expect(roomForActivity(layout, 'sit')).toBe(layout.entry);
     }
     const mansion = HOME_LAYOUTS['home-mansion'];
     expect(roomForActivity(mansion, 'sleep')).toBe('master');
-    expect(roomForActivity(mansion, 'shower')).toBe('master');
+    expect(roomForActivity(mansion, 'shower')).toBe('bathroom');
     // Anything unmapped (scrolling your phone) happens wherever you are.
     expect(roomForActivity(mansion, 'phone', 'kitchen')).toBe('kitchen');
     expect(roomForActivity(mansion, 'phone')).toBe('living');

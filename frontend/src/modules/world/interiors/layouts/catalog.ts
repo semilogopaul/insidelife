@@ -8,6 +8,16 @@ import {
   MANSION_MASTER,
 } from '../templates/catalog/home-rooms';
 import {
+  DUPLEX_BATHROOM,
+  FACE_ME_BATHROOM,
+  FAMILY_BATHROOM,
+  FAMILY_KITCHEN,
+  FLAT_BATHROOM,
+  HOSTEL_BATHROOM,
+  HOSTEL_KITCHEN,
+  MANSION_BATHROOM,
+} from '../templates/catalog/home-wet-rooms';
+import {
   HOME_DUPLEX,
   HOME_FACE_ME,
   HOME_FAMILY,
@@ -35,6 +45,7 @@ import {
 import { getTemplate } from '../templates/registry';
 import type { InteriorTemplateId } from '../templates/resolve';
 import type { InteriorTemplate } from '../templates/types';
+import { venueTemplate } from '../templates/variants';
 import type { HomeLayout, LayoutRoom } from './types';
 
 /**
@@ -42,7 +53,7 @@ import type { HomeLayout, LayoutRoom } from './types';
  * doors (and stairs between floors). Portal links are symmetric (checked by tests).
  */
 
-/** A one-room home: its first door is the front door. */
+/** A one-room home or venue: its first door is the front door. */
 function singleRoom(template: InteriorTemplate): HomeLayout {
   return {
     id: template.id,
@@ -60,7 +71,7 @@ function singleRoom(template: InteriorTemplate): HomeLayout {
   };
 }
 
-/** Living room (front door) → kitchen and bedroom. */
+/** Living room (front door) → kitchen and bedroom → en-suite bathroom. */
 export const FLAT_LAYOUT: HomeLayout = {
   id: 'home-flat',
   entry: 'living',
@@ -88,12 +99,22 @@ export const FLAT_LAYOUT: HomeLayout = {
       label: 'Bedroom',
       level: 0,
       template: FLAT_BEDROOM,
-      portals: [{ id: 'living', via: { door: 0 }, to: { room: 'living', portal: 'bedroom' } }],
+      portals: [
+        { id: 'living', via: { door: 0 }, to: { room: 'living', portal: 'bedroom' } },
+        { id: 'bathroom', via: { door: 1 }, to: { room: 'bathroom', portal: 'bedroom' } },
+      ],
+    },
+    {
+      id: 'bathroom',
+      label: 'Bathroom',
+      level: 0,
+      template: FLAT_BATHROOM,
+      portals: [{ id: 'bedroom', via: { door: 0 }, to: { room: 'bedroom', portal: 'bathroom' } }],
     },
   ],
   activityRooms: {
     sleep: 'bedroom',
-    shower: 'bedroom',
+    shower: 'bathroom',
     type: 'bedroom',
     read: 'bedroom',
     cook: 'kitchen',
@@ -105,7 +126,7 @@ export const FLAT_LAYOUT: HomeLayout = {
   },
 };
 
-/** Living room (front door, stairs up) → kitchen; upstairs, the master bedroom. */
+/** Living room (front door, stairs up) → kitchen; upstairs, the master bedroom → en-suite bathroom. */
 export const DUPLEX_LAYOUT: HomeLayout = {
   id: 'home-duplex',
   entry: 'living',
@@ -133,12 +154,22 @@ export const DUPLEX_LAYOUT: HomeLayout = {
       label: 'Master bedroom',
       level: 1,
       template: DUPLEX_BEDROOM,
-      portals: [{ id: 'down', via: { stairwell: 0 }, to: { room: 'living', portal: 'up' } }],
+      portals: [
+        { id: 'down', via: { stairwell: 0 }, to: { room: 'living', portal: 'up' } },
+        { id: 'bathroom', via: { door: 0 }, to: { room: 'bathroom', portal: 'bedroom' } },
+      ],
+    },
+    {
+      id: 'bathroom',
+      label: 'En-suite bathroom',
+      level: 1,
+      template: DUPLEX_BATHROOM,
+      portals: [{ id: 'bedroom', via: { door: 0 }, to: { room: 'bedroom', portal: 'bathroom' } }],
     },
   ],
   activityRooms: {
     sleep: 'bedroom',
-    shower: 'bedroom',
+    shower: 'bathroom',
     type: 'bedroom',
     read: 'bedroom',
     cook: 'kitchen',
@@ -150,7 +181,7 @@ export const DUPLEX_LAYOUT: HomeLayout = {
   },
 };
 
-/** Living room (front door, grand stairs) → kitchen; upstairs, the cinema lounge → master suite. */
+/** Living room (front door, grand stairs) → kitchen; upstairs, the cinema lounge → master suite → master bathroom. */
 export const MANSION_LAYOUT: HomeLayout = {
   id: 'home-mansion',
   entry: 'living',
@@ -188,12 +219,22 @@ export const MANSION_LAYOUT: HomeLayout = {
       label: 'Master suite',
       level: 1,
       template: MANSION_MASTER,
-      portals: [{ id: 'cinema', via: { door: 0 }, to: { room: 'cinema', portal: 'master' } }],
+      portals: [
+        { id: 'cinema', via: { door: 0 }, to: { room: 'cinema', portal: 'master' } },
+        { id: 'bathroom', via: { door: 1 }, to: { room: 'bathroom', portal: 'master' } },
+      ],
+    },
+    {
+      id: 'bathroom',
+      label: 'Master bathroom',
+      level: 1,
+      template: MANSION_BATHROOM,
+      portals: [{ id: 'master', via: { door: 0 }, to: { room: 'master', portal: 'bathroom' } }],
     },
   ],
   activityRooms: {
     sleep: 'master',
-    shower: 'master',
+    shower: 'bathroom',
     type: 'master',
     read: 'master',
     cook: 'kitchen',
@@ -205,11 +246,108 @@ export const MANSION_LAYOUT: HomeLayout = {
   },
 };
 
+/**
+ * The family house: your room (the front door) with the kitchen and the bathroom down the passage. Meals are at the
+ * kitchen table, cooking at the cooker, washing in the bathroom.
+ */
+export const FAMILY_LAYOUT: HomeLayout = {
+  id: 'home-family',
+  entry: 'room',
+  rooms: [
+    {
+      id: 'room',
+      label: 'Your room',
+      level: 0,
+      template: HOME_FAMILY,
+      portals: [
+        { id: 'front', via: { door: 0 }, to: null },
+        { id: 'bathroom', via: { door: 1 }, to: { room: 'bathroom', portal: 'room' } },
+        { id: 'kitchen', via: { door: 2 }, to: { room: 'kitchen', portal: 'room' } },
+      ],
+    },
+    {
+      id: 'kitchen',
+      label: 'Kitchen',
+      level: 0,
+      template: FAMILY_KITCHEN,
+      portals: [{ id: 'room', via: { door: 0 }, to: { room: 'room', portal: 'kitchen' } }],
+    },
+    {
+      id: 'bathroom',
+      label: 'Bathroom',
+      level: 0,
+      template: FAMILY_BATHROOM,
+      portals: [{ id: 'room', via: { door: 0 }, to: { room: 'room', portal: 'bathroom' } }],
+    },
+  ],
+  activityRooms: { cook: 'kitchen', eat: 'kitchen', shower: 'bathroom' },
+};
+
+/** A face-me-I-face-you: your room (gas cooker and all) and the compound's shared bathroom out the back. */
+export const FACE_ME_LAYOUT: HomeLayout = {
+  id: 'home-face-me',
+  entry: 'room',
+  rooms: [
+    {
+      id: 'room',
+      label: 'Your room',
+      level: 0,
+      template: HOME_FACE_ME,
+      portals: [
+        { id: 'front', via: { door: 0 }, to: null },
+        { id: 'bathroom', via: { door: 1 }, to: { room: 'bathroom', portal: 'room' } },
+      ],
+    },
+    {
+      id: 'bathroom',
+      label: 'Compound bathroom',
+      level: 0,
+      template: FACE_ME_BATHROOM,
+      portals: [{ id: 'room', via: { door: 0 }, to: { room: 'room', portal: 'bathroom' } }],
+    },
+  ],
+  activityRooms: { shower: 'bathroom' },
+};
+
+/** A hostel: your room (the corridor door) with the hall's shared bathroom and kitchenette (rooms are no cooking). */
+export const HOSTEL_LAYOUT: HomeLayout = {
+  id: 'home-hostel',
+  entry: 'room',
+  rooms: [
+    {
+      id: 'room',
+      label: 'Your room',
+      level: 0,
+      template: HOME_HOSTEL,
+      portals: [
+        { id: 'front', via: { door: 0 }, to: null },
+        { id: 'bathroom', via: { door: 1 }, to: { room: 'bathroom', portal: 'room' } },
+        { id: 'kitchen', via: { door: 2 }, to: { room: 'kitchen', portal: 'room' } },
+      ],
+    },
+    {
+      id: 'kitchen',
+      label: 'Shared kitchenette',
+      level: 0,
+      template: HOSTEL_KITCHEN,
+      portals: [{ id: 'room', via: { door: 0 }, to: { room: 'room', portal: 'kitchen' } }],
+    },
+    {
+      id: 'bathroom',
+      label: 'Shared bathroom',
+      level: 0,
+      template: HOSTEL_BATHROOM,
+      portals: [{ id: 'room', via: { door: 0 }, to: { room: 'room', portal: 'bathroom' } }],
+    },
+  ],
+  activityRooms: { cook: 'kitchen', shower: 'bathroom' },
+};
+
 export const HOME_LAYOUTS: Readonly<Record<Extract<InteriorTemplateId, `home-${string}`>, HomeLayout>> = {
-  'home-family': singleRoom(HOME_FAMILY),
-  'home-face-me': singleRoom(HOME_FACE_ME),
+  'home-family': FAMILY_LAYOUT,
+  'home-face-me': FACE_ME_LAYOUT,
   'home-self-contain': singleRoom(HOME_SELF_CONTAIN),
-  'home-hostel': singleRoom(HOME_HOSTEL),
+  'home-hostel': HOSTEL_LAYOUT,
   'home-flat': FLAT_LAYOUT,
   'home-duplex': DUPLEX_LAYOUT,
   'home-mansion': MANSION_LAYOUT,
@@ -333,18 +471,20 @@ const VENUE_LAYOUTS = new Map<string, HomeLayout>();
 
 /**
  * The walkable layout of any place: a home's rooms, a multi-room venue's rooms, or a venue's one room (its first door
- * is the way out; open-air venues have none and you arrive at their default spot). Stable per template, so it can key
- * effects.
+ * is the way out; open-air venues have none and you arrive at their default spot), dressed as `venueId` when given.
+ * Stable per template and venue, so it can key effects.
  */
-export function placeLayoutFor(templateId: InteriorTemplateId): HomeLayout {
+export function placeLayoutFor(templateId: InteriorTemplateId, venueId?: string | null): HomeLayout {
   const home = homeLayoutFor(templateId);
   if (home) return home;
   const rooms = VENUE_ROOM_LAYOUTS[templateId];
   if (rooms) return rooms;
-  let layout = VENUE_LAYOUTS.get(templateId);
+  // A venue's room is its type's template dressed as that venue (its name, its paint, its own look).
+  const key = venueId ? `${templateId}|${venueId}` : templateId;
+  let layout = VENUE_LAYOUTS.get(key);
   if (!layout) {
-    layout = singleRoom(getTemplate(templateId));
-    VENUE_LAYOUTS.set(templateId, layout);
+    layout = singleRoom(venueTemplate(getTemplate(templateId), venueId));
+    VENUE_LAYOUTS.set(key, layout);
   }
   return layout;
 }

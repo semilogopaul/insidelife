@@ -157,13 +157,13 @@ describe('an empty home', () => {
   it('keeps the kitchen units, sink, bathroom fittings, stairs and the family sign', () => {
     const flat = furnishLayout(FLAT_LAYOUT, []);
     expect(models(roomOf(flat, 'kitchen'))).toEqual(expect.arrayContaining(['kitchenCabinet', 'kitchenSink', 'kitchenCabinetUpper']));
-    expect(models(roomOf(flat, 'bedroom'))).toContain('shower');
+    expect(models(roomOf(flat, 'bathroom'))).toEqual(expect.arrayContaining(['shower', 'toilet', 'bathroomSink']));
     const duplex = furnishLayout(DUPLEX_LAYOUT, []);
     expect(propKinds(roomOf(duplex, 'living'))).toEqual(expect.arrayContaining(['stairs', 'sign']));
     expect(propKinds(roomOf(duplex, 'bedroom'))).toContain('stairwell');
     const signed = furnish(HOME_DUPLEX, [], { providedFurniture: false, surname: 'Okafor' });
     expect(signed.props.some((prop) => prop.kind === 'sign' && prop.lines[0] === 'THE OKAFORS')).toBe(true);
-    expect(models(roomOf(furnishLayout(MANSION_LAYOUT, []), 'master'))).toEqual(expect.arrayContaining(['bathtub', 'shower']));
+    expect(models(roomOf(furnishLayout(MANSION_LAYOUT, []), 'bathroom'))).toEqual(expect.arrayContaining(['bathtub', 'shower', 'toilet']));
     // Curtains are part of the room spec.
     expect(roomOf(flat, 'living').room.curtain).toBeDefined();
   });
@@ -213,7 +213,7 @@ describe('an empty home', () => {
     ['mirror-standing', FLAT_LAYOUT, ['bedroom'], 'mirror'],
     ['wall-art', FLAT_LAYOUT, ['living', 'kitchen', 'bedroom'], 'sign'],
     ['water-dispenser', FLAT_LAYOUT, ['kitchen'], 'water-dispenser'],
-    ['buckets', FLAT_LAYOUT, ['kitchen', 'bedroom'], 'bucket'],
+    ['buckets', FLAT_LAYOUT, ['kitchen', 'bathroom'], 'bucket'],
     ['chandelier', DUPLEX_LAYOUT, ['living'], 'chandelier'],
     ['aquarium', MANSION_LAYOUT, ['living'], 'aquarium'],
     ['ac-split', FLAT_LAYOUT, ['bedroom'], 'aircon'],

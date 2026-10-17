@@ -1,4 +1,4 @@
-import { cellKindAt, type Weather } from '@insidelife/shared';
+import { CITY_MAP, cellKindAt, type Weather } from '@insidelife/shared';
 import { describe, expect, it } from 'vitest';
 import { KIT_MANIFEST } from '../city/assets/kit-manifest';
 import { computeAtmosphere } from '../city/lib/atmosphere';
@@ -45,6 +45,36 @@ describe('city plan', () => {
 
   it('is deterministic', () => {
     expect(cityPlan()).toBe(plan);
+  });
+});
+
+describe('venue exteriors', () => {
+  const plan = cityPlan();
+  const lotOf = (venueId: string): { readonly index: number; readonly lot: (typeof CITY_MAP.lots)[number] } => {
+    const index = CITY_MAP.lots.findIndex((candidate) => candidate.venueId === venueId);
+    return { index, lot: CITY_MAP.lots[index] as (typeof CITY_MAP.lots)[number] };
+  };
+  const inside = (venueId: string, model: string): number => {
+    const { lot } = lotOf(venueId);
+    const f = lot.footprint;
+    return [...plan.placements.nature, ...plan.placements.commercial].filter((p) => p.model === model && p.x >= f.minX && p.x <= f.maxX && p.z >= f.minZ && p.z <= f.maxZ).length;
+  };
+
+  it('gives each market its own ground, and Computer Village kiosks instead of parasols', () => {
+    const grounds = ['computer-village', 'yaba-market', 'mushin-market', 'balogun-market', 'ajah-market'].map((id) => plan.lotGround.get(lotOf(id).index));
+    expect(new Set(grounds).size).toBe(grounds.length);
+    expect(inside('computer-village', 'proc:kiosk')).toBeGreaterThan(3);
+    expect(inside('computer-village', 'proc:kiosk')).toBeGreaterThan(inside('yaba-market', 'proc:kiosk'));
+  });
+
+  it('keeps a park and a market apart, and a nature reserve a forest', () => {
+    expect(plan.lotGround.get(lotOf('freedom-park').index)).not.toBe(plan.lotGround.get(lotOf('computer-village').index));
+    expect(inside('lekki-conservation', 'proc:stall')).toBe(0);
+    expect(plan.lotGround.get(lotOf('lekki-conservation').index)).not.toBe(plan.lotGround.get(lotOf('freedom-park').index));
+  });
+
+  it('draws beaches as beaches (a hut on the sand), not as parks', () => {
+    for (const id of ['tarkwa-bay', 'elegushi-beach']) expect(inside(id, 'proc:hut'), id).toBeGreaterThan(0);
   });
 });
 

@@ -12,6 +12,7 @@ import {
   type CompassSide,
   type DistrictId,
   type ServicePoint,
+  type VenueType,
 } from '@insidelife/shared';
 import { KIT_MANIFEST } from '../assets/kit-manifest';
 import { PROC_MODELS, type ProcModelId } from './proc-models';
@@ -504,6 +505,65 @@ export function frameOf(lot: CityLot): LotFrame {
 /** Lot-local (u along frontage, v towards the road) → world. */
 export const at = (frame: LotFrame, u: number, v: number): readonly [number, number] => [frame.cx + frame.ax * u + frame.fx * v, frame.cz + frame.az * u + frame.fz * v];
 
+/**
+ * How one market looks from the road (venues of one type share an archetype, so without this every market is the same
+ * rows of striped stalls): its ground, what its stalls are painted, how many parasols and kiosks, the building behind.
+ */
+interface MarketStyle {
+  readonly ground: number;
+  readonly stalls: readonly number[];
+  /** Share of the rows' slots that are parasols; the rest are stalls. */
+  readonly parasols: number;
+  /** Share of the slots that are kiosks (phone shops, provision stores) instead. */
+  readonly kiosks: number;
+  readonly back: BuildingRef;
+  readonly backTint: number;
+}
+const MARKET_STYLES: Readonly<Record<string, MarketStyle>> = {
+  // A grid of phone shops and kiosks in front of a glass-fronted plaza, hardly a parasol.
+  'computer-village': { ground: 0x6b6e73, stalls: [0x1d4e89, 0xffffff, 0x1e88e5, 0xcfd8dc], parasols: 0.08, kiosks: 0.45, back: 'c:building-i', backTint: 0x9cc7e3 },
+  'yaba-market': { ground: 0x9a8466, stalls: [0xc8287a, 0xf2b81d, 0x00897b, 0x7b1fa2], parasols: 0.7, kiosks: 0, back: 'c:building-c', backTint: 0xeea6ad },
+  'mushin-market': { ground: 0x8d7455, stalls: [0xd94b3b, 0x3c9a5f, 0xe07a2f], parasols: 0.35, kiosks: 0, back: 'c:building-a', backTint: 0xd98559 },
+  'balogun-market': { ground: 0xa38663, stalls: [0x1d4e89, 0xc8287a, 0xf2b81d, 0x00897b, 0xd94b3b], parasols: 0.55, kiosks: 0.1, back: 'c:building-c', backTint: 0xf3d48a },
+  'ajah-market': { ground: 0xb39b74, stalls: [0x3c9a5f, 0xf2b81d, 0xe07a2f], parasols: 0.5, kiosks: 0, back: 'c:building-d', backTint: 0xa9d39a },
+};
+const DEFAULT_MARKET: MarketStyle = { ground: 0xa38663, stalls: [0xd94b3b, 0x2f7fc1, 0xf2b81d, 0x3c9a5f, 0xe07a2f], parasols: 0.5, kiosks: 0, back: 'c:building-c', backTint: 0xffffff };
+
+/** A park, a stadium ground or a nature reserve: its lawn, how many trees, and what stands in it. */
+interface ParkStyle {
+  readonly ground: number;
+  /** Trees per 55 m²: 1 is a plain park, 2 a forest. */
+  readonly density: number;
+  /** Colonial brick wall along the front (Freedom Park), flagpoles standing as art. */
+  readonly wall: boolean;
+  readonly poles: number;
+}
+const PARK_STYLES: Readonly<Record<string, ParkStyle>> = {
+  'freedom-park': { ground: 0x7bb05a, density: 0.35, wall: true, poles: 3 },
+  'lekki-conservation': { ground: 0x4c7f35, density: 2.2, wall: false, poles: 0 },
+  'national-stadium': { ground: 0x6aa640, density: 0.5, wall: false, poles: 2 },
+};
+const DEFAULT_PARK: ParkStyle = { ground: 0x6f9a48, density: 1, wall: false, poles: 0 };
+
+/** What sets a neighbourhood shop apart from the road: its paint and the thing out front. */
+interface ShopFlavour {
+  readonly tint: number;
+  readonly accessory?: 'kiosk' | 'stall' | 'flagpole' | 'hut';
+  readonly accent?: number;
+}
+const SHOP_FLAVOURS: Readonly<Partial<Record<VenueType, ShopFlavour>>> = {
+  pharmacy: { tint: 0xd6efd8, accessory: 'kiosk', accent: 0x2e9b5f },
+  gym: { tint: 0x9fb4c8, accessory: 'flagpole', accent: 0xe2412e },
+  buka: { tint: 0xf2b07e, accessory: 'stall', accent: 0xe07a2f },
+  restaurant: { tint: 0xf4ece0, accessory: 'hut', accent: 0xc9a227 },
+  'cbt-centre': { tint: 0xdfe6ec, accessory: 'flagpole', accent: 0x1d4e89 },
+  'estate-agency': { tint: 0xf3dfb8, accessory: 'flagpole', accent: 0x13606b },
+  cinema: { tint: 0xc3a9e0, accessory: 'kiosk', accent: 0xc62828 },
+  salon: { tint: 0xeea6ad, accessory: 'kiosk', accent: 0xc8287a },
+  club: { tint: 0x5b4a7a },
+  bar: { tint: 0xb5651d },
+};
+
 function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
   const frame = frameOf(lot);
   const random = rng(lot.seed);
@@ -517,7 +577,9 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     return plan.building(ref, x, z, lot.front ?? 'S', width, depth, stretch, colour, 0);
   };
   const venue = lot.venueId ? findVenue(lot.venueId) : undefined;
-  switch (lot.archetype) {
+  // Beaches are parks to the map but have sand, parasols and a hut.
+  const archetype = lot.archetype === 'park' && venue?.type === 'beach' ? 'beach' : lot.archetype;
+  switch (archetype) {
     case 'airport':
       plan.lotGround.set(lotIndex, 0x9d9a92);
       // The terminal is procedural (Landmarks); forecourt palms and waiting taxis here.
@@ -551,18 +613,21 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       return;
     }
     case 'market': {
-      plan.lotGround.set(lotIndex, 0xa38663);
+      const style = (lot.venueId ? MARKET_STYLES[lot.venueId] : undefined) ?? DEFAULT_MARKET;
+      plan.lotGround.set(lotIndex, style.ground);
       const rows = Math.max(1, Math.floor((frame.depth - 6) / 6));
       for (let r = 0; r < rows; r++) {
         for (let u = -frame.width / 2 + 3; u <= frame.width / 2 - 3; u += 4.2) {
           const v = frontLine - 3 - r * 6;
           const [x, z] = at(frame, u + (random() - 0.5), v);
-          if (random() < 0.5) plan.add('commercial', random() < 0.5 ? 'detail-parasol-a' : 'detail-parasol-b', x, 0, z, random() * Math.PI, 8.5);
-          else plan.proc('stall', x, 0, z, frontFace + (random() < 0.5 ? 0 : Math.PI), 1, pick([0xd94b3b, 0x2f7fc1, 0xf2b81d, 0x3c9a5f, 0xe07a2f], random));
+          const roll = random();
+          if (roll < style.kiosks) plan.proc('kiosk', x, 0, z, frontFace + (r % 2 ? Math.PI : 0), 1.1, pick(style.stalls, random));
+          else if (roll < style.kiosks + style.parasols) plan.add('commercial', random() < 0.5 ? 'detail-parasol-a' : 'detail-parasol-b', x, 0, z, random() * Math.PI, 8.5);
+          else plan.proc('stall', x, 0, z, frontFace + (random() < 0.5 ? 0 : Math.PI), 1, pick(style.stalls, random));
         }
       }
       const [bx, bz] = at(frame, 0, -halfDepth + 5);
-      plan.building('c:building-c', bx, bz, lot.front ?? 'S', frame.width - 2, 8, 1, tint, 0);
+      plan.building(style.back, bx, bz, lot.front ?? 'S', frame.width - 2, 8, 1, style === DEFAULT_MARKET ? tint : style.backTint, 0);
       return;
     }
     case 'mall': {
@@ -625,8 +690,21 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       return;
     }
     case 'park': {
-      plan.lotGround.set(lotIndex, 0x6f9a48);
-      const count = Math.round((frame.width * frame.depth) / 55);
+      const style = (lot.venueId ? PARK_STYLES[lot.venueId] : undefined) ?? DEFAULT_PARK;
+      plan.lotGround.set(lotIndex, style.ground);
+      const count = Math.round(((frame.width * frame.depth) / 55) * style.density);
+      if (style.wall) {
+        // Freedom Park keeps the old prison's brick wall along the street, with a gap for the gate.
+        const [ax, az] = at(frame, -frame.width / 2 + 1, frontLine - 0.4);
+        const [bx, bz] = at(frame, -3, frontLine - 0.4);
+        const [cx, cz] = at(frame, 3, frontLine - 0.4);
+        const [dx, dz] = at(frame, frame.width / 2 - 1, frontLine - 0.4);
+        plan.walls.push({ x0: ax, z0: az, x1: bx, z1: bz, height: 1.6, color: 0x8d4b32 }, { x0: cx, z0: cz, x1: dx, z1: dz, height: 1.6, color: 0x8d4b32 });
+      }
+      for (let i = 0; i < style.poles; i++) {
+        const [x, z] = at(frame, (i - (style.poles - 1) / 2) * (frame.width / (style.poles + 1)), -halfDepth + 5);
+        plan.proc('flagpole', x, 0, z, frontFace, 1, pick([0xf2b81d, 0xd94b3b, 0x1d4e89, 0x2e7d32], random));
+      }
       for (let i = 0; i < count; i++) {
         const [x, z] = at(frame, (random() - 0.5) * (frame.width - 4), (random() - 0.5) * (frame.depth - 4));
         if (random() < 0.6) plan.tree(x, z, random);
@@ -696,8 +774,14 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
     case 'shop':
     default: {
       const refs: BuildingRef[] = venue?.type === 'club' || venue?.type === 'bar' ? ['c:building-h', 'c:building-d', 'c:building-g'] : ['c:building-a', 'c:building-b', 'c:building-d', 'c:building-h', 'c:building-c'];
+      const flavour = venue ? SHOP_FLAVOURS[venue.type] : undefined;
       let placed: number | null = null;
-      for (let attempt = 0; attempt < 5 && placed === null; attempt++) placed = building(pick(refs, random), 0, frontLine, frame.width - 0.8, frame.depth - APRON - 0.3, 1, tint);
+      for (let attempt = 0; attempt < 5 && placed === null; attempt++) placed = building(pick(refs, random), 0, frontLine, frame.width - 0.8, frame.depth - APRON - 0.3, 1, flavour?.tint ?? tint);
+      if (flavour?.accessory) {
+        // Something out front that says what the place is: a kiosk, a food stall, a flagpole.
+        const [x, z] = at(frame, frame.width / 2 - 2.4, frontLine - 1.2);
+        plan.proc(flavour.accessory, x, 0, z, frontFace, 1, flavour.accent ?? 0xffffff);
+      }
       return;
     }
   }

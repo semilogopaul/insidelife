@@ -7,9 +7,13 @@ import type { Surface } from './surface';
  * along water edges and pushed out of obstacles by the world. Pure (the world is injected), allocation-free.
  */
 
+/** How much faster than the original pace the player moves (playtesters found it slow). */
+export const PACE_BOOST = 1.4;
 /** Brisk Lagos walk and a jog (both well under the server's 8 m/s anti-teleport cap). */
-export const WALK_SPEED = 1.9;
-export const JOG_SPEED = 3.7;
+export const WALK_SPEED = 1.9 * PACE_BOOST;
+export const JOG_SPEED = 3.7 * PACE_BOOST;
+/** Longest slice (s) the walker moves and collides in at once: a slow frame can't carry it through a wall. */
+export const MAX_STEP = 0.025;
 export const WALKER_RADIUS = 0.38;
 
 export interface WalkerState {
@@ -54,6 +58,11 @@ function blocked(world: WalkWorld, x: number, z: number, dx: number, dz: number)
 }
 
 export function stepWalker(state: WalkerState, intent: WalkIntent, dt: number, world: WalkWorld): void {
+  const slices = Math.max(1, Math.ceil(dt / MAX_STEP));
+  for (let i = 0; i < slices; i++) stepSlice(state, intent, dt / slices, world);
+}
+
+function stepSlice(state: WalkerState, intent: WalkIntent, dt: number, world: WalkWorld): void {
   const magnitude = Math.min(1, Math.hypot(intent.dirX, intent.dirZ));
   const top = intent.run ? JOG_SPEED : WALK_SPEED;
   const targetX = magnitude > 0.05 ? (intent.dirX / Math.max(magnitude, 1e-6)) * top * magnitude : 0;
