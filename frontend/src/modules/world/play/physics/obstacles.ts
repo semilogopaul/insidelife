@@ -1,4 +1,5 @@
 import { AD_PLACEMENTS, venueLot, type AdPlacementSpot } from '@insidelife/shared';
+import { AIRPORT_TERMINAL_IDS, GAT_TERMINAL_IDS, airportSpec, gatSpec } from '../../city/layout/aviation-landmarks';
 import { APRON, VEHICLE_SCALE, cityPlan, frameOf, type CityPlan, type LotFrame } from '../../city/layout/placements';
 import { ColliderGrid, type Aabb } from './collision';
 
@@ -38,11 +39,18 @@ function localRect(frame: LotFrame, x: number, z: number, halfW: number, halfD: 
 
 function landmarkBoxes(): Aabb[] {
   const boxes: Aabb[] = [];
-  const airport = venueLot('mmia-airport');
-  if (airport) {
-    const frame = frameOf(airport);
-    boxes.push(localRect(frame, 0, -frame.depth / 2 + 13, 30, 9, 12));
-    boxes.push(localRect(frame, 34, -frame.depth / 2 + 9, 2.4, 2.4, 34));
+  for (const id of AIRPORT_TERMINAL_IDS) {
+    const spec = airportSpec(id);
+    if (!spec) continue;
+    boxes.push(localRect(spec.frame, 0, spec.centreZ, spec.width / 2, spec.depth / 2, spec.twoStorey ? 17 : 12));
+    boxes.push(localRect(spec.frame, spec.tower.x, spec.tower.z, 2.4, 2.4, spec.tower.height));
+  }
+  for (const id of GAT_TERMINAL_IDS) {
+    const spec = gatSpec(id);
+    if (!spec) continue;
+    boxes.push(localRect(spec.frame, spec.lounge.x, spec.lounge.z, spec.lounge.halfW, spec.lounge.halfD, spec.lounge.height));
+    boxes.push(localRect(spec.frame, spec.hangar.x, spec.hangar.z, spec.hangar.halfW, spec.hangar.halfD, spec.hangar.height));
+    boxes.push(localRect(spec.frame, spec.tower.x, spec.tower.z, 1.2, 1.2, spec.tower.height));
   }
   const stadium = venueLot('national-stadium');
   if (stadium) {

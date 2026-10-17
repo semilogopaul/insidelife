@@ -595,6 +595,20 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
         plan.vehicle(i % 2 ? 'taxi' : 'sedan', x, z, Math.atan2(frame.az, frame.ax));
       }
       return;
+    case 'aviation-terminal': {
+      plan.lotGround.set(lotIndex, 0x9d9a92);
+      // The lounge, hangar and control cab are procedural (Landmarks); a few palms and the owners' cars out front.
+      for (let u = -frame.width / 2 + 3; u < frame.width / 2 - 2; u += 7) {
+        const [x, z] = at(frame, u, frontLine - 0.8);
+        plan.palm(x, z, random, 0);
+      }
+      const models = ['suv-luxury', 'sedan', 'suv'] as const;
+      for (let i = 0; i < 3; i++) {
+        const [x, z] = at(frame, -frame.width / 2 + 5 + i * Math.min(7, (frame.width - 10) / 3), frontLine - 3.2);
+        plan.vehicle(models[i % models.length] as (typeof models)[number], x, z, Math.atan2(frame.az, frame.ax));
+      }
+      return;
+    }
     case 'campus': {
       plan.lotGround.set(lotIndex, 0x86a35a);
       const blocks: BuildingRef[] = ['c:building-c', 'c:building-e', 'c:building-k', 'c:building-c'];

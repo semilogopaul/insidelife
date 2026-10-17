@@ -566,6 +566,7 @@ export const CERTIFICATION_LABELS: Readonly<Record<string, string>> = {
   pmp: 'PMP Certified',
   ielts: 'IELTS Academic',
   'drivers-licence': 'FRSC Driver’s Licence',
+  ppl: 'Private Pilot Licence (PPL)',
   nysc: 'NYSC Certificate of National Service',
 };
 

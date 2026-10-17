@@ -30,7 +30,7 @@ describe('tour sequencing', () => {
   });
 
   it('covers every topic, in order, with a stable target on each step', () => {
-    expect(TOUR_STEPS.map((step) => step.id)).toEqual(['move', 'car', 'map-app', 'map-place', 'map-go', 'map-ride', 'goals-pill', 'goals-app', 'clean-hide', 'clean-show', 'motors', 'homes', 'promote']);
+    expect(TOUR_STEPS.map((step) => step.id)).toEqual(['move', 'car', 'map-app', 'map-place', 'map-go', 'map-ride', 'goals-pill', 'goals-app', 'clean-hide', 'clean-show', 'motors', 'homes', 'flights', 'hangar', 'promote']);
     expect(TOUR_STEPS.every((step) => step.targets.length > 0)).toBe(true);
   });
 
@@ -110,11 +110,11 @@ describe('TourCard', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1_600);
     });
-    const card = screen.getByRole('dialog', { name: /Step 2 of 13: Cars: in and out/ });
+    const card = screen.getByRole('dialog', { name: /Step 2 of 15: Cars: in and out/ });
     expect(screen.getByTestId('tour').dataset.target).toBe('missing');
     expect(card.dataset.placement).toBe('centred');
     expect(document.activeElement).toBe(card);
-    expect(screen.getByText('2 of 13')).toBeTruthy();
+    expect(screen.getByText('2 of 15')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(screen.getByRole('button', { name: 'Skip' }));

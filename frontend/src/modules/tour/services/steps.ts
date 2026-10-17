@@ -113,6 +113,20 @@ export const TOUR_STEPS: readonly TourStep[] = [
     phone: { app: 'homes', param: 'rent' },
   },
   {
+    id: 'flights',
+    targets: ['flights-tabs'],
+    title: 'Fly to Abuja',
+    body: () => 'Lagos and Abuja have no road between them. In the Flights app, book an Air Peace, Ibom Air, Arik or United Nigeria flight (or the coach), check in at the airport and board at your gate. Nothing is charged until you confirm.',
+    phone: { app: 'flights' },
+  },
+  {
+    id: 'hangar',
+    targets: ['hangar-tabs'],
+    title: 'Your own plane',
+    body: () => 'The Hangar app is for private flying: buy a plane, paint it and name it, earn your pilot’s licence at the flight school, and fly it between the two General Aviation Terminals. At the terminal, walk out to your plane on the apron and board it.',
+    phone: { app: 'hangar', param: 'fleet' },
+  },
+  {
     id: 'promote',
     targets: ['promote-tabs'],
     title: 'Promote',

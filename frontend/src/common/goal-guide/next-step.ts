@@ -2,6 +2,14 @@ import { formatNaira, straightDistance, venueEntrance, type LifeGoalDto, type Su
 import type { PhoneApp } from '@/common/game/ui-store';
 import { nearestVenueOfTypes } from './directions';
 
+/** Goals that are done in a phone app of their own, once you're at the airport or the General Aviation Terminal. */
+export const GOAL_APPS: Readonly<Record<string, PhoneApp>> = {
+  'first-flight': 'flights',
+  'visit-abuja': 'flights',
+  'earn-your-wings': 'hangar',
+  'own-a-plane': 'hangar',
+};
+
 /** Within this many metres of the door you're "there": the step reads "You're at …". */
 export const ARRIVED_METRES = 30;
 
@@ -15,6 +23,8 @@ export type NextStep =
       readonly venueName: string;
       readonly point: WorldPoint;
       readonly metres: number;
+      /** The phone app that finishes the goal once you're at the place (Flights for a flight, Hangar for a plane). */
+      readonly app: PhoneApp | null;
     }
   | { readonly kind: 'goal-app'; readonly goalId: string; readonly goalTitle: string; readonly text: string; readonly app: PhoneApp }
   | {
@@ -57,7 +67,7 @@ export function nextGoalStep(goals: readonly LifeGoalDto[], from: WorldPoint, ho
   const door = nearest ? venueEntrance(nearest.venue.id) : null;
   if (!nearest || !door) {
     const hint = goal.paths.find((path) => !path.met)?.hint ?? goal.hint;
-    return { kind: 'goal-app', goalId: goal.id, goalTitle: goal.title, text: hint, app: 'goals' };
+    return { kind: 'goal-app', goalId: goal.id, goalTitle: goal.title, text: hint, app: GOAL_APPS[goal.id] ?? 'goals' };
   }
   const metres = straightDistance(from, door.position);
   return {
@@ -69,6 +79,7 @@ export function nextGoalStep(goals: readonly LifeGoalDto[], from: WorldPoint, ho
     venueName: nearest.venue.name,
     point: door.position,
     metres,
+    app: GOAL_APPS[goal.id] ?? null,
   };
 }
 
@@ -107,6 +118,8 @@ export type StepAction = { readonly type: 'gps'; readonly venueId: string; reado
 
 /** What "Go" does for a step: GPS to its place, or open the phone app it belongs to (Goals by default). */
 export function stepAction(step: NextStep): StepAction {
+  // At the airport or terminal, a flying goal goes on in its own app.
+  if (step.kind === 'goal-place' && step.app && step.metres <= ARRIVED_METRES) return { type: 'app', app: step.app };
   if (step.kind === 'goal-place') return { type: 'gps', venueId: step.venueId, venueName: step.venueName };
   if (step.kind === 'goal-app') return { type: 'app', app: step.app };
   if (step.venueId && step.venueName) return { type: 'gps', venueId: step.venueId, venueName: step.venueName };

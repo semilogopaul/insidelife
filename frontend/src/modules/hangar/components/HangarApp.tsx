@@ -30,6 +30,7 @@ export function HangarApp() {
       <div className="sticky top-0 z-10 -mx-5 bg-paper px-5 pb-2">
         <Tabs
           label="Hangar"
+          tour="hangar-tabs"
           value={tab}
           onChange={setChosen}
           items={TABS.map((id) => ({ id, label: LABELS[id], badge: id === 'fleet' ? query.data?.mine.length : undefined }))}

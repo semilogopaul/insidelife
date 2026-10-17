@@ -6,6 +6,7 @@ import type {
   AircraftPurchaseResultDto,
   AircraftReinstatementResultDto,
   AircraftSaleResultDto,
+  ApronDto,
   HangarDto,
   PilotTrainingStepResultDto,
 } from '@insidelife/shared';
@@ -28,6 +29,12 @@ export class AviationController {
   @Get()
   overview(@CurrentUser() user: AuthUser): Promise<HangarDto> {
     return this.session.run({ userId: user.userId }, async (ctx) => this.aviation.view(ctx, await this.training.status(ctx)));
+  }
+
+  /** Other players' planes parked at a terminal (friends first, then the players there; the rest are "in hangars"). */
+  @Get('apron/:gat')
+  apron(@CurrentUser() user: AuthUser, @Param('gat') gat: string): Promise<ApronDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.aviation.apron(ctx, gat));
   }
 
   @Throttle({ default: { limit: 10, ttl: 60_000 } })

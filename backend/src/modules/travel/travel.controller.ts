@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import type { FlightSearchDto, FlightsOverviewDto, TravelActionResultDto } from '@insidelife/shared';
+import type { FlightPassengersDto, FlightSearchDto, FlightsOverviewDto, TravelActionResultDto } from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { SnapshotService } from '../life/snapshot.service.js';
@@ -27,6 +27,12 @@ export class FlightsController {
   @Get('search')
   search(@CurrentUser() user: AuthUser, @Query() query: FlightSearchQueryDto): Promise<FlightSearchDto> {
     return this.session.run({ userId: user.userId }, async (ctx) => this.flights.search(ctx, query.from, query.day));
+  }
+
+  /** The others aboard the commercial flight you are on, to fill the cabin with. */
+  @Get(':flightId/passengers')
+  passengers(@CurrentUser() user: AuthUser, @Param('flightId') flightId: string): Promise<FlightPassengersDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.flights.passengers(ctx, flightId));
   }
 
   @Throttle({ default: { limit: 30, ttl: 60_000 } })

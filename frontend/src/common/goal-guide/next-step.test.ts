@@ -106,6 +106,26 @@ describe('stepAction', () => {
   });
 });
 
+describe('flying goals', () => {
+  const airport = venueEntrance('mmia-airport')!.position;
+  const gat = venueEntrance('mmia-gat')!.position;
+  const away = { x: airport.x + 400, z: airport.z + 400 };
+
+  it('guide you to the airport or the terminal, then carry on in the Flights or Hangar app', () => {
+    const flight = goal({ id: 'first-flight', targetVenueTypes: ['airport'] });
+    expect(stepAction(nextGoalStep([flight], away, 10)!)).toMatchObject({ type: 'gps', venueId: 'mmia-airport' });
+    expect(stepAction(nextGoalStep([flight], airport, 10)!)).toEqual({ type: 'app', app: 'flights' });
+
+    const plane = goal({ id: 'own-a-plane', targetVenueTypes: ['aviation-terminal'] });
+    expect(stepAction(nextGoalStep([plane], away, 10)!)).toMatchObject({ type: 'gps', venueId: 'mmia-gat' });
+    expect(stepAction(nextGoalStep([plane], gat, 10)!)).toEqual({ type: 'app', app: 'hangar' });
+  });
+
+  it('points at the right app when a flying goal is not a place', () => {
+    expect(nextGoalStep([goal({ id: 'earn-your-wings', targetVenueTypes: [] })], away, 10)).toMatchObject({ kind: 'goal-app', app: 'hangar' });
+  });
+});
+
 describe('step completion', () => {
   it('spots a goal that finished and a path that got met', () => {
     const path = (met: boolean) => ({ id: 'p', label: 'l', hint: 'h', targetVenueTypes: [], met });

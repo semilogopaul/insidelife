@@ -16,6 +16,7 @@ import {
   type SpawnPoint,
 } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
+import { useAboard } from '@/common/aviation';
 import { queryKeys } from '@/common/api/query-keys';
 import { toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
@@ -68,6 +69,12 @@ export function usePlayBridge(presence: WorldPresence): void {
   const exit = useCallback(async (): Promise<void> => {
     const current = client.getQueryData<CharacterSnapshotDto>(queryKeys.snapshot);
     if (!current || exiting.current) return;
+    // Sitting in your plane on the apron: the cabin door steps out onto the apron, not onto the street.
+    if (useAboard.getState().aircraftId) {
+      useAboard.getState().deplane();
+      gameEvents.emit('sfx', { id: 'door-open' });
+      return;
+    }
     if (isStreetLocation(current.character.locationId)) {
       // Someone already stepped out without telling us where: rebuild the spawn from the door we came through.
       if (spawnHandoff.peek() || !lastInside.current) return;
@@ -77,7 +84,10 @@ export function usePlayBridge(presence: WorldPresence): void {
       spawnHandoff.offer(spawn, false);
       return;
     }
-    if (current.travel) return;
+    if (current.travel) {
+      if (current.travel.mode === 'flight') toast({ title: 'You’re in the air', body: 'Stay in your seat until you land.', tone: 'neutral' });
+      return;
+    }
     exiting.current = true;
     try {
       const { spawn, snapshot: next } = await movementApi.exit();

@@ -4,6 +4,7 @@ import {
   CITIES,
   FLIGHT_CABINS,
   FLIGHT_CHANGE_FEE,
+  FLIGHT_PASSENGERS_MAX,
   INTERSTATE_BUS,
   MINUTES_PER_DAY,
   MINUTES_PER_HOUR,
@@ -15,6 +16,7 @@ import {
   flightFare,
   flightWindows,
   flightsBetween,
+  formatClock12,
   formatNaira,
   isInterruptibleActivity,
   otherCity,
@@ -23,6 +25,8 @@ import {
   type FlightCabin,
   type FlightChannel,
   type FlightDefinition,
+  type FlightPassengerDto,
+  type FlightPassengersDto,
   type FlightSearchDto,
   type FlightsOverviewDto,
   type InterstateBusDto,
@@ -30,7 +34,15 @@ import {
 import { ConflictException, GameRuleException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { FlightBookingEntity } from './entities/flight-booking.entity.js';
-import { effectiveStatus, toBookingDto, toFlightDto } from './travel.rules.js';
+import type { RowProbe } from '../simulation/row-presence.js';
+import { changedGate, dueReminders, effectiveStatus, REMINDER, toBookingDto, toFlightDto } from './travel.rules.js';
+
+/** Most characters hold no live flight booking: the reminder pass is skipped when there is no row (see `RowProbe`). */
+export const LIVE_BOOKING_ROWS: RowProbe = {
+  key: 'travel:live-bookings',
+  table: 'flight_bookings',
+  where: "character_id = $1 AND status IN ('booked', 'checked-in')",
+};
 
 /** Bookings stay on the Flights app this long after they land. */
 const RECENT_MINUTES = 2 * MINUTES_PER_DAY;
@@ -87,6 +99,74 @@ export class FlightsService {
       out.push(toBookingDto(row, flight, ctx.time, this.atAirport(ctx, flight.fromAirportVenueId)));
     }
     return out;
+  }
+
+  /**
+   * The others on the flight you are aboard (for the cabin): at most `FLIGHT_PASSENGERS_MAX`, friends and everyone else
+   * alike, never anyone you blocked or who blocked you. Only a commercial flight you are on has passengers.
+   */
+  async passengers(ctx: SimulationContext, flightId: string): Promise<FlightPassengersDto> {
+    const travel = ctx.character.travel;
+    if (!findFlight(ctx.world.seed, flightId)) throw new ResourceNotFoundException('Flight');
+    if (travel?.mode !== 'flight' || travel.flightId !== flightId) return { flightId, total: 0, passengers: [] };
+    const rows: Array<FlightPassengerDto & { readonly total: string }> = await ctx.manager.query(
+      `SELECT c.id, c.handle, c.first_name AS "firstName", c.gender, c.appearance, c.outfit, COUNT(*) OVER () AS total
+         FROM characters c
+        WHERE c.alive AND c.hidden_at IS NULL AND c.id <> $2
+          AND c.travel IS NOT NULL AND c.travel->>'mode' = 'flight' AND c.travel->>'flightId' = $1
+          AND NOT EXISTS (SELECT 1 FROM social_blocks b
+                           WHERE (b.blocker_id = $2 AND b.blocked_id = c.id) OR (b.blocker_id = c.id AND b.blocked_id = $2))
+        ORDER BY c.id
+        LIMIT ${FLIGHT_PASSENGERS_MAX}`,
+      [flightId, ctx.character.id],
+    );
+    return {
+      flightId,
+      total: Number(rows[0]?.total ?? 0),
+      passengers: rows.map(({ total: _total, ...passenger }) => passenger),
+    };
+  }
+
+  // ----- reminders -------------------------------------------------------------------------------------------------
+
+  /**
+   * Tell the player what their live bookings are waiting for, once each: "check-in closes in 30 min", a gate change,
+   * "boarding now". Runs on every settle (cheap: skipped when the character has no live booking).
+   */
+  async remind(ctx: SimulationContext): Promise<void> {
+    if (!(await ctx.mayHaveRows(LIVE_BOOKING_ROWS))) return;
+    const rows = await ctx.manager.find(FlightBookingEntity, { where: { characterId: ctx.character.id, status: In(['booked', 'checked-in']) } });
+    for (const row of rows) {
+      const due = dueReminders(row, ctx.time);
+      if (due.length === 0) continue;
+      const flight = findFlight(ctx.world.seed, row.flightId);
+      if (!flight) continue;
+      const to = CITIES[flight.toCity].name;
+      for (const reminder of due) {
+        row.notified |= REMINDER[reminder.kind];
+        let title: string;
+        let body: string;
+        let tone: 'good' | 'bad' | 'neutral' = 'neutral';
+        if (reminder.kind === 'CHECK_IN_CLOSING') {
+          const left = Math.max(0, flightWindows(flight).checkInClosesAt - ctx.time);
+          title = `Check-in closes in ${Math.max(1, Math.round(left))} min`;
+          body = `${flight.number} to ${to}: check in at ${airportName(flight.fromAirportVenueId)} before ${formatClock12(flightWindows(flight).checkInClosesAt)}, or you’ll pay ${formatNaira(FLIGHT_CHANGE_FEE)} to change.`;
+          tone = 'bad';
+        } else if (reminder.kind === 'GATE_CHANGE') {
+          const gate = changedGate(row.id, row.gate);
+          if (!gate) continue;
+          row.gate = gate;
+          title = `Gate change: ${flight.number}`;
+          body = `${flight.number} to ${to} now boards at gate ${gate}. Check your boarding pass.`;
+        } else {
+          title = `Boarding now: ${flight.number}`;
+          body = `Gate ${row.gate} is open for ${flight.number} to ${to}. Board before ${formatClock12(flightWindows(flight).gateClosesAt)}.`;
+          tone = 'good';
+        }
+        if (!reminder.stale) ctx.notify({ kind: 'travel', title, body, tone, gameMinute: reminder.dueAt });
+      }
+      await ctx.manager.save(FlightBookingEntity, row);
+    }
   }
 
   // ----- booking ---------------------------------------------------------------------------------------------------
