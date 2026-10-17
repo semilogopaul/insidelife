@@ -281,6 +281,8 @@ export interface CarDealerStock {
 export const CAR_DEALER_STOCK: Readonly<Record<string, CarDealerStock>> = {
   'berger-car-market': { grades: ['naija-used', 'tokunbo'], maxPrice: 50_000_000 },
   'lekki-car-mart': { grades: ['tokunbo', 'brand-new'], minPrice: 15_000_000 },
+  // Polanco, Victoria Island: brand-new and clean tokunbo only (no Naija-used), from the family car up.
+  'polanco-motors': { grades: ['tokunbo', 'brand-new'], minPrice: 5_000_000 },
 };
 
 /** True if the venue is a car dealer with this vehicle on the lot. */

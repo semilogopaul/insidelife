@@ -1042,7 +1042,7 @@ export interface NpcOccupationDefinition extends OccupationDefinition {
 
 /** Jobs of people you meet around Lagos. */
 export const NPC_OCCUPATIONS: readonly NpcOccupationDefinition[] = [
-  { id: 'student', title: 'Undergraduate', wealth: 'sapa', monthlyIncome: 0, minAge: 17, maxAge: 26, venueTypes: ['campus', 'cinema', 'park', 'beach', 'church', 'mosque'] },
+  { id: 'student', title: 'Undergraduate', wealth: 'sapa', monthlyIncome: 0, minAge: 17, maxAge: 26, venueTypes: ['campus', 'cinema', 'park', 'stadium', 'beach', 'church', 'mosque'] },
   { id: 'banker', title: 'Banker', wealth: 'comfortable', monthlyIncome: 450_000, minAge: 22, maxAge: 55, venueTypes: ['office', 'bar', 'restaurant', 'gym', 'mall'] },
   { id: 'developer', title: 'Software developer', wealth: 'comfortable', monthlyIncome: 900_000, minAge: 19, maxAge: 45, venueTypes: ['office', 'bar', 'gym', 'cinema'] },
   { id: 'nurse', title: 'Nurse', wealth: 'managing', monthlyIncome: 220_000, minAge: 21, maxAge: 55, venueTypes: ['church', 'mosque', 'buka', 'market'] },
@@ -1059,7 +1059,7 @@ export const NPC_OCCUPATIONS: readonly NpcOccupationDefinition[] = [
   { id: 'makeup-artist', title: 'Makeup artist', wealth: 'managing', monthlyIncome: 180_000, minAge: 18, maxAge: 40, venueTypes: ['mall', 'event-centre', 'salon', 'club'] },
   { id: 'accountant', title: 'Accountant', wealth: 'comfortable', monthlyIncome: 400_000, minAge: 22, maxAge: 60, venueTypes: ['office', 'church', 'mosque', 'gym'] },
   { id: 'musician', title: 'Upcoming afrobeats artist', wealth: 'sapa', monthlyIncome: 60_000, minAge: 18, maxAge: 35, venueTypes: ['club', 'bar', 'beach', 'event-centre'] },
-  { id: 'fitness-coach', title: 'Fitness coach', wealth: 'managing', monthlyIncome: 200_000, minAge: 20, maxAge: 45, venueTypes: ['gym', 'park', 'beach'] },
+  { id: 'fitness-coach', title: 'Fitness coach', wealth: 'managing', monthlyIncome: 200_000, minAge: 20, maxAge: 45, venueTypes: ['gym', 'park', 'stadium', 'beach'] },
   { id: 'pos-agent', title: 'POS agent', wealth: 'sapa', monthlyIncome: 180_000, minAge: 18, maxAge: 50, venueTypes: ['market', 'buka', 'motor-park'] },
   { id: 'entrepreneur', title: 'Entrepreneur', wealth: 'wealthy', monthlyIncome: 2_500_000, minAge: 24, maxAge: 60, venueTypes: ['club', 'restaurant', 'gym', 'event-centre', 'bar'] },
   { id: 'oil-gas', title: 'Oil & gas engineer', wealth: 'wealthy', monthlyIncome: 1_800_000, minAge: 24, maxAge: 60, venueTypes: ['office', 'club', 'restaurant', 'gym'] },
@@ -1072,6 +1072,7 @@ export const VENUE_AGE_RANGES: Readonly<Partial<Record<VenueType, readonly [numb
   bar: [21, 50],
   beach: [18, 40],
   park: [17, 45],
+  stadium: [17, 45],
   cinema: [17, 40],
   gym: [18, 45],
   office: [22, 55],

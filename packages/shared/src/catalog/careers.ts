@@ -1,4 +1,5 @@
 import { boosted } from '../money/income-multiplier.js';
+import { BASE_USD_RATE } from '../world/world.js';
 import type { SkillKey } from './life.js';
 
 /**
@@ -167,6 +168,8 @@ export interface JobLevelDefinition {
   readonly certifications?: readonly string[];
   /** NYSC needed for this level (doctors go from housemanship to NYSC to medical officer). */
   readonly nysc?: boolean;
+  /** Minimum highest qualification to be promoted into this level (set automatically for well-paid levels, see `JOBS`). */
+  readonly education?: CareerEducationLevel;
   /** "Man know man": minimum connections (0-100) for this level. */
   readonly minConnections?: number;
   /** Only a breakout life event gets you here (a hit song, a viral skit). */
@@ -227,6 +230,11 @@ export interface JobDefinition {
   /** A licence earned by serving the entry level (housemanship → full MDCN licence). */
   readonly licence?: { readonly certification: string; readonly afterYears: number };
   readonly traits: readonly JobTrait[];
+  /**
+   * Exempt from the degree rule for well-paid levels (the ₦10m cap still applies). Only professional football: talent,
+   * not a certificate, takes you from the academy to the Super Eagles and a club abroad.
+   */
+  readonly degreeExempt?: boolean;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -1030,6 +1038,39 @@ const LAGOS_JOBS: readonly JobDefinition[] = [
     traits: ['headhunt'],
   }),
 
+  // --- Football ---------------------------------------------------------------------------------------------------
+  job({
+    id: 'football-career',
+    title: 'Professional footballer',
+    employer: 'MFM FC (NPFL) academy and first team',
+    industry: 'Football',
+    sector: 'entry',
+    emoji: '⚽',
+    blurb: 'Soccer: trials at the National Stadium in Surulere as a keeper, defender, midfielder or striker, a first NPFL contract, the captain’s armband, a Super Eagles call-up and, if you are good enough, a move to a club in Europe.',
+    workplaceId: 'national-stadium',
+    workMode: 'onsite',
+    schedule: { days: MON_SAT, startHour: 8, hours: 5 },
+    currency: 'NGN',
+    requirements: { minAge: 16, maxAge: 30, skills: { fitness: 35 } },
+    levels: [
+      { title: 'Academy trainee', pay: 35_000, minYears: 1, status: 8 },
+      { title: 'Reserve-team player', pay: 90_000, minYears: 1.5, skills: { fitness: 45 }, status: 20 },
+      { title: 'NPFL first-team player', pay: 230_000, minYears: 2, skills: { fitness: 55, hustle: 20 }, minConnections: 10, status: 60 },
+      { title: 'NPFL starter', pay: 320_000, minYears: 3, skills: { fitness: 65, charisma: 20 }, minConnections: 20, status: 110 },
+      { title: 'NPFL club captain', pay: 420_000, minYears: 2, skills: { fitness: 75, charisma: 35 }, minConnections: 30, status: 190 },
+      { title: 'Super Eagles international', pay: 700_000, minYears: 2, skills: { fitness: 82, charisma: 45 }, minConnections: 45, status: 320 },
+      { title: 'Pro abroad (European league)', pay: 1_300_000, minYears: 0, skills: { fitness: 90, charisma: 55 }, minConnections: 60, status: 480 },
+    ],
+    perks: { pension: true, paye: true, hmo: true, holidays: false, leaveDays: 10 },
+    stress: 0.5,
+    skillXpPerHour: { fitness: 0.008, charisma: 0.002, hustle: 0.002 },
+    hiring: { selectivity: 0.5, academicWeight: 0, connectionWeight: 0.3, interviewChance: 0 },
+    payVolatility: 0.1,
+    dettyDecemberPay: 1.1,
+    traits: [],
+    degreeExempt: true,
+  }),
+
   // --- Creative --------------------------------------------------------------------------------------------------
   job({
     id: 'afrobeats-musician',
@@ -1089,11 +1130,50 @@ const LAGOS_JOBS: readonly JobDefinition[] = [
   }),
 ];
 
-/** What the game pays: every level × INCOME_MULTIPLIER (naira to the nearest ₦1,000, dollars to the nearest $1). */
-export const JOBS: readonly JobDefinition[] = LAGOS_JOBS.map((job) => ({
-  ...job,
-  levels: job.levels.map((level) => ({ ...level, pay: boosted(level.pay, job.currency === 'NGN' ? 1_000 : 1) })),
-}));
+/** No job level pays more than this a month, in naira after the Lagos-boom multiplier. */
+export const JOB_MAX_MONTHLY_NGN = 10_000_000;
+/** The most a dollar job pays a month: the dollar amount worth `JOB_MAX_MONTHLY_NGN` at the game's base rate (`BASE_USD_RATE`). */
+export const JOB_MAX_MONTHLY_USD = Math.floor(JOB_MAX_MONTHLY_NGN / BASE_USD_RATE);
+/** A level paying this much a month (in naira, dollars at `BASE_USD_RATE`) or more needs a degree. */
+export const JOB_DEGREE_PAY_THRESHOLD_NGN = 3_000_000;
+/** The lowest qualification such a level accepts: an HND or a bachelor's degree (or higher). */
+export const JOB_DEGREE_EDUCATION: CareerEducationLevel = 'hnd';
+
+/** What a level pays in naira a month (dollar pay at the base rate): the figure the caps and degree rule compare. */
+export function jobPayInNaira(currency: JobCurrency, pay: number): number {
+  return currency === 'USD' ? pay * BASE_USD_RATE : pay;
+}
+
+/** Does a level at this pay need a degree? */
+export function payNeedsDegree(currency: JobCurrency, pay: number): boolean {
+  return jobPayInNaira(currency, pay) >= JOB_DEGREE_PAY_THRESHOLD_NGN;
+}
+
+/**
+ * What the game pays: every level x INCOME_MULTIPLIER (naira to the nearest ₦1,000, dollars to the nearest $1), then
+ * held to the salary rules: no level pays above `JOB_MAX_MONTHLY_NGN` (dollar jobs: `JOB_MAX_MONTHLY_USD`), and any
+ * level paying `JOB_DEGREE_PAY_THRESHOLD_NGN` or more needs an HND/bachelor's degree: as an entry requirement for the
+ * first level, as a promotion gate (`education`) for the rest.
+ */
+function applySalaryRules(job: JobDefinition): JobDefinition {
+  const cap = job.currency === 'NGN' ? JOB_MAX_MONTHLY_NGN : JOB_MAX_MONTHLY_USD;
+  const entryRank = CAREER_EDUCATION_LEVELS.indexOf(job.requirements.education ?? 'none');
+  const degreeRank = CAREER_EDUCATION_LEVELS.indexOf(JOB_DEGREE_EDUCATION);
+  const levels = job.levels.map((level) => {
+    const pay = Math.min(cap, boosted(level.pay, job.currency === 'NGN' ? 1_000 : 1));
+    const needsDegree = !job.degreeExempt && payNeedsDegree(job.currency, pay) && entryRank < degreeRank && CAREER_EDUCATION_LEVELS.indexOf(level.education ?? 'none') < degreeRank;
+    return needsDegree ? { ...level, pay, education: JOB_DEGREE_EDUCATION } : { ...level, pay };
+  });
+  const [entry, ...rest] = levels;
+  // The first level has no promotion to gate: a degree there is a requirement to be hired at all.
+  if (entry?.education) {
+    const { education, ...entryLevel } = entry;
+    return { ...job, requirements: { ...job.requirements, education }, levels: [entryLevel, ...rest] };
+  }
+  return { ...job, levels };
+}
+
+export const JOBS: readonly JobDefinition[] = LAGOS_JOBS.map(applySalaryRules);
 
 const JOB_INDEX: ReadonlyMap<string, JobDefinition> = new Map(JOBS.map((definition) => [definition.id, definition]));
 

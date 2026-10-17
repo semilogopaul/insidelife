@@ -50,14 +50,28 @@ describe('job eligibility', () => {
   it('gates remote dollar work on a laptop, power and real tech skill', () => {
     const remote = job('remote-software-engineer');
     const skilled = skills({ tech: 55 });
-    const noKit = jobRequirementChecks(remote, profile({ skills: skilled }));
+    const noKit = jobRequirementChecks(remote, profile({ skills: skilled, credentials: graduate() }));
     expect(missingLabels(noKit)).toEqual(['A laptop', 'Steady power at home (inverter, solar or generator)']);
-    const withInverter = jobRequirementChecks(remote, profile({ skills: skilled, itemTags: new Set(['laptop', 'inverter']) }));
+    const withInverter = jobRequirementChecks(remote, profile({ skills: skilled, credentials: graduate(), itemTags: new Set(['laptop', 'inverter']) }));
     expect(allMet(withInverter)).toBe(true);
-    const withGenerator = jobRequirementChecks(remote, profile({ skills: skilled, itemTags: new Set(['laptop', 'generator']) }));
+    const withGenerator = jobRequirementChecks(remote, profile({ skills: skilled, credentials: graduate(), itemTags: new Set(['laptop', 'generator']) }));
     expect(allMet(withGenerator)).toBe(true);
-    const unskilled = jobRequirementChecks(remote, profile({ skills: skills({ tech: 30 }), itemTags: new Set(['laptop', 'solar']) }));
+    const unskilled = jobRequirementChecks(remote, profile({ skills: skills({ tech: 30 }), credentials: graduate(), itemTags: new Set(['laptop', 'solar']) }));
     expect(allMet(unskilled)).toBe(false);
+  });
+
+  it('asks for a degree at the well-paid remote levels, and the first level needs an HND or better to be hired', () => {
+    const remote = job('remote-software-engineer');
+    const kit = { skills: skills({ tech: 55 }), itemTags: new Set(['laptop', 'inverter']) };
+    expect(missingLabels(jobRequirementChecks(remote, profile(kit)))).toEqual(['HND or higher']);
+  });
+
+  it('gates promotion into a ₦3m+ level on a degree', () => {
+    const swe = job('software-engineer');
+    const level = swe.levels.find((candidate) => candidate.education);
+    expect(level).toBeDefined();
+    expect(missingLabels(levelGateChecks(level!, profile()))).toContain('HND or higher');
+    expect(allMet(levelGateChecks(level!, profile({ credentials: graduate() })).filter((check) => check.key === 'gate:education'))).toBe(true);
   });
 
   it('needs a car and a licence to drive for Bolt', () => {

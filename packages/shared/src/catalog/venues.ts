@@ -35,6 +35,7 @@ export const VENUE_TYPES = [
   'mansion',
   'private-jet',
   'refinery',
+  'stadium',
 ] as const;
 export type VenueType = (typeof VENUE_TYPES)[number];
 
@@ -85,7 +86,7 @@ export const VENUES = [
   v({ id: 'mushin-pharmacy', name: 'Iya Oloogun Pharmacy', type: 'pharmacy', districtId: 'mushin', blurb: 'Self-medication starts here.', hours: [7, 22] }),
 
   // Surulere
-  v({ id: 'national-stadium', name: 'National Stadium', type: 'park', districtId: 'surulere', blurb: 'Jog the tracks, play ball, feel 1990s glory.' }),
+  v({ id: 'national-stadium', name: 'National Stadium', type: 'stadium', districtId: 'surulere', blurb: 'Jog the tracks, play ball, feel 1990s glory. Home ground of Lagos football: academy trials, NPFL training and match days.' }),
   v({ id: 'shitta-amala', name: 'Shitta Amala Joint', type: 'buka', districtId: 'surulere', blurb: 'Amala, gbegiri, ewedu. Legendary queue.', hours: [9, 21] }),
   v({ id: 'surulere-clinic', name: 'Bode Thomas Clinic', type: 'hospital-private', districtId: 'surulere', blurb: 'Neighbourhood private clinic.', hours: [0, 24] }),
   v({ id: 'surulere-school', name: 'Adeniran Memorial Schools', type: 'school', districtId: 'surulere', blurb: 'Nursery, primary and secondary.', hours: [7, 17] }),
@@ -122,6 +123,7 @@ export const VENUES = [
   v({ id: 'vi-lounge', name: 'Ozumba Rooftop Lounge', type: 'bar', districtId: 'victoria-island', blurb: 'Afterwork drinks with a skyline.', hours: [14, 27] }),
   v({ id: 'eko-atlantic', name: 'Eko Atlantic Towers', type: 'office', districtId: 'victoria-island', blurb: 'Oil, gas and glass towers on reclaimed land.', hours: [7, 21] }),
   v({ id: 'island-specialist', name: 'Island Specialist Hospital', type: 'hospital-private', districtId: 'victoria-island', blurb: 'Premium private care. Premium bills.' }),
+  v({ id: 'polanco-motors', name: 'Polanco', type: 'car-dealer', districtId: 'victoria-island', blurb: 'Ahmadu Bello Way showroom: brand-new and clean tokunbo, from daily drivers to the SUVs on every Island driveway.', hours: [9, 19] }),
   v({ id: 'tarkwa-bay', name: 'Tarkwa Bay', type: 'beach', districtId: 'victoria-island', blurb: 'Boat ride, quiet sand, fresh fish.', hours: [8, 19] }),
 
   v({ id: 'quilox', name: 'Quilox', type: 'club', districtId: 'victoria-island', blurb: 'Ozumba Mbadiwe’s most famous door: LED walls, bottle parades, celebrities in VIP.', minStatus: 350, hours: [23, 31] }),

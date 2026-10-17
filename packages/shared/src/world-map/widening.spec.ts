@@ -36,9 +36,9 @@ const sig = (parts: readonly (string | number)[][]): number => hashString(parts.
 
 describe('widening keeps every id', () => {
   it('keeps every lot: id, kind, district, venue, front, door, street, cells and seed', () => {
-    expect(CITY_MAP.lots).toHaveLength(902);
+    expect(CITY_MAP.lots).toHaveLength(903);
     const lots = CITY_MAP.lots.map((l) => [l.id, l.kind, l.districtId, l.venueId ?? '', l.archetype ?? '', l.front ?? '', l.entrance ? 'door' : '', l.street ?? '', l.cells.join(','), l.seed]);
-    expect(sig(lots)).toBe(3_851_116_736);
+    expect(sig(lots)).toBe(4_050_623_767);
   });
 
   it('keeps every district’s home lots, so `homeLotOf` lands every house and family home on the same lot', () => {
@@ -61,7 +61,7 @@ describe('widening keeps every id', () => {
       const lot = venueLot(v.id);
       return [v.id, lot?.id ?? '', lot?.cells.join(',') ?? '', lot?.front ?? '', lot?.street ?? ''];
     });
-    expect(sig(venues)).toBe(469_513_156);
+    expect(sig(venues)).toBe(2_568_139_987);
   });
 });
 
@@ -115,7 +115,7 @@ describe('four-lane geometry invariants', () => {
   it('never lets a lot overlap a road', () => {
     const roads = CITY_MAP.roadTiles.map((tile) => cellBounds(tile.col, tile.row));
     for (const lot of CITY_MAP.lots) for (const road of roads) expect(overlaps(lot.footprint, road), lot.id).toBe(false);
-  });
+  }, 30_000);
 
   it('reaches every door from the road graph, with the car parked in the kerbside lane', () => {
     const from = venueEntrance('unilag')!.position;

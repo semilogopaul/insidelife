@@ -1,4 +1,4 @@
-import { JOBS, boosted, findVenue, jobPayRange } from '@insidelife/shared';
+import { JOBS, JOB_MAX_MONTHLY_USD, boosted, findVenue, jobPayRange } from '@insidelife/shared';
 
 describe('careers catalog', () => {
   it('has about thirty jobs with unique ids', () => {
@@ -26,9 +26,9 @@ describe('careers catalog', () => {
     }
   });
 
-  it('calibrates the remote dollar ladder to $1,200 → $11,000 × the income multiplier', () => {
+  it('calibrates the remote dollar ladder to $1,200 × the income multiplier, capped at the dollar amount worth ₦10m', () => {
     const remote = JOBS.find((job) => job.currency === 'USD');
-    expect(remote && jobPayRange(remote)).toEqual({ min: boosted(1_200, 1), max: boosted(11_000, 1) });
+    expect(remote && jobPayRange(remote)).toEqual({ min: Math.min(boosted(1_200, 1), JOB_MAX_MONTHLY_USD), max: JOB_MAX_MONTHLY_USD });
   });
 
   it('keeps schedules sane', () => {

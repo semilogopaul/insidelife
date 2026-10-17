@@ -320,6 +320,8 @@ export const VENUE_LOTS: readonly VenueLotSpec[] = [
   lot('air-obo', [42, 31, 44, 31], 'W', 'jet-pad'),
   // Dangote Refinery's visitor centre and gate, on the Ikorodu-Epe Road junction; the works fill the shore behind it.
   lot('dangote-refinery', [60, 26, 60, 26], 'E', 'refinery'),
+  // Polanco, the Victoria Island car dealer: a showroom on the waterfront strip south of Ahmadu Bello Way.
+  lot('polanco-motors', [27, 39, 29, 39], 'N', 'car-dealer'),
 ];
 
 /** Landmark lots that are not venues (the renderer puts something iconic there and no filler building). */

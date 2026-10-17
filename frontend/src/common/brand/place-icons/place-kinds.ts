@@ -117,6 +117,7 @@ const BY_VENUE_TYPE: Readonly<Record<VenueType, PlaceKind>> = {
   restaurant: 'food',
   beach: 'beach',
   park: 'park',
+  stadium: 'stadium',
   'cbt-centre': 'exam-centre',
   airport: 'airport',
   'motor-park': 'motor-park',
