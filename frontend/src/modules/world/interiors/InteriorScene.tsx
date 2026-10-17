@@ -131,7 +131,7 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const ownActions = useMemo(() => listed.filter(isPlaceAction), [listed]);
   const goalHere = useGoalHere(goalOverride === undefined ? venueType : null, ownActions, services);
   const goal = goalOverride === undefined ? goalHere : goalOverride;
-  const busy = busyOverride ?? (here && isBusy(snapshot));
+  const busy = busyOverride ?? (here && isBusy(snapshot, minute));
   // Same rules and reasons as the venue sheet (open hours, age, money…); previews without a session allow everything.
   const availability = useActionAvailability(here ? snapshot : undefined);
   const status = useCallback((entry: ActionDefinition | PlaceService): ActionStatus => {

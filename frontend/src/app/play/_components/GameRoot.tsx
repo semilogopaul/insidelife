@@ -11,6 +11,8 @@ import { dmLink, useDmAlerts } from '@/common/chat';
 import { ErrorBoundary, toast } from '@/common/components';
 import { gameEvents } from '@/common/game/game-events';
 import { usePlayState } from '@/common/game/play-state';
+import { useDeliveryArrival } from '@/common/game/delivery-arrival';
+import { useSkillChangeToasts } from '@/common/game/skill-changes';
 import { useSnapshot, useSnapshotConsistency } from '@/common/game/snapshot';
 import { PHONE_APPS as ALL_PHONE_APPS, useUi, type PhoneApp } from '@/common/game/ui-store';
 import { usePaymentRecovery } from '@/common/payments';
@@ -79,6 +81,8 @@ export function GameRoot() {
   // the world in step with the server when it moves the character anyway (the player was away, a collapse…).
   usePlayState(characterId);
   useSnapshotConsistency();
+  useSkillChangeToasts();
+  useDeliveryArrival();
 
   // New DMs anywhere in the game: badge the phone and pop up an alert that opens the conversation in Messages.
   useDmAlerts(characterId, (sender) => useUi.getState().openPhone('messages', dmLink(sender)));

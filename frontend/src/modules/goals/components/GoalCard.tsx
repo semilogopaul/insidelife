@@ -1,5 +1,7 @@
-import { Check, Circle, Gift, Lightbulb, Navigation, Sparkles } from 'lucide-react';
-import type { LifeGoalDto, LifeGoalRewardDto, VenueType } from '@insidelife/shared';
+import { Check, Circle, Gift, Lightbulb, Navigation, Sparkles, TrendingUp } from 'lucide-react';
+import { SKILL_LABELS, type LifeGoalDto, type LifeGoalRewardDto, type VenueType } from '@insidelife/shared';
+import { openSkills, skillsMentioned } from '@/common/game/skill-changes';
+import { useSnapshot } from '@/common/game/snapshot';
 import { Badge, Button, Money, ProgressBar } from '@/common/components';
 import { cn } from '@/common/utils/cn';
 import { formatProgress } from '../services/progress-format';
@@ -13,6 +15,8 @@ export interface GoalCardProps {
 export function GoalCard({ goal, onDirections }: GoalCardProps) {
   const progressText = goal.progress ? formatProgress(goal.progress) : null;
   const goalTypes = goal.paths.length > 0 ? [] : goal.targetVenueTypes;
+  const { data: snapshot } = useSnapshot();
+  const mentioned = skillsMentioned([goal.description, goal.hint, ...goal.paths.flatMap((p) => [p.label, p.hint])].join(' '));
   return (
     <article className="flex flex-col gap-2.5 rounded-card bg-paper-2 p-3.5 ring-1 ring-line">
       <div className="flex items-start gap-2.5">
@@ -56,6 +60,12 @@ export function GoalCard({ goal, onDirections }: GoalCardProps) {
             </li>
           ))}
         </ul>
+      )}
+
+      {mentioned.length > 0 && snapshot && (
+        <Button size="sm" variant="paper" className="ml-7 self-start" icon={<TrendingUp size={14} aria-hidden />} onClick={openSkills}>
+          {mentioned.map((skill) => `${SKILL_LABELS[skill]} ${Math.floor(snapshot.character.skills[skill])}`).join(' · ')} · See skills
+        </Button>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 pl-7">

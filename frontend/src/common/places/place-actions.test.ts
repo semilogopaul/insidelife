@@ -70,4 +70,11 @@ describe('place actions', () => {
     );
     expect(isBusy(snapshotAt('vi-lounge'))).toBe(false);
   });
+
+  it('stops being busy the moment the activity ends, even before the snapshot refreshes', () => {
+    const snap = snapshotAt('vi-lounge', [{ kind: 'action', explicit: true, actionId: 'lounge', startsAt: 100, endsAt: 160 }]);
+    expect(isBusy(snap, 159)).toBe(true);
+    expect(isBusy(snap, 160)).toBe(false);
+    expect(isBusy(snap, 500)).toBe(false);
+  });
 });

@@ -53,7 +53,21 @@ export function useSnapshot() {
     return () => window.clearTimeout(id);
   }, [lastEnd, client]);
 
+  // The moment the current activity ends the snapshot is stale (the HUD would still say "busy"): refresh it then.
+  const endsAt = query.data?.timeline[0]?.endsAt;
+  useEffect(() => {
+    if (endsAt === undefined || !gameClock.ready) return;
+    const delay = activityEndRefreshDelayMs(gameClock.localMsAt(endsAt) - Date.now());
+    const id = window.setTimeout(() => void client.invalidateQueries({ queryKey: queryKeys.snapshot }), delay);
+    return () => window.clearTimeout(id);
+  }, [endsAt, client]);
+
   return query;
+}
+
+/** When to refetch after the current activity: just past its end, never in a tight loop (≥ 1 s), at most a day away. */
+export function activityEndRefreshDelayMs(msUntilEnd: number): number {
+  return Math.min(24 * 60 * 60_000, Math.max(1_000, msUntilEnd + 500));
 }
 
 /**
