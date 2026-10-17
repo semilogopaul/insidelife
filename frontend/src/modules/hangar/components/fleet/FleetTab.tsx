@@ -1,12 +1,15 @@
 'use client';
 
-import { Paintbrush, PlaneTakeoff } from 'lucide-react';
+import { Paintbrush, PlaneTakeoff, Sofa } from 'lucide-react';
 import { useState } from 'react';
 import { MAX_AIRCRAFT, deliveryByLabel, type GameMinute, type HangarDto, type OwnedAircraftDto } from '@insidelife/shared';
 import { Badge, Button, ConfirmSheet, Money, NextStep } from '@/common/components';
+import { useDecorEdit } from '@/common/decor';
 import { announce, complain } from '@/common/game/feedback';
+import { useSnapshot } from '@/common/game/snapshot';
+import { useUi } from '@/common/game/ui-store';
 import { useHangarCommands } from '../../hooks/use-hangar';
-import { airframeFor, gatName, liveryHex, sortFleet } from '../../services/hangar-rules';
+import { airframeFor, cabinDecorEntry, gatName, liveryHex, sortFleet } from '../../services/hangar-rules';
 import { AircraftArt } from '../AircraftArt';
 import { FlySheet } from './FlySheet';
 import { MakeItYoursSheet } from './MakeItYoursSheet';
@@ -16,6 +19,8 @@ type Pending = { readonly kind: 'sell' | 'reinstate'; readonly plane: OwnedAircr
 /** Your aircraft: where each is parked, livery and name, running costs, flying and selling. */
 export function FleetTab({ data, now, onShop }: { readonly data: HangarDto; readonly now: GameMinute; readonly onShop: () => void }) {
   const { sell, reinstate } = useHangarCommands();
+  const locationId = useSnapshot().data?.character.locationId;
+  const cabinOnScreen = useDecorEdit((state) => state.cabinId);
   const [pending, setPending] = useState<Pending>(null);
   const [flying, setFlying] = useState<string | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
@@ -105,12 +110,27 @@ export function FleetTab({ data, now, onShop }: { readonly data: HangarDto; read
               <Button variant="paper" icon={<Paintbrush size={18} aria-hidden />} onClick={() => setEditing(plane.id)}>
                 Make it yours
               </Button>
+              {cabinDecorEntry(plane.id, locationId, cabinOnScreen) === 'decorate' && (
+                <Button
+                  variant="paper"
+                  icon={<Sofa size={18} aria-hidden />}
+                  onClick={() => {
+                    useUi.getState().closePhone();
+                    useDecorEdit.getState().enter();
+                  }}
+                >
+                  Decorate cabin
+                </Button>
+              )}
               {!plane.airborne && (
                 <Button variant="paper" onClick={() => setPending({ kind: 'sell', plane })}>
                   Sell
                 </Button>
               )}
             </div>
+            {cabinDecorEntry(plane.id, locationId, cabinOnScreen) === 'step-in' && (
+              <p className="-mt-1 text-xs text-text-soft">You’re aboard: walk into the cabin to decorate it with pieces from the Decor store’s Cabin & aviation shelf.</p>
+            )}
             {plane.flyBlocker && !plane.grounded && <p className="-mt-1 text-xs text-text-soft">{plane.flyBlocker}.</p>}
           </li>
         ))}

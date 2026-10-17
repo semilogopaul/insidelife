@@ -39,7 +39,7 @@ export function DecorWorld({
   return (
     <group name="decor">
       <DecorLayer pieces={decor.placed} hiddenId={editing ? dragging : null} />
-      {editing && <DecorEditor templateId={templateId} roomId={roomId} template={template} placed={decor.placed} own={decor.own} />}
+      {editing && <DecorEditor templateId={templateId} roomId={roomId} aircraftId={decor.aircraftId} template={template} placed={decor.placed} own={decor.own} />}
     </group>
   );
 }

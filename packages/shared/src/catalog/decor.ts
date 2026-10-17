@@ -5,7 +5,7 @@
  * (they are prices, not income: no INCOME_MULTIPLIER). The server charges them; the client uses the same catalog.
  */
 
-export type DecorCategory = 'rugs' | 'beds' | 'plants' | 'aquariums' | 'art' | 'lamps' | 'soft' | 'shelves' | 'mirrors' | 'tables';
+export type DecorCategory = 'rugs' | 'beds' | 'plants' | 'aquariums' | 'art' | 'lamps' | 'soft' | 'shelves' | 'mirrors' | 'tables' | 'cabin';
 
 export const DECOR_CATEGORIES: ReadonlyArray<{ readonly id: DecorCategory; readonly label: string; readonly emoji: string }> = [
   { id: 'rugs', label: 'Rugs', emoji: '🧶' },
@@ -18,6 +18,7 @@ export const DECOR_CATEGORIES: ReadonlyArray<{ readonly id: DecorCategory; reado
   { id: 'shelves', label: 'Shelves', emoji: '📚' },
   { id: 'mirrors', label: 'Mirrors', emoji: '🪞' },
   { id: 'tables', label: 'Tables', emoji: '🪑' },
+  { id: 'cabin', label: 'Cabin & aviation', emoji: '✈️' },
 ];
 
 /** `floor` stands on the floor; `wall` hangs on the back or left wall; `tabletop` sits on a surface (a table, a bed, a shelf). */
@@ -59,6 +60,9 @@ export const DECOR_SHAPES = [
   'shelf-cube',
   'mirror',
   'table',
+  'minibar',
+  'bench',
+  'aircraft-model',
 ] as const;
 export type DecorShape = (typeof DECOR_SHAPES)[number];
 
@@ -91,6 +95,12 @@ export interface DecorItem {
   /** Wall pieces: how high the bottom edge hangs by default (m). */
   readonly hangAt?: number;
   readonly nigerian?: boolean;
+  /**
+   * Whether it may be fitted in an aircraft cabin (decor-aircraft.ts has the room rules): `cabin` is secured for flight
+   * and goes in the cabin, suite, lavatory or cockpit as its placement allows; `suite` (beds) only in a suite.
+   * Absent: not for aircraft (aquariums, bookcases, anything that would fly loose).
+   */
+  readonly aircraft?: 'cabin' | 'suite';
 }
 
 const v = (id: string, label: string, hex: string, accent: string): DecorVariant => ({ id, label, hex, accent });
@@ -188,6 +198,12 @@ const TERRACOTTA = [
   v('gold', 'Gilded', '#c49a2c', '#fff1c0'),
 ] as const;
 
+const SKIES = [
+  v('cloudscape', 'Above the clouds', '#4f86c6', '#f6f1e6'),
+  v('runway', 'Runway at dusk', '#2b2f3a', '#f2b632'),
+  v('wing', 'Wing at sunrise', '#d97b3a', '#f4e3c1'),
+] as const;
+
 const item = (
   id: string,
   name: string,
@@ -203,7 +219,7 @@ const item = (
   more: Partial<Pick<DecorItem, 'style' | 'surface' | 'hangAt' | 'nigerian'>> = {},
 ): DecorItem => ({ id, name, category, placement, footprint, height, tier, price, shape, variants, blurb, ...more });
 
-export const DECOR_ITEMS: readonly DecorItem[] = [
+const CATALOG: readonly DecorItem[] = [
   // Rugs
   item('rug-raffia-round', 'Woven raffia round rug', 'rugs', 'floor', [1.4, 1.4], 0.02, 'budget', 22_000, 'rug-round', TEXTILES, 'Hand-woven raffia from Ibadan market. Light, cool, cheap.'),
   item('rug-shaggy', 'Shaggy lounge rug', 'rugs', 'floor', [2, 1.4], 0.03, 'standard', 68_000, 'rug-rect', TEXTILES, 'Deep pile for bare feet in front of the sofa.'),
@@ -273,7 +289,65 @@ export const DECOR_ITEMS: readonly DecorItem[] = [
   item('table-side', 'Side table', 'tables', 'floor', [0.5, 0.5], 0.55, 'budget', 22_000, 'table', WOODS, 'A small table beside the sofa or bed.', { style: 'side', surface: 0.55 }),
   item('table-console', 'Console table', 'tables', 'floor', [1.2, 0.35], 0.8, 'standard', 85_000, 'table', WOODS, 'Slim table for a wall: lamps and flowers.', { style: 'console', surface: 0.8 }),
   item('table-coffee-marble', 'Marble coffee table', 'tables', 'floor', [1.1, 0.6], 0.42, 'premium', 180_000, 'table', WOODS, 'White marble top on gold legs.', { style: 'coffee', surface: 0.42 }),
+
+  // Cabin & aviation: made for aircraft (flame-retardant, strapped down, nothing that can fly loose).
+  item('cabin-rug', 'Aviation-grade cabin carpet', 'cabin', 'floor', [1.8, 0.9], 0.02, 'standard', 85_000, 'rug-rect', TEXTILES, 'Flame-retardant wool, taped down by the avionics shop at MMIA.'),
+  item('cabin-bench', 'Upholstered lounge bench', 'cabin', 'floor', [1.1, 0.45], 0.45, 'standard', 160_000, 'bench', LEATHERS, 'Bolted to the floor rail. Seat cushions and throws sit on it.', { surface: 0.45 }),
+  item('cabin-cushions', 'Monogrammed seat cushions', 'cabin', 'tabletop', [0.7, 0.35], 0.25, 'standard', 60_000, 'cushions', TEXTILES, 'A belted pair, embroidered with the registration.'),
+  item('cabin-throw', 'Cashmere seat throw', 'cabin', 'tabletop', [0.9, 0.6], 0.12, 'premium', 140_000, 'throw', TEXTILES, 'For the cold hours at flight level 410.'),
+  item('cabin-minibar', 'Cabin minibar', 'cabin', 'floor', [0.9, 0.5], 1, 'premium', 650_000, 'minibar', WOODS, 'Latched drawers and a chilled drawer. Glasses stay in their racks until you land.', { surface: 0.95 }),
+  item('cabin-lamp', 'Weighted cabin lamp', 'cabin', 'tabletop', [0.3, 0.3], 0.5, 'standard', 48_000, 'lamp-table', SHADES, 'Heavy base, low shade, never tips in turbulence.'),
+  item('cabin-flowers', 'Flowers in a secured vase', 'cabin', 'tabletop', [0.25, 0.25], 0.55, 'standard', 24_000, 'vase-flowers', FLOWERS, 'Wedged in a weighted vase with a strap, still fresh on landing.'),
+  item('cabin-model', 'Aircraft model on a stand', 'cabin', 'tabletop', [0.4, 0.4], 0.2, 'premium', 180_000, 'aircraft-model', METALS, 'A desk model of your own plane, in polished metal.'),
+  item('cabin-print', 'Aviation print, framed', 'cabin', 'wall', [0.6, 0.04], 0.8, 'budget', 22_000, 'art-print', SKIES, 'Shatterproof glazing, fixed at all four corners.', { hangAt: 1.1 }),
 ];
+
+/**
+ * Which pieces are fit for an aircraft cabin (see `DecorItem.aircraft` and decor-aircraft.ts). Kept in one table so the
+ * rule is easy to audit: soft, fixed or wall-hung things only; beds only in a suite.
+ */
+const AIRCRAFT_FIT: Readonly<Record<string, 'cabin' | 'suite'>> = {
+  'rug-raffia-round': 'cabin',
+  'rug-shaggy': 'cabin',
+  'rug-runner': 'cabin',
+  'rug-ankara': 'cabin',
+  'rug-persian': 'cabin',
+  'rug-silk-grand': 'cabin',
+  'bed-single-guest': 'suite',
+  'bed-divan-queen': 'suite',
+  'bed-tufted-king': 'suite',
+  'bed-canopy-four-poster': 'suite',
+  'bed-royal-gold': 'suite',
+  'plant-orchid': 'cabin',
+  'art-print-framed': 'cabin',
+  'art-canvas-abstract': 'cabin',
+  'art-adire-hanging': 'cabin',
+  'art-triptych': 'cabin',
+  'art-yoruba-mask': 'cabin',
+  'art-benin-plaque': 'cabin',
+  'art-oil-portrait': 'cabin',
+  'lamp-bedside': 'cabin',
+  'cushions-scatter': 'cabin',
+  'throw-knit': 'cabin',
+  'mirror-round-gold': 'cabin',
+  'mirror-sunburst': 'cabin',
+  'shelf-floating': 'cabin',
+  'table-side': 'cabin',
+  'cabin-rug': 'cabin',
+  'cabin-bench': 'cabin',
+  'cabin-cushions': 'cabin',
+  'cabin-throw': 'cabin',
+  'cabin-minibar': 'cabin',
+  'cabin-lamp': 'cabin',
+  'cabin-flowers': 'cabin',
+  'cabin-model': 'cabin',
+  'cabin-print': 'cabin',
+};
+
+export const DECOR_ITEMS: readonly DecorItem[] = CATALOG.map((entry) => {
+  const fit = AIRCRAFT_FIT[entry.id];
+  return fit ? { ...entry, aircraft: fit } : entry;
+});
 
 const BY_ID = new Map(DECOR_ITEMS.map((entry) => [entry.id, entry]));
 export const findDecorItem = (id: string | null | undefined): DecorItem | undefined => (id ? BY_ID.get(id) : undefined);

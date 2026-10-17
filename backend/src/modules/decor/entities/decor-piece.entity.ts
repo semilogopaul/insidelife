@@ -6,12 +6,15 @@ import { bigintNumber, decimalNumber } from '../../../database/transformers.js';
  * One piece of decor a character owns. While `templateId` is null it sits in their inventory; otherwise it stands in
  * `roomId` of a home template at (`x`, `z`) (wall pieces: on `wall`, at height `y`; tabletop pieces: on `onId` at the
  * surface height `y`). `homeKey` says which home it was put in (`homeKey(characterId, homePropertyId)`), so moving to
- * another house puts the pieces away.
+ * another house puts the pieces away. A piece fitted in one of the owner's aircraft has `aircraftId` instead (and no
+ * `homeKey`): `templateId` is then the cabin layout (`aircraft-<class>`) and `roomId` the cabin, cockpit, lavatory or
+ * suite. A piece is in the inventory, in a home or in a plane, never two of them.
  */
 @Entity('decor_pieces')
 @Index('decor_pieces_character', ['characterId'])
 @Index('decor_pieces_room', ['characterId', 'homeKey', 'templateId', 'roomId'])
 @Index('decor_pieces_home', ['homeKey'], { where: '"template_id" IS NOT NULL' })
+@Index('decor_pieces_aircraft', ['aircraftId'], { where: '"aircraft_id" IS NOT NULL' })
 export class DecorPieceEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -38,6 +41,10 @@ export class DecorPieceEntity {
 
   @Column({ type: 'varchar', length: 64, nullable: true })
   homeKey: string | null;
+
+  /** The aircraft (`aircraft.id`) it is fitted in, or null. */
+  @Column({ type: 'uuid', nullable: true })
+  aircraftId: string | null;
 
   @Column({ type: 'varchar', length: 24, nullable: true })
   templateId: string | null;

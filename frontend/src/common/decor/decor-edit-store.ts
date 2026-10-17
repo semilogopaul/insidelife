@@ -20,6 +20,9 @@ interface DecorEditState {
   /** The overlay asks the scene to turn the selected piece (the scene knows what fits). */
   readonly turnRequest: { readonly seq: number; readonly delta: number } | null;
   readonly trayOpen: boolean;
+  /** The aircraft whose cabin is on screen (set by the 3D scene while one is), or null: homes and venues. */
+  readonly cabinId: string | null;
+  setCabin(aircraftId: string | null): void;
   enter(): void;
   exit(): void;
   hold(pieceId: string | null): void;
@@ -38,6 +41,8 @@ export const useDecorEdit = create<DecorEditState>()((set, get) => ({
   draggingId: null,
   turnRequest: null,
   trayOpen: true,
+  cabinId: null,
+  setCabin: (aircraftId) => set({ cabinId: aircraftId }),
   enter: () => set({ active: true, holdingId: null, holdingRot: 0, selectedId: null, draggingId: null, trayOpen: true }),
   exit: () => set({ active: false, holdingId: null, holdingRot: 0, selectedId: null, draggingId: null }),
   hold: (pieceId) => set({ holdingId: pieceId, holdingRot: 0, selectedId: null, trayOpen: pieceId === null }),

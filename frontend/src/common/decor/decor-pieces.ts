@@ -48,6 +48,20 @@ export function unplacedPieces(pieces: readonly DecorPieceDto[], templateId: str
   return pieces.filter((piece) => piece.spot === null || piece.spot.templateId !== templateId);
 }
 
+/**
+ * What you can bring into a room of one of your aircraft: pieces in the inventory, in a home, in another plane or
+ * another room of this one, that the cabin may hold (secured for flight, a bed only in a suite…).
+ * `issue` is the shared rule (`aircraftRoomIssue`) so the tray and the server agree.
+ */
+export function unplacedForCabin(
+  pieces: readonly DecorPieceDto[],
+  aircraftId: string,
+  roomId: string,
+  allowed: (itemId: string) => boolean,
+): DecorPieceDto[] {
+  return pieces.filter((piece) => (piece.spot === null || piece.aircraftId !== aircraftId || piece.spot.roomId !== roomId) && allowed(piece.itemId));
+}
+
 /** Group pieces of one item and finish ("Persian-style rug, Indigo ×2") for the inventory tray. */
 export interface PieceGroup {
   readonly key: string;

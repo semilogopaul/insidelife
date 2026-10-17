@@ -12,7 +12,7 @@ import { BuyDecorSheet } from './BuyDecorSheet';
 
 const TIER_TONE = { budget: 'neutral', standard: 'info', premium: 'ankara', luxury: 'warn' } as const;
 
-/** The Decor store: rugs, beds, plants, aquariums, art, lamps, cushions, shelves, mirrors and tables for the rooms of your home. */
+/** The Decor store (pieces marked Cabin-ready also fit your aircraft): rugs, beds, plants, aquariums, art, lamps, cushions, shelves, mirrors and tables for the rooms of your home. */
 export function DecorTab() {
   const query = useDecor();
   const snapshot = useSnapshot().data;
@@ -95,6 +95,7 @@ function DecorCard({ item, price, owned, onOpen }: { readonly item: DecorItem; r
           <strong className="text-sm">{item.name}</strong>
           <Badge tone={TIER_TONE[item.tier]}>{TIER_LABEL[item.tier]}</Badge>
           {item.nigerian && <Badge tone="good">Made in Naija</Badge>}
+          {item.aircraft && <Badge tone="info">Cabin-ready</Badge>}
         </span>
         <span className="mt-0.5 block text-xs text-text-soft">{item.blurb}</span>
         <span className="mt-1 block text-xs text-text-soft">

@@ -2,10 +2,21 @@
 
 import { Check, PackageOpen, RotateCcw, RotateCw, ShoppingBag, Sofa, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { findDecorItem, findDecorVariant, formatNaira, homeLocationId, isDecorTemplate, type DecorItem, type DecorPieceDto } from '@insidelife/shared';
+import {
+  aircraftRoomIssue,
+  findAircraftDecorRoom,
+  findDecorItem,
+  findDecorVariant,
+  formatNaira,
+  homeLocationId,
+  isAircraftDecorTemplate,
+  isDecorTemplate,
+  type DecorItem,
+  type DecorPieceDto,
+} from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { toast } from '@/common/components';
-import { groupPieces, unplacedPieces, useDecor, useDecorCommands, useDecorEdit } from '@/common/decor';
+import { groupPieces, unplacedForCabin, unplacedPieces, useAircraftDecor, useDecor, useDecorCommands, useDecorEdit } from '@/common/decor';
 import { gameEvents } from '@/common/game/game-events';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
@@ -19,18 +30,25 @@ const PLACE_HINT: Readonly<Record<DecorItem['placement'], string>> = {
   tabletop: 'Tap or drag onto a table, bed or shelf',
 };
 
-/** Can this player decorate the room on screen? Your own rented or owned home, one of the decorable layouts. */
+/**
+ * Can this player decorate the room on screen? Your own rented or owned home (one of the decorable layouts), or a cabin
+ * of an aircraft you own (the scene says which aircraft it is drawing: `useDecorEdit.cabinId`).
+ */
 export function useDecorAccess() {
   const house = useHomeView((state) => state.house);
   const layout = useHomeView((state) => state.layout);
   const roomId = useHomeView((state) => state.roomId);
+  const cabinId = useDecorEdit((state) => state.cabinId);
   const snapshot = useSnapshot().data;
   const own = snapshot !== undefined && house !== null && house.startsWith(`${homeLocationId(snapshot.character.id)}|`);
   const decorates = layout !== null && isDecorTemplate(layout.id);
-  const state = useDecor(own && decorates);
-  const available = own && decorates && state.data?.home.eligible === true;
+  const inCabin = layout !== null && cabinId !== null && isAircraftDecorTemplate(layout.id);
+  const plane = useAircraftDecor(inCabin ? cabinId : null);
+  const ownsPlane = inCabin && plane.data !== undefined && plane.data.ownerId === snapshot?.character.id;
+  const state = useDecor((own && decorates) || ownsPlane);
+  const available = inCabin ? ownsPlane : own && decorates && state.data?.home.eligible === true;
   const roomLabel = layout?.rooms.find((room) => room.id === roomId)?.label ?? '';
-  return { available, state: state.data, templateId: layout?.id ?? null, roomLabel };
+  return { available, state: state.data, templateId: layout?.id ?? null, roomId: roomId ?? '', roomLabel, aircraftId: inCabin ? cabinId : null };
 }
 
 const btn = 'pointer-events-auto flex min-h-11 items-center justify-center gap-1.5 rounded-chip px-3 text-sm font-bold';
@@ -65,7 +83,7 @@ export function DecorateButton() {
  * (turn it, re-finish it, put it back). The scene does the placing; this is the DOM half.
  */
 export function DecorPanel() {
-  const { available, state, templateId, roomLabel } = useDecorAccess();
+  const { available, state, templateId, roomId, roomLabel, aircraftId } = useDecorAccess();
   const active = useDecorEdit((s) => s.active);
   const holdingId = useDecorEdit((s) => s.holdingId);
   const selectedId = useDecorEdit((s) => s.selectedId);
@@ -115,7 +133,17 @@ export function DecorPanel() {
   }, [on, putBack]);
 
   const pieces = state?.pieces;
-  const inventory = useMemo(() => (pieces && templateId ? groupPieces(unplacedPieces(pieces, templateId)) : []), [pieces, templateId]);
+  const inventory = useMemo(() => {
+    if (!pieces || !templateId) return [];
+    if (!aircraftId) return groupPieces(unplacedPieces(pieces, templateId));
+    // A cabin: only what its room may hold (secured for flight, a bed only in a suite…), the same rule the server applies.
+    const room = findAircraftDecorRoom(templateId, roomId);
+    const fits = (itemId: string): boolean => {
+      const item = findDecorItem(itemId);
+      return item !== undefined && room !== undefined && aircraftRoomIssue(roomId, room, item) === null;
+    };
+    return groupPieces(unplacedForCabin(pieces, aircraftId, roomId, fits));
+  }, [pieces, templateId, roomId, aircraftId]);
   if (!on || !state) return null;
 
   const holding = holdingId ? state.pieces.find((piece) => piece.id === holdingId) : undefined;
@@ -207,7 +235,10 @@ export function DecorPanel() {
           <div className="flex items-center gap-2">
             <PackageOpen size={20} aria-hidden className="shrink-0 text-danfo" />
             <p className="min-w-0 flex-1 text-sm">
-              Nothing to put down yet. <span className="text-on-ink-soft">Rugs, plants, art and lamps are in the Decor store.</span>
+              {aircraftId ? 'Nothing cabin-ready to fit yet. ' : 'Nothing to put down yet. '}
+              <span className="text-on-ink-soft">
+                {aircraftId ? 'The Decor store’s Cabin & aviation shelf is made for aircraft: rugs, throws, a minibar, art.' : 'Rugs, plants, art and lamps are in the Decor store.'}
+              </span>
             </p>
             <button type="button" onClick={() => openPhone('homes', 'decor')} className={cn(btn, 'bg-danfo text-ink')}>
               <ShoppingBag size={16} aria-hidden /> Shop

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { DecorModule } from '../decor/decor.module.js';
 import { EducationModule } from '../education/education.module.js';
 import { SimulationModule } from '../simulation/simulation.module.js';
 import { TravelModule } from '../travel/travel.module.js';
@@ -17,7 +18,7 @@ import { PilotTrainingService } from './pilot-training.service.js';
  * Flights between the cities go through `CITY_TRAVEL_PORT`, provided by the travel module.
  */
 @Module({
-  imports: [SimulationModule, EducationModule, TravelModule, TypeOrmModule.forFeature([AircraftEntity, PilotTrainingEntity])],
+  imports: [SimulationModule, EducationModule, DecorModule, TravelModule, TypeOrmModule.forFeature([AircraftEntity, PilotTrainingEntity])],
   controllers: [AviationController],
   providers: [AviationService, PilotTrainingService, AviationSystem],
 })

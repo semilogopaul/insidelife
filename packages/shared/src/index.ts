@@ -78,6 +78,7 @@ export * from './contracts/betting.js';
 export * from './catalog/decor.js';
 export * from './catalog/decor-rooms.js';
 export * from './catalog/decor-placement.js';
+export * from './catalog/decor-aircraft.js';
 export * from './catalog/flights.js';
 export * from './contracts/flights.js';
 export * from './contracts/decor.js';

@@ -70,7 +70,7 @@ describe('decor catalog', () => {
         expect(entry.surface, entry.id).toBeUndefined();
         expect(Math.max(...entry.footprint), entry.id).toBeLessThanOrEqual(1);
       }
-      if (entry.surface !== undefined) expect(['tables', 'beds', 'shelves', 'soft', 'aquariums']).toContain(entry.category);
+      if (entry.surface !== undefined) expect(['tables', 'beds', 'shelves', 'soft', 'aquariums', 'cabin']).toContain(entry.category);
       if (entry.placement === 'wall') expect(entry.hangAt, entry.id).toBeGreaterThanOrEqual(0);
     }
     expect(DECOR_ITEMS.some((entry) => entry.surface !== undefined && entry.placement === 'floor')).toBe(true);
