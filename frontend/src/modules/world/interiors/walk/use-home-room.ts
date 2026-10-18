@@ -40,18 +40,28 @@ export function useHomeRoom(
     animationRef.current = { animation, actionId };
   });
 
+  // The layout can change under you (your furniture moved the activities to other rooms): keep the room you are in.
+  const layoutRef = useRef(layout);
   useEffect(() => {
-    if (!layout || !walkable) return;
+    layoutRef.current = layout;
+  });
+  const layoutId = layout?.id ?? null;
+  useEffect(() => {
+    const entering = layoutRef.current;
+    if (!entering || !walkable) return;
     const opening = animationRef.current;
     useHomeView
       .getState()
       .enterHouse(
         houseKey,
-        layout,
-        openingRoom(layout, opening.animation, opening.actionId),
+        entering,
+        openingRoom(entering, opening.animation, opening.actionId),
         isFreeAnimation(opening.animation) ? { kind: 'enter' } : { kind: 'spot' },
       );
     return () => useHomeView.getState().leaveHouse(houseKey);
+  }, [layoutId, houseKey, walkable]);
+  useEffect(() => {
+    if (layout && walkable && useHomeView.getState().house === houseKey && useHomeView.getState().layout !== layout) useHomeView.setState({ layout });
   }, [layout, houseKey, walkable]);
 
   if (!layout) return null;

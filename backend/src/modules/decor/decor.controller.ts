@@ -2,17 +2,20 @@ import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Post, Put } from '
 import { Throttle } from '@nestjs/throttler';
 import type {
   DecorAircraftDto,
+  DecorArrangeResultDto,
   DecorChangeDto,
   DecorHomeDto,
   DecorPurchaseResultDto,
   DecorRecolourResultDto,
+  DecorReplaceResultDto,
+  DecorSellResultDto,
   DecorStateDto,
 } from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
 import { DecorService } from './decor.service.js';
-import { DecorPlaceDto, DecorPurchaseDto, DecorRecolourDto } from './dto/decor.dto.js';
+import { DecorArrangeDto, DecorPlaceDto, DecorPurchaseDto, DecorRecolourDto, DecorReplaceDto, DecorSellDto } from './dto/decor.dto.js';
 
 /** The Decor store and Decorate mode: what you own, buying, placing and showing visitors. */
 @Controller({ path: 'decor', version: '1' })
@@ -33,7 +36,7 @@ export class DecorController {
     const { idempotencyKey, ...request } = body;
     return this.session.run(
       { userId: user.userId },
-      (ctx) => ctx.once('decor-purchase', idempotencyKey, request, () => this.decor.purchase(ctx, request.itemId, request.variant, request.quantity ?? 1)),
+      (ctx) => ctx.once('decor-purchase', idempotencyKey, request, () => this.decor.purchase(ctx, request.itemId, request.variant, request.quantity ?? 1, request.place)),
       { touch: true },
     );
   }
@@ -59,6 +62,36 @@ export class DecorController {
       (ctx) => ctx.once('decor-recolour', idempotencyKey, { id, ...request }, () => this.decor.recolour(ctx, id, request.variant)),
       { touch: true },
     );
+  }
+
+  /** Sell a piece back to the furniture store. */
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('pieces/:id/sell')
+  sell(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: DecorSellDto): Promise<DecorSellResultDto> {
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('decor-sell', body.idempotencyKey, { id }, () => this.decor.sell(ctx, id)),
+      { touch: true },
+    );
+  }
+
+  /** The new piece takes an older one's place; the old is stored or sold back. */
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('pieces/:id/replace')
+  replace(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: DecorReplaceDto): Promise<DecorReplaceResultDto> {
+    const { idempotencyKey, ...request } = body;
+    return this.session.run(
+      { userId: user.userId },
+      (ctx) => ctx.once('decor-replace', idempotencyKey, { id, ...request }, () => this.decor.replace(ctx, id, request.oldId, request.mode)),
+      { touch: true },
+    );
+  }
+
+  /** Put everything that isn't standing in your home into it, at good spots. */
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @Post('arrange')
+  arrange(@CurrentUser() user: AuthUser, @Body() body: DecorArrangeDto): Promise<DecorArrangeResultDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => this.decor.arrange(ctx, body.roomId));
   }
 
   @Get('homes/:hostId')

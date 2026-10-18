@@ -14,12 +14,12 @@ export function piecesSignature(pieces: readonly PlacedPiece[]): string {
 
 /**
  * The decor standing in this room, as one static geometry (one draw call). `hiddenId` is the piece being dragged:
- * the editor draws it as the ghost instead.
+ * the editor draws it as the ghost instead. Furniture from the shop is drawn from the kit by the room itself.
  */
 export function DecorLayer({ pieces, hiddenId = null }: { readonly pieces: readonly PlacedPiece[]; readonly hiddenId?: string | null }) {
   const signature = piecesSignature(pieces) + `#${hiddenId ?? ''}`;
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the signature stands for `pieces`
-  const geometry = useMemo(() => buildDecorGeometry(pieces.filter((piece) => piece.id !== hiddenId).map(drawableOf)), [signature]);
+  const geometry = useMemo(() => buildDecorGeometry(pieces.filter((piece) => piece.id !== hiddenId && piece.item.shape !== 'kit').map(drawableOf)), [signature]);
   const material = useMemo(() => createSurfaceMaterial(), []);
   useEffect(() => () => geometry?.dispose(), [geometry]);
   useEffect(() => () => material.dispose(), [material]);

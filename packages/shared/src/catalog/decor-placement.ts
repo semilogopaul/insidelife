@@ -222,6 +222,12 @@ export function checkDecorPlacement(
   }
   const flat = isFlatDecor(item);
   if (!flat && doorKeepOut(room).some((door) => rectsOverlap(rect, door))) return fail('BLOCKS_DOOR', 'That would block the door.');
+  // The room's own fittings (kitchen units, the shower, and the family's furniture where it stays put).
+  if (!flat) {
+    for (const fixture of room.fixtures ?? []) {
+      if (rectsOverlap(rect, { x: fixture.x, z: fixture.z, w: fixture.w, d: fixture.d, rot: 0 })) return fail('OVERLAP', 'That’s in the way of what’s built in.');
+    }
+  }
   for (const other of others) {
     const otherItem = findDecorItem(other.itemId);
     if (!otherItem || other.pose.onId) continue;

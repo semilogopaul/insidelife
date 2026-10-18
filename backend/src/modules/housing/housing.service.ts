@@ -8,6 +8,7 @@ import {
   formatDate,
   formatNaira,
   homePrestige,
+  homeTemplateIdFor,
   portfolioPrestige,
   type BlueprintId,
   type BuyHouseResultDto,
@@ -25,7 +26,7 @@ import {
   type RentalListingsQuery,
   type TenancyAction,
 } from '@insidelife/shared';
-import type { HomeSnapshot, HouseholdPort } from '../../common/ports/household.port.js';
+import type { HomeSnapshot, HomeTemplateInfo, HouseholdPort } from '../../common/ports/household.port.js';
 import { GameRuleException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { ComfortService } from './comfort.service.js';
@@ -81,6 +82,11 @@ export class HousingService implements HouseholdPort {
       bedrooms: home.bedrooms,
       decor: home.decor,
     };
+  }
+
+  async homeTemplate(ctx: SimulationContext): Promise<HomeTemplateInfo> {
+    const home = await this.homes.current(ctx);
+    return { templateId: homeTemplateIdFor({ label: home.label, ownership: home.ownership, comfort: home.typeComfort }), ownership: home.ownership };
   }
 
   async propertyValue(ctx: SimulationContext): Promise<number> {

@@ -7,6 +7,7 @@ import {
   type DecorSpotDto,
   type DecorVariant,
   type PlacedDecor,
+  type RoomedPiece,
 } from '@insidelife/shared';
 
 /** A piece standing in a room, with its catalog item and finish resolved. */
@@ -38,6 +39,21 @@ export function piecesInRoom(pieces: readonly PieceLike[], templateId: string, r
   }
   return list;
 }
+
+/** The pieces standing anywhere in one home template (every room). */
+export function piecesInTemplate(pieces: readonly PieceLike[], templateId: string): PlacedPiece[] {
+  const list: PlacedPiece[] = [];
+  for (const piece of pieces) {
+    if (piece.spot?.templateId !== templateId) continue;
+    const resolved = resolvePiece(piece);
+    if (resolved) list.push(resolved);
+  }
+  return list;
+}
+
+/** Pieces with their room, as the furniture rules want them (the best bed, the table to eat at…). */
+export const asRoomed = (pieces: readonly PlacedPiece[]): RoomedPiece[] =>
+  pieces.map((piece) => ({ id: piece.id, itemId: piece.item.id, roomId: piece.spot.roomId, pose: piece.spot }));
 
 /** The same pieces as the shared placement check wants them. */
 export const asPlacedDecor = (pieces: readonly PlacedPiece[]): PlacedDecor[] =>

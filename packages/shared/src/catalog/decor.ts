@@ -5,9 +5,12 @@
  * (they are prices, not income: no INCOME_MULTIPLIER). The server charges them; the client uses the same catalog.
  */
 
-export type DecorCategory = 'rugs' | 'beds' | 'plants' | 'aquariums' | 'art' | 'lamps' | 'soft' | 'shelves' | 'mirrors' | 'tables' | 'cabin';
+import { DECOR_BED_QUALITY, FURNITURE_ITEMS, type FurnitureFn, type FurnitureSlot } from './furniture.js';
 
-export const DECOR_CATEGORIES: ReadonlyArray<{ readonly id: DecorCategory; readonly label: string; readonly emoji: string }> = [
+/** `furniture` is the shop's: beds, sofas, TVs… (`furniture.ts`); it isn't a shelf of the Decor store. */
+export type DecorCategory = 'rugs' | 'beds' | 'plants' | 'aquariums' | 'art' | 'lamps' | 'soft' | 'shelves' | 'mirrors' | 'tables' | 'cabin' | 'furniture';
+
+export const DECOR_CATEGORIES: ReadonlyArray<{ readonly id: Exclude<DecorCategory, 'furniture'>; readonly label: string; readonly emoji: string }> = [
   { id: 'rugs', label: 'Rugs', emoji: '🧶' },
   { id: 'beds', label: 'Beds', emoji: '🛏️' },
   { id: 'plants', label: 'Flowers & plants', emoji: '🪴' },
@@ -63,6 +66,8 @@ export const DECOR_SHAPES = [
   'minibar',
   'bench',
   'aircraft-model',
+  /** Furniture from the shop: the 3D room draws it from the kit (`furnish.ts`); only a plain box stands in for the ghost. */
+  'kit',
 ] as const;
 export type DecorShape = (typeof DECOR_SHAPES)[number];
 
@@ -101,6 +106,14 @@ export interface DecorItem {
    * Absent: not for aircraft (aquariums, bookcases, anything that would fly loose).
    */
   readonly aircraft?: 'cabin' | 'suite';
+  /** What the piece is for (a bed to sleep on, a table to eat at…); absent = decoration only. */
+  readonly fn?: FurnitureFn;
+  /** Beds: how well it sleeps (0-1); the best bed placed in the home sets the sleep quality. */
+  readonly quality?: number;
+  /** Furniture bought through the shop: the shop item it is (price, name, comfort and condition stay there). */
+  readonly shopItemId?: string;
+  /** Furniture: the template slot it used to fill. */
+  readonly furnitureSlot?: FurnitureSlot;
 }
 
 const v = (id: string, label: string, hex: string, accent: string): DecorVariant => ({ id, label, hex, accent });
@@ -346,10 +359,12 @@ const AIRCRAFT_FIT: Readonly<Record<string, 'cabin' | 'suite'>> = {
 
 export const DECOR_ITEMS: readonly DecorItem[] = CATALOG.map((entry) => {
   const fit = AIRCRAFT_FIT[entry.id];
-  return fit ? { ...entry, aircraft: fit } : entry;
+  const withFit = fit ? { ...entry, aircraft: fit } : entry;
+  // Beds are beds: you can sleep on them (how well depends on the tier).
+  return entry.category === 'beds' ? { ...withFit, fn: 'sleep' as const, quality: DECOR_BED_QUALITY[entry.tier] } : withFit;
 });
 
-const BY_ID = new Map(DECOR_ITEMS.map((entry) => [entry.id, entry]));
+const BY_ID = new Map<string, DecorItem>([...DECOR_ITEMS, ...FURNITURE_ITEMS].map((entry) => [entry.id, entry]));
 export const findDecorItem = (id: string | null | undefined): DecorItem | undefined => (id ? BY_ID.get(id) : undefined);
 export const findDecorVariant = (item: DecorItem, variantId: string | null | undefined): DecorVariant | undefined =>
   item.variants.find((variant) => variant.id === variantId);

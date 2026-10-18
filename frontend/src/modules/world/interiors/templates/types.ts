@@ -168,6 +168,32 @@ export interface CarPlacement {
 
 export type PlayerSpots = Readonly<Partial<Record<AvatarClip | 'default', Spot>>>;
 
+/**
+ * Something you can use that isn't drawn by the template or the kit (a decor bed stands in the decor layer): its tap
+ * box, so hotspots attach to it like to any bed.
+ */
+export interface UsableThing {
+  readonly kind: PlaceObjectKind;
+  readonly name: string;
+  readonly at: At;
+  readonly rot: Deg;
+  readonly size: readonly [number, number];
+  readonly height: number;
+}
+
+/**
+ * Something you can use that isn't drawn by the template or the kit (a decor bed stands in the decor layer): its tap
+ * box, so hotspots attach to it like to any bed.
+ */
+export interface UsableThing {
+  readonly kind: PlaceObjectKind;
+  readonly name: string;
+  readonly at: At;
+  readonly rot: Deg;
+  readonly size: readonly [number, number];
+  readonly height: number;
+}
+
 export interface InteriorTemplate {
   readonly id: string;
   readonly label: string;
@@ -180,6 +206,8 @@ export interface InteriorTemplate {
   /** Free spots for other players present. */
   readonly guests: readonly Spot[];
   readonly lighting: LightingSpec;
+  /** Usable things drawn elsewhere (decor beds in homes). */
+  readonly things?: readonly UsableThing[];
   readonly extras?: {
     /** Animated dance floor + beams + disco ball over this area. */
     readonly clubLights?: { readonly at: At; readonly size: readonly [number, number] };

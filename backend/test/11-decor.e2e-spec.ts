@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  DECOR_HOME_ROOMS,
   DECOR_MAX_PER_ROOM,
   findDecorItem,
+  placeInHome,
   recolourPrice,
   type DecorChangeDto,
   type DecorHomeDto,
@@ -50,7 +52,12 @@ async function buy(player: Player, itemId: string, variant?: string, quantity = 
   return ok<DecorPurchaseResultDto>(await player.post('/decor/purchases', { itemId, variant: variant ?? item.variants[0]!.id, quantity }));
 }
 
-const state = async (player: Player): Promise<DecorStateDto> => ok<DecorStateDto>(await player.get('/decor'));
+/** Furniture (the starter mattress…) is pieces too; these tests are about the Decor store's. */
+const isDecor = (piece: DecorPieceDto): boolean => !findDecorItem(piece.itemId)?.shopItemId;
+const state = async (player: Player): Promise<DecorStateDto> => {
+  const full = ok<DecorStateDto>(await player.get('/decor'));
+  return { ...full, pieces: full.pieces.filter(isDecor) };
+};
 const spot = (player: Player, pieceId: string, body: object) => player.put(`/decor/pieces/${pieceId}/spot`, body);
 
 describe('decor: buying', () => {
@@ -109,13 +116,21 @@ describe('decor: buying', () => {
 });
 
 describe('decor: placing', () => {
-  it('is for rented or owned homes only: the family house stays as it is', async () => {
+  it('keeps the family house as it is: only small pieces of your own go in it', async () => {
     e2e.clock.at(10);
     const player = await createPlayer(e2e);
     await fund(e2e, player, 5_000_000);
-    const piece = (await buy(player, 'rug-shaggy')).pieces[0]!;
-    expect((await state(player)).home).toMatchObject({ eligible: false });
-    refused(await spot(player, piece.id, floor(0, 0)), 422, 'NOT_YOUR_HOME');
+    const rug = (await buy(player, 'rug-shaggy')).pieces[0]!;
+    const plant = (await buy(player, 'plant-snake')).pieces[0]!;
+    const home = (await state(player)).home;
+    expect(home).toMatchObject({ eligible: true, scope: 'small' });
+    const rooms = DECOR_HOME_ROOMS[home.templateId as keyof typeof DECOR_HOME_ROOMS] as Record<string, unknown>;
+    const roomId = Object.keys(rooms)[0]!;
+    // A rug or a bed is not small; the family's furniture stays where it is.
+    refused(await spot(player, rug.id, { templateId: home.templateId, roomId, x: 0, z: 0, rot: 0 }), 422, 'FAMILY_FURNITURE');
+    const hit = placeInHome(home.templateId, Object.keys(rooms), findDecorItem('plant-snake')!, () => [], { provided: true })!;
+    expect(hit).not.toBeNull();
+    ok(await spot(player, plant.id, { templateId: home.templateId, roomId: hit.roomId, x: hit.pose.x, z: hit.pose.z, rot: hit.pose.rot }));
   });
 
   it('puts a piece in a room, validates it and shows it to the owner', async () => {
@@ -132,7 +147,7 @@ describe('decor: placing', () => {
     refused(await spot(player, table.id, floor(3.2, 0)), 422, 'CANT_PLACE_THERE');
     refused(await spot(player, table.id, floor(2.4, -2.2)), 422, 'CANT_PLACE_THERE');
     refused(await spot(player, table.id, floor(0, 0, 10)), 422, 'CANT_PLACE_THERE');
-    refused(await spot(player, table.id, { templateId: 'home-family', roomId: 'room', x: 0, z: 0, rot: 0 }), 422, 'NO_SUCH_ROOM');
+    refused(await spot(player, table.id, { templateId: 'club', roomId: 'room', x: 0, z: 0, rot: 0 }), 422, 'NO_SUCH_ROOM');
     refused(await spot(player, table.id, { templateId: TEMPLATE, roomId: 'attic', x: 0, z: 0, rot: 0 }), 422, 'NO_SUCH_ROOM');
     refused(await spot(player, table.id, { ...floor(0, 0), x: 'far' }), 400);
     ok(await spot(player, table.id, floor(-1.5, 0.5)));
@@ -142,7 +157,7 @@ describe('decor: placing', () => {
     const mine = await state(player);
     expect(mine.pieces.filter((piece) => piece.spot)).toHaveLength(3);
     const home = ok<DecorHomeDto>(await player.get(`/decor/homes/${player.characterId}`));
-    expect(home.placed.map((piece) => piece.itemId).toSorted()).toEqual(['rug-persian', 'table-coffee-marble', 'table-console']);
+    expect(home.placed.filter((piece) => !findDecorItem(piece.itemId)?.shopItemId).map((piece) => piece.itemId).toSorted()).toEqual(['rug-persian', 'table-coffee-marble', 'table-console']);
     expect(home.placed.find((piece) => piece.itemId === 'rug-persian')).toMatchObject({ variant: 'indigo', spot: { x: 0.12 } });
   });
 

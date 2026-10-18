@@ -59,7 +59,12 @@ async function buy(player: Player, itemId: string, quantity = 1): Promise<DecorP
   return ok<DecorPurchaseResultDto>(await player.post('/decor/purchases', { itemId, variant: item.variants[0]!.id, quantity }));
 }
 
-const state = async (player: Player): Promise<DecorStateDto> => ok<DecorStateDto>(await player.get('/decor'));
+/** Furniture (the starter mattress…) is pieces too; these tests are about the Decor store's. */
+const decorAtHome = (home: DecorHomeDto): DecorHomeDto['placed'] => home.placed.filter((piece) => !findDecorItem(piece.itemId)?.shopItemId);
+const state = async (player: Player): Promise<DecorStateDto> => {
+  const full = ok<DecorStateDto>(await player.get('/decor'));
+  return { ...full, pieces: full.pieces.filter((piece) => !findDecorItem(piece.itemId)?.shopItemId) };
+};
 const fit = (player: Player, aircraftId: string, pieceId: string, body: object) => player.put(`/decor/aircraft/${aircraftId}/pieces/${pieceId}/spot`, body);
 const at = (roomId: string, x: number, z: number, extra: object = {}) => ({ templateId: GULFSTREAM, roomId, x, z, rot: 0, ...extra });
 
@@ -175,16 +180,16 @@ describe('cabin decor: fitting pieces in a plane', () => {
     const home = { templateId: 'home-flat', roomId: 'living', x: 0, z: 0, rot: 0 };
 
     ok(await fit(player, aircraftId, rug.id, at('cabin', 0, 0.8)));
-    expect(ok<DecorHomeDto>(await player.get(`/decor/homes/${player.characterId}`)).placed).toEqual([]);
+    expect(decorAtHome(ok<DecorHomeDto>(await player.get(`/decor/homes/${player.characterId}`)))).toEqual([]);
     // Fitted in the plane, it goes to the home when placed there: no longer in the plane.
     const inHome = ok<DecorChangeDto>(await player.put(`/decor/pieces/${rug.id}/spot`, home));
     expect(inHome.pieces[0]).toMatchObject({ spot: { templateId: 'home-flat', roomId: 'living' } });
     expect(inHome.pieces[0]!.aircraftId).toBeUndefined();
-    expect(ok<DecorHomeDto>(await player.get(`/decor/homes/${player.characterId}`)).placed.map((piece) => piece.itemId)).toEqual(['cabin-rug']);
+    expect(decorAtHome(ok<DecorHomeDto>(await player.get(`/decor/homes/${player.characterId}`))).map((piece) => piece.itemId)).toEqual(['cabin-rug']);
     expect(ok<DecorAircraftDto>(await player.get(`/decor/aircraft/${aircraftId}`)).placed).toEqual([]);
     // And back into the plane.
     ok(await fit(player, aircraftId, rug.id, at('cabin', 0, 0.8)));
-    expect(ok<DecorHomeDto>(await player.get(`/decor/homes/${player.characterId}`)).placed).toEqual([]);
+    expect(decorAtHome(ok<DecorHomeDto>(await player.get(`/decor/homes/${player.characterId}`)))).toEqual([]);
     expect(ok<DecorAircraftDto>(await player.get(`/decor/aircraft/${aircraftId}`)).placed.map((piece) => piece.id)).toEqual([rug.id]);
     // A piece with something on it that goes to another place leaves what was on it in the inventory.
     const bar = (await buy(player, 'cabin-minibar')).pieces[0]!;

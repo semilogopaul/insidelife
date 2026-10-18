@@ -14,19 +14,23 @@ import {
 } from 'three';
 import {
   checkAircraftDecorPlacement,
+  checkDecorPlacement,
   decorRect,
   findAircraftDecorRoom,
   findDecorItem,
   findDecorRoom,
   findDecorVariant,
+  furnitureRoomIssue,
+  isSmallPiece,
   type DecorItem,
   type DecorPieceDto,
   type DecorPose,
   type DecorRoom,
   type DecorVariant,
   type PlacedDecor,
+  type PlacementVerdict,
 } from '@insidelife/shared';
-import { asPlacedDecor, useDecorCommands, useDecorEdit, type PlacedPiece } from '@/common/decor';
+import { asPlacedDecor, useDecor, useDecorCommands, useDecorEdit, type PlacedPiece } from '@/common/decor';
 import { errorMessage } from '@/common/api/api-error';
 import { toast } from '@/common/components';
 import { createSurfaceMaterial } from '@/common/three/materials/surface-material';
@@ -52,6 +56,8 @@ interface Live {
   readonly fixtures: readonly Fixture[];
   readonly mounts: readonly WallMount[];
   readonly place: ReturnType<typeof useDecorCommands>['place'];
+  /** The family house and hostels take small pieces only. */
+  readonly small: boolean;
 }
 
 type Press =
@@ -89,7 +95,8 @@ export function DecorEditor({
   readonly placed: readonly PlacedPiece[];
   readonly own: readonly DecorPieceDto[];
 }) {
-  const room = aircraftId ? findAircraftDecorRoom(templateId, roomId) : findDecorRoom(templateId, roomId);
+  const small = useDecor(!aircraftId).data?.home.scope === 'small';
+  const room = aircraftId ? findAircraftDecorRoom(templateId, roomId) : findDecorRoom(templateId, roomId, small);
   const camera = useThree((state) => state.camera);
   const gl = useThree((state) => state.gl);
   const controls = useThree((state) => state.controls) as unknown as { enabled: boolean } | null;
@@ -141,7 +148,7 @@ export function DecorEditor({
   const selection = useRef<Group>(null);
   const live = useRef<Live | null>(null);
   useLayoutEffect(() => {
-    live.current = room ? { room, templateId, roomId, aircraftId, placed, own, fixtures, mounts, place } : null;
+    live.current = room ? { room, templateId, roomId, aircraftId, placed, own, fixtures, mounts, place, small } : null;
   });
 
   // The selected piece's outline follows it (it moves when the server answers).
@@ -241,7 +248,7 @@ export function DecorEditor({
       const id = press?.mode === 'move' ? press.id : state.holdingId;
       if (!id) return null;
       const placedPiece = L.placed.find((piece) => piece.id === id);
-      if (placedPiece) return { item: placedPiece.item, variant: placedPiece.variant, id, rot: placedPiece.spot.rot, autoFace: false };
+      if (placedPiece) return { item: placedPiece.item, variant: placedPiece.variant, id, rot: placedPiece.spot.rot + (press?.mode === 'move' ? 0 : state.holdingRot), autoFace: false };
       const owned = L.own.find((piece) => piece.id === id);
       const item = owned ? findDecorItem(owned.itemId) : undefined;
       const variant = item && owned ? (findDecorVariant(item, owned.variant) ?? item.variants[0]) : undefined;
@@ -400,11 +407,25 @@ function dropContext(L: Live, item: DecorItem, excludeId: string, rot: number, a
   // What's on a piece moves with it, so it isn't an obstacle to its own table.
   const others = everyone.filter((other) => other.id !== excludeId && other.pose.onId !== excludeId);
   const cabinRoomId = L.aircraftId ? L.roomId : null;
-  const check = cabinRoomId ? (room: DecorRoom, piece: DecorItem, pose: DecorPose, near: readonly PlacedDecor[]) => checkAircraftDecorPlacement(cabinRoomId, room, piece, pose, near) : undefined;
-  return { room: L.room, item, others, fixtures: L.fixtures, mounts: L.mounts, rot, autoFace, ...(check ? { check } : {}) };
+  // The same rules the server applies: a cabin's, or a home's (a bed goes in a bedroom; the family's furniture stays).
+  const check = cabinRoomId
+    ? (room: DecorRoom, piece: DecorItem, pose: DecorPose, near: readonly PlacedDecor[]) => checkAircraftDecorPlacement(cabinRoomId, room, piece, pose, near)
+    : (room: DecorRoom, piece: DecorItem, pose: DecorPose, near: readonly PlacedDecor[]): PlacementVerdict => {
+        if (L.small && !isSmallPiece(piece)) return { ok: false, code: 'WRONG_PLACEMENT', reason: 'The family’s furniture stays where it is — that’s for a place of your own.' };
+        const issue = furnitureRoomIssue(L.templateId, L.roomId, piece);
+        return issue ? { ok: false, code: 'WRONG_PLACEMENT', reason: issue } : checkDecorPlacement(room, piece, pose, near);
+      };
+  return { room: L.room, item, others, fixtures: L.fixtures, mounts: L.mounts, rot, autoFace, check };
 }
 
 function commit(L: Live, pieceId: string, drop: Drop): void {
+  // Remember where it was, so Undo can put it back (a piece from storage goes back to storage).
+  const before = L.placed.find((piece) => piece.id === pieceId)?.spot;
+  useDecorEdit.getState().remember({
+    pieceId,
+    was: before ? { templateId: before.templateId, roomId: before.roomId, x: before.x, z: before.z, y: before.y, rot: before.rot, wall: before.wall, onId: before.onId } : null,
+    ...(L.aircraftId ? { aircraftId: L.aircraftId } : {}),
+  });
   L.place.mutate(
     {
       pieceId,

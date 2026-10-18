@@ -39,6 +39,7 @@ export {
   serviceOfInteractable,
   serviceOpensLabel,
   servicesAt,
+  WARDROBE_SERVICE,
   type PlaceObjectKind,
   type PlaceService,
   type ServiceTarget,

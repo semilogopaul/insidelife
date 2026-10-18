@@ -3,6 +3,7 @@ import type { GameMinute } from '../time/calendar.js';
 import type { ClothingDefinition, Outfit, StoreTier } from '../catalog/appearance.js';
 import type { VenueType } from '../catalog/venues.js';
 import type { ItemDefinition, PowerBackupKind, ShopCategory } from '../catalog/shop.js';
+import type { FurniturePurchaseDto } from './decor.js';
 
 // ----- Catalogue ---------------------------------------------------------------------------------------------------
 
@@ -59,6 +60,8 @@ export interface ShopPurchaseRequest {
   readonly itemId: string;
   /** Default 1. Clothing is always 1. */
   readonly quantity?: number;
+  /** Furniture: the room of your home you are in. The new piece goes there when it suits it and there is room. */
+  readonly roomId?: string;
   /** "Tap once" key (a UUID per purchase): a retry with the same key gets the first result back instead of buying twice. */
   readonly idempotencyKey?: string;
 }
@@ -88,6 +91,8 @@ export interface ShopPurchaseResultDto {
   /** The owned stack, the stack it joined. */
   readonly inventoryItem: InventoryItemDto | null;
   readonly balance: number;
+  /** Furniture only: the new pieces and what they could replace (see `FurniturePurchaseDto`). */
+  readonly furniture?: FurniturePurchaseDto;
 }
 
 // ----- Inventory ---------------------------------------------------------------------------------------------------

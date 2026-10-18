@@ -15,6 +15,7 @@ import { bigintNumber, decimalNumber } from '../../../database/transformers.js';
 @Index('decor_pieces_room', ['characterId', 'homeKey', 'templateId', 'roomId'])
 @Index('decor_pieces_home', ['homeKey'], { where: '"template_id" IS NOT NULL' })
 @Index('decor_pieces_aircraft', ['aircraftId'], { where: '"aircraft_id" IS NOT NULL' })
+@Index('decor_pieces_stack', ['inventoryItemId'], { where: '"inventory_item_id" IS NOT NULL' })
 export class DecorPieceEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -67,6 +68,20 @@ export class DecorPieceEntity {
 
   @Column({ type: 'varchar', length: 8, nullable: true })
   wall: DecorWall | null;
+
+  /**
+   * Furniture bought in the shop: the inventory stack (`inventory_items.id`) this piece is one unit of. The stack keeps
+   * condition, wear and the price paid; the piece says where it stands. Null for decor from the Decor store.
+   */
+  @Column({ type: 'uuid', nullable: true })
+  inventoryItemId: string | null;
+
+  /**
+   * False until the piece has been put somewhere on purpose (by the server when it arrived or the player moved house,
+   * or by the player). A furniture piece that isn't settled is put in the home as soon as there is one it can stand in.
+   */
+  @Column({ type: 'boolean', default: true })
+  settled: boolean;
 
   /** Tabletop pieces: the piece they sit on. */
   @Column({ type: 'uuid', nullable: true })

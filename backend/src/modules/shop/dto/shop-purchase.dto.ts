@@ -12,6 +12,12 @@ export class ShopPurchaseDto implements ShopPurchaseRequest {
   @Min(1)
   @Max(MAX_PURCHASE_QUANTITY)
   readonly quantity?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  readonly roomId?: string;
+
   @IsIdempotencyKey()
   readonly idempotencyKey?: string;
 }

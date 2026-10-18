@@ -1,12 +1,27 @@
-import { IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateIf, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   DECOR_MAX_PER_PURCHASE,
+  type DecorArrangeRequest,
   type DecorPlaceRequest,
   type DecorPurchaseRequest,
   type DecorRecolourRequest,
+  type DecorReplaceMode,
+  type DecorReplaceRequest,
   type DecorWall,
 } from '@insidelife/shared';
 import { IsIdempotencyKey } from '../../../common/decorators/idempotency-key.decorator.js';
+
+/** Where bought pieces go straight away: the room of your home you are in. */
+export class DecorPurchasePlaceDto {
+  @IsString()
+  @MaxLength(24)
+  readonly templateId: string;
+
+  @IsString()
+  @MaxLength(24)
+  readonly roomId: string;
+}
 
 export class DecorPurchaseDto implements DecorPurchaseRequest {
   @IsString()
@@ -22,6 +37,11 @@ export class DecorPurchaseDto implements DecorPurchaseRequest {
   @Min(1)
   @Max(DECOR_MAX_PER_PURCHASE)
   readonly quantity?: number;
+
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => DecorPurchasePlaceDto)
+  readonly place?: DecorPurchasePlaceDto;
 
   @IsIdempotencyKey()
   readonly idempotencyKey?: string;
@@ -75,4 +95,27 @@ export class DecorRecolourDto implements DecorRecolourRequest {
 
   @IsIdempotencyKey()
   readonly idempotencyKey?: string;
+}
+
+export class DecorSellDto {
+  @IsIdempotencyKey()
+  readonly idempotencyKey?: string;
+}
+
+export class DecorReplaceDto implements DecorReplaceRequest {
+  @IsUUID()
+  readonly oldId: string;
+
+  @IsIn(['store', 'sell'])
+  readonly mode: DecorReplaceMode;
+
+  @IsIdempotencyKey()
+  readonly idempotencyKey?: string;
+}
+
+export class DecorArrangeDto implements DecorArrangeRequest {
+  @IsOptional()
+  @IsString()
+  @MaxLength(24)
+  readonly roomId?: string;
 }

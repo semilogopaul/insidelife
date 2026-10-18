@@ -1,4 +1,4 @@
-import { findVenue, isHomeLocation, type CharacterSummaryDto, type VenueType } from '@insidelife/shared';
+import { findVenue, homeTemplateIdFor, isHomeLocation, type CharacterSummaryDto, type VenueType } from '@insidelife/shared';
 
 export const INTERIOR_TEMPLATE_IDS = [
   'home-family',
@@ -115,22 +115,9 @@ export function venueTypeFor(templateId: string): Exclude<VenueType, 'home'> | n
   return entry ? (entry[0] as Exclude<VenueType, 'home'>) : null;
 }
 
-/** Which home interior fits the player's current home (label keywords first, comfort as a fallback). */
+/** Which home interior fits the player's current home (shared with the server, which places furniture in it). */
 export function homeTemplateFor(home: HomeInfo | null | undefined): InteriorTemplateId {
-  if (!home) return 'home-family';
-  if (home.ownership === 'hostel') return 'home-hostel';
-  const label = home.label.toLowerCase();
-  if (/face-me|face me/.test(label)) return 'home-face-me';
-  if (/self[- ]contain/.test(label)) return 'home-self-contain';
-  if (/mansion|banana island/.test(label)) return 'home-mansion';
-  if (/duplex/.test(label)) return 'home-duplex';
-  if (/family house/.test(label)) return 'home-family';
-  if (/flat|bungalow|bed/.test(label)) return 'home-flat';
-  if (home.comfort >= 12) return 'home-mansion';
-  if (home.comfort >= 9) return 'home-duplex';
-  if (home.comfort >= 5) return 'home-flat';
-  if (home.comfort >= 3) return 'home-self-contain';
-  return home.comfort <= 0 ? 'home-face-me' : 'home-family';
+  return homeTemplateIdFor(home);
 }
 
 /** Template for a location id: venue type via the catalog, or the player's home for `home:<id>`. */

@@ -1,5 +1,7 @@
+import { DECOR_HOME_FIXTURES, DECOR_PROVIDED_FIXTURES } from './decor-fixtures.js';
+
 /**
- * The rooms of the homes you can decorate (rented or owned: never the family house or a hostel), as the server needs
+ * The rooms of the homes you can decorate (every home; in the family house and hostels only with small pieces), as the server needs
  * them to validate placements: floor size, openings and what's built in. The 3D templates in the frontend draw the
  * same rooms; a frontend test (`decor-rooms.test.ts`) fails if a template's size, doors or windows drift from this
  * table. Room space: centred on the origin, back wall at -z, left wall at -x, y up.
@@ -24,6 +26,15 @@ export interface DecorKeepOut {
   readonly maxZ: number;
 }
 
+/** Something standing on the floor that nothing of yours may go through: its middle, size and height (m). */
+export interface DecorFixture {
+  readonly x: number;
+  readonly z: number;
+  readonly w: number;
+  readonly d: number;
+  readonly h: number;
+}
+
 export interface DecorRoom {
   readonly label: string;
   readonly width: number;
@@ -33,12 +44,25 @@ export interface DecorRoom {
   readonly windows: readonly DecorWindow[];
   /** Staircases and stairwells: nothing is placed there. */
   readonly keepOut: readonly DecorKeepOut[];
+  /** Fittings and (in the family house and hostels) the family's furniture: floor pieces keep clear of them. */
+  readonly fixtures?: readonly DecorFixture[];
 }
 
 /** Door opening height (m). */
 export const DECOR_DOOR_HEIGHT = 2.05;
 
+
 export const DECOR_HOME_ROOMS = {
+  'home-family': {
+    room: { label: 'Your room', width: 6, depth: 5, height: 2.5, doors: [{ wall: 'back', at: 1.75, width: 0.9 }, { wall: 'left', at: 0.3, width: 0.9 }, { wall: 'left', at: 1.85, width: 0.9 }], windows: [{ wall: 'back', at: -1.6, width: 1.2, sill: 1.15, height: 0.9 }], keepOut: [] },
+    kitchen: { label: 'Kitchen', width: 4.6, depth: 3.8, height: 2.5, doors: [{ wall: 'left', at: 0.8, width: 0.9 }], windows: [{ wall: 'back', at: 1.7, width: 0.9, sill: 1.15, height: 0.8 }], keepOut: [] },
+    bathroom: { label: 'Bathroom', width: 3.4, depth: 3, height: 2.5, doors: [{ wall: 'left', at: 0.5, width: 0.8 }], windows: [{ wall: 'back', at: 0.95, width: 0.7, sill: 1.5, height: 0.5 }], keepOut: [] },
+  },
+  'home-hostel': {
+    room: { label: 'Your room', width: 5.6, depth: 4.6, height: 2.6, doors: [{ wall: 'left', at: 1.3, width: 0.85 }, { wall: 'left', at: -0.2, width: 0.7 }, { wall: 'back', at: 0.85, width: 0.8 }], windows: [{ wall: 'back', at: -0.3, width: 1, sill: 0.85, height: 1.05 }], keepOut: [] },
+    kitchen: { label: 'Shared kitchenette', width: 3.8, depth: 3.2, height: 2.6, doors: [{ wall: 'left', at: 0.6, width: 0.9 }], windows: [{ wall: 'back', at: 1.2, width: 0.8, sill: 1.15, height: 0.7 }], keepOut: [] },
+    bathroom: { label: 'Shared bathroom', width: 3.4, depth: 3, height: 2.6, doors: [{ wall: 'left', at: 0.5, width: 0.8 }], windows: [{ wall: 'back', at: 0.95, width: 0.7, sill: 1.5, height: 0.5 }], keepOut: [] },
+  },
   'home-face-me': {
     room: { label: 'Face-me-I-face-you room', width: 4.8, depth: 4.2, height: 2.4, doors: [{ wall: 'left', at: 1.2, width: 0.85 }, { wall: 'left', at: -1.3, width: 0.8 }], windows: [{ wall: 'back', at: 0.9, width: 1, sill: 1, height: 0.85 }], keepOut: [] },
     bathroom: { label: 'Compound bathroom', width: 3.2, depth: 2.8, height: 2.4, doors: [{ wall: 'left', at: 0.5, width: 0.8 }], windows: [{ wall: 'back', at: 0.8500000000000001, width: 0.7, sill: 1.5, height: 0.5 }], keepOut: [] },
@@ -69,10 +93,17 @@ export const DECOR_HOME_ROOMS = {
 
 export type DecorHomeTemplateId = keyof typeof DECOR_HOME_ROOMS;
 
-/** The room of a decorable home template, or undefined (family house, hostel, venues, typos). */
-export function findDecorRoom(templateId: string, roomId: string): DecorRoom | undefined {
+/**
+ * The room of a decorable home template (with the floor fittings pieces must keep clear of), or undefined (venues,
+ * typos). `provided` is a home that comes furnished (the family house, a hostel): its furniture stays put and is part
+ * of what you cannot go through.
+ */
+export function findDecorRoom(templateId: string, roomId: string, provided = false): DecorRoom | undefined {
   const rooms = (DECOR_HOME_ROOMS as Readonly<Record<string, Readonly<Record<string, DecorRoom>> | undefined>>)[templateId];
-  return rooms ? Object.hasOwn(rooms, roomId) ? rooms[roomId] : undefined : undefined;
+  const room = rooms && Object.hasOwn(rooms, roomId) ? rooms[roomId] : undefined;
+  if (!room) return undefined;
+  const fixtures = (provided ? DECOR_PROVIDED_FIXTURES : DECOR_HOME_FIXTURES)[templateId]?.[roomId];
+  return fixtures ? { ...room, fixtures } : room;
 }
 
 export const isDecorTemplate = (templateId: string): templateId is DecorHomeTemplateId =>

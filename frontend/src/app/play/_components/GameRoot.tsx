@@ -9,6 +9,7 @@ import { queryKeys } from '@/common/api/query-keys';
 import { useSession } from '@/common/auth/session-store';
 import { dmLink, useDmAlerts } from '@/common/chat';
 import { ErrorBoundary, toast } from '@/common/components';
+import { ReplaceFurnitureSheet } from '@/common/decor';
 import { gameEvents } from '@/common/game/game-events';
 import { usePlayState } from '@/common/game/play-state';
 import { useDeliveryArrival } from '@/common/game/delivery-arrival';
@@ -148,6 +149,7 @@ export function GameRoot() {
       <VenueMomentLayer />
       <TalkLayer />
       <Phone apps={PHONE_APPS} />
+      <ReplaceFurnitureSheet />
       <LifeEventsLayer />
       <NotificationCenter />
       <AwayReport />
