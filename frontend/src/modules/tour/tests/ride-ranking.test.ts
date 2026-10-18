@@ -28,3 +28,14 @@ describe('ride ranking', () => {
     expect(TOUR_STEPS.find((step) => step.id === 'map-ride')!.body({ touch: false, stickSide: null })).toContain(text);
   });
 });
+
+describe('ride ranking in Abuja', () => {
+  it('has no danfo or BRT and says where keke and okada may run', () => {
+    const modes = rankRides('rush', 'abuja').map((ride) => ride.mode);
+    expect(modes).toEqual(expect.arrayContaining(['taxi', 'bus', 'bolt']));
+    expect(modes).not.toContain('danfo');
+    expect(modes).not.toContain('brt');
+    expect(rankRides('rush').map((ride) => ride.mode)).not.toContain('taxi');
+    expect(rideAdvice('abuja')).toMatch(/Gwarinpa, Kubwa and Lugbe/);
+  });
+});

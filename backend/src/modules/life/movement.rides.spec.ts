@@ -10,24 +10,26 @@ import type { MovementTracker } from './movement-tracker.service.js';
 import { MovementService } from './movement.service.js';
 
 const BERGER = 'berger-car-market';
+const ABUJA_VENUE = 'wuse-market';
 /** 7:36 PM: Berger Car Mart (8–18) closed hours ago. */
 const EVENING = 40 * MINUTES_PER_DAY + 19 * 60 + 36;
 
 /** MovementService over a planner that quotes a 22-minute, ₦15,000 ride for every mode. */
-function harness(time: number, blocks: readonly ScheduleBlock[] = []) {
+function harness(time: number, blocks: readonly ScheduleBlock[] = [], locationId = 'street:ikeja') {
   const planner = {
     itemTags: async () => [],
     quote: async (_ctx: unknown, _from: string, _to: string, mode: TransportMode) => ({ mode, minutes: 22, fare: 15_000, intercity: false }),
     blocksAround: async () => blocks,
+    place: async (_ctx: unknown, locationId: string) => (locationId.includes('wuse') ? { districtId: 'wuse', cityId: 'abuja' } : { districtId: 'ikeja', cityId: 'lagos' }),
   } as unknown as TimelinePlanner;
   const pay = vi.fn(async () => true);
   const tracker = { clear: vi.fn(async () => undefined) } as unknown as MovementTracker;
   const ctx = {
     time,
-    character: { id: 'c1', alive: true, travel: null, activity: null, locationId: 'street:ikeja' },
+    character: { id: 'c1', alive: true, travel: null, activity: null, locationId, cityId: locationId === 'street:ikeja' ? 'lagos' : 'abuja' },
     wallet: { pay },
   } as unknown as SimulationContext;
-  const service = new MovementService(planner, {} as SimulationEngine, tracker, {} as VehiclePort, {} as HomeAccessPort);
+  const service = new MovementService(planner, {} as SimulationEngine, tracker, { parkedElsewhere: async () => null } as unknown as VehiclePort, {} as HomeAccessPort);
   return { service, ctx, pay };
 }
 
@@ -54,5 +56,19 @@ describe('rides to a place that will be closed when you get there', () => {
     const staff = harness(EVENING, [shift]);
     await staff.service.travel(staff.ctx, BERGER, 'bolt');
     expect(staff.pay).toHaveBeenCalledOnce();
+  });
+});
+
+describe('which rides a city has', () => {
+  it('offers no danfo or BRT in Abuja, and the green cab and city bus instead', async () => {
+    const { service, ctx } = harness(40 * MINUTES_PER_DAY + 12 * 60, [], 'street:wuse');
+    const modes = (await service.quotes(ctx, ABUJA_VENUE)).map((quote) => quote.mode);
+    expect(modes).toEqual(expect.arrayContaining(['taxi', 'bus', 'bolt']));
+    expect(modes).not.toContain('danfo');
+    expect(modes).not.toContain('brt');
+    const lagos = harness(40 * MINUTES_PER_DAY + 12 * 60);
+    const lagosModes = (await lagos.service.quotes(lagos.ctx, BERGER)).map((quote) => quote.mode);
+    expect(lagosModes).toContain('danfo');
+    expect(lagosModes).not.toContain('taxi');
   });
 });

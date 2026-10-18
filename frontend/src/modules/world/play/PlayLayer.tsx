@@ -131,6 +131,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
   const online = sandbox === null && snapshot !== undefined;
   const character = snapshot?.character;
   const characterId = character?.id ?? null;
+  const cityId = character?.cityId ?? 'lagos';
   const worldState = useWorldState().data;
   const economy = worldState?.economy;
   const scarcity = worldState?.events.some((event) => event.kind === 'fuel-scarcity') ?? false;
@@ -199,7 +200,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
       controller.setCar(start.car.vehicle, start.car.x, start.car.z, start.car.heading);
       if (start.driving) runtime.enterCar();
     } else if (start.lookupCar && online) {
-      primaryCar()
+      primaryCar(cityId)
         .then((vehicle) => {
           if (cancelled || !vehicle || controller.car) return;
           controller.setCar(vehicle, start.parking.x, start.parking.z, start.parking.heading);
@@ -235,7 +236,7 @@ export function PlayLayer({ quality, sandbox = null }: PlayLayerProps) {
       usePlayUi.getState().setActive(false);
       resetControls();
     };
-  }, [runtime, start, online, characterId]);
+  }, [runtime, start, online, characterId, cityId]);
 
   // Riding a booked trip (the ride layer moves the camera) vs. on your own feet/wheels.
   const riding = travel !== null;

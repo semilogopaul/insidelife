@@ -305,6 +305,14 @@ export function dealerStocks(venueId: string, vehicle: VehicleDefinition): boole
 export const VEHICLE_DELIVERY_FEE = 50_000;
 
 /**
+ * A car belongs to the city it is parked in: it can only be driven, fuelled or shown there. A car carrier takes it to
+ * the other city for this fee (₦, before the price index) and it arrives `CAR_CARRIER_DAYS` game days later.
+ */
+export const CAR_CARRIER_FEE = 650_000;
+export const CAR_CARRIER_DAYS = 2;
+export const CAR_CARRIER_MINUTES = CAR_CARRIER_DAYS * MINUTES_PER_DAY;
+
+/**
  * When a car ordered for delivery reaches your gate: midnight at the end of the next day, whatever time you order
  * (handed over at day end). The one source for the server's `arrivesAt`, the dealer sheet's promise and the toasts.
  */

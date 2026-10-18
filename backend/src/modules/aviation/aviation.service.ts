@@ -458,7 +458,7 @@ export class AviationService {
     }
   }
 
-  /** Day-end: tell the owner when a ferried aircraft has landed at its terminal, and clear finished flights. */
+  /** Every settle: tell the owner when a ferried aircraft has landed at its terminal, and clear finished flights. */
   async landDue(ctx: SimulationContext): Promise<void> {
     const due = (await this.fleet(ctx)).filter(({ row }) => row.arrivesAt !== null && row.arrivesAt <= ctx.time);
     if (due.length === 0) return;

@@ -1,7 +1,7 @@
 'use client';
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CharacterSnapshotDto, GatId, HangarDto } from '@insidelife/shared';
+import type { CharacterSnapshotDto, GatId, HangarDto, OwnedAircraftDto } from '@insidelife/shared';
 import { errorMessage } from '@/common/api/api-error';
 import { queryKeys } from '@/common/api/query-keys';
 import { toast } from '@/common/components';
@@ -9,21 +9,26 @@ import { useWriteSnapshot } from '@/common/game/snapshot';
 import { useCurrentPlace } from '@/common/hooks/use-current-place';
 import { useAboard } from './aboard-store';
 import { aviationApi } from './aviation-api';
+import { useLandingRefresh } from './landing';
 
 /** The Hangar phone app caches the same endpoint under the same keys, so both read one cache. */
 const hangarPrefix = queryKeys.domain('hangar');
 const flightsOverviewKey = queryKeys.domain('flights', 'overview');
 
+const NO_PLANES: readonly OwnedAircraftDto[] = [];
+
 /** Your fleet, catalogue and licence (keyed by where you stand: `atGat` and the fly blockers depend on it). */
 export function useOwnFleet(enabled = true) {
   const { locationId } = useCurrentPlace();
-  return useQuery({
+  const query = useQuery({
     queryKey: queryKeys.domain('hangar', locationId ?? 'unknown'),
     queryFn: aviationApi.hangar,
     placeholderData: keepPreviousData,
     enabled,
     staleTime: 15_000,
   });
+  useLandingRefresh(query.data?.mine ?? NO_PLANES);
+  return query;
 }
 
 /** Other players' planes parked at a terminal: friends' and those of players there, six at most; the rest are hangared. */

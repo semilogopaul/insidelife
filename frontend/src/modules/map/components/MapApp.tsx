@@ -25,7 +25,7 @@ import { useNavigation } from '@/common/game/navigation-store';
 import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { formatHour } from '@/common/places';
-import { useTravelQuotes, type TravelQuote } from '@/common/travel/travel-quotes';
+import { carAvailability, useTravelQuotes, type TravelQuote } from '@/common/travel/travel-quotes';
 import { cn } from '@/common/utils/cn';
 import { useVisits } from '@/common/visits';
 import { travelApi } from '../services/travel.api';
@@ -49,7 +49,7 @@ const STAGE_LABEL: Readonly<Record<OwnedPropertyMarkerDto['stage'], string>> = {
   built: 'Your house',
 };
 
-const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: Bike, keke: CarTaxiFront, danfo: Bus, brt: Bus, bolt: CarTaxiFront, car: Car };
+const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: Bike, keke: CarTaxiFront, danfo: Bus, brt: Bus, bolt: CarTaxiFront, car: Car, taxi: CarTaxiFront, bus: Bus };
 
 /** Pick a destination: walk or drive there with the GPS, or book a ride. */
 export function MapApp() {
@@ -234,7 +234,7 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
   const [confirming, setConfirming] = useState<{ readonly mode: TransportMode; readonly message: string } | null>(null);
   const car = quotes.data?.find((quote) => quote.mode === 'car');
   const walk = quotes.data?.find((quote) => quote.mode === 'walk' && quote.available);
-  const hasCar = car ? car.available || car.reason !== 'You don’t own a car yet' : false;
+  const { hasCar, why: noCarWhy } = carAvailability(car);
   const detail = target.kind === 'venue' ? target.venue.blurb : target.kind === 'visit' ? target.detail : null;
   const openPhone = useUi((state) => state.openPhone);
   // Across the water: no road, no ride, no GPS. The server says so for every mode.
@@ -312,7 +312,7 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
         </Button>
         {!hasCar && !quotes.isPending && (
           <p id="map-no-car" className="-mt-1 px-1 text-xs text-text-soft">
-            You don’t have a car yet. Motors on your phone sells them.
+            {noCarWhy}
           </p>
         )}
       </div>

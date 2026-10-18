@@ -32,7 +32,12 @@ export class AviationSystem implements SimulationSystem, OnModuleInit {
     await this.training.onActionComplete(ctx, action, activity);
   }
 
-  async onDayEnd(ctx: SimulationContext): Promise<void> {
+  /**
+   * A ferried (or flown) aircraft lands the moment its time comes: the row is cleared and the owner told on the first
+   * settle after `arrivesAt`, not at the next midnight. (Day end alone left a delivery "in the air" for up to a day after
+   * its promised landing time.) Cheap: nothing is read for owners without an aircraft.
+   */
+  async onSettled(ctx: SimulationContext): Promise<void> {
     await this.aviation.landDue(ctx);
   }
 

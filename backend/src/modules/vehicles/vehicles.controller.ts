@@ -7,6 +7,7 @@ import type {
   VehiclePurchaseResultDto,
   VehicleRepairResultDto,
   VehicleSaleResultDto,
+  VehicleShipmentResultDto,
   VehiclesDto,
 } from '@insidelife/shared';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
@@ -14,6 +15,7 @@ import type { AuthUser } from '../../common/interfaces/auth-user.interface.js';
 import { CharacterSession } from '../simulation/character-session.service.js';
 import { VehiclePurchaseDto } from './dto/vehicle-purchase.dto.js';
 import { VehicleServiceDto } from './dto/vehicle-service.dto.js';
+import { VehicleShipmentDto } from './dto/vehicle-shipment.dto.js';
 import { LicenceService } from './licence.service.js';
 import { VehiclesService } from './vehicles.service.js';
 
@@ -77,5 +79,12 @@ export class VehiclesController {
   @Post(':id/jerrycans')
   jerrycan(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: VehicleServiceDto): Promise<JerrycanResultDto> {
     return this.session.run({ userId: user.userId }, (ctx) => this.vehicles.jerrycan(ctx, id, body.idempotencyKey), { touch: true });
+  }
+
+  /** A car carrier takes the car to the other city (fee, ~2 game days). */
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post(':id/shipments')
+  ship(@CurrentUser() user: AuthUser, @Param('id', ParseUUIDPipe) id: string, @Body() body: VehicleShipmentDto): Promise<VehicleShipmentResultDto> {
+    return this.session.run({ userId: user.userId }, (ctx) => ctx.once('vehicle-shipment', body.idempotencyKey, { id }, () => this.vehicles.ship(ctx, id, body.idempotencyKey)), { touch: true });
   }
 }

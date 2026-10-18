@@ -29,10 +29,12 @@ export const movementApi = {
 
 export { adTrackingApi as promotionsApi } from '@/common/promotions/ad-tracking';
 
-/** The car with you from the garage (the primary one, whatever its state, else any delivered car), as the spawn has it. */
-export async function primaryCar(): Promise<DrivenVehicleDto | null> {
-  const garage = await movementApi.garage();
-  const owned = garage.mine.filter((entry) => entry.status === 'owned');
+/**
+ * The car with you from the garage: the primary one, whatever its state, else any delivered car, but only a car parked
+ * in the city you are in. A car left in Lagos is not near you in Abuja (never fall back to "any car near the player").
+ */
+export function carWithYou(garage: VehiclesDto, cityId: string): DrivenVehicleDto | null {
+  const owned = garage.mine.filter((entry) => entry.status === 'owned' && entry.cityId === cityId);
   const car = owned.find((entry) => entry.isPrimary) ?? owned[0];
   if (!car) return null;
   const catalog = garage.catalogue.find((entry) => entry.vehicle.id === car.vehicleId)?.vehicle;
@@ -50,4 +52,8 @@ export async function primaryCar(): Promise<DrivenVehicleDto | null> {
     condition: car.condition,
     brokenDown: car.brokenDown,
   };
+}
+
+export async function primaryCar(cityId: string): Promise<DrivenVehicleDto | null> {
+  return carWithYou(await movementApi.garage(), cityId);
 }

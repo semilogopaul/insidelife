@@ -1,4 +1,5 @@
 import {
+  cityAt,
   districtBounds,
   doorStepFor,
   isVehicleModel,
@@ -83,7 +84,9 @@ export function resolveStart(snapshot: CharacterSnapshotDto | undefined, offer: 
     if (entrance) return fromEntrance(entrance, car, false, 'sandbox');
   }
   if (offer) return fromEntrance(offer.spawn.entrance, offer.spawn.car, !offer.fromServer, snapshot?.character.id ?? '');
-  if (saved) {
+  // A pose (and car) saved in the other city is nonsense here: a car belongs to the city it is parked in.
+  const cityId = snapshot?.character.cityId;
+  if (saved && (cityId === undefined || cityAt(saved) === cityId)) {
     return {
       x: saved.x,
       z: saved.z,

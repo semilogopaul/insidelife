@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import type { CityId } from '@insidelife/shared';
 import type { DrivenVehicle, VehiclePort } from '../../common/ports/vehicle.port.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { VehiclesService } from './vehicles.service.js';
@@ -18,6 +19,12 @@ export class VehiclePortAdapter implements VehiclePort {
     if (!car) return null;
     if (km > 0 || bumps > 0) await this.vehicles.drive(ctx, car, km, { bumps });
     return this.vehicles.driven(ctx, car);
+  }
+
+  async parkedElsewhere(ctx: SimulationContext): Promise<CityId | null> {
+    if (await this.vehicles.withYou(ctx)) return null;
+    const away = (await this.vehicles.garage(ctx)).find((car) => car.row.status === 'owned');
+    return away ? this.vehicles.parkedIn(away) : null;
   }
 
   async refuel(ctx: SimulationContext, litres: number | null, stationName: string, key: string): Promise<{ litres: number; pricePerLitre: number; cost: number; car: DrivenVehicle } | null> {

@@ -2,11 +2,12 @@
 
 import { Fuel, Gauge, Navigation, Star, Truck, Wrench } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
-import { FUEL_LOW_SHARE, MAX_VEHICLES, deliveryByLabel, nearestServicePoint, serviceLocationId, type GameMinute, type OwnedVehicleDto, type ServicePointKind, type VehiclesDto } from '@insidelife/shared';
+import { FUEL_LOW_SHARE, MAX_VEHICLES, CAR_CARRIER_DAYS, deliveryByLabel, formatGameDuration, nearestServicePoint, serviceLocationId, type GameMinute, type OwnedVehicleDto, type ServicePointKind, type VehiclesDto } from '@insidelife/shared';
 import { Badge, Button, Money, ProgressBar } from '@/common/components';
 import { useVehicleCommands } from '../../hooks/use-vehicles';
 import { announce, complain } from '@/common/game/feedback';
 import { useNavigation } from '@/common/game/navigation-store';
+import { useSnapshot } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { useWorld } from '@/common/game/world-store';
 import { conditionWord } from '../../services/motors-rules';
@@ -14,7 +15,9 @@ import { CarArt, Plate } from '../CarArt';
 import { ConfirmSheet } from '@/common/components';
 import { NextStep } from '@/common/components';
 
-type Pending = { readonly kind: 'repair' | 'roadside' | 'sell'; readonly car: OwnedVehicleDto } | null;
+type Pending = { readonly kind: 'repair' | 'roadside' | 'sell' | 'ship'; readonly car: OwnedVehicleDto } | null;
+
+const cityName = (cityId: string): string => (cityId === 'abuja' ? 'Abuja' : 'Lagos');
 
 /** GPS to the nearest filling station or mechanic from where you are on the street (null when you're not outside). */
 function useNearestService(kind: ServicePointKind) {
@@ -40,7 +43,9 @@ export function GarageTab({
   readonly now: GameMinute;
   readonly onShop: () => void;
 }) {
-  const { setPrimary, repair, roadside, jerrycan, sell } = useVehicleCommands();
+  const { setPrimary, repair, roadside, jerrycan, sell, ship } = useVehicleCommands();
+  const { data: snapshot } = useSnapshot();
+  const myCity = snapshot?.character.cityId ?? 'lagos';
   const [pending, setPending] = useState<Pending>(null);
   const toFuel = useNearestService('fuel');
   const toMechanic = useNearestService('mechanic');
@@ -111,7 +116,9 @@ export function GarageTab({
             </div>
             {car.status === 'in-transit' ? (
               <p className="rounded-card bg-cobalt-soft p-3 text-sm font-bold text-cobalt">
-                On its way — the dealer’s driver brings it {car.arrivesAt !== null ? deliveryByLabel(car.arrivesAt, now) : 'soon'}.
+                {car.shippingTo !== null
+                  ? `On a car carrier to ${cityName(car.shippingTo)}. ${car.arrivesAt !== null ? `It arrives in ${formatGameDuration(Math.max(0, car.arrivesAt - now))}.` : ''}`
+                  : <>On its way — the dealer’s driver brings it {car.arrivesAt !== null ? deliveryByLabel(car.arrivesAt, now) : 'soon'}.</>}
               </p>
             ) : (
               <>
@@ -147,7 +154,14 @@ export function GarageTab({
                     tone={car.fuelLitres <= car.tankLitres * FUEL_LOW_SHARE ? 'okada' : 'danfo'}
                   />
                 </div>
-                {(car.brokenDown || !car.canDrive) && (
+                {car.cityId !== myCity ? (
+                  <p role="status" className="rounded-card bg-cobalt-soft p-3 text-sm font-bold text-cobalt">
+                    Parked in {cityName(car.cityId)}. You can’t drive it here, and it won’t show up near you. Ship it over, or fly back to it.
+                  </p>
+                ) : (
+                  <p className="text-xs font-bold text-text-soft">Parked in {cityName(car.cityId)}</p>
+                )}
+                {car.cityId === myCity && (car.brokenDown || !car.canDrive) && (
                   <p role="status" className="rounded-card bg-okada-soft p-3 text-sm font-bold text-okada">
                     {car.brokenDown
                       ? 'Broken down: it won’t move until a mechanic sees it.'
@@ -210,7 +224,7 @@ export function GarageTab({
                       Drive this one
                     </Button>
                   )}
-                  {car.fuelLitres < car.tankLitres - 1 && (
+                  {car.cityId === myCity && car.fuelLitres < car.tankLitres - 1 && (
                     <Button
                       size="sm"
                       variant="paper"
@@ -226,11 +240,14 @@ export function GarageTab({
                       Jerrycan 10 L · <Money amount={car.jerrycanPrice} compact />
                     </Button>
                   )}
-                  {car.roadsideRepairCost > 0 && (car.brokenDown || car.condition < 50) && (
+                  {car.cityId === myCity && car.roadsideRepairCost > 0 && (car.brokenDown || car.condition < 50) && (
                     <Button size="sm" variant="ink" icon={<Wrench size={15} aria-hidden />} onClick={() => setPending({ kind: 'roadside', car })}>
                       Roadside mechanic · <Money amount={car.roadsideRepairCost} compact />
                     </Button>
                   )}
+                  <Button size="sm" variant="paper" icon={<Truck size={15} aria-hidden />} onClick={() => setPending({ kind: 'ship', car })}>
+                    Ship to {cityName(car.cityId === 'abuja' ? 'lagos' : 'abuja')} · <Money amount={car.shipFee} compact />
+                  </Button>
                   {car.towRepairCost > 0 && (
                     <Button size="sm" variant="paper" icon={<Truck size={15} aria-hidden />} onClick={() => setPending({ kind: 'repair', car })}>
                       Tow & fix · <Money amount={car.towRepairCost} compact />
@@ -255,7 +272,9 @@ export function GarageTab({
         onClose={() => setPending(null)}
         tone={pending?.kind === 'sell' ? 'danger' : 'danfo'}
         title={
-          pending?.kind === 'repair'
+          pending?.kind === 'ship'
+            ? `Ship the ${pending.car.name} to ${cityName(pending.car.cityId === 'abuja' ? 'lagos' : 'abuja')}?`
+            : pending?.kind === 'repair'
             ? `Tow and fix the ${pending.car.name}?`
             : pending?.kind === 'roadside'
               ? 'Call a roadside mechanic?'
@@ -264,17 +283,27 @@ export function GarageTab({
                 : ''
         }
         description={
-          pending?.kind === 'repair'
+          pending?.kind === 'ship'
+            ? `A car carrier takes it by road. It is off the road for ${CAR_CARRIER_DAYS} game days, then parked in ${cityName(pending.car.cityId === 'abuja' ? 'lagos' : 'abuja')}. Cars belong to the city they are parked in.`
+            : pending?.kind === 'repair'
             ? 'A tow truck takes it to Ladipo; the mechanics restore it to full condition today. Driving it to a workshop yourself skips the tow.'
             : pending?.kind === 'roadside'
               ? 'He comes to you, gets it going and patches it up enough to drive (to 50). Pricier per fix than a workshop.'
               : 'The dealer pays cash now. The plate goes with the car.'
         }
-        confirmLabel={pending?.kind === 'repair' ? 'Pay for the tow & repair' : pending?.kind === 'roadside' ? 'Call him' : 'Sell to the dealer'}
-        loading={repair.isPending || roadside.isPending || sell.isPending}
+        confirmLabel={pending?.kind === 'ship' ? 'Pay the carrier' : pending?.kind === 'repair' ? 'Pay for the tow & repair' : pending?.kind === 'roadside' ? 'Call him' : 'Sell to the dealer'}
+        loading={repair.isPending || roadside.isPending || sell.isPending || ship.isPending}
         onConfirm={() => {
           if (!pending) return;
-          if (pending.kind === 'roadside') {
+          if (pending.kind === 'ship') {
+            ship.mutate(pending.car.id, {
+              onSuccess: (result) => {
+                setPending(null);
+                announce('On the carrier', { body: `Arrives in ${CAR_CARRIER_DAYS} game days in ${cityName(result.toCityId)}.`, amount: -result.fee });
+              },
+              onError: (error) => complain('The carrier didn’t come', error),
+            });
+          } else if (pending.kind === 'roadside') {
             roadside.mutate(pending.car.id, {
               onSuccess: (result) => {
                 setPending(null);
@@ -303,9 +332,9 @@ export function GarageTab({
       >
         {pending && (
           <p className="rounded-card bg-paper-2 p-3 text-sm">
-            {pending.kind === 'repair' || pending.kind === 'roadside' ? (
+            {pending.kind === 'repair' || pending.kind === 'roadside' || pending.kind === 'ship' ? (
               <>
-                Cost: <Money amount={pending.kind === 'repair' ? pending.car.towRepairCost : pending.car.roadsideRepairCost} className="font-bold" />
+                Cost: <Money amount={pending.kind === 'ship' ? pending.car.shipFee : pending.kind === 'repair' ? pending.car.towRepairCost : pending.car.roadsideRepairCost} className="font-bold" />
               </>
             ) : (
               <>

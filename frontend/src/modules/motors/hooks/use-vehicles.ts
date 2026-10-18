@@ -37,6 +37,7 @@ export function useVehicleCommands() {
     sell: useMutation({ mutationFn: motorsApi.sell, onSuccess: refresh }),
     repair: useMutation({ mutationFn: motorsApi.repair, onSuccess: refresh }),
     roadside: useMutation({ mutationFn: (vehicleId: string) => motorsApi.roadside(vehicleId, newIdempotencyKey()), onSuccess: refresh }),
+    ship: useMutation({ mutationFn: (vehicleId: string) => motorsApi.ship(vehicleId, newIdempotencyKey()), onSuccess: refresh }),
     jerrycan: useMutation({ mutationFn: (vehicleId: string) => motorsApi.jerrycan(vehicleId, newIdempotencyKey()), onSuccess: refresh }),
   };
 }

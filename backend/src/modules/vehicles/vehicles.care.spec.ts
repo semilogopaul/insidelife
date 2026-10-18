@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { JERRYCAN, ROADSIDE_MECHANIC, findVehicle, fuelTankLitres, jerrycanPrice, litresForKm, rngFor, workshopRepairCost } from '@insidelife/shared';
+import { CAR_CARRIER_FEE, CAR_CARRIER_MINUTES, JERRYCAN, ROADSIDE_MECHANIC, findVehicle, fuelTankLitres, jerrycanPrice, litresForKm, rngFor, workshopRepairCost } from '@insidelife/shared';
 import { GameRuleException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import type { OwnedVehicleEntity } from './entities/owned-vehicle.entity.js';
@@ -29,6 +29,8 @@ function harness(overrides: Partial<OwnedVehicleEntity> = {}, cash = 5_000_000) 
     skippedServices: 0,
     fuelLitres: 30,
     brokenDownAt: null,
+    cityId: 'lagos',
+    shippingTo: null,
     ...overrides,
   } as OwnedVehicleEntity;
   const paid = new Map<string, number>();
@@ -45,7 +47,7 @@ function harness(overrides: Partial<OwnedVehicleEntity> = {}, cash = 5_000_000) 
   };
   const ctx = {
     time: 10_000,
-    character: { id: 'c1', locationId: 'street:yaba', travel: null },
+    character: { id: 'c1', alive: true, locationId: 'street:yaba', cityId: 'lagos', travel: null },
     world: { economy: () => ({ priceIndex: 1, fuelPrice: FUEL_PRICE }), price: (base: number) => base },
     wallet,
     manager: { find: async () => [row], save: async (entity: unknown) => entity },
@@ -54,6 +56,7 @@ function harness(overrides: Partial<OwnedVehicleEntity> = {}, cash = 5_000_000) 
     invalidate: () => undefined,
     rng: (...parts: (string | number)[]) => rngFor('character-seed', ...parts),
     notify: (note: { title: string }) => void notes.push(note.title),
+    report: () => undefined,
   } as unknown as SimulationContext;
   const service = new VehiclesService();
   const car: GarageCar = { row, def: PEUGEOT! };
@@ -193,5 +196,71 @@ describe('mechanics', () => {
     const result = await service.repair(ctx, 'car-1');
     expect(result.cost).toBeGreaterThan(workshopRepairCost(PEUGEOT!, 40, true, 1));
     expect(result.vehicle).toMatchObject({ condition: 100, brokenDown: false });
+  });
+});
+
+describe('a car belongs to the city it is parked in', () => {
+  it('is with you only in its own city', async () => {
+    const lagos = harness();
+    expect((await lagos.service.withYou(lagos.ctx))?.row.id).toBe('car-1');
+    expect((await lagos.service.drivable(lagos.ctx)).length).toBe(1);
+    const inAbuja = harness({ cityId: 'abuja' });
+    expect(await inAbuja.service.withYou(inAbuja.ctx)).toBeNull();
+    expect(await inAbuja.service.drivable(inAbuja.ctx)).toEqual([]);
+    expect(inAbuja.service.toDto(inAbuja.ctx, inAbuja.car)).toMatchObject({ cityId: 'abuja', drivable: false, canDrive: false });
+    // The player flies to Abuja: the Lagos car is no longer near them.
+    lagos.ctx.character.cityId = 'abuja';
+    expect(await lagos.service.withYou(lagos.ctx)).toBeNull();
+  });
+
+  it('does not bring a jerrycan or a roadside mechanic to a car in the other city', async () => {
+    const { service, ctx } = harness({ cityId: 'abuja', fuelLitres: 5 });
+    await expect(service.jerrycan(ctx, 'car-1', 'tap-1')).rejects.toMatchObject({ errorCode: 'CAR_ELSEWHERE' });
+    await expect(service.roadsideRepair(ctx, 'car-1', 'tap-2')).rejects.toMatchObject({ errorCode: 'CAR_ELSEWHERE' });
+  });
+});
+
+describe('shipping a car to the other city', () => {
+  it('charges the carrier once, keeps the car off the road for two days, then parks it in the other city', async () => {
+    const { service, ctx, row, paid, wallet, notes } = harness();
+    const before = wallet.cash;
+    const result = await service.ship(ctx, 'car-1', 'tap-1');
+    expect(result).toMatchObject({ toCityId: 'abuja', fee: CAR_CARRIER_FEE, arrivesAt: 10_000 + CAR_CARRIER_MINUTES });
+    expect(wallet.cash).toBe(before - CAR_CARRIER_FEE);
+    expect([...paid.keys()]).toEqual(['vehicle-ship:car-1:tap-1']);
+    expect(row).toMatchObject({ status: 'in-transit', shippingTo: 'abuja', cityId: 'lagos' });
+    expect(await service.drivable(ctx)).toEqual([]);
+    expect(await service.withYou(ctx)).toBeNull();
+    await expect(service.ship(ctx, 'car-1', 'tap-2')).rejects.toMatchObject({ errorCode: 'NOT_DELIVERED' });
+
+    // Not there yet one minute early; there at the minute, parked in Abuja and announced.
+    ctx.time = 10_000 + CAR_CARRIER_MINUTES - 1;
+    await service.deliverDue(ctx);
+    expect(row.status).toBe('in-transit');
+    ctx.time = 10_000 + CAR_CARRIER_MINUTES;
+    await service.deliverDue(ctx);
+    expect(row).toMatchObject({ status: 'owned', cityId: 'abuja', shippingTo: null, arrivesAt: null });
+    expect(notes).toContain('Your car has arrived 🚗');
+    // In Lagos it is now the one that is away; in Abuja it is with you.
+    expect(await service.withYou(ctx)).toBeNull();
+    ctx.character.cityId = 'abuja';
+    expect((await service.withYou(ctx))?.row.id).toBe('car-1');
+  });
+
+  it('refuses when you cannot pay, and charges nothing', async () => {
+    const { service, ctx, row, paid } = harness({}, 1_000);
+    await expect(service.ship(ctx, 'car-1', 'tap-1')).rejects.toMatchObject({ errorCode: 'INSUFFICIENT_FUNDS' });
+    expect(paid.size).toBe(0);
+    expect(row.status).toBe('owned');
+  });
+
+  it('a replayed press with the same key is not charged twice', async () => {
+    const { service, ctx, row, paid } = harness();
+    await service.ship(ctx, 'car-1', 'tap-1');
+    row.status = 'owned';
+    row.shippingTo = null;
+    await service.ship(ctx, 'car-1', 'tap-1');
+    expect(paid.size).toBe(1);
+    expect(row.status).toBe('owned');
   });
 });

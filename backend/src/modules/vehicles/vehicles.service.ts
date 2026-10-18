@@ -1,6 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   BASELINE_CONDITION,
+  CAR_CARRIER_FEE,
+  CAR_CARRIER_MINUTES,
+  CITY_IDS,
+  cityOfDistrict,
+  cityOfVenueId,
   FUEL_EMPTY_LITRES,
   FUEL_LOW_SHARE,
   JERRYCAN,
@@ -36,6 +41,7 @@ import {
   vehicleDeliveryArrival,
   vehicleDeliveryPromise,
   vehiclePaint,
+  type CityId,
   type DriverLicenceDto,
   type DrivenVehicleDto,
   type JerrycanResultDto,
@@ -45,6 +51,7 @@ import {
   type VehiclePurchaseResultDto,
   type VehicleRepairResultDto,
   type VehicleSaleResultDto,
+  type VehicleShipmentResultDto,
   type VehiclesDto,
 } from '@insidelife/shared';
 import { GameRuleException, InsufficientFundsException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
@@ -69,6 +76,8 @@ export const GARAGE_MEMO = 'vehicles-garage';
 /** Most characters own no car: the garage read is skipped when there's no row (see `RowProbe`). */
 export const GARAGE_ROWS: RowProbe = { key: 'vehicles:garage', table: 'owned_vehicles', where: 'character_id = $1' };
 const ITEM_TAGS_MEMO = 'item-tags';
+
+const cityName = (city: CityId): string => (city === 'abuja' ? 'Abuja' : 'Lagos');
 
 /** An owned car resolved against the catalog. */
 export interface GarageCar {
@@ -104,7 +113,17 @@ export class VehiclesService {
 
   /** Cars delivered that will start and go: fuel in the tank, not broken down, in good enough shape. */
   async drivable(ctx: SimulationContext): Promise<readonly GarageCar[]> {
-    return (await this.garage(ctx)).filter((car) => this.canDrive(ctx, car));
+    return (await this.garage(ctx)).filter((car) => this.isHere(ctx, car) && this.canDrive(ctx, car));
+  }
+
+  /** The city a car is parked in (cars from before cities existed were in Lagos). */
+  parkedIn(car: GarageCar): CityId {
+    return car.row.cityId ?? 'lagos';
+  }
+
+  /** Delivered and parked in the city the character is in: only then can it be driven, fuelled or shown near them. */
+  isHere(ctx: SimulationContext, car: GarageCar): boolean {
+    return car.row.status === 'owned' && this.parkedIn(car) === ctx.character.cityId;
   }
 
   /** The car you drive: the primary one if it starts, else any car that starts. */
@@ -116,10 +135,11 @@ export class VehiclesService {
   /**
    * The car with you out on the street: your daily ride (the primary car) whatever state it's in — an empty or
    * broken-down car still stands at the kerb, and the pump or the mechanic serves that one, never a car at home —
-   * else the first delivered car. Switch cars in Motors ("Drive this one").
+   * else the first delivered car. Only cars parked in the city you are in count: a car left in Lagos is not with you
+   * in Abuja (null without one, so no car appears near you). Switch cars in Motors ("Drive this one").
    */
   async withYou(ctx: SimulationContext): Promise<GarageCar | null> {
-    const owned = (await this.garage(ctx)).filter((car) => car.row.status === 'owned');
+    const owned = (await this.garage(ctx)).filter((car) => this.isHere(ctx, car));
     return owned.find((car) => car.row.isPrimary) ?? owned[0] ?? null;
   }
 
@@ -202,6 +222,8 @@ export class VehiclesService {
 
     const rng = ctx.rng('vehicle-purchase', def.id, ctx.time);
     const registeredIn = (dealerId ? findVenue(dealerId)?.districtId : undefined) ?? ctx.character.homeDistrictId;
+    // Driven off the lot, it is in the dealer's city; a delivery goes to your home gate, in your home city.
+    const parkedCity = (dealerId ? cityOfVenueId(dealerId) : null) ?? cityOfDistrict(ctx.character.homeDistrictId);
     const hasPrimary = (await this.garage(ctx)).some(({ row }) => row.isPrimary);
     const row = await ctx.manager.save(
       ctx.manager.create(OwnedVehicleEntity, {
@@ -221,6 +243,8 @@ export class VehiclesService {
         skippedServices: 0,
         fuelLitres: fuelTankLitres(def) * NEW_CAR_FUEL_SHARE,
         brokenDownAt: null,
+        cityId: parkedCity,
+        shippingTo: null,
       }),
     );
 
@@ -295,6 +319,7 @@ export class VehiclesService {
   async roadsideRepair(ctx: SimulationContext, id: string, idempotencyKey: string): Promise<VehicleRepairResultDto> {
     const car = await this.find(ctx, id);
     if (car.row.status !== 'owned') throw new GameRuleException('NOT_DELIVERED', `Your ${car.def.name} hasn’t been delivered yet`);
+    this.assertHere(ctx, car);
     const condition = this.condition(ctx, car);
     const cost = roadsideRepairCost(car.def, condition, this.brokenDown(car), ctx.world.economy(ctx.time).priceIndex);
     if (cost === 0) throw new GameRuleException('NOTHING_TO_REPAIR', `Your ${car.def.name} runs fine — a workshop can give it a proper service`);
@@ -327,6 +352,7 @@ export class VehiclesService {
   async jerrycan(ctx: SimulationContext, id: string, idempotencyKey: string): Promise<JerrycanResultDto> {
     const car = await this.find(ctx, id);
     if (car.row.status !== 'owned') throw new GameRuleException('NOT_DELIVERED', `Your ${car.def.name} hasn’t been delivered yet`);
+    this.assertHere(ctx, car);
     const litres = Math.round(Math.min(JERRYCAN.litres, fuelTankLitres(car.def) - this.fuel(car)) * 10) / 10;
     if (litres < 0.5) throw new GameRuleException('TANK_FULL', `Your ${car.def.name}’s tank is full`);
     const economy = ctx.world.economy(ctx.time);
@@ -442,6 +468,8 @@ export class VehiclesService {
         skippedServices: 0,
         fuelLitres: fuelTankLitres(def) * NEW_CAR_FUEL_SHARE,
         brokenDownAt: null,
+        cityId: cityOfDistrict(ctx.character.homeDistrictId),
+        shippingTo: null,
       }),
     );
     this.changed(ctx);
@@ -449,16 +477,68 @@ export class VehiclesService {
     ctx.wallet.recordUnearnedAsset(currentValue(def, ctx.time, ctx.time, BASELINE_CONDITION[def.grade], ctx.world.economy(ctx.time).priceIndex));
   }
 
-  /** Hand over remote purchases whose delivery time has come (runs at day end). */
+  /**
+   * A car carrier takes the car to the other city: a fee through the ledger, then it is away ("in transit", not
+   * drivable anywhere) for `CAR_CARRIER_DAYS` game days and is parked in the other city when it arrives (`deliverDue`).
+   */
+  async ship(ctx: SimulationContext, id: string, idempotencyKey: string): Promise<VehicleShipmentResultDto> {
+    if (!ctx.character.alive) throw new GameRuleException('DECEASED', 'This character has passed on');
+    const car = await this.find(ctx, id);
+    if (car.row.status !== 'owned') throw new GameRuleException('NOT_DELIVERED', `Your ${car.def.name} is not parked anywhere right now`);
+    const from = this.parkedIn(car);
+    const to = CITY_IDS.find((city) => city !== from);
+    if (!to) throw new GameRuleException('NO_OTHER_CITY', 'There is nowhere to ship it');
+    const fee = this.shipFee(ctx);
+    if (!ctx.wallet.canAfford(fee)) throw new InsufficientFundsException(fee);
+    const applied = await ctx.wallet.pay(fee, 'fee', `Car carrier to ${cityName(to)}: ${car.def.name} (${car.row.plate})`, `vehicle-ship:${car.row.id}:${idempotencyKey}`, {
+      sink: 'fees',
+      metadata: { ownedVehicleId: car.row.id, from, to },
+    });
+    if (applied) {
+      car.row.status = 'in-transit';
+      car.row.shippingTo = to;
+      car.row.arrivesAt = ctx.time + CAR_CARRIER_MINUTES;
+      await ctx.manager.save(car.row);
+      this.changed(ctx);
+      ctx.notify({
+        kind: 'system',
+        title: 'Car on the carrier 🚛',
+        body: `Your ${car.def.name} (${car.row.plate}) is on a car carrier to ${cityName(to)}. It arrives in ${CAR_CARRIER_MINUTES / MINUTES_PER_DAY} days.`,
+        tone: 'neutral',
+      });
+    }
+    return { vehicle: this.toDto(ctx, car), toCityId: to, fee, arrivesAt: car.row.arrivesAt ?? ctx.time + CAR_CARRIER_MINUTES, balance: ctx.wallet.cash };
+  }
+
+  /** What the car carrier charges right now (world prices). */
+  shipFee(ctx: SimulationContext): number {
+    return ctx.world.price(CAR_CARRIER_FEE, ctx.time);
+  }
+
+  /** Hand over remote purchases and car-carrier shipments whose time has come (every settle: a car lands when it says it will). */
   async deliverDue(ctx: SimulationContext): Promise<void> {
     const garage = await this.garage(ctx);
     const due = garage.filter(({ row }) => row.status === 'in-transit' && row.arrivesAt !== null && row.arrivesAt <= ctx.time);
     if (due.length === 0) return;
     let hasPrimary = garage.some(({ row }) => row.isPrimary);
     for (const car of due) {
+      const shipped = car.row.shippingTo;
       car.row.status = 'owned';
       car.row.arrivesAt = null;
       car.row.conditionAt = ctx.time;
+      if (shipped) {
+        car.row.cityId = shipped;
+        car.row.shippingTo = null;
+        await ctx.manager.save(car.row);
+        ctx.notify({
+          kind: 'system',
+          title: 'Your car has arrived 🚗',
+          body: `The car carrier delivered your ${car.def.name} (${car.row.plate}) in ${cityName(shipped)}. It is parked there now${ctx.character.cityId === shipped ? ' and ready to drive' : ''}.`,
+          tone: 'good',
+        });
+        ctx.report({ label: `${car.def.name} arrived in ${cityName(shipped)}`, tone: 'good' });
+        continue;
+      }
       if (!hasPrimary) {
         car.row.isPrimary = true;
         hasPrimary = true;
@@ -544,7 +624,7 @@ export class VehiclesService {
       value: this.value(ctx, car),
       saleOffer: row.status === 'owned' ? this.saleOffer(ctx, car) : 0,
       condition: Math.round(condition),
-      drivable: this.canDrive(ctx, car),
+      drivable: this.isHere(ctx, car) && this.canDrive(ctx, car),
       mileageKm: Math.round(row.mileageKm),
       acquiredAt: row.acquiredAt,
       isPrimary: row.isPrimary,
@@ -561,8 +641,18 @@ export class VehiclesService {
       pumpPrice: this.pumpPrice(ctx, car),
       jerrycanPrice: jerrycanPrice(economy.fuelPrice, def.fuelType, priceIndex),
       brokenDown,
-      canDrive: this.canDrive(ctx, car),
+      canDrive: this.isHere(ctx, car) && this.canDrive(ctx, car),
+      cityId: this.parkedIn(car),
+      shippingTo: row.shippingTo ?? null,
+      shipFee: this.shipFee(ctx),
     };
+  }
+
+  /** A mechanic or a jerrycan comes to the car where you are: the car must be in your city. */
+  private assertHere(ctx: SimulationContext, car: GarageCar): void {
+    if (this.parkedIn(car) !== ctx.character.cityId) {
+      throw new GameRuleException('CAR_ELSEWHERE', `Your ${car.def.name} is parked in ${cityName(this.parkedIn(car))}. Ship it here, or ask for a tow & fix`);
+    }
   }
 
   // ----- Internals -------------------------------------------------------------------------------------------------

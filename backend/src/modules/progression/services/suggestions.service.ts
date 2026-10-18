@@ -104,7 +104,7 @@ interface NearestPlace {
   readonly venueType: VenueType | 'home';
 }
 
-const travelPhrase = (mode: TransportMode): string => (mode === 'walk' ? 'on foot' : mode === 'car' ? 'by car' : `by ${mode === 'brt' ? 'BRT' : mode}`);
+const travelPhrase = (mode: TransportMode): string => (mode === 'walk' ? 'on foot' : mode === 'car' ? 'by car' : `by ${mode === 'brt' ? 'BRT' : mode === 'taxi' ? 'green cab' : mode === 'bus' ? 'city bus' : mode}`);
 
 /**
  * HUD "smart next steps": the most urgent of work/lectures about to start, a need running low, and the next Life

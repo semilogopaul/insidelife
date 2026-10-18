@@ -424,7 +424,7 @@ export const LIFE_GOALS = [
         id: 'ride',
         label: 'Take a danfo, BRT, keke, okada or Bolt',
         hint: 'Open Phone → Map, pick any destination and book a ride. “Enter with your change!”',
-        condition: anyOf(rode('danfo'), rode('brt'), rode('bolt'), rode('keke'), rode('okada')),
+        condition: anyOf(rode('danfo'), rode('brt'), rode('bolt'), rode('keke'), rode('okada'), rode('taxi'), rode('bus')),
       },
     ),
     reward: { cash: boosted(10_000), clout: 2 },

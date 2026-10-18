@@ -7,6 +7,9 @@ import {
   SERVICE_RADIUS,
   TRANSPORT,
   TRANSPORT_MODES,
+  cityDefaultMode,
+  modeUnavailableReason,
+  modesInCity,
   ENTRY_RADIUS,
   canDriveVehicle,
   closedOnArrival,
@@ -212,10 +215,15 @@ export class MovementService {
     await this.assertDestination(ctx, destinationId);
     const tags = await this.planner.itemTags(ctx);
     const results: TravelQuoteDto[] = [];
+    // Only what runs in the city you are in (no danfo in Abuja, no green cab in Lagos).
+    const from = await this.planner.place(ctx, character.locationId);
+    const to = await this.planner.place(ctx, destinationId);
+    const here = new Set<string>(modesInCity(from.cityId));
     for (const mode of TRANSPORT_MODES) {
+      if (!here.has(mode) && from.cityId === to.cityId) continue;
       const definition = TRANSPORT[mode];
       if (definition.requiresVehicle && !tags.includes('car')) {
-        results.push({ mode, label: definition.label, minutes: 0, fare: 0, available: false, reason: 'You don’t own a car yet' });
+        results.push({ mode, label: definition.label, minutes: 0, fare: 0, available: false, reason: await this.noCarReason(ctx) });
         continue;
       }
       const quote = await this.planner.quote(ctx, character.locationId, destinationId, mode, ctx.time);
@@ -231,11 +239,17 @@ export class MovementService {
         minutes: available ? quote.minutes : 0,
         fare: available ? quote.fare : 0,
         available,
-        reason: available ? undefined : `${definition.label} can’t make this trip`,
+        reason: available ? undefined : (modeUnavailableReason(mode, from.districtId, to.districtId) ?? `${definition.label} can’t make this trip`),
         ...(opens !== null ? { closedOnArrival: opens } : {}),
       });
     }
     return results;
+  }
+
+  /** Why there is no car to drive: none owned, or it is parked in the other city. */
+  private async noCarReason(ctx: SimulationContext): Promise<string> {
+    const away = await this.vehicles.parkedElsewhere(ctx);
+    return away ? `Your car is parked in ${away === 'abuja' ? 'Abuja' : 'Lagos'}` : 'You don’t own a car yet';
   }
 
   /**
@@ -249,12 +263,12 @@ export class MovementService {
     if (destinationId === character.locationId) throw new GameRuleException('ALREADY_THERE', 'You’re already there');
 
     const tags = await this.planner.itemTags(ctx);
-    if (TRANSPORT[mode].requiresVehicle && !tags.includes('car')) throw new GameRuleException('NO_CAR', 'You don’t own a car yet');
+    if (TRANSPORT[mode].requiresVehicle && !tags.includes('car')) throw new GameRuleException('NO_CAR', await this.noCarReason(ctx));
 
     const quote = await this.planner.quote(ctx, character.locationId, destinationId, mode, ctx.time);
     if (quote.intercity) throw new GameRuleException('OTHER_CITY', OTHER_CITY_REASON);
     if (quote.mode !== mode) {
-      throw new GameRuleException('MODE_UNAVAILABLE', `${TRANSPORT[mode].label} can’t make this trip — try danfo or Bolt`);
+      throw new GameRuleException('MODE_UNAVAILABLE', `${TRANSPORT[mode].label} can’t make this trip — try ${cityDefaultMode(character.cityId) === 'bus' ? 'the city bus' : 'a danfo'} or Bolt`);
     }
     const destination = findVenue(destinationId)?.name ?? (destinationId === homeLocationId(character.id) ? 'home' : 'a friend’s place');
     if (!acceptClosed) {

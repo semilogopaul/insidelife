@@ -6,6 +6,7 @@ import type {
   VehiclePurchaseResultDto,
   VehicleRepairResultDto,
   VehicleSaleResultDto,
+  VehicleShipmentResultDto,
   VehiclesDto,
 } from '@insidelife/shared';
 import { api } from '@/common/api/http';
@@ -28,6 +29,8 @@ export const motorsApi = {
   repair: (vehicleId: string) => api.post<VehicleRepairResultDto>(`/vehicles/${id(vehicleId)}/repairs`),
   /** Roadside mechanic: gets it going where it stands (premium). */
   roadside: (vehicleId: string, idempotencyKey: string) => api.post<VehicleRepairResultDto>(`/vehicles/${id(vehicleId)}/roadside-repairs`, { idempotencyKey }),
+  /** A car carrier takes the car to the other city (fee, about 2 game days). */
+  ship: (vehicleId: string, idempotencyKey: string) => api.post<VehicleShipmentResultDto>(`/vehicles/${id(vehicleId)}/shipments`, { idempotencyKey }),
   /** A 10 L jerrycan brought to you (premium). */
   jerrycan: (vehicleId: string, idempotencyKey: string) => api.post<JerrycanResultDto>(`/vehicles/${id(vehicleId)}/jerrycans`, { idempotencyKey }),
 };
