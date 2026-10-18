@@ -1,3 +1,4 @@
+import type { StaySummaryDto } from './hotels.js';
 import type { BlueprintId } from '../catalog/housing.js';
 import type { HomeDecor, HouseExterior } from '../catalog/home-style.js';
 import type { ClockRescale, GameClockConfig } from '../time/clock.js';
@@ -201,6 +202,8 @@ export interface CharacterSummaryDto {
     /** Wall paint and floor you chose (rented or owned homes). */
     readonly decor?: HomeDecor;
   };
+  /** A hotel room you have booked: a temporary home until checkout (HUD, Map). */
+  readonly stay: StaySummaryDto | null;
   readonly relationship: { readonly status: 'single' | 'dating' | 'engaged' | 'married' | 'widowed' | 'divorced'; readonly partnerName: string | null };
   readonly children: number;
   /** Catalog ids of belongings that live at home (furniture, appliances, TVs, laptops…) — the 3D home shows them. */

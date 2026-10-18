@@ -216,6 +216,8 @@ export const PARTY_VENUES: Readonly<Record<PartyVenueKind, PartyVenueDefinition>
 /** Which catalog venue types can host a party (homes are handled separately). */
 export function partyVenueKindOf(venueType: VenueType): PartyVenueKind | null {
   if (venueType === 'bar' || venueType === 'club' || venueType === 'event-centre') return venueType;
+  // A hotel's ballroom hosts like an event centre.
+  if (venueType === 'hotel') return 'event-centre';
   return null;
 }
 
@@ -450,7 +452,7 @@ export const VISIT_RULES = {
 // ----- Spraying in clubs and bars (no party needed) ------------------------------------------------------------------
 
 /** Where you can spray without a party: the DJ or anyone in the room. */
-export const SPRAY_VENUE_TYPES = ['club', 'bar', 'event-centre'] as const;
+export const SPRAY_VENUE_TYPES = ['club', 'bar', 'event-centre', 'hotel'] as const;
 
 /** Nights run 06:00 to 06:00: per-night spray totals (and EFCC thresholds) reset in the morning. */
 export function sprayNightIndex(gameMinute: number): number {

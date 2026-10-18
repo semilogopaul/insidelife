@@ -4,6 +4,7 @@ import { HOME_DUPLEX, HOME_FACE_ME, HOME_FAMILY, HOME_FLAT, HOME_HOSTEL, HOME_MA
 import { KIT_TEST } from './catalog/kit-test';
 import { CAMPUS, CBT_CENTRE, ESTATE_AGENCY, GOVERNMENT, OFFICE, SCHOOL } from './catalog/learning-work';
 import { BAR, BUKA, CLUB, EVENT_CENTRE, RESTAURANT, SALON } from './catalog/social';
+import { HOTEL } from './catalog/hotel';
 import { JET_CABIN, MANSION_PARLOUR, REFINERY_CENTRE } from './catalog/showcase';
 import { AIRCRAFT_LAYOUTS, AIRCRAFT_TEMPLATE_IDS } from '../../aviation/cabin/cabin-layouts';
 import { AVIATION_LOUNGE } from '../../aviation/terminal/terminal-templates';
@@ -41,6 +42,7 @@ export const TEMPLATES: Readonly<Record<InteriorTemplateId, InteriorTemplate>> =
   salon: SALON,
   airport: AIRPORT,
   'event-centre': EVENT_CENTRE,
+  hotel: HOTEL,
   beach: BEACH,
   park: PARK,
   'motor-park': MOTOR_PARK,

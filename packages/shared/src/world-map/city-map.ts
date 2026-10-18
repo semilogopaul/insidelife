@@ -589,6 +589,7 @@ const ARCHETYPE_BY_TYPE: Readonly<Record<VenueType, LotArchetype>> = {
   airport: 'airport',
   'motor-park': 'motor-park',
   'event-centre': 'hotel',
+  hotel: 'hotel',
   'estate-agency': 'shop',
   'car-dealer': 'car-dealer',
   church: 'church',

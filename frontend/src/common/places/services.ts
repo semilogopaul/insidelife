@@ -176,6 +176,16 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType | 'aviation-termi
   club: NIGHT_OUT,
   bar: NIGHT_OUT,
   'event-centre': NIGHT_OUT,
+  hotel: [
+    {
+      id: 'hotel-reception',
+      label: 'Reception',
+      emoji: '🛎️',
+      blurb: 'Book a night or several, extend your stay or check out — in the Stay app. Your room is your home until checkout.',
+      opens: { app: 'stay' },
+      at: 'counter',
+    },
+  ],
   'car-dealer': [
     {
       id: 'browse-cars',

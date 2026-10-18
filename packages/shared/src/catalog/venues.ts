@@ -25,6 +25,7 @@ export const VENUE_TYPES = [
   'aviation-terminal',
   'motor-park',
   'event-centre',
+  'hotel',
   'estate-agency',
   'car-dealer',
   'church',
@@ -124,7 +125,7 @@ export const VENUES = [
   v({ id: 'air-obo', name: 'AIR OBO', type: 'private-jet', districtId: 'ikoyi', blurb: 'OBO’s private jet, parked on the pad beside the mansion. Climb aboard; it’s not going anywhere.', hours: [8, 22] }),
 
   // Victoria Island
-  v({ id: 'eko-hotel', name: 'Eko Hotel & Suites', type: 'event-centre', districtId: 'victoria-island', blurb: 'Weddings, concerts and society owambes.' }),
+  v({ id: 'eko-hotel', name: 'Eko Hotel & Suites', type: 'hotel', districtId: 'victoria-island', blurb: 'Weddings, concerts and society owambes, and rooms over the lagoon.' }),
   v({ id: 'the-vault', name: 'The Vault VI', type: 'club', districtId: 'victoria-island', blurb: 'Bottle service, sparklers, EFCC raids.', minStatus: 250, hours: [22, 30] }),
   v({ id: 'vi-lounge', name: 'Ozumba Rooftop Lounge', type: 'bar', districtId: 'victoria-island', blurb: 'Afterwork drinks with a skyline.', hours: [14, 27] }),
   v({ id: 'eko-atlantic', name: 'Eko Atlantic Towers', type: 'office', districtId: 'victoria-island', blurb: 'Oil, gas and glass towers on reclaimed land.', hours: [7, 21] }),
@@ -178,10 +179,11 @@ export const VENUES = [
   v({ id: 'nnpc-towers', name: 'NNPC Towers', type: 'office', districtId: 'abuja-cbd', blurb: 'Oil, gas and long meetings: the national oil company’s headquarters in the Central Area.', hours: [7, 20] }),
   v({ id: 'cbn-hq', name: 'Central Bank of Nigeria Headquarters', type: 'office', districtId: 'abuja-cbd', blurb: 'The naira’s guardians: monetary policy, circulars and a very tall lobby.', hours: [8, 18] }),
   v({ id: 'us-embassy-abuja', name: 'U.S. Embassy Abuja', type: 'government', districtId: 'abuja-cbd', blurb: 'Visa appointments, a long queue and a very high fence.', hours: [8, 16] }),
+  v({ id: 'fraser-suites-abuja', name: 'Fraser Suites Abuja', type: 'hotel', districtId: 'abuja-cbd', blurb: 'Serviced suites in the Central Business District: a desk, a kitchenette and the ministries a short walk away.' }),
   v({ id: 'ceddi-plaza', name: 'Ceddi Plaza', type: 'mall', districtId: 'abuja-cbd', blurb: 'Offices, banks, restaurants and shops on Tafawa Balewa Way.', hours: [8, 20] }),
 
   // Maitama
-  v({ id: 'transcorp-hilton', name: 'Transcorp Hilton Abuja', type: 'event-centre', districtId: 'maitama', blurb: 'Presidents, delegations and weddings: the grand hotel on Aguiyi Ironsi Street.' }),
+  v({ id: 'transcorp-hilton', name: 'Transcorp Hilton Abuja', type: 'hotel', districtId: 'maitama', blurb: 'Presidents, delegations and weddings: the grand hotel on Aguiyi Ironsi Street.' }),
   v({ id: 'millennium-park', name: 'Millennium Park', type: 'park', districtId: 'maitama', blurb: 'Fountains, lawns and joggers in the park Queen Elizabeth opened.', hours: [6, 20] }),
   v({ id: 'uk-high-commission', name: 'British High Commission Abuja', type: 'government', districtId: 'maitama', blurb: 'Visas, passports and a very polite queue.', hours: [8, 16] }),
   v({ id: 'canada-high-commission', name: 'High Commission of Canada', type: 'government', districtId: 'maitama', blurb: 'Study permits, visas and Express Entry questions.', hours: [8, 16] }),
@@ -192,7 +194,8 @@ export const VENUES = [
   // Wuse
   v({ id: 'banex-plaza', name: 'Banex Plaza', type: 'market', districtId: 'wuse', blurb: 'Abuja’s phone and gadget plaza in Wuse 2: new phones, “UK used” laptops and repairs.', hours: [9, 19] }),
   v({ id: 'play-imperial', name: 'Play Imperial', type: 'club', districtId: 'wuse', blurb: 'Adetokunbo Ademola Crescent’s iconic club: bottle service and the senator’s table.', minStatus: 150, hours: [22, 30] }),
-  v({ id: 'sheraton-abuja', name: 'Sheraton Abuja Hotel', type: 'event-centre', districtId: 'wuse', blurb: 'Conferences, receptions and a lobby where deals get done.' }),
+  v({ id: 'sheraton-abuja', name: 'Sheraton Abuja Hotel', type: 'hotel', districtId: 'wuse', blurb: 'Conferences, receptions and a lobby where deals get done.' }),
+  v({ id: 'chelsea-hotel-abuja', name: 'Chelsea Hotel Abuja', type: 'hotel', districtId: 'wuse', blurb: 'A dependable mid-range hotel off Wuse: a clean room, a bar and proper pepper soup.' }),
   v({ id: 'healthplus-wuse', name: 'HealthPlus Pharmacy Wuse 2', type: 'pharmacy', districtId: 'wuse', blurb: 'Chain pharmacy on Aminu Kano Crescent: drugs, baby things and a cold-water dispenser.', hours: [8, 22] }),
   v({ id: 'wuse-fitness', name: 'Wuse 2 Fitness Centre', type: 'gym', districtId: 'wuse', blurb: 'Treadmills, free weights and civil servants at six a.m.', hours: [5, 22] }),
   v({ id: 'yahuza-suya', name: 'Yahuza Suya Spot', type: 'buka', districtId: 'wuse', blurb: 'Abuja’s famous suya: beef, ram and chicken with yaji and onions, a proper late supper.', hours: [16, 28] }),
@@ -244,6 +247,13 @@ export const VENUES = [
   v({ id: 'national-assembly', name: 'National Assembly Complex', type: 'government', districtId: 'asokoro', blurb: 'The Senate and the House of Representatives under the green dome: visitors in the gallery, lobbyists in the corridors.', hours: [8, 18] }),
   v({ id: 'abuja-club', name: 'Abuja Club', type: 'gym', districtId: 'asokoro', blurb: 'Members-only gym, golf course and handshakes that move ministries.', minStatus: 450, hours: [5, 23] }),
   v({ id: 'asokoro-district-hospital', name: 'Asokoro District Hospital', type: 'hospital-public', districtId: 'asokoro', blurb: 'The district hospital under Aso Rock: cleaner than most, still a queue.' }),
+
+  // Hotels added after the first city shipped: last, so every earlier venue keeps the lot it was given.
+  v({ id: 'federal-palace-hotel', name: 'Federal Palace Hotel', type: 'hotel', districtId: 'victoria-island', blurb: 'Ahmadu Bello Way’s grand old hotel: a pool, a ballroom and a bar with a view.' }),
+  v({ id: 'lagos-continental-hotel', name: 'The Lagos Continental Hotel', type: 'hotel', districtId: 'victoria-island', blurb: 'A tall business hotel on the Island: meetings, a spa and a lagoon view.' }),
+  v({ id: 'the-wheatbaker', name: 'The Wheatbaker', type: 'hotel', districtId: 'ikoyi', blurb: 'Ikoyi’s quiet boutique hotel: art on the walls, afternoon tea and a garden pool.' }),
+  v({ id: 'radisson-blu-ikeja', name: 'Radisson Blu Anchorage Ikeja', type: 'hotel', districtId: 'ikeja', blurb: 'Ikeja’s business hotel: meetings by day, a pool and a bar by night.' }),
+  v({ id: 'four-points-lekki', name: 'Four Points by Sheraton Lekki', type: 'hotel', districtId: 'lekki', blurb: 'Rooftop views and a breakfast spread on the Lekki side.' }),
 ] as const satisfies readonly VenueDefinition[];
 
 export type VenueId = (typeof VENUES)[number]['id'];

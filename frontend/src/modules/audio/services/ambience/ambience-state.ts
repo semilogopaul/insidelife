@@ -72,7 +72,7 @@ export const SILENT_AMBIENCE: AmbienceTargets = {
 const LAGOON_DISTRICTS: ReadonlySet<DistrictId> = new Set(['yaba', 'lagos-island', 'ikoyi', 'banana-island', 'lekki', 'ikorodu', 'epe']);
 
 /** Loud venues where the room is the music (no room tone, no street). */
-const LOUD_PLACES: ReadonlySet<PlaceType> = new Set(['club', 'bar', 'event-centre']);
+const LOUD_PLACES: ReadonlySet<PlaceType> = new Set(['club', 'bar', 'event-centre', 'hotel']);
 
 export const isNightHour = (hour: number): boolean => hour >= 19 || hour < 6;
 export const isRushHour = (hour: number): boolean => (hour >= 6 && hour < 10) || (hour >= 16 && hour < 21);

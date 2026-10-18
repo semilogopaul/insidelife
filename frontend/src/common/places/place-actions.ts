@@ -3,7 +3,9 @@
 import { useMemo } from 'react';
 import {
   ACTIONS,
+  HOTEL_ROOM_ACTION_IDS,
   findVenue,
+  hotelOffers,
   formatNaira,
   homeLocationId,
   isAircraftLocation,
@@ -80,10 +82,14 @@ export function placeActions(
           venue: null,
         }
       : { kind: 'venue', name: venue?.name ?? (isAircraftLocation(locationId) ? 'Your aircraft' : 'Somewhere'), blurb: venue?.blurb ?? '', venue };
-  const actions = actionsAt(
+  const listed = actionsAt(
     place.kind === 'venue' ? { kind: 'venue', venueType: venue?.type ?? null } : { kind: place.kind },
   );
-  return { place, actions };
+  if (place.kind !== 'venue' || venue?.type !== 'hotel') return { place, actions: listed };
+  // A hotel offers only what it has (a pool, a gym…), and your own room — a bed and a shower — when you have booked here.
+  const offered = listed.filter((action) => action.amenity === undefined || hotelOffers(venue.id, action.amenity));
+  const room = snapshot.summary.stay?.venueId === venue.id ? actionsAt({ kind: 'home' }).filter((action) => HOTEL_ROOM_ACTION_IDS.has(action.id)) : [];
+  return { place, actions: [...room, ...offered] };
 }
 
 /** Memoised `placeActions`. */

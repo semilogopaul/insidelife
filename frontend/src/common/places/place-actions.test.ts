@@ -13,6 +13,36 @@ const snapshotAt = (locationId: string, timeline: unknown[] = []) =>
 
 const action = (id: string): ActionDefinition => findAction(id) as ActionDefinition;
 
+const stayingAt = (locationId: string, stayVenueId: string | null) =>
+  ({
+    character: { id: 'me', locationId },
+    travel: null,
+    timeline: [],
+    summary: { home: { label: 'Mini flat, Yaba' }, stay: stayVenueId ? { stayId: 's1', venueId: stayVenueId, name: 'Hotel', cityId: 'abuja', districtId: 'maitama', checkoutAt: 9999 } : null },
+  }) as unknown as CharacterSnapshotDto;
+
+describe('hotels', () => {
+  it('offer only the bar, restaurant, pool and gym the hotel has', () => {
+    const ids = (venue: string) => renderHook(() => usePlaceActions(stayingAt(venue, null))).result.current.actions.map((candidate) => candidate.id);
+    expect(ids('transcorp-hilton')).toEqual(expect.arrayContaining(['hotel-bar', 'hotel-restaurant', 'hotel-pool', 'hotel-gym']));
+    const chelsea = ids('chelsea-hotel-abuja');
+    expect(chelsea).toEqual(expect.arrayContaining(['hotel-bar', 'hotel-restaurant']));
+    expect(chelsea).not.toContain('hotel-pool');
+    expect(chelsea).not.toContain('hotel-gym');
+  });
+
+  it('give a guest their room (sleep, nap, shower) and nothing else of home; a visitor gets none of it', () => {
+    const guest = renderHook(() => usePlaceActions(stayingAt('transcorp-hilton', 'transcorp-hilton'))).result.current.actions.map((candidate) => candidate.id);
+    expect(guest).toEqual(expect.arrayContaining(['sleep', 'nap', 'shower', 'hotel-bar']));
+    expect(guest).not.toContain('cook');
+    expect(guest).not.toContain('watch-tv');
+    const visitor = renderHook(() => usePlaceActions(stayingAt('transcorp-hilton', null))).result.current.actions.map((candidate) => candidate.id);
+    expect(visitor).not.toContain('sleep');
+    const otherHotel = renderHook(() => usePlaceActions(stayingAt('sheraton-abuja', 'transcorp-hilton'))).result.current.actions.map((candidate) => candidate.id);
+    expect(otherHotel).not.toContain('sleep');
+  });
+});
+
 describe('place actions', () => {
   it('lists home actions at home, never the guest-only ones', () => {
     const { result } = renderHook(() => usePlaceActions(snapshotAt('home:me')));

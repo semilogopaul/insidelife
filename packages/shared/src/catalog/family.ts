@@ -303,13 +303,14 @@ export interface InteractionDefinition {
   readonly needsAmount?: { readonly min: number; readonly max: number };
 }
 
-export const DATE_VENUE_TYPES: readonly VenueType[] = ['restaurant', 'bar', 'cinema', 'beach', 'park', 'club', 'mall', 'event-centre'];
+export const DATE_VENUE_TYPES: readonly VenueType[] = ['restaurant', 'bar', 'cinema', 'beach', 'park', 'club', 'mall', 'event-centre', 'hotel'];
 
 /** What a date costs by venue type (₦, before the price index). */
 export const DATE_COSTS: Readonly<Partial<Record<VenueType, number>>> = {
   restaurant: 60_000,
   club: 50_000,
   'event-centre': 30_000,
+  hotel: 45_000,
   bar: 20_000,
   cinema: 15_000,
   mall: 15_000,
@@ -1049,19 +1050,19 @@ export const NPC_OCCUPATIONS: readonly NpcOccupationDefinition[] = [
   { id: 'doctor', title: 'Medical doctor', wealth: 'comfortable', monthlyIncome: 600_000, minAge: 24, maxAge: 60, venueTypes: ['church', 'restaurant', 'gym'] },
   { id: 'lawyer', title: 'Lawyer', wealth: 'comfortable', monthlyIncome: 500_000, minAge: 23, maxAge: 60, venueTypes: ['office', 'bar', 'restaurant', 'church'] },
   { id: 'trader', title: 'Trader', wealth: 'managing', monthlyIncome: 250_000, minAge: 18, maxAge: 65, venueTypes: ['market', 'buka', 'mosque', 'church'] },
-  { id: 'fashion-designer', title: 'Fashion designer', wealth: 'managing', monthlyIncome: 300_000, minAge: 19, maxAge: 50, venueTypes: ['mall', 'event-centre', 'club', 'church'] },
+  { id: 'fashion-designer', title: 'Fashion designer', wealth: 'managing', monthlyIncome: 300_000, minAge: 19, maxAge: 50, venueTypes: ['mall', 'event-centre', 'hotel', 'club', 'church'] },
   { id: 'content-creator', title: 'Content creator', wealth: 'managing', monthlyIncome: 200_000, minAge: 17, maxAge: 35, venueTypes: ['club', 'beach', 'mall', 'cinema', 'park'] },
   { id: 'teacher', title: 'Teacher', wealth: 'managing', monthlyIncome: 150_000, minAge: 22, maxAge: 60, venueTypes: ['church', 'mosque', 'market', 'school'] },
   { id: 'civil-servant', title: 'Civil servant', wealth: 'managing', monthlyIncome: 200_000, minAge: 22, maxAge: 60, venueTypes: ['mosque', 'church', 'buka', 'office'] },
   { id: 'bolt-driver', title: 'Bolt driver', wealth: 'sapa', monthlyIncome: 150_000, minAge: 21, maxAge: 55, venueTypes: ['buka', 'bar', 'motor-park'] },
-  { id: 'realtor', title: 'Real estate agent', wealth: 'comfortable', monthlyIncome: 400_000, minAge: 22, maxAge: 55, venueTypes: ['bar', 'event-centre', 'church', 'restaurant'] },
-  { id: 'event-planner', title: 'Event planner', wealth: 'managing', monthlyIncome: 350_000, minAge: 21, maxAge: 50, venueTypes: ['event-centre', 'club', 'church', 'mall'] },
-  { id: 'makeup-artist', title: 'Makeup artist', wealth: 'managing', monthlyIncome: 180_000, minAge: 18, maxAge: 40, venueTypes: ['mall', 'event-centre', 'salon', 'club'] },
+  { id: 'realtor', title: 'Real estate agent', wealth: 'comfortable', monthlyIncome: 400_000, minAge: 22, maxAge: 55, venueTypes: ['bar', 'event-centre', 'hotel', 'church', 'restaurant'] },
+  { id: 'event-planner', title: 'Event planner', wealth: 'managing', monthlyIncome: 350_000, minAge: 21, maxAge: 50, venueTypes: ['event-centre', 'hotel', 'club', 'church', 'mall'] },
+  { id: 'makeup-artist', title: 'Makeup artist', wealth: 'managing', monthlyIncome: 180_000, minAge: 18, maxAge: 40, venueTypes: ['mall', 'event-centre', 'hotel', 'salon', 'club'] },
   { id: 'accountant', title: 'Accountant', wealth: 'comfortable', monthlyIncome: 400_000, minAge: 22, maxAge: 60, venueTypes: ['office', 'church', 'mosque', 'gym'] },
-  { id: 'musician', title: 'Upcoming afrobeats artist', wealth: 'sapa', monthlyIncome: 60_000, minAge: 18, maxAge: 35, venueTypes: ['club', 'bar', 'beach', 'event-centre'] },
+  { id: 'musician', title: 'Upcoming afrobeats artist', wealth: 'sapa', monthlyIncome: 60_000, minAge: 18, maxAge: 35, venueTypes: ['club', 'bar', 'beach', 'event-centre', 'hotel'] },
   { id: 'fitness-coach', title: 'Fitness coach', wealth: 'managing', monthlyIncome: 200_000, minAge: 20, maxAge: 45, venueTypes: ['gym', 'park', 'stadium', 'beach'] },
   { id: 'pos-agent', title: 'POS agent', wealth: 'sapa', monthlyIncome: 180_000, minAge: 18, maxAge: 50, venueTypes: ['market', 'buka', 'motor-park'] },
-  { id: 'entrepreneur', title: 'Entrepreneur', wealth: 'wealthy', monthlyIncome: 2_500_000, minAge: 24, maxAge: 60, venueTypes: ['club', 'restaurant', 'gym', 'event-centre', 'bar'] },
+  { id: 'entrepreneur', title: 'Entrepreneur', wealth: 'wealthy', monthlyIncome: 2_500_000, minAge: 24, maxAge: 60, venueTypes: ['club', 'restaurant', 'gym', 'event-centre', 'hotel', 'bar'] },
   { id: 'oil-gas', title: 'Oil & gas engineer', wealth: 'wealthy', monthlyIncome: 1_800_000, minAge: 24, maxAge: 60, venueTypes: ['office', 'club', 'restaurant', 'gym'] },
 ];
 
@@ -1080,6 +1081,7 @@ export const VENUE_AGE_RANGES: Readonly<Partial<Record<VenueType, readonly [numb
   church: [17, 65],
   mosque: [17, 65],
   'event-centre': [20, 60],
+  hotel: [22, 60],
   buka: [18, 60],
   market: [18, 60],
   restaurant: [24, 60],
@@ -1096,6 +1098,7 @@ export const VENUE_TRAITS: Readonly<Partial<Record<VenueType, PersonTrait>>> = {
   market: 'hustler',
   gym: 'ambitious',
   'event-centre': 'party-lover',
+  hotel: 'ambitious',
   restaurant: 'romantic',
 };
 

@@ -123,6 +123,7 @@ export class SnapshotService {
       job: null,
       education: null,
       home: { label: 'Family house', districtId: character.homeDistrictId, comfort: 0, ownership: 'family' },
+      stay: null,
       relationship: { status: 'single', partnerName: null },
       children: 0,
       homeItems: [],

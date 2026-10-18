@@ -1,5 +1,6 @@
 import type { NeedDrift, NeedKey } from '../needs/needs.js';
 import type { SkillKey } from './life.js';
+import type { HotelAmenity } from './hotels.js';
 import type { VenueType } from './venues.js';
 
 /**
@@ -93,6 +94,8 @@ export interface ActionDefinition {
   readonly delivery?: { readonly service: string; readonly items: string };
   /** Engine-managed (exploring the open world); never listed in action menus. */
   readonly system?: boolean;
+  /** Hotels only: needs the hotel to have this (a pool, a gym…); other hotels don't list it. */
+  readonly amenity?: HotelAmenity;
 }
 
 const HOUR = 60;
@@ -228,6 +231,71 @@ export const ACTIONS = [
     drift: { energy: fill(34) },
     animation: 'sleep',
     blurb: 'Quick recharge: half an hour or an hour on the bed.',
+  },
+  // --- Hotels (where the hotel has them; sleeping in your room uses the home actions, see HOTEL_ROOM_ACTION_IDS) ---
+  {
+    id: 'hotel-restaurant',
+    label: 'Dine at the hotel restaurant',
+    verb: 'Dining at the hotel',
+    emoji: '🍽️',
+    category: 'food',
+    where: { venueTypes: ['hotel'] },
+    amenity: 'restaurant',
+    durations: [HOUR],
+    cost: 45_000,
+    drift: { hunger: fill(90), fun: fill(20, 92), social: fill(16, 88) },
+    statusOnComplete: 1,
+    hooks: ['meet-people'],
+    animation: 'eat',
+    blurb: 'Jollof, grilled fish and a buffet that goes on for a while. Linen napkins.',
+  },
+  {
+    id: 'hotel-bar',
+    label: 'Drinks at the hotel bar',
+    verb: 'Having drinks at the hotel',
+    emoji: '🍸',
+    category: 'social',
+    where: { venueTypes: ['hotel'] },
+    amenity: 'bar',
+    durations: [HOUR, 90],
+    cost: 35_000,
+    drift: { fun: fill(22, 92), social: fill(26, 96), energy: drain(5, 25) },
+    hooks: ['meet-people'],
+    requires: { minAge: 18 },
+    animation: 'drink',
+    blurb: 'Chapman, a cold Star and the best people-watching in town.',
+  },
+  {
+    id: 'hotel-pool',
+    label: 'Lounge by the pool',
+    verb: 'Lounging by the pool',
+    emoji: '🏊',
+    category: 'fun',
+    where: { venueTypes: ['hotel'] },
+    amenity: 'pool',
+    durations: [HOUR, 90],
+    cost: 20_000,
+    drift: { fun: fill(24, 98), energy: fill(8, 75), hygiene: fill(6, 80) },
+    statusOnComplete: 1,
+    animation: 'sit',
+    blurb: 'A sun lounger, a dip and a waiter who knows your order.',
+  },
+  {
+    id: 'hotel-gym',
+    label: 'Hotel gym',
+    verb: 'Working out at the hotel',
+    emoji: '🏋️',
+    category: 'fitness',
+    where: { venueTypes: ['hotel'] },
+    amenity: 'gym',
+    durations: [45],
+    cost: 10_000,
+    drift: { energy: drain(18, 5), hygiene: drain(25, 10), fun: fill(6, 65) },
+    fitnessPerHour: 1.6,
+    skillXpPerHour: { fitness: 0.75 },
+    hooks: ['exercise'],
+    animation: 'exercise',
+    blurb: 'Treadmills with a view and fluffy towels.',
   },
   // --- Food ---------------------------------------------------------------------------------------------------
   {
@@ -572,7 +640,7 @@ export const ACTIONS = [
     verb: 'Vibing to the band',
     emoji: '🎷',
     category: 'fun',
-    where: { venueTypes: ['bar', 'event-centre'] },
+    where: { venueTypes: ['bar', 'event-centre', 'hotel'] },
     durations: [30, HOUR],
     cost: 12_000,
     drift: { fun: fill(28, 100), social: fill(12, 90) },
@@ -628,7 +696,7 @@ export const ACTIONS = [
     emoji: '🤝',
     category: 'social',
     where: {
-      venueTypes: ['bar', 'club', 'beach', 'park', 'event-centre', 'campus', 'mall', 'gym', 'church', 'mosque', 'office', 'buka'],
+      venueTypes: ['bar', 'club', 'beach', 'park', 'event-centre', 'hotel', 'campus', 'mall', 'gym', 'church', 'mosque', 'office', 'buka'],
     },
     durations: [30],
     cost: 0,

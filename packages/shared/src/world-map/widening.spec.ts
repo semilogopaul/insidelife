@@ -38,11 +38,13 @@ const sig = (parts: readonly (string | number)[][]): number => hashString(parts.
 
 describe('widening keeps every id', () => {
   it('keeps every lot: id, kind, district, venue, front, door, street, cells and seed', () => {
-    // 882 lots before the multi-city work; 875 now: the General Aviation Terminal (mmia-gat) took eight infill cells (one lot of 4 × 2).
+    // 882 lots before the multi-city work; 875 after it: the General Aviation Terminal (mmia-gat) took eight infill cells (one lot of 4 × 2).
+    // 873 with the hotels: five more lots, seven fewer filler lots (infill cells behind three office cells at bends; the two on
+    // Victoria Island stand on the eastern column of Eko Hotel and of Eko Atlantic, whose doors did not move).
     const lagos = CITY_MAP.lots.filter((l) => DISTRICTS[l.districtId].cityId === 'lagos');
-    expect(lagos).toHaveLength(882 - 8 + 1);
+    expect(lagos).toHaveLength(882 - 8 + 1 + 5 - 7);
     const lots = lagos.map((l) => [l.id, l.kind, l.districtId, l.venueId ?? '', l.archetype ?? '', l.front ?? '', l.entrance ? 'door' : '', l.street ?? '', l.cells.join(','), l.seed]);
-    expect(sig(lots)).toBe(4_198_778_187);
+    expect(sig(lots)).toBe(2_988_736_327);
   });
 
   it('keeps every district’s home lots, so `homeLotOf` lands every house and family home on the same lot', () => {
@@ -65,7 +67,7 @@ describe('widening keeps every id', () => {
       const lot = venueLot(v.id);
       return [v.id, lot?.id ?? '', lot?.cells.join(',') ?? '', lot?.front ?? '', lot?.street ?? ''];
     });
-    expect(sig(venues)).toBe(2_490_293_548);
+    expect(sig(venues)).toBe(2_744_238_424);
   });
 });
 

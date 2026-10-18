@@ -759,7 +759,7 @@ export const LIFE_GOALS = [
     title: 'Get married',
     description: 'Introduction, traditional, white wedding — and the aso-ebi drama.',
     hint: 'When the relationship is strong, propose from Phone → Family, then plan the introduction and wedding.',
-    targetVenueTypes: ['event-centre', 'church', 'mosque'],
+    targetVenueTypes: ['hotel', 'church', 'mosque'],
     condition: relationship('married'),
     reward: { cash: boosted(200_000), clout: 15 },
     celebration: 'moment',

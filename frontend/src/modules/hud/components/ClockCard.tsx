@@ -1,9 +1,9 @@
 import { Cloud, CloudLightning, CloudRain, Moon, Sun, Wind, type LucideIcon } from 'lucide-react';
-import type { Weather } from '@insidelife/shared';
+import { formatClock12, type StaySummaryDto, type Weather } from '@insidelife/shared';
 
 const ICONS: Record<Weather['condition'], LucideIcon> = { clear: Sun, cloudy: Cloud, rain: CloudRain, storm: CloudLightning, haze: Wind };
 
-export function ClockCard({ clock, date, hour, weather, place, city }: { clock: string; date: string; hour: number; weather: Weather | null; place: string; city: string }) {
+export function ClockCard({ clock, date, hour, weather, place, city, stay }: { clock: string; date: string; hour: number; weather: Weather | null; place: string; city: string; stay?: StaySummaryDto | null }) {
   const night = hour < 6 || hour >= 19;
   const Icon = weather && weather.condition !== 'clear' ? ICONS[weather.condition] : night ? Moon : Sun;
   return (
@@ -21,6 +21,11 @@ export function ClockCard({ clock, date, hour, weather, place, city }: { clock: 
           </span>
           {place}
         </p>
+        {stay && (
+          <p data-testid="hud-stay" className="max-w-40 truncate text-2xs text-danfo">
+            🛎️ Room at {stay.name} · checkout {formatClock12(stay.checkoutAt)}
+          </p>
+        )}
       </div>
     </div>
   );

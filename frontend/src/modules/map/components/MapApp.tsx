@@ -10,6 +10,7 @@ import {
   VENUES,
   cityOfDistrict,
   cityOfVenue,
+  formatClock12,
   formatGameDuration,
   homeLocationId,
   type OwnedPropertyMarkerDto,
@@ -40,6 +41,7 @@ const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readon
   { label: 'Health', types: ['hospital-public', 'hospital-private', 'pharmacy'] },
   { label: 'Shopping', types: ['market', 'mall', 'car-dealer', 'salon'] },
   { label: 'Fun', types: ['bar', 'club', 'beach', 'park', 'cinema', 'event-centre', 'gym'] },
+  { label: 'Hotels', types: ['hotel'] },
   { label: 'Services', types: ['estate-agency', 'airport', 'aviation-terminal', 'motor-park', 'church', 'mosque'] },
 ];
 
@@ -74,6 +76,7 @@ export function MapApp() {
   const properties = (snapshot?.summary.properties ?? []).filter((property) => !property.livedIn);
   const homeCity = snapshot ? cityOfDistrict(snapshot.character.homeDistrictId) : cityId;
   const homeId = snapshot ? homeLocationId(snapshot.character.id) : null;
+  const stay = snapshot?.summary.stay ?? null;
   // Someone is expecting you: their place is a destination like any other while the invite stands.
   const expected = expectedVisits(visits.data?.incoming, snapshot?.character.locationId ?? null);
   const target = targetFromParam(selected, homeId, visits.data?.incoming);
@@ -102,6 +105,19 @@ export function MapApp() {
           </span>
         </span>
       </button>
+      {stay && (
+        <button type="button" onClick={() => setSelected(stay.venueId)} className="flex items-center gap-3 rounded-card bg-danfo-soft p-3 text-left ring-1 ring-danfo hover:bg-paper-3" data-testid="map-stay">
+          <PlaceIcon kind="hotel" size={40} decorative />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-bold">Your room · {stay.name}</span>
+            <span className="block truncate text-sm text-text-soft">
+              Home until checkout at {formatClock12(stay.checkoutAt)} · {DISTRICTS[stay.districtId].name}
+              {stay.cityId !== cityId ? ` · ${CITIES[stay.cityId].name}` : ''}
+            </span>
+          </span>
+          <Navigation size={18} aria-hidden className="shrink-0 text-text-faint" />
+        </button>
+      )}
       {expected.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label="Expected at">
           {expected.map((visit) =>

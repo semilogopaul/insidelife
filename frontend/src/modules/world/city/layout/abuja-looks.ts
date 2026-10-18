@@ -66,6 +66,9 @@ export const ABUJA_TOWER_LOOKS: Readonly<Record<string, AbujaTowerLook>> = {
   'central-area-towers': { towers: ['c:building-skyscraper-c', 'c:building-skyscraper-e'], count: 2, stretch: 1.3, tint: 0xdde3e8 },
   'transcorp-hilton': { towers: ['c:building-skyscraper-a'], count: 1, stretch: 1.5, tint: 0xf2e8d5 },
   'sheraton-abuja': { towers: ['c:building-skyscraper-e'], count: 1, stretch: 1.35, tint: 0xe6d3bd },
+  // One-cell hotels: a bank-sized block, stretched up (the tall skyscraper models need a wider plot).
+  'fraser-suites-abuja': { towers: ['c:building-i'], count: 1, stretch: 1.7, tint: 0xe9e4d8 },
+  'chelsea-hotel-abuja': { towers: ['c:building-i'], count: 1, stretch: 1.4, tint: 0xeadfd0 },
 };
 
 /** Government compounds: building, paint, and whether a compound wall with a gate closes the lot (embassies). */

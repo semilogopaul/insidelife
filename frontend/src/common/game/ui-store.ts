@@ -16,6 +16,7 @@ export const PHONE_APPS = [
   'motors',
   'hangar',
   'flights',
+  'stay',
   'health',
   'family',
   'invest',
