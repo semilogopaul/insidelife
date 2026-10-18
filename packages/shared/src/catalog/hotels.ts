@@ -1,5 +1,5 @@
 import { MINUTES_PER_DAY, MINUTES_PER_HOUR, startOfDay, type GameMinute } from '../time/calendar.js';
-import { DISTRICTS, type CityId } from './geography.js';
+import { DISTRICTS, cityOfDistrict, type CityId, type DistrictId } from './geography.js';
 import { findVenue, type VenueDefinition } from './venues.js';
 
 /**
@@ -52,7 +52,7 @@ export interface HotelDefinition {
  */
 export const HOTELS: readonly HotelDefinition[] = [
   // Lagos
-  { venueId: 'eko-hotel', tier: 'luxury', nightlyRate: 320_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'Victoria Island’s resort hotel: lagoon pools, ballrooms and a lobby that has seen every wedding.' },
+  { venueId: 'eko-hotel', tier: 'luxury', nightlyRate: 320_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'Victoria Island’s resort hotel: lagoon pools, a quiet bar and a bed for the night when you are not home.' },
   { venueId: 'federal-palace-hotel', tier: 'luxury', nightlyRate: 300_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'Ahmadu Bello Way’s grand old hotel, reopened and renovated, with a pool you can see from the Atlantic.' },
   { venueId: 'the-wheatbaker', tier: 'luxury', nightlyRate: 350_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'Ikoyi’s quiet boutique hotel: art on the walls, afternoon tea and a garden pool.' },
   { venueId: 'lagos-continental-hotel', tier: 'luxury', nightlyRate: 280_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'Victoria Island’s tall business hotel, with a spa and a view of the lagoon.' },
@@ -60,7 +60,7 @@ export const HOTELS: readonly HotelDefinition[] = [
   { venueId: 'four-points-lekki', tier: 'upscale', nightlyRate: 175_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'Four Points by Sheraton on the Lekki side: rooftop views and a breakfast spread.' },
   // Abuja
   { venueId: 'transcorp-hilton', tier: 'luxury', nightlyRate: 330_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'The grand hotel on Aguiyi Ironsi Street: delegations, wedding parties and a pool bar.' },
-  { venueId: 'sheraton-abuja', tier: 'luxury', nightlyRate: 290_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'Conferences, receptions and a lobby where deals get done, with rooms that look over Abuja.' },
+  { venueId: 'sheraton-abuja', tier: 'luxury', nightlyRate: 290_000, amenities: ['bar', 'restaurant', 'pool', 'gym'], tagline: 'A lobby where deals get done, and quiet rooms that look over Abuja.' },
   { venueId: 'fraser-suites-abuja', tier: 'upscale', nightlyRate: 170_000, amenities: ['restaurant', 'gym'], tagline: 'Serviced suites in the Central Business District: a kitchenette, a desk and a short walk to the ministries.' },
   { venueId: 'chelsea-hotel-abuja', tier: 'standard', nightlyRate: 95_000, amenities: ['bar', 'restaurant'], tagline: 'A dependable mid-range hotel off Wuse: a clean room, a bar and Abuja’s best pepper soup.' },
 ];
@@ -91,6 +91,17 @@ export function hotelsInCity(cityId: CityId): readonly HotelDefinition[] {
 export function hotelOffers(venueId: string, amenity: HotelAmenity): boolean {
   return findHotel(venueId)?.amenities.includes(amenity) ?? false;
 }
+
+/**
+ * Hotels are for sleeping when you have no home in the city you are in and don't want to rent one. `homeDistrictId` is
+ * where your home is (your family house, or the flat or house you moved into): you have a home here when it is in this city.
+ */
+export function hasHomeInCity(homeDistrictId: DistrictId, cityId: CityId): boolean {
+  return cityOfDistrict(homeDistrictId) === cityId;
+}
+
+/** Said in the Stay app and at the reception. */
+export const HOTEL_PURPOSE = 'Hotels are for when you don’t have a home in this city and don’t want to rent one.';
 
 /** Longest single booking (extend for more). */
 export const HOTEL_MAX_NIGHTS = 14;

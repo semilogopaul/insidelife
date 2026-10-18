@@ -27,7 +27,7 @@ const HOST = 'host-0000-4000-8000-000000000001';
 const GUEST = 'gues-0000-4000-8000-000000000002';
 const OTHER = 'othr-0000-4000-8000-000000000003';
 
-const venueParty = { venueKind: 'event-centre' as PartyVenueKind, venueId: 'eko-hotel', districtId: 'victoria-island' };
+const venueParty = { venueKind: 'event-centre' as PartyVenueKind, venueId: 'landmark-event-centre', districtId: 'victoria-island' };
 const homeParty = { venueKind: 'home' as PartyVenueKind, venueId: `home:${HOST}`, districtId: 'surulere' };
 
 const spray = (overrides: Partial<SprayCheckInput> = {}): SprayCheckInput => ({
@@ -122,9 +122,9 @@ describe('naira abuse and spray clout', () => {
 
 describe('party presence', () => {
   it('a venue party needs you inside the venue', () => {
-    expect(isAtParty(venueParty, 'eko-hotel')).toBe(true);
+    expect(isAtParty(venueParty, 'landmark-event-centre')).toBe(true);
     expect(isAtParty(venueParty, 'street:victoria-island')).toBe(false);
-    expect(partyRealtimeRoom(venueParty)).toBe('venue:eko-hotel');
+    expect(partyRealtimeRoom(venueParty)).toBe('venue:landmark-event-centre');
   });
 
   it('a street owambe spills onto the host’s street', () => {
@@ -154,7 +154,7 @@ describe('party presence', () => {
 });
 
 describe('hosting', () => {
-  const place = resolvePartyPlace('eko-hotel', HOST, 'surulere');
+  const place = resolvePartyPlace('landmark-event-centre', HOST, 'surulere');
   const hosting = (overrides: Partial<HostingCheckInput> = {}): HostingCheckInput => ({
     place: place!,
     tier: 'owambe',
@@ -173,6 +173,10 @@ describe('hosting', () => {
     expect(place).toMatchObject({ venueKind: 'event-centre', districtId: 'victoria-island' });
     expect(resolvePartyPlace('home', HOST, 'surulere')).toMatchObject({ venueKind: 'home', venueId: `home:${HOST}`, districtId: 'surulere' });
     expect(resolvePartyPlace('unilag', HOST, 'surulere')).toBeNull();
+    // Hotels are for sleeping: weddings and parties belong at event centres.
+    expect(resolvePartyPlace('eko-hotel', HOST, 'surulere')).toBeNull();
+    expect(resolvePartyPlace('transcorp-hilton', HOST, 'surulere')).toBeNull();
+    expect(resolvePartyPlace('icc-abuja', HOST, 'surulere')).toMatchObject({ venueKind: 'event-centre', districtId: 'abuja-cbd' });
     expect(resolvePartyPlace(`home:${OTHER}`, HOST, 'surulere')).toBeNull();
   });
 

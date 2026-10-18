@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { ACTIONS } from './actions.js';
-import { HOTELS, HOTEL_AMENITIES, HOTEL_CHECKOUT_HOUR, HOTEL_ROOM_ACTION_IDS, HOTEL_TIER_INFO, findHotel, hotelOffers, hotelVenue, hotelsInCity, stayCheckoutAt } from './hotels.js';
+import { HOTELS, HOTEL_AMENITIES, HOTEL_CHECKOUT_HOUR, HOTEL_ROOM_ACTION_IDS, HOTEL_TIER_INFO, findHotel, hotelOffers, hotelVenue, hasHomeInCity, hotelsInCity, stayCheckoutAt } from './hotels.js';
 import { MINUTES_PER_DAY, MINUTES_PER_HOUR, startOfDay } from '../time/calendar.js';
 import { VENUES, findVenue } from './venues.js';
+import { PARTY_VENUE_KINDS, SPRAY_VENUE_TYPES, partyVenueKindOf } from './social.js';
+import { DATE_VENUE_TYPES } from './family.js';
+import { LIFE_GOALS } from './progression.js';
+import { cityOfVenue } from './venues.js';
 import { venueEntrance, venueLot } from '../world-map/world-map.js';
 
 describe('hotels', () => {
@@ -62,5 +66,42 @@ describe('hotels', () => {
     expect(findHotel('eko-hotel')?.tier).toBe('luxury');
     expect(findHotel('yaba-market')).toBeUndefined();
     expect(findVenue('transcorp-hilton')?.type).toBe('hotel');
+  });
+
+  it('are for sleeping: parties, weddings, dates, spray, mingle and the live band belong to event centres', () => {
+    expect(partyVenueKindOf('hotel')).toBeNull();
+    expect(partyVenueKindOf('event-centre')).toBe('event-centre');
+    expect(SPRAY_VENUE_TYPES).not.toContain('hotel');
+    expect(DATE_VENUE_TYPES).not.toContain('hotel');
+    for (const id of ['live-band', 'meet-people']) {
+      const where = ACTIONS.find((action) => action.id === id)?.where;
+      const types: readonly string[] = where && 'venueTypes' in where ? where.venueTypes : [];
+      expect(types, id).toContain('event-centre');
+      expect(types, id).not.toContain('hotel');
+    }
+    const marriage = LIFE_GOALS.find((goal) => goal.id === 'get-married');
+    expect(marriage?.targetVenueTypes).toContain('event-centre');
+    expect(marriage?.targetVenueTypes).not.toContain('hotel');
+    expect(PARTY_VENUE_KINDS).toContain('event-centre');
+  });
+
+  it('are not where the weddings are: each city has real event centres with their own lot and door', () => {
+    for (const [city, ids] of [['lagos', ['landmark-event-centre']], ['abuja', ['icc-abuja']]] as const) {
+      const centres = VENUES.filter((venue) => venue.type === 'event-centre' && cityOfVenue(venue) === city);
+      expect(centres.length).toBeGreaterThanOrEqual(ids.length);
+      for (const id of ids) expect(centres.map((venue) => venue.id)).toContain(id);
+      for (const centre of centres) {
+        expect(venueLot(centre.id)?.archetype, centre.id).toBe('event-hall');
+        expect(venueEntrance(centre.id), centre.id).not.toBeNull();
+      }
+    }
+    expect(findVenue('landmark-event-centre')?.name).toBe('Landmark Event Centre');
+    expect(findVenue('icc-abuja')?.name).toBe('International Conference Centre');
+  });
+
+  it('know whether you have a home in the city you are in', () => {
+    expect(hasHomeInCity('yaba', 'lagos')).toBe(true);
+    expect(hasHomeInCity('yaba', 'abuja')).toBe(false);
+    expect(hasHomeInCity('maitama', 'abuja')).toBe(true);
   });
 });

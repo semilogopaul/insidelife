@@ -41,10 +41,11 @@ describe('widening keeps every id', () => {
     // 882 lots before the multi-city work; 875 after it: the General Aviation Terminal (mmia-gat) took eight infill cells (one lot of 4 × 2).
     // 873 with the hotels: five more lots, seven fewer filler lots (infill cells behind three office cells at bends; the two on
     // Victoria Island stand on the eastern column of Eko Hotel and of Eko Atlantic, whose doors did not move).
+    // 875 with the two Lagos event centres (Landmark, The Civic Centre): sand cells south of the coast road, no filler lot taken.
     const lagos = CITY_MAP.lots.filter((l) => DISTRICTS[l.districtId].cityId === 'lagos');
-    expect(lagos).toHaveLength(882 - 8 + 1 + 5 - 7);
+    expect(lagos).toHaveLength(882 - 8 + 1 + 5 - 7 + 2);
     const lots = lagos.map((l) => [l.id, l.kind, l.districtId, l.venueId ?? '', l.archetype ?? '', l.front ?? '', l.entrance ? 'door' : '', l.street ?? '', l.cells.join(','), l.seed]);
-    expect(sig(lots)).toBe(2_988_736_327);
+    expect(sig(lots)).toBe(792_748_938);
   });
 
   it('keeps every district’s home lots, so `homeLotOf` lands every house and family home on the same lot', () => {
@@ -67,7 +68,7 @@ describe('widening keeps every id', () => {
       const lot = venueLot(v.id);
       return [v.id, lot?.id ?? '', lot?.cells.join(',') ?? '', lot?.front ?? '', lot?.street ?? ''];
     });
-    expect(sig(venues)).toBe(2_744_238_424);
+    expect(sig(venues)).toBe(2_274_367_890);
   });
 });
 

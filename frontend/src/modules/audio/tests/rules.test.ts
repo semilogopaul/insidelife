@@ -147,7 +147,8 @@ describe('scene resolution', () => {
     expect(resolveScene({ ...base, locationId: 'vi-lounge' })).toMatchObject({ context: 'club', clubVenueId: 'vi-lounge' });
     expect(resolveScene({ ...base, locationId: 'luth' }).context).toBe('hospital');
     expect(resolveScene({ ...base, locationId: 'unilag' }).context).toBe('campus');
-    expect(resolveScene({ ...base, locationId: 'eko-hotel' }).context).toBe('party');
+    expect(resolveScene({ ...base, locationId: 'landmark-event-centre' }).context).toBe('party');
+    expect(resolveScene({ ...base, locationId: 'eko-hotel' }).context).toBe('city');
     expect(resolveScene({ ...base, locationId: 'home:abc' })).toMatchObject({ context: 'home', placeType: 'home', districtId: 'yaba' });
   });
 

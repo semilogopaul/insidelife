@@ -192,7 +192,7 @@ export const PLACE_SERVICES: Readonly<Partial<Record<VenueType | 'aviation-termi
       id: 'hotel-reception',
       label: 'Reception',
       emoji: '🛎️',
-      blurb: 'Book a night or several, extend your stay or check out — in the Stay app. Your room is your home until checkout.',
+      blurb: 'A room for when you have no home in this city and don’t want to rent one: book a night or several, extend or check out — in the Stay app.',
       opens: { app: 'stay' },
       at: 'counter',
     },

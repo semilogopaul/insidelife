@@ -9,10 +9,11 @@ const DAY = startOfDay(80 * MINUTES_PER_DAY);
 const EVENING = DAY + 19 * MINUTES_PER_HOUR;
 
 /** The service over an in-memory stay table, a wallet that honours idempotency keys, and a character at a reception. */
-function harness(options: { location?: string; cash?: number; cityId?: 'lagos' | 'abuja'; time?: number } = {}) {
+function harness(options: { location?: string; cash?: number; cityId?: 'lagos' | 'abuja'; time?: number; homeDistrictId?: string } = {}) {
   const rows: HotelStayEntity[] = [];
   const paid = new Map<string, number>();
   const notes: string[] = [];
+  const bodies: string[] = [];
   const wallet = {
     cash: options.cash ?? 5_000_000,
     canAfford: (amount: number) => wallet.cash >= amount,
@@ -25,7 +26,7 @@ function harness(options: { location?: string; cash?: number; cityId?: 'lagos' |
   };
   const ctx = {
     time: options.time ?? EVENING,
-    character: { id: 'c1', alive: true, locationId: options.location ?? 'transcorp-hilton', cityId: options.cityId ?? 'abuja', travel: null },
+    character: { id: 'c1', alive: true, locationId: options.location ?? 'transcorp-hilton', cityId: options.cityId ?? 'abuja', homeDistrictId: options.homeDistrictId ?? 'yaba', travel: null },
     world: { price: (base: number) => base },
     wallet,
     manager: {
@@ -42,10 +43,10 @@ function harness(options: { location?: string; cash?: number; cityId?: 'lagos' |
     memo: async (_key: string, load: () => Promise<unknown>) => load(),
     mayHaveRows: async () => true,
     invalidate: () => undefined,
-    notify: (note: { title: string }) => void notes.push(note.title),
+    notify: (note: { title: string; body: string }) => void (notes.push(note.title), bodies.push(note.body)),
   } as unknown as SimulationContext;
   const service = new HotelsService();
-  return { service, ctx, rows, paid, wallet, notes };
+  return { service, ctx, rows, paid, wallet, notes, bodies };
 }
 
 describe('booking a hotel room', () => {
@@ -142,5 +143,47 @@ describe('a stay as a temporary home', () => {
     expect(rows[0]?.checkoutAt).toBe(ctx.time);
     expect(wallet.cash).toBe(cash);
     await expect(service.checkout(ctx)).rejects.toMatchObject({ errorCode: 'NO_STAY' });
+  });
+});
+
+describe('hotels are for travellers with no home in the city', () => {
+  const BEDTIME = DAY + 21 * MINUTES_PER_HOUR;
+
+  it('points a traveller with no home here at the hotels, once, when bedtime comes', async () => {
+    const { service, ctx, notes, bodies } = harness({ location: 'wuse-market' });
+    await service.noteNoBed(ctx, BEDTIME - 30, BEDTIME + 30);
+    expect(notes).toEqual(['Nowhere to sleep? 🛎️']);
+    expect(bodies[0]).toContain('no home in Abuja');
+    // The next stretch starts after bedtime: nothing more tonight.
+    await service.noteNoBed(ctx, BEDTIME + 30, BEDTIME + 90);
+    await service.noteNoBed(ctx, DAY + 10 * MINUTES_PER_HOUR, DAY + 12 * MINUTES_PER_HOUR);
+    expect(notes).toHaveLength(1);
+  });
+
+  it('says nothing with a home in this city, with a room booked, or on the road', async () => {
+    const home = harness({ location: 'wuse-market', homeDistrictId: 'wuse' });
+    await home.service.noteNoBed(home.ctx, BEDTIME - 30, BEDTIME + 30);
+    expect(home.notes).toHaveLength(0);
+
+    const guest = harness({ location: 'transcorp-hilton', time: BEDTIME - 120 });
+    await guest.service.book(guest.ctx, 'transcorp-hilton', 1);
+    await guest.service.noteNoBed(guest.ctx, BEDTIME - 30, BEDTIME + 30);
+    expect(guest.notes.filter((note) => note.startsWith('Nowhere'))).toHaveLength(0);
+
+    const road = harness({ location: 'wuse-market' });
+    road.ctx.character.travel = {} as never;
+    await road.service.noteNoBed(road.ctx, BEDTIME - 30, BEDTIME + 30);
+    expect(road.notes).toHaveLength(0);
+  });
+
+  it('the autopilot beds you at a hotel only while the stay is active: not before it starts, not after checkout', async () => {
+    const { service, ctx } = harness();
+    const system = new HotelsSystem({ register: () => undefined } as never, service);
+    const booked = await service.book(ctx, 'transcorp-hilton', 1);
+    expect(await system.residence(ctx, booked.stay.startedAt - 1)).toBeNull();
+    expect(await system.residence(ctx, booked.stay.startedAt)).not.toBeNull();
+    expect(await system.residence(ctx, booked.stay.checkoutAt)).toBeNull();
+    await service.checkout(ctx);
+    expect(await system.residence(ctx, ctx.time)).toBeNull();
   });
 });

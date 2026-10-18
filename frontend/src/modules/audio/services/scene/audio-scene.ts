@@ -35,7 +35,7 @@ const VENUE_CONTEXT: Readonly<Record<VenueType, MusicContext>> = {
   club: 'club',
   bar: 'club',
   'event-centre': 'party',
-  hotel: 'party',
+  hotel: 'city',
   beach: 'party',
   market: 'city',
   mall: 'city',

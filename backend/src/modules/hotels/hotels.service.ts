@@ -5,11 +5,16 @@ import {
   HOTEL_MAX_NIGHTS,
   HOTEL_TIER_INFO,
   MINUTES_PER_DAY,
+  MINUTES_PER_HOUR,
   cityOfDistrict,
   findHotel,
   findVenue,
+  getCity,
   formatClock12,
+  hasHomeInCity,
+  hotelsInCity,
   hotelVenue,
+  startOfDay,
   stayCheckoutAt,
   type CityId,
   type HotelBookingResultDto,
@@ -30,6 +35,8 @@ const STAY_MEMO = 'hotel-stay';
 export const STAY_ROWS: RowProbe = { key: 'hotels:stays', table: 'hotel_stays', where: "character_id = $1 AND status = 'active'" };
 /** A stay may run this many nights in all, extensions included. */
 const MAX_STAY_NIGHTS = 30;
+/** The hour after which a traveller with nowhere to sleep is pointed to a hotel (once a night). */
+export const NO_HOME_NOTE_HOUR = 21;
 
 /**
  * Hotel rooms: book a night or several at the reception of the hotel you are standing in (price by tier, through the
@@ -106,6 +113,28 @@ export class HotelsService {
     if (!stay) return null;
     const dto = this.toDto(stay);
     return { stayId: stay.id, venueId: stay.venueId, name: dto.name, cityId: dto.cityId, districtId: dto.districtId, checkoutAt: stay.checkoutAt };
+  }
+
+  /**
+   * Bedtime in a city where you have no home and no room: a note pointing at the hotels (once a night, when a stretch of
+   * time crosses `NO_HOME_NOTE_HOUR`). With a home here, or a booked room, nothing is said.
+   */
+  async noteNoBed(ctx: SimulationContext, from: number, to: number): Promise<void> {
+    const character = ctx.character;
+    if (!character.alive || character.travel !== null) return;
+    const bedtime = startOfDay(to) + NO_HOME_NOTE_HOUR * MINUTES_PER_HOUR;
+    if (!(from < bedtime && bedtime <= to)) return;
+    if (hasHomeInCity(character.homeDistrictId, character.cityId)) return;
+    if (await this.stayAt(ctx, bedtime)) return;
+    const hotels = hotelsInCity(character.cityId).length;
+    if (hotels === 0) return;
+    ctx.notify({
+      kind: 'system',
+      title: 'Nowhere to sleep? 🛎️',
+      body: `You have no home in ${getCity(character.cityId).name}. Book a room at one of its ${hotels} hotels (Stay app, at the reception) or you will nap wherever you stand.`,
+      tone: 'neutral',
+      gameMinute: bedtime,
+    });
   }
 
   // ----- Commands --------------------------------------------------------------------------------------------------
