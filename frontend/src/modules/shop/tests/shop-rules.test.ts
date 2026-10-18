@@ -3,6 +3,7 @@ import { findClothing, type ActionDefinition } from '@insidelife/shared';
 import {
   filterProducts,
   maxBuyable,
+  buyLimit,
   outfitClout,
   outfitProblems,
   productPerks,
@@ -115,5 +116,19 @@ describe('wardrobe', () => {
     expect(outfitClout({ top: 'okrika-white-tee' }, (id) => findClothing(id))).toBe(
       findClothing('okrika-white-tee')?.status ?? 0,
     );
+  });
+});
+
+describe('buyLimit reasons', () => {
+  const base = { name: 'Fridge', maxQuantity: 1, owned: 0, item: null, clothing: null } as never as Parameters<typeof buyLimit>[0];
+  it('allows buying when under the cap', () => {
+    expect(buyLimit(base, 0)).toEqual({ limit: 1, reason: null });
+  });
+  it('explains the real cap when owned', () => {
+    expect(buyLimit({ ...base, owned: 1 }, 0).reason).toMatch(/only keep one/);
+  });
+  it('explains a full kitchen for groceries', () => {
+    const food = { ...base, item: { meals: 3 } } as never as Parameters<typeof buyLimit>[0];
+    expect(buyLimit(food, 999).reason).toMatch(/kitchen is full/);
   });
 });

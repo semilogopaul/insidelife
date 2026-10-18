@@ -68,7 +68,7 @@ describe('furniture and appliances: money leaves, the item is in the house', () 
     expect(snapshot.wallet.balance).toBe(await player.cash());
   });
 
-  it('an online order costs 10% delivery and lands in the home after the dispatch rider comes at day end', async () => {
+  it('an online order costs 10% delivery and lands in the home at once (only the fee differs from the shop)', async () => {
     e2e.clock.at(11);
     const player = await createPlayer(e2e);
     await goHome(player);
@@ -77,12 +77,11 @@ describe('furniture and appliances: money leaves, the item is in the house', () 
     const bought = await buy(player, 'microwave');
     const price = worldPrice(microwave.def.price, e2e.clock.now);
     const deliveryFee = Math.round((price * 0.1) / 50) * 50;
-    expect(bought.order).toMatchObject({ channel: 'online', status: 'pending', unitPrice: price, deliveryFee, total: price + deliveryFee });
+    expect(bought.order).toMatchObject({ channel: 'online', status: 'delivered', arrivesAt: null, unitPrice: price, deliveryFee, total: price + deliveryFee });
     expect(await player.cash()).toBe(before - bought.order.total);
-    expect((await player.snapshot()).summary.homeItems).not.toContain('microwave');
-
-    e2e.clock.pastMidnight();
+    expect(bought.inventoryItem?.itemId).toBe('microwave');
     expect((await player.snapshot()).summary.homeItems).toContain('microwave');
+    expect(ok<InventoryDto>(await player.get('/inventory')).deliveries).toEqual([]);
     const flows = await cashFlowsByKind(e2e.dataSource, player.characterId);
     expect(flows.fee).toBe(-bought.order.deliveryFee);
   });

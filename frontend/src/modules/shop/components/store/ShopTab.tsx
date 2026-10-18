@@ -73,8 +73,8 @@ export function ShopTab({ initialCategory }: { readonly initialCategory: ShopCat
             </>
           ) : (
             <>
-              <strong>Ordering online</strong> adds 10% delivery and arrives next game day. Shop in person at
-              a market or mall to skip the fee.
+              <strong>Ordering from your phone</strong> adds 10% delivery; it still lands right away. Shop in
+              person at a market or mall to skip the fee.
             </>
           )}
         </span>

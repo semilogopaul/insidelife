@@ -62,3 +62,8 @@ export function isRoutineDue(suggestion: SuggestionDto, now: GameMinute, withinM
   if (start === null || !suggestion.target) return false;
   return start - now <= withinMinutes;
 }
+
+/** The GPS card is for walking; behind the wheel the yellow route lights on the road are the guidance. */
+export function showRouteCard(destinationId: string | null, mode: string): boolean {
+  return destinationId !== null && mode !== 'driving';
+}
