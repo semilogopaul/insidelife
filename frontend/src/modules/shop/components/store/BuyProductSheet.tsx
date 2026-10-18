@@ -13,7 +13,7 @@ import { GoThere } from '@/common/components';
 import { Receipt } from '@/common/components';
 import { Stepper } from '@/common/components';
 
-/** Confirm a purchase: quantity, the receipt (with delivery when online), where to buy it in person instead. */
+/** Confirm a purchase: quantity, the receipt (with the delivery fee when ordering from the phone), where to buy it in person instead. */
 export function BuyProductSheet({
   product,
   onClose,
@@ -89,13 +89,13 @@ function BuyForm({ product, onDone }: { readonly product: ShopProductDto; readon
         caption={
           product.inStoreHere
             ? 'Bought in person: it goes straight into your things, right now.'
-            : 'Online order, not instant: a dispatch rider delivers it next game day. Buy in person to get it right away.'
+            : 'Phone order: it lands in your things right away. Buying in person skips the delivery fee.'
         }
       />
       {!product.inStoreHere && shop && (
         <div className="flex flex-col gap-2 text-sm">
           <p className="text-text-soft">
-            Skip the delivery fee — in stock at{' '}
+            Skip the delivery fee by buying in person: in stock at{' '}
             {product.soldAt.map((id) => findVenue(id)?.name ?? id).join(', ')}.
           </p>
           <GoThere venueId={shop.id} venueName={shop.name} />
@@ -117,11 +117,11 @@ function BuyForm({ product, onDone }: { readonly product: ShopProductDto; readon
             { itemId: product.id, quantity: Math.min(quantity, limit) },
             {
               onSuccess: (result) => {
-                announce(result.order.channel === 'in-store' ? 'Bought! 🛍️' : 'Online order placed', {
+                announce(result.order.channel === 'in-store' ? 'Bought! 🛍️' : 'Ordered', {
                   body:
                     result.order.channel === 'in-store'
                       ? `${product.name} is in your things now.`
-                      : `${product.name} is not here yet: it arrives next game day.`,
+                      : `${product.name} is in your things now.`,
                   amount: -result.order.total,
                 });
                 onDone();

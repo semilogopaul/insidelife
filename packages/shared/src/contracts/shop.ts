@@ -39,10 +39,8 @@ export interface ShopProductDto {
   readonly soldAt: readonly string[];
   /** Can be bought off the shelf where the character is standing right now. */
   readonly inStoreHere: boolean;
-  /** Units owned plus units on the way. */
+  /** Units owned (plus any legacy order still arriving). */
   readonly owned: number;
-  /** Of `owned`, units still on an online delivery (not yet in your hands). */
-  readonly onTheWay: number;
   readonly maxQuantity: number;
   readonly item: ItemDefinition | null;
   readonly clothing: ClothingDefinition | null;
@@ -56,7 +54,7 @@ export interface ShopCatalogDto {
 
 // ----- Purchases & deliveries --------------------------------------------------------------------------------------
 
-/** POST /v1/shop/purchases — bought in-store when standing in a venue that sells it, otherwise delivered. */
+/** POST /v1/shop/purchases — lands in your things at once; ordering from the phone (not in a venue that sells it) adds a delivery fee. */
 export interface ShopPurchaseRequest {
   readonly itemId: string;
   /** Default 1. Clothing is always 1. */
@@ -87,7 +85,7 @@ export interface ShopOrderDto {
 
 export interface ShopPurchaseResultDto {
   readonly order: ShopOrderDto;
-  /** The owned stack, when bought in-store (null while a delivery is on the way). */
+  /** The owned stack, the stack it joined. */
   readonly inventoryItem: InventoryItemDto | null;
   readonly balance: number;
 }

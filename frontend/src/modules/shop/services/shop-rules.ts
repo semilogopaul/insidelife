@@ -72,17 +72,17 @@ export function filterProducts<
     .sort((a, b) => a.price - b.price);
 }
 
-/** How many more you may buy (catalog cap minus owned/on the way, at most 10 at a time). */
+/** How many more you may buy (catalog cap minus owned, at most 10 at a time). */
 export function maxBuyable(product: Pick<ShopProductDto, 'maxQuantity' | 'owned'>): number {
   return Math.max(0, Math.min(MAX_PURCHASE_QUANTITY, product.maxQuantity - product.owned));
 }
 
 /**
- * How many you may buy now and, when that is zero, the true reason: kitchen full, one is on its way, or the cap on
+ * How many you may buy now and, when that is zero, the true reason: kitchen full, already in your wardrobe, or the cap on
  * how many of it you can keep. Never a vague "enough".
  */
 export function buyLimit(
-  product: Pick<ShopProductDto, 'maxQuantity' | 'owned' | 'onTheWay' | 'name' | 'item' | 'clothing'>,
+  product: Pick<ShopProductDto, 'maxQuantity' | 'owned' | 'name' | 'item' | 'clothing'>,
   pantryMeals: number,
 ): { readonly limit: number; readonly reason: string | null } {
   const meals = product.item?.meals;
@@ -93,14 +93,11 @@ export function buyLimit(
   }
   const limit = maxBuyable(product);
   if (limit > 0) return { limit, reason: null };
-  if (product.onTheWay > 0 && product.onTheWay >= product.owned) {
-    return { limit: 0, reason: `${product.name} is already on its way to you; it arrives next game day.` };
-  }
   if (product.clothing) return { limit: 0, reason: 'This piece is already in your wardrobe.' };
   const cap = product.maxQuantity;
   return {
     limit: 0,
-    reason: `You already have ${cap === 1 ? 'one' : cap} ${product.name}${product.onTheWay > 0 ? ' (some still on the way)' : ''}. ${cap === 1 ? 'You can only keep one.' : `${cap} is the most you can keep.`}`,
+    reason: `You already have ${cap === 1 ? 'one' : cap} ${product.name}. ${cap === 1 ? 'You can only keep one.' : `${cap} is the most you can keep.`}`,
   };
 }
 
@@ -114,7 +111,7 @@ export function purchaseLines(
   const lines: ReceiptLine[] = [{ label: n > 1 ? `${n} × item` : 'Item', amount: subtotal }];
   if (!product.inStoreHere) {
     const delivery = product.deliveryFee * n;
-    lines.push({ label: 'Delivery (10%)', amount: delivery, note: 'Dispatch rider brings it next game day' });
+    lines.push({ label: 'Delivery (10%)', amount: delivery, note: 'Phone orders cost 10% more; it still lands right away' });
     return { lines, total: subtotal + delivery };
   }
   return { lines, total: subtotal };

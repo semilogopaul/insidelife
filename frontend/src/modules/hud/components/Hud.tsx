@@ -112,7 +112,7 @@ function ContextActions({ nearby, alignStart }: { readonly nearby: Interactable;
             <span className="block truncate">{nearby.label}</span>
             {nearby.disabled && <span className="block truncate text-xs font-bold text-ink">⛔ {nearby.disabled}</span>}
           </span>
-          <kbd className="rounded bg-paper-3 px-1.5 py-0.5 text-xs pointer-coarse:hidden">E</kbd>
+          {!nearby.noKey && <kbd className="rounded bg-paper-3 px-1.5 py-0.5 text-xs pointer-coarse:hidden">E</kbd>}
         </PressButton>
         {(nearby.choices ?? 0) > 1 && (
           <PressButton

@@ -24,11 +24,12 @@ import { GameRuleException, InsufficientFundsException, ResourceNotFoundExceptio
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { ShopOrderEntity } from './entities/shop-order.entity.js';
 import { InventoryService } from './inventory.service.js';
-import { deliveryArrival, inStoreVenue, onlineDeliveryFee, type ShopperPosition } from './rules/purchase.rules.js';
+import { inStoreVenue, onlineDeliveryFee, type ShopperPosition } from './rules/purchase.rules.js';
 
 /**
  * Shopping: the catalogue (priced with the world price index), in-store purchases when standing in a venue that
- * sells the product, and online orders that a dispatch rider brings at day end for a 10% delivery fee.
+ * sells the product, and phone orders anywhere (10% delivery fee). Both land in the inventory at once; the fee is the
+ * only difference. `deliverDue` only hands over legacy orders placed before deliveries became instant.
  */
 @Injectable()
 export class ShopService {
@@ -40,13 +41,12 @@ export class ShopService {
     const venueId = query.venueId ?? (findVenue(ctx.character.locationId) ? ctx.character.locationId : undefined);
     const filterOutlet = query.venueId ? shopOutletAt(query.venueId) : undefined;
     const counts = await this.ownedOrOnTheWay(ctx);
-    const pending = await this.pendingCounts(ctx);
 
     const products: ShopProductDto[] = [];
     for (const product of listedProducts()) {
       if (query.category && productCategory(product) !== query.category) continue;
       if (filterOutlet !== undefined && !(filterOutlet && outletSells(filterOutlet, product))) continue;
-      products.push(this.productDto(ctx, product, position, counts.get(product.def.id) ?? 0, pending.get(product.def.id) ?? 0));
+      products.push(this.productDto(ctx, product, position, counts.get(product.def.id) ?? 0));
     }
     return { venue: venueId ? this.venueDto(ctx, venueId) : null, products };
   }
@@ -76,10 +76,10 @@ export class ShopService {
         total,
         channel: venue ? 'in-store' : 'online',
         venueId: venue?.id ?? null,
-        status: venue ? 'delivered' : 'pending',
+        status: 'delivered',
         orderedAt: ctx.time,
-        arrivesAt: venue ? null : deliveryArrival(ctx.time),
-        deliveredAt: venue ? ctx.time : null,
+        arrivesAt: null,
+        deliveredAt: ctx.time,
       }),
     );
 
@@ -90,8 +90,8 @@ export class ShopService {
       await ctx.wallet.pay(deliveryFee, 'fee', `Delivery: ${label}`, `shop-order:${order.id}:delivery`, { sink: 'fees', metadata });
     }
 
-    const row = venue ? await this.inventory.add(ctx, product, quantity, 'store', unitPrice) : null;
-    const stack = row ? (await this.inventory.stacks(ctx)).find((candidate) => candidate.row.id === row.id) : undefined;
+    const row = await this.inventory.add(ctx, product, quantity, venue ? 'store' : 'online', unitPrice);
+    const stack = (await this.inventory.stacks(ctx)).find((candidate) => candidate.row.id === row?.id);
     return {
       order: this.orderDto(order),
       inventoryItem: stack ? this.inventory.toDto(ctx, stack) : null,
@@ -99,7 +99,7 @@ export class ShopService {
     };
   }
 
-  /** Hand over online orders whose delivery time has come (runs at day end). */
+  /** Legacy: hand over orders placed while deliveries still took a game day (new orders are instant). */
   async deliverDue(ctx: SimulationContext): Promise<void> {
     const due = await ctx.manager.find(ShopOrderEntity, {
       where: { characterId: ctx.character.id, status: 'pending', arrivesAt: LessThanOrEqual(ctx.time) },
@@ -170,23 +170,17 @@ export class ShopService {
     const have = (await this.ownedOrOnTheWay(ctx)).get(product.def.id) ?? 0;
     if (have + quantity <= max) return;
     if (product.kind === 'clothing') {
-      throw new GameRuleException('ALREADY_OWNED', `${product.def.name} is already in your wardrobe (or on its way)`);
+      throw new GameRuleException('ALREADY_OWNED', `${product.def.name} is already in your wardrobe `);
     }
     const left = Math.max(0, max - have);
     throw new GameRuleException(
       'TOO_MANY',
-      left === 0 ? `You already have ${max === 1 ? 'one' : `${max}`} ${product.def.name} (or it is on its way) — the most you can keep` : `You can only get ${left} more ${product.def.name}`,
+      left === 0 ? `You already have ${max === 1 ? 'one' : `${max}`} ${product.def.name} — the most you can keep` : `You can only get ${left} more ${product.def.name}`,
     );
   }
 
   private async ownedOrOnTheWay(ctx: SimulationContext): Promise<Map<string, number>> {
     const counts = new Map(await this.inventory.quantities(ctx));
-    for (const order of await this.pendingOrders(ctx)) counts.set(order.itemId, (counts.get(order.itemId) ?? 0) + order.quantity);
-    return counts;
-  }
-
-  private async pendingCounts(ctx: SimulationContext): Promise<Map<string, number>> {
-    const counts = new Map<string, number>();
     for (const order of await this.pendingOrders(ctx)) counts.set(order.itemId, (counts.get(order.itemId) ?? 0) + order.quantity);
     return counts;
   }
@@ -198,7 +192,7 @@ export class ShopService {
     });
   }
 
-  private productDto(ctx: SimulationContext, product: ShopProduct, position: ShopperPosition, owned: number, onTheWay = 0): ShopProductDto {
+  private productDto(ctx: SimulationContext, product: ShopProduct, position: ShopperPosition, owned: number): ShopProductDto {
     const price = ctx.world.price(product.def.price, ctx.time);
     return {
       id: product.def.id,
@@ -212,7 +206,6 @@ export class ShopService {
       soldAt: venuesSelling(product),
       inStoreHere: inStoreVenue(position, product) !== null,
       owned,
-      onTheWay,
       maxQuantity: product.kind === 'item' ? product.def.maxQuantity : 1,
       item: product.kind === 'item' ? product.def : null,
       clothing: product.kind === 'clothing' ? product.def : null,

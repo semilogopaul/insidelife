@@ -33,7 +33,7 @@ import { useRideArrival } from './use-ride-arrival';
 
 /** Context-button id while inside a building. */
 export const STEP_OUTSIDE_ID = 'world:step-outside';
-const STEP_OUTSIDE: Interactable = { id: STEP_OUTSIDE_ID, kind: 'door', label: 'Step outside' };
+const STEP_OUTSIDE: Interactable = { id: STEP_OUTSIDE_ID, kind: 'door', label: 'Step outside', noKey: true };
 /** Keys for the extra context options (the smaller buttons above the context button). */
 const OPTION_KEYS: readonly string[] = ['Digit1', 'Digit2', 'Digit3', 'Digit4'];
 
@@ -144,7 +144,8 @@ export function usePlayBridge(presence: WorldPresence): void {
       }
       const nearby = useWorld.getState().nearby;
       const target = option >= 0 ? nearby?.more?.[option] : nearby;
-      if (target) gameEvents.emit('interact', { interactableId: target.id });
+      // "Step outside" is for tapping; E near an item or anywhere indoors never walks you out (the front door does).
+      if (target && !(target as Interactable).noKey) gameEvents.emit('interact', { interactableId: target.id });
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);

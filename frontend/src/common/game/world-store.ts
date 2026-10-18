@@ -31,6 +31,8 @@ export interface Interactable {
   readonly more?: readonly InteractableOption[];
   /** More than one enabled option is in range (this many): the HUD offers a "next" chevron (`cycleChoice`). */
   readonly choices?: number;
+  /** Tap/click only: the E key never triggers it (so nobody leaves a room by accident). */
+  readonly noKey?: boolean;
 }
 
 export interface DriveTelemetry {

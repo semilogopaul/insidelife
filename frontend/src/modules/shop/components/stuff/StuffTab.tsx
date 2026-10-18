@@ -26,7 +26,7 @@ const BACKUP: Record<PowerBackupKind, string> = {
 
 type Pending = { readonly kind: 'sell' | 'repair'; readonly item: InventoryItemDto } | null;
 
-/** Everything you own: deliveries on the way, what your things do at home, and resell/repair. */
+/** Everything you own: any legacy deliveries, what your things do at home, and resell/repair. */
 export function StuffTab({ now, onShop }: { readonly now: GameMinute; readonly onShop: () => void }) {
   const query = useInventory();
   const { sell, repair } = useShopCommands();
