@@ -87,3 +87,5 @@ export * from './contracts/races.js';
 export * from './contracts/decor.js';
 export * from './catalog/aviation.js';
 export * from './contracts/aviation.js';
+export * from './catalog/hotels.js';
+export * from './contracts/hotels.js';

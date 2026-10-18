@@ -1,22 +1,28 @@
 'use client';
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { AircraftPurchaseRequest } from '@insidelife/shared';
+import type { AircraftPurchaseRequest, OwnedAircraftDto } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
 import { useCurrentPlace } from '@/common/hooks/use-current-place';
+import { useLandingRefresh } from '@/common/aviation';
 import { hangarApi } from '../services/hangar.api';
+
+const NO_PLANES: readonly OwnedAircraftDto[] = [];
 
 const hangarPrefix = queryKeys.domain('hangar');
 
 /** Fleet, catalogue and licence progress — keyed by location (`atGat`, `buyHere` and the fly buttons depend on where you stand). */
 export function useHangar() {
   const { locationId } = useCurrentPlace();
-  return useQuery({
+  const query = useQuery({
     queryKey: queryKeys.domain('hangar', locationId ?? 'unknown'),
     queryFn: hangarApi.overview,
     placeholderData: keepPreviousData,
     refetchInterval: 60_000,
   });
+  // A ferried aircraft shows up the moment its landing time arrives.
+  useLandingRefresh(query.data?.mine ?? NO_PLANES);
+  return query;
 }
 
 export function useHangarCommands() {

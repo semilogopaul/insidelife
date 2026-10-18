@@ -1,7 +1,7 @@
 import { pacedTripMinutes } from '../rules/pacing.js';
-import { crossesLagoon, districtDistance, type DistrictId } from './geography.js';
+import { cityOfDistrict, crossesLagoon, DISTRICTS, districtDistance, type CityId, type DistrictId } from './geography.js';
 
-export const TRANSPORT_MODES = ['walk', 'okada', 'keke', 'danfo', 'brt', 'bolt', 'car'] as const;
+export const TRANSPORT_MODES = ['walk', 'okada', 'keke', 'danfo', 'brt', 'bolt', 'car', 'taxi', 'bus'] as const;
 export type TransportMode = (typeof TRANSPORT_MODES)[number];
 
 /** Between cities: a commercial or private flight, or the interstate coach. Never a ride on the city's roads. */
@@ -36,7 +36,13 @@ export interface TransportDefinition {
   readonly requiresVehicle: boolean;
   /** Okada can't cross onto the Island highways (Lagos ban). */
   readonly bannedAcrossLagoon: boolean;
+  /** The cities where this mode runs at all (danfo and BRT are Lagos; the green cab and city bus are Abuja). */
+  readonly cities: readonly CityId[];
 }
+
+const BOTH: readonly CityId[] = ['lagos', 'abuja'];
+const LAGOS_ONLY: readonly CityId[] = ['lagos'];
+const ABUJA_ONLY: readonly CityId[] = ['abuja'];
 
 export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
   walk: {
@@ -53,6 +59,7 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     maxDistance: 6,
     requiresVehicle: false,
     bannedAcrossLagoon: false,
+    cities: BOTH,
   },
   okada: {
     id: 'okada',
@@ -68,6 +75,7 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     maxDistance: 14,
     requiresVehicle: false,
     bannedAcrossLagoon: true,
+    cities: BOTH,
   },
   keke: {
     id: 'keke',
@@ -83,6 +91,7 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     maxDistance: 12,
     requiresVehicle: false,
     bannedAcrossLagoon: true,
+    cities: BOTH,
   },
   danfo: {
     id: 'danfo',
@@ -98,6 +107,7 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     maxDistance: 60,
     requiresVehicle: false,
     bannedAcrossLagoon: false,
+    cities: LAGOS_ONLY,
   },
   brt: {
     id: 'brt',
@@ -113,6 +123,7 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     maxDistance: 60,
     requiresVehicle: false,
     bannedAcrossLagoon: false,
+    cities: LAGOS_ONLY,
   },
   bolt: {
     id: 'bolt',
@@ -128,6 +139,7 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     maxDistance: 80,
     requiresVehicle: false,
     bannedAcrossLagoon: false,
+    cities: BOTH,
   },
   car: {
     id: 'car',
@@ -144,8 +156,73 @@ export const TRANSPORT: Readonly<Record<TransportMode, TransportDefinition>> = {
     maxDistance: 400,
     requiresVehicle: true,
     bannedAcrossLagoon: false,
+    cities: BOTH,
+  },
+  taxi: {
+    id: 'taxi',
+    label: 'Green cab',
+    blurb: 'Abuja’s green-and-white taxis. Agree the price first.',
+    speed: 26,
+    baseFare: 800,
+    farePerKm: 380,
+    trafficExposure: 0.6,
+    energyPerHour: -2,
+    funPerHour: 0,
+    incidentRisk: 0.006,
+    maxDistance: 60,
+    requiresVehicle: false,
+    bannedAcrossLagoon: false,
+    cities: ABUJA_ONLY,
+  },
+  bus: {
+    id: 'bus',
+    label: 'City bus',
+    blurb: 'Abuja’s mass-transit buses: orderly, cheap, sometimes slow.',
+    speed: 24,
+    baseFare: 300,
+    farePerKm: 40,
+    trafficExposure: 0.45,
+    energyPerHour: -3,
+    funPerHour: -1,
+    incidentRisk: 0.004,
+    maxDistance: 60,
+    requiresVehicle: false,
+    bannedAcrossLagoon: false,
+    cities: ABUJA_ONLY,
   },
 };
+
+/**
+ * Abuja bans okada and keke in the city proper: they run only in the satellite towns (Gwarinpa, Kubwa, Lugbe), and a
+ * trip on them must start and end there.
+ */
+export function isOuterAbujaDistrict(districtId: DistrictId): boolean {
+  return cityOfDistrict(districtId) === 'abuja' && DISTRICTS[districtId].side === 'outskirts';
+}
+
+/** Why a mode can't make a trip between two districts of one city, or null when it can. */
+export function modeUnavailableReason(mode: TransportMode, from: DistrictId, to: DistrictId): string | null {
+  const def = TRANSPORT[mode];
+  const city = cityOfDistrict(from);
+  if (!def.cities.includes(city)) {
+    const where = def.cities.map((c) => (c === 'lagos' ? 'Lagos' : 'Abuja')).join(' and ');
+    return `${def.label} only runs in ${where}`;
+  }
+  if (city === 'abuja' && (mode === 'okada' || mode === 'keke') && !(isOuterAbujaDistrict(from) && isOuterAbujaDistrict(to))) {
+    return `${def.label} isn’t allowed in Abuja’s city centre. It only runs in Gwarinpa, Kubwa and Lugbe`;
+  }
+  return null;
+}
+
+/** The everyday cheap ride of a city, and the fallback when the mode you picked can't make a trip. */
+export function cityDefaultMode(cityId: CityId): TransportMode {
+  return cityId === 'abuja' ? 'bus' : 'danfo';
+}
+
+/** Modes that run in a city (whatever the trip). */
+export function modesInCity(cityId: CityId): readonly TransportMode[] {
+  return TRANSPORT_MODES.filter((mode) => TRANSPORT[mode].cities.includes(cityId));
+}
 
 /** Roads wind; straight-line distance understates the drive. */
 const ROAD_FACTOR = 1.35;
@@ -194,6 +271,8 @@ export function quoteTrip(
   conditions: TripConditions,
 ): TripQuote {
   const def = TRANSPORT[mode];
+  const unavailable = modeUnavailableReason(mode, from, to);
+  if (unavailable) return { mode, distance: 0, minutes: 0, fare: 0, allowed: false, reason: unavailable };
   const sameDistrict = from === to;
   const distance = sameDistrict ? 1.2 : districtDistance(from, to) * ROAD_FACTOR;
   const lagoon = !sameDistrict && crossesLagoon(from, to);

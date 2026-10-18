@@ -36,7 +36,10 @@ function modelFor(travel: TravelDto, ownCar: string | null): RenderVehicleModel 
     case 'bolt':
       return 'taxi';
     case 'brt':
+    case 'bus':
       return 'brt';
+    case 'taxi':
+      return 'taxi';
     case 'keke':
       return 'keke';
     case 'okada':

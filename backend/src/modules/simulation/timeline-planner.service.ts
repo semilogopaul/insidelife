@@ -28,6 +28,7 @@ import {
   lectureProfile,
   streetDistrict,
   quoteTrip,
+  cityDefaultMode,
   sleepProfile,
   startOfDay,
   toDateParts,
@@ -443,7 +444,8 @@ export class TimelinePlanner {
       fareMultiplier: economy.fareMultiplier,
     };
     const tags = await this.itemTags(ctx);
-    const candidates: TransportMode[] = [preferred === 'car' && !tags.includes('car') ? 'danfo' : preferred, 'danfo', 'walk'];
+    const everyday = cityDefaultMode(a.cityId);
+    const candidates: TransportMode[] = [preferred === 'car' && !tags.includes('car') ? everyday : preferred, everyday, 'walk'];
     for (const mode of candidates) {
       if (TRANSPORT[mode].requiresVehicle && !tags.includes('car')) continue;
       const trip = quoteTrip(a.districtId, b.districtId, mode, conditions);

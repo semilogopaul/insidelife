@@ -50,5 +50,6 @@ export function useHudData() {
     city: CITIES[snapshot.character.cityId].name,
     inside,
     free,
+    stay: snapshot.summary.stay,
   };
 }

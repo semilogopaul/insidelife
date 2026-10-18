@@ -11,6 +11,7 @@ import { EducationModule } from './education/education.module.js';
 import { EventsModule } from './events/events.module.js';
 import { FamilyModule } from './family/family.module.js';
 import { HealthModule } from './health/health.module.js';
+import { HotelsModule } from './hotels/hotels.module.js';
 import { HousingModule } from './housing/housing.module.js';
 import { InvestmentsModule } from './investments/investments.module.js';
 import { PaymentsModule } from './payments/payments.module.js';
@@ -40,6 +41,7 @@ export const DOMAIN_MODULES: Type[] = [
   DecorModule,
   VehiclesModule,
   AviationModule,
+  HotelsModule,
   HealthModule,
   FamilyModule,
   WalletModule,

@@ -6,7 +6,7 @@ import { toast } from './toast-store';
 import { gameEvents } from '@/common/game/game-events';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useUi } from '@/common/game/ui-store';
-import { useTravelQuotes } from '@/common/travel/travel-quotes';
+import { carAvailability, useTravelQuotes } from '@/common/travel/travel-quotes';
 import { cn } from '@/common/utils/cn';
 
 export interface TakeMeThereProps {
@@ -32,7 +32,7 @@ export function TakeMeThere({ destinationId, destinationName, rideVenueId, rideV
   const closePhone = useUi((state) => state.closePhone);
   const quotes = useTravelQuotes(rideVenueId);
   const car = quotes.data?.find((quote) => quote.mode === 'car');
-  const hasCar = car ? car.available || car.reason !== 'You don’t own a car yet' : false;
+  const { hasCar, why: noCarWhy } = carAvailability(car);
 
   const guide = (how: 'walk' | 'drive'): void => {
     setDestination(destinationId, destinationName);
@@ -68,7 +68,7 @@ export function TakeMeThere({ destinationId, destinationName, rideVenueId, rideV
       </Button>
       {!hasCar && !quotes.isPending && (
         <p id={`${destinationId}-no-car`} className="-mt-1 px-1 text-xs text-text-soft">
-          You don’t have a car yet. Motors on your phone sells them.
+          {noCarWhy}
         </p>
       )}
       <Button variant="paper" icon={<BusFront size={18} aria-hidden />} onClick={ride} className="justify-start">

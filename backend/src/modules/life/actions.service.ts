@@ -5,7 +5,9 @@ import {
   findVenue,
   formatClock12,
   formatGameDuration,
+  HOTEL_ROOM_ACTION_IDS,
   homeLocationId,
+  hotelOffers,
   isHomeLocation,
   isStreetLocation,
   isVenueOpen,
@@ -114,7 +116,12 @@ export class ActionsService {
     if (action.where.anywhere) return;
     const residence = await this.planner.residence(ctx, ctx.time);
     const atHome = character.locationId === residence.locationId || character.locationId === homeLocationId(character.id);
-    if (atHome && action.where.home) return;
+    if (atHome && action.where.home) {
+      // A hotel room is a home for a bed and a shower only: no kitchen, TV set or workshop of your own.
+      const inHotelRoom = character.locationId !== homeLocationId(character.id) && findVenue(character.locationId)?.type === 'hotel';
+      if (inHotelRoom && !HOTEL_ROOM_ACTION_IDS.has(action.id)) throw new GameRuleException('WRONG_PLACE', 'You can’t do that from a hotel room');
+      return;
+    }
     // At someone else's place on an accepted invite: only what a guest does there.
     if (!atHome && isHomeLocation(character.locationId)) {
       if (action.where.visit && (await this.homes.invitedDoor(ctx, character.locationId.slice('home:'.length)))) return;
@@ -131,6 +138,9 @@ export class ActionsService {
     }
     if (!isVenueOpen(venue, toDateParts(ctx.time).hour)) {
       throw new GameRuleException('CLOSED', `${venue.name} is closed right now`);
+    }
+    if (action.amenity && !hotelOffers(venue.id, action.amenity)) {
+      throw new GameRuleException('WRONG_PLACE', `${venue.name} has no ${action.amenity}`);
     }
   }
 

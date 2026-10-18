@@ -212,7 +212,7 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col items-start gap-2">
           <div className="pointer-events-auto flex flex-col items-start gap-2">
-            <ClockCard clock={data.clock} date={data.date} hour={data.hour} weather={data.weather} place={data.place} city={data.city} />
+            <ClockCard clock={data.clock} date={data.date} hour={data.hour} weather={data.weather} place={data.place} city={data.city} stay={data.stay} />
             <VitalsPanel needs={data.needs} mood={data.mood} health={data.health} />
           </div>
           {/* Read-only: taps go through to the world. */}

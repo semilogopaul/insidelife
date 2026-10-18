@@ -144,10 +144,17 @@ function furnitureClash(tile: CityRoadTile, side: number, along: number): boolea
   return (index % 4 === 3 && side === -1) || (index % 3 === 1 && side === 1);
 }
 
+/**
+ * Venues added after the inventory was sold. A venue door within 5 m of a candidate takes that candidate out of the
+ * pick, and the pick is a seeded shuffle of the whole list: one door more would move every booked id. These don't
+ * (their doors are cleared by sliding the board along its kerb, `clearDoorways`, like any home's door).
+ */
+const ADDED_AFTER_THE_INVENTORY: ReadonlySet<string> = new Set(['federal-palace-hotel', 'lagos-continental-hotel', 'the-wheatbaker', 'radisson-blu-ikeja', 'four-points-lekki']);
+
 // Doors and premium boards where the first city had them (layout metres): picking measures against these.
 const venueDoors: readonly WorldPoint[] = CITY_MAP.lots.flatMap((lot, index) => {
   const door = CITY_LAYOUT.lot(index).door;
-  return lot.kind === 'venue' && lot.entrance && door ? [door] : [];
+  return lot.kind === 'venue' && lot.entrance && door && !ADDED_AFTER_THE_INVENTORY.has(lot.venueId ?? '') ? [door] : [];
 });
 const premiumBoards: readonly WorldPoint[] = CITY_MAP.billboards.flatMap((board) => {
   const spec = BILLBOARD_SPECS.find((entry) => entry.slotId === board.slotId);

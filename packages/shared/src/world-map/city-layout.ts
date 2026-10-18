@@ -322,10 +322,10 @@ const LAGOS_VENUE_LOTS: readonly VenueLotSpec[] = [
   lot('ikoyi-fine-dining', [38, 32, 38, 32], 'N', 'shop'),
   lot('ikoyi-estate-agency', [34, 32, 34, 32], 'N', 'shop'),
   // Victoria Island
-  lot('eko-hotel', [34, 36, 36, 37], 'N', 'hotel'),
+  lot('eko-hotel', [34, 36, 35, 37], 'N', 'hotel', 1),
   lot('the-vault', [38, 36, 39, 36], 'N', 'club'),
   lot('vi-lounge', [40, 36, 41, 36], 'N', 'club'),
-  lot('eko-atlantic', [25, 36, 27, 37], 'S', 'office-tower'),
+  lot('eko-atlantic', [25, 36, 26, 37], 'S', 'office-tower', 1),
   lot('island-specialist', [29, 36, 31, 37], 'N', 'hospital'),
   lot('tarkwa-bay', [21, 39, 23, 39], 'N', 'beach'),
   // Lekki
@@ -364,6 +364,15 @@ const LAGOS_VENUE_LOTS: readonly VenueLotSpec[] = [
   // Multi-city: the General Aviation Terminal beside the airport, on infill cells (no house, no filler building another
   // venue could have taken), its door at the Obafemi Awolowo Way bend where no roadside ad spot stands.
   lot('mmia-gat', [9, 0, 12, 1], 'E', 'aviation-terminal', 1),
+  // Hotels (docs/MULTI_CITY.md, hotels). Victoria Island has no free land, so Eko Hotel and Eko Atlantic each give up their
+  // eastern column (their doors are the same cells as before: the default door of a 3-wide lot is its middle column, and now
+  // `door: 1` names that same column) and the Federal Palace and The Lagos Continental stand on those columns. The others take
+  // infill cells behind an office cell at a bend (no door on a straight road, so no filling station or ad spot is displaced).
+  lot('federal-palace-hotel', [36, 36, 36, 37], 'N', 'hotel'),
+  lot('lagos-continental-hotel', [27, 36, 27, 37], 'S', 'hotel'),
+  lot('the-wheatbaker', [37, 27, 37, 28], 'S', 'hotel'),
+  lot('radisson-blu-ikeja', [21, 1, 21, 3], 'S', 'hotel'),
+  lot('four-points-lekki', [48, 27, 48, 28], 'S', 'hotel'),
 ];
 
 /** Landmark lots that are not venues (the renderer puts something iconic there and no filler building). */

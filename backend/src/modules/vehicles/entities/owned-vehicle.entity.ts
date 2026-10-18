@@ -1,5 +1,5 @@
 import { Column, CreateDateColumn, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
-import type { OwnedVehicleStatus, VehiclePaintId } from '@insidelife/shared';
+import type { CityId, OwnedVehicleStatus, VehiclePaintId } from '@insidelife/shared';
 import { bigintNumber } from '../../../database/transformers.js';
 
 /**
@@ -65,6 +65,14 @@ export class OwnedVehicleEntity {
   /** Game minute it broke down (won't move until a mechanic sees it); null when it runs. */
   @Column({ type: 'bigint', nullable: true, transformer: bigintNumber })
   brokenDownAt: number | null;
+
+  /** The city it is parked in: a car can only be driven (and is only shown near you) in its own city. */
+  @Column({ type: 'varchar', length: 12, default: 'lagos' })
+  cityId: CityId;
+
+  /** On a car carrier to this city (status `in-transit`, `arrivesAt` is the arrival); null otherwise. */
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  shippingTo: CityId | null;
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;

@@ -1,5 +1,6 @@
 /** Vehicles API contracts — owned by the vehicles domain. */
 import type { GameMinute } from '../time/calendar.js';
+import type { CityId } from '../catalog/geography.js';
 import type { VehicleDefinition, VehicleModel, VehiclePaintId } from '../catalog/vehicles.js';
 
 export interface VehicleCatalogEntryDto {
@@ -65,6 +66,25 @@ export interface OwnedVehicleDto {
   readonly brokenDown: boolean;
   /** Fuel in the tank, not broken down, good enough to start. */
   readonly canDrive: boolean;
+  /** The city it is parked in (a car belongs to one city; elsewhere it can't be driven). */
+  readonly cityId: CityId;
+  /** On a car carrier to this city (`status` is `in-transit`, `arrivesAt` says when); null otherwise. */
+  readonly shippingTo: CityId | null;
+  /** What a car carrier charges to take it to the other city right now. */
+  readonly shipFee: number;
+}
+
+/** POST /v1/vehicles/:id/shipments — a car carrier takes the car to the other city (a key per press so a retry never pays twice). */
+export interface VehicleShipmentRequest {
+  readonly idempotencyKey: string;
+}
+
+export interface VehicleShipmentResultDto {
+  readonly vehicle: OwnedVehicleDto;
+  readonly toCityId: CityId;
+  readonly fee: number;
+  readonly arrivesAt: GameMinute;
+  readonly balance: number;
 }
 
 export interface DriverLicenceDto {

@@ -81,6 +81,43 @@ const nightShift = (day: number): ScheduleBlock[] => {
   return [{ kind: 'work', startsAt: start, endsAt: start + 11 * MINUTES_PER_HOUR, locationId: 'marina', label: 'Night shift', priority: 10, commute: true }];
 };
 
+describe('TimelinePlanner in Abuja', () => {
+  const home = homeLocationId('c1');
+  const abuja = (): CharacterEntity => character({ homeDistrictId: 'wuse', cityId: 'abuja' });
+
+  it('rides the city bus where a Lagos player would take a danfo, whatever default they set', async () => {
+    const planner = plannerWith(() => []);
+    const t = MONDAY + 9 * MINUTES_PER_HOUR;
+    const ctx = ctxFor(abuja(), t);
+    for (const preferred of ['danfo', 'brt', 'okada', 'keke'] as const) {
+      const quote = await planner.quote(ctx, home, 'garki-buka', preferred, t);
+      expect(quote.mode, preferred).toBe('bus');
+      expect(quote.intercity).toBe(false);
+    }
+    expect((await planner.quote(ctx, home, 'garki-buka', 'taxi', t)).mode).toBe('taxi');
+    expect((await planner.quote(ctx, home, 'garki-buka', 'bolt', t)).mode).toBe('bolt');
+    const lagos = ctxFor(character(), t);
+    expect((await planner.quote(lagos, home, 'marina', 'danfo', t)).mode).toBe('danfo');
+  });
+
+  it('still gets to an Abuja shift on time (its commute is quoted by city bus, see above)', async () => {
+    const shift = (day: number): ScheduleBlock[] => {
+      const start = day * 1440 + 8 * MINUTES_PER_HOUR;
+      return [{ kind: 'work', startsAt: start, endsAt: start + 9 * MINUTES_PER_HOUR, locationId: 'garki-buka', label: 'Work at the buka', priority: 10, commute: true }];
+    };
+    const planner = plannerWith(shift);
+    const t = MONDAY + 6 * MINUTES_PER_HOUR + 40;
+    const ctx = ctxFor({ ...abuja(), settledAt: t } as CharacterEntity, t);
+    const segments = await planner.plan(ctx, t, 6 * MINUTES_PER_HOUR);
+    const commute = segments.find((segment) => segment.kind === 'commute');
+    expect(commute).toBeDefined();
+    // Home in Wuse to Garki: a short city-bus ride, in good time for eight o'clock.
+    expect(commute!.startsAt).toBeLessThan(MONDAY + 8 * MINUTES_PER_HOUR);
+    expect(commute!.endsAt).toBeLessThanOrEqual(segments.find((segment) => segment.kind === 'work')!.startsAt);
+    expect(commute!.profile.hygiene.target).toBeDefined();
+  });
+});
+
 describe('TimelinePlanner', () => {
   it('leaves home early enough to beat Lagos traffic to an 8am shift', async () => {
     const planner = plannerWith(workBlock);

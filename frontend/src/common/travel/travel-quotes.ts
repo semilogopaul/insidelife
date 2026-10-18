@@ -29,3 +29,14 @@ export function useTravelQuotes(destinationId: string | null) {
     staleTime: 15_000,
   });
 }
+
+/** The server's reasons the car can't be used at all (none owned, or parked in the other city) as opposed to "can't make this trip". */
+const NO_CAR_HERE = /^(You don’t own a car yet|Your car is parked in )/;
+
+/** Whether there is a car in this city to drive, and if not, the sentence saying why. */
+export function carAvailability(car: TravelQuote | undefined): { readonly hasCar: boolean; readonly why: string } {
+  if (!car) return { hasCar: false, why: 'You don’t have a car yet. Motors on your phone sells them.' };
+  const blocked = !car.available && car.reason !== undefined && NO_CAR_HERE.test(car.reason);
+  if (!blocked) return { hasCar: true, why: '' };
+  return { hasCar: false, why: car.reason?.startsWith('Your car is parked in') ? `${car.reason}. Ship it over from Motors on your phone.` : 'You don’t have a car yet. Motors on your phone sells them.' };
+}

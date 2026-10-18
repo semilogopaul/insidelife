@@ -10,6 +10,7 @@ import {
   VENUES,
   cityOfDistrict,
   cityOfVenue,
+  formatClock12,
   formatGameDuration,
   homeLocationId,
   type OwnedPropertyMarkerDto,
@@ -25,7 +26,7 @@ import { useNavigation } from '@/common/game/navigation-store';
 import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
 import { useUi } from '@/common/game/ui-store';
 import { formatHour } from '@/common/places';
-import { useTravelQuotes, type TravelQuote } from '@/common/travel/travel-quotes';
+import { carAvailability, useTravelQuotes, type TravelQuote } from '@/common/travel/travel-quotes';
 import { cn } from '@/common/utils/cn';
 import { useVisits } from '@/common/visits';
 import { travelApi } from '../services/travel.api';
@@ -40,6 +41,7 @@ const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readon
   { label: 'Health', types: ['hospital-public', 'hospital-private', 'pharmacy'] },
   { label: 'Shopping', types: ['market', 'mall', 'car-dealer', 'salon'] },
   { label: 'Fun', types: ['bar', 'club', 'beach', 'park', 'cinema', 'event-centre', 'gym'] },
+  { label: 'Hotels', types: ['hotel'] },
   { label: 'Services', types: ['estate-agency', 'airport', 'aviation-terminal', 'motor-park', 'church', 'mosque'] },
 ];
 
@@ -49,7 +51,7 @@ const STAGE_LABEL: Readonly<Record<OwnedPropertyMarkerDto['stage'], string>> = {
   built: 'Your house',
 };
 
-const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: Bike, keke: CarTaxiFront, danfo: Bus, brt: Bus, bolt: CarTaxiFront, car: Car };
+const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: Bike, keke: CarTaxiFront, danfo: Bus, brt: Bus, bolt: CarTaxiFront, car: Car, taxi: CarTaxiFront, bus: Bus };
 
 /** Pick a destination: walk or drive there with the GPS, or book a ride. */
 export function MapApp() {
@@ -74,6 +76,7 @@ export function MapApp() {
   const properties = (snapshot?.summary.properties ?? []).filter((property) => !property.livedIn);
   const homeCity = snapshot ? cityOfDistrict(snapshot.character.homeDistrictId) : cityId;
   const homeId = snapshot ? homeLocationId(snapshot.character.id) : null;
+  const stay = snapshot?.summary.stay ?? null;
   // Someone is expecting you: their place is a destination like any other while the invite stands.
   const expected = expectedVisits(visits.data?.incoming, snapshot?.character.locationId ?? null);
   const target = targetFromParam(selected, homeId, visits.data?.incoming);
@@ -102,6 +105,19 @@ export function MapApp() {
           </span>
         </span>
       </button>
+      {stay && (
+        <button type="button" onClick={() => setSelected(stay.venueId)} className="flex items-center gap-3 rounded-card bg-danfo-soft p-3 text-left ring-1 ring-danfo hover:bg-paper-3" data-testid="map-stay">
+          <PlaceIcon kind="hotel" size={40} decorative />
+          <span className="min-w-0 flex-1">
+            <span className="block truncate font-bold">Your room · {stay.name}</span>
+            <span className="block truncate text-sm text-text-soft">
+              Home until checkout at {formatClock12(stay.checkoutAt)} · {DISTRICTS[stay.districtId].name}
+              {stay.cityId !== cityId ? ` · ${CITIES[stay.cityId].name}` : ''}
+            </span>
+          </span>
+          <Navigation size={18} aria-hidden className="shrink-0 text-text-faint" />
+        </button>
+      )}
       {expected.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label="Expected at">
           {expected.map((visit) =>
@@ -234,7 +250,7 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
   const [confirming, setConfirming] = useState<{ readonly mode: TransportMode; readonly message: string } | null>(null);
   const car = quotes.data?.find((quote) => quote.mode === 'car');
   const walk = quotes.data?.find((quote) => quote.mode === 'walk' && quote.available);
-  const hasCar = car ? car.available || car.reason !== 'You don’t own a car yet' : false;
+  const { hasCar, why: noCarWhy } = carAvailability(car);
   const detail = target.kind === 'venue' ? target.venue.blurb : target.kind === 'visit' ? target.detail : null;
   const openPhone = useUi((state) => state.openPhone);
   // Across the water: no road, no ride, no GPS. The server says so for every mode.
@@ -312,7 +328,7 @@ function Destination({ target, destinationId, onBack }: { readonly target: MapTa
         </Button>
         {!hasCar && !quotes.isPending && (
           <p id="map-no-car" className="-mt-1 px-1 text-xs text-text-soft">
-            You don’t have a car yet. Motors on your phone sells them.
+            {noCarWhy}
           </p>
         )}
       </div>

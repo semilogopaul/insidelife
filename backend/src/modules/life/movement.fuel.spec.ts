@@ -35,7 +35,7 @@ function harness(driven: DrivenVehicleDto | null, distance: number, options: { s
   const tracker = { isPlausible: plausible, anchor } as unknown as MovementTracker;
   const drive = vi.fn(async () => driven);
   const refuel = vi.fn(async () => (driven ? { litres: 25, pricePerLitre: 1350, cost: 33_750, car: driven } : null));
-  const vehicles: VehiclePort = { driving: async () => driven, drive, refuel, workshopRepair: async () => null };
+  const vehicles: VehiclePort = { driving: async () => driven, drive, refuel, workshopRepair: async () => null, parkedElsewhere: async () => null };
   const ctx = {
     time: 50_000,
     character: { id: 'c1', locationId: 'street:yaba', activity: null },

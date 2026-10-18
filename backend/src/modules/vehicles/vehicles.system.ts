@@ -70,7 +70,8 @@ export class VehiclesSystem implements SimulationSystem, OnModuleInit {
     await this.vehicles.drive(ctx, car, distance, { trafficFactor: trafficFuelFactor(traffic) });
   }
 
-  async onDayEnd(ctx: SimulationContext): Promise<void> {
+  /** A delivery or a car-carrier shipment lands at its time, not at the next midnight. */
+  async onSettled(ctx: SimulationContext): Promise<void> {
     await this.vehicles.deliverDue(ctx);
   }
 

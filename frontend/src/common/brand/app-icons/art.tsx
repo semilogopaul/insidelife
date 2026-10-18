@@ -946,6 +946,38 @@ const hangar: AppIconArt = {
   ),
 };
 
+const stay: AppIconArt = {
+  name: 'Stay',
+  tile: ['#c58a2e', '#5a3410'],
+  backdrop: ({ compact }) => (
+    <>
+      {!compact && <path d="M0 24C12 20 22 26 34 22S54 17 64 22V0H0Z" fill="#ffffff" opacity={0.14} />}
+      <rect y={50} width={64} height={14} fill="#2e1a08" opacity={0.4} />
+    </>
+  ),
+  subject: ({ id, url, compact }) => (
+    <>
+      <defs>
+        <Linear
+          id={id('dome')}
+          stops={[
+            [0, '#fffaf0'],
+            [1, '#e8d4a4'],
+          ]}
+        />
+      </defs>
+      <ellipse cx={32} cy={52} rx={21} ry={2.6} fill="#000000" opacity={0.32} />
+      {/* The reception bell: a brass base, a domed bell, a button on top. */}
+      <rect x={10} y={44} width={44} height={7} rx={3.5} fill="#f3d27a" />
+      <rect x={10} y={44} width={44} height={2.4} rx={1.2} fill="#ffffff" opacity={0.35} />
+      <path d="M15 44C15 30 22 21.5 32 21.5S49 30 49 44Z" fill={url('dome')} />
+      {!compact && <path d="M20 43C20 34 24 27.5 31 26" stroke="#ffffff" strokeWidth={2.4} strokeLinecap="round" fill="none" opacity={0.75} />}
+      <rect x={29.8} y={15} width={4.4} height={7} rx={2} fill="#c9a227" />
+      <circle cx={32} cy={14.2} r={3.4} fill="#f3d27a" />
+    </>
+  ),
+};
+
 export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   map,
   messages,
@@ -957,6 +989,7 @@ export const APP_ICON_ART: Readonly<Record<AppIconId, AppIconArt>> = {
   motors,
   hangar,
   flights,
+  stay,
   health,
   family,
   invest,

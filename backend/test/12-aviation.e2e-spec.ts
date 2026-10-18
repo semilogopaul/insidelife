@@ -127,8 +127,34 @@ describe('aviation: catalogue and buying', () => {
     expect(bought.aircraft).toMatchObject({ parkedAt: 'naia-gat', airborne: true, arrivesAt: e2e.clock.now + FERRY_DELIVERY_MINUTES });
     refused(await player.post(`/aircraft/${bought.aircraft.id}/sale`, {}), 422, 'IN_THE_AIR');
 
-    e2e.clock.advance(FERRY_DELIVERY_MINUTES + 5);
+    // Just before the promised time it is still in the air; five minutes after, it is on the apron at the chosen GAT.
+    e2e.clock.advance(FERRY_DELIVERY_MINUTES - 5);
+    expect((await hangar(player)).mine[0]).toMatchObject({ airborne: true, parkedAt: 'naia-gat' });
+    e2e.clock.advance(10);
     expect((await hangar(player)).mine[0]).toMatchObject({ airborne: false, arrivesAt: null, parkedAt: 'naia-gat' });
+  });
+
+  it('lands a ferried aircraft at its arrival time, not at the next midnight (regression: it said it arrived and was not there)', async () => {
+    e2e.clock.at(10);
+    const player = await createPlayer(e2e, { age: 25 });
+    await fund(e2e, player, 600_000_000);
+    const bought = ok<AircraftPurchaseResultDto>(await player.post('/aircraft/purchases', { aircraftId: 'cessna-172', deliverTo: 'naia-gat' }));
+    const landedRows = (): Promise<Array<{ title: string }>> =>
+      e2e.dataSource.query(`SELECT title FROM notifications WHERE character_id = $1 AND title LIKE '%aircraft has landed%'`, [player.characterId]);
+    const arrivesAt = async (): Promise<number | null> => {
+      const rows = await e2e.dataSource.query<Array<{ arrives_at: string | null }>>('SELECT arrives_at FROM aircraft WHERE id = $1', [bought.aircraft.id]);
+      return rows[0]!.arrives_at === null ? null : Number(rows[0]!.arrives_at);
+    };
+    e2e.clock.advance(FERRY_DELIVERY_MINUTES - 5);
+    await hangar(player);
+    expect(await landedRows()).toHaveLength(0);
+    expect(await arrivesAt()).toBe(bought.aircraft.arrivesAt);
+    e2e.clock.advance(10); // past the landing time, still the same day
+    expect((await hangar(player)).mine[0]).toMatchObject({ airborne: false, parkedAt: 'naia-gat' });
+    expect(await arrivesAt()).toBeNull();
+    expect(await landedRows()).toHaveLength(1);
+    await hangar(player); // a second settle never announces it twice
+    expect(await landedRows()).toHaveLength(1);
   });
 });
 

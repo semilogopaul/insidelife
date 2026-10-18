@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { CITY_GEOMETRY_VERSION, layoutToWorld, venueEntrance, type CharacterSnapshotDto } from '@insidelife/shared';
+import { CITY_GEOMETRY_VERSION, layoutToWorld, venueEntrance, type CharacterSnapshotDto, type VehiclesDto } from '@insidelife/shared';
+import { carWithYou } from '../flow/movement.api';
 import { loadPose, savePose, type SavedPose } from '../flow/spawn-handoff';
 import { resolveStart } from '../flow/start-pose';
 import { surfaceAt } from '../physics/surface';
@@ -48,5 +49,28 @@ describe('resolveStart after a reload', () => {
     const start = resolveStart(snapshotAt(null), null, null, null);
     expect(Number.isFinite(start.x) && Number.isFinite(start.z)).toBe(true);
     expect(start.lookupCar).toBe(true);
+  });
+});
+
+describe('a car belongs to the city it is parked in', () => {
+  const garage = (cityId: 'lagos' | 'abuja') =>
+    ({
+      mine: [{ id: 'o1', vehicleId: 'toyota-corolla-2008', name: 'Corolla', model: 'sedan', color: '#fff', plate: 'KJA-1', fuelType: 'petrol', fuelLitres: 30, tankLitres: 50, condition: 80, brokenDown: false, status: 'owned', isPrimary: true, cityId }],
+      catalogue: [],
+    }) as unknown as VehiclesDto;
+
+  it('is with you only in its own city', () => {
+    expect(carWithYou(garage('lagos'), 'lagos')?.ownedVehicleId).toBe('o1');
+    expect(carWithYou(garage('lagos'), 'abuja')).toBeNull();
+    expect(carWithYou(garage('abuja'), 'abuja')?.ownedVehicleId).toBe('o1');
+  });
+
+  it('ignores a pose saved in the other city', () => {
+    const lagosDoor = venueEntrance('unilag')!.position;
+    const saved: SavedPose = { characterId: 'c1', x: lagosDoor.x, z: lagosDoor.z, heading: 0, driving: true, car: { x: lagosDoor.x, z: lagosDoor.z, heading: 0, vehicle: { ownedVehicleId: 'o1' } as never }, savedAt: Date.now() };
+    const inAbuja = { character: { id: 'c1', locationId: 'street:wuse', cityId: 'abuja' } } as unknown as CharacterSnapshotDto;
+    const start = resolveStart(inAbuja, null, saved, null);
+    expect(start.car).toBeNull();
+    expect(start.driving).toBe(false);
   });
 });
