@@ -136,6 +136,9 @@ export function HotspotCardPanel({ run }: { readonly run: (entryId: string, minu
                 {entry.disabled && (
                   <span className="mt-1 block text-xs font-bold text-danfo">{entry.disabled}</span>
                 )}
+                {!entry.disabled && entry.missing && (
+                  <span className="mt-1 block text-xs font-bold text-danfo">{entry.missing}</span>
+                )}
               </span>
             </div>
             <div className="mt-2 flex flex-wrap gap-1.5">

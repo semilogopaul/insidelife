@@ -27,7 +27,7 @@ export class ShopController {
     const { idempotencyKey, ...request } = body;
     return this.session.run(
       { userId: user.userId },
-      (ctx) => ctx.once('shop-purchase', idempotencyKey, request, () => this.shop.purchase(ctx, request.itemId, request.quantity ?? 1)),
+      (ctx) => ctx.once('shop-purchase', idempotencyKey, request, () => this.shop.purchase(ctx, request.itemId, request.quantity ?? 1, request.roomId)),
       { touch: true },
     );
   }

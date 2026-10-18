@@ -61,7 +61,8 @@ export function pickBoxOf(room: { readonly width: number; readonly depth: number
  */
 export function withDecorColliders(template: InteriorTemplate, pieces: readonly PlacedPiece[]): InteriorTemplate {
   const solid: PropSpec[] = pieces
-    .filter((piece) => piece.item.placement === 'floor' && !isFlatDecor(piece.item))
+    // Furniture is drawn by the room (its kit pieces are already colliders there).
+    .filter((piece) => piece.item.placement === 'floor' && !isFlatDecor(piece.item) && piece.item.shape !== 'kit')
     .map((piece) => ({
       kind: 'box' as const,
       at: [piece.spot.x, piece.spot.z] as const,

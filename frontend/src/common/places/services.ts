@@ -22,6 +22,7 @@ export const PLACE_OBJECT_KINDS = [
   'dance-floor',
   'stage',
   'bed',
+  'wardrobe',
   'sofa',
   'table',
   'chair',
@@ -170,6 +171,16 @@ const AVIATION_TERMINAL: readonly PlaceService[] = [
     at: 'counter',
   },
 ];
+
+/** Your wardrobe at home (found at the wardrobe piece you stand in a room): change into something from your Shop app wardrobe. */
+export const WARDROBE_SERVICE: PlaceService = {
+  id: 'home-wardrobe',
+  label: 'Change clothes',
+  emoji: '👔',
+  blurb: 'Pick today’s drip from your wardrobe — in the Shop app.',
+  opens: { app: 'shop', param: 'wardrobe' },
+  at: { object: 'wardrobe' },
+};
 
 export const PLACE_SERVICES: Readonly<Partial<Record<VenueType | 'aviation-terminal', readonly PlaceService[]>>> = {
   'aviation-terminal': AVIATION_TERMINAL,

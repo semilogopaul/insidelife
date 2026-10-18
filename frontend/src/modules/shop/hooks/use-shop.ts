@@ -3,6 +3,7 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Outfit, WardrobeDto } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
+import { decorKey, useDecorEdit } from '@/common/decor';
 import { shopApi } from '../services/shop.api';
 import { useCurrentPlace } from '@/common/hooks/use-current-place';
 
@@ -43,6 +44,9 @@ function useRefresh() {
     // Belongings unlock jobs (laptop, car) and comfort at home.
     void client.invalidateQueries({ queryKey: queryKeys.domain('jobs') });
     void client.invalidateQueries({ queryKey: queryKeys.domain('housing') });
+    // Furniture arrives as pieces standing in your rooms.
+    void client.invalidateQueries({ queryKey: decorKey });
+    void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'home') });
   };
 }
 
@@ -50,8 +54,9 @@ export function useShopCommands() {
   const refresh = useRefresh();
   return {
     purchase: useMutation({
+      // Furniture goes into the room of your home you are in (the server ignores it anywhere else).
       mutationFn: ({ itemId, quantity }: { itemId: string; quantity: number }) =>
-        shopApi.purchase(itemId, quantity),
+        shopApi.purchase(itemId, quantity, useDecorEdit.getState().homeRoom?.roomId),
       onSuccess: refresh,
     }),
     sell: useMutation({

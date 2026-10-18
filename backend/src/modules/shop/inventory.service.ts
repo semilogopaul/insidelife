@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import {
   PANTRY_MAX_MEALS,
   FAULTY_CONDITION,
   MINUTES_PER_DAY,
   findProduct,
+  isFurnitureProduct,
   productCategory,
+  type FurniturePurchaseDto,
   type InventoryItemDto,
   type InventorySaleResultDto,
   type InventorySource,
@@ -12,6 +15,7 @@ import {
   type ShopProduct,
 } from '@insidelife/shared';
 import { GameRuleException, ResourceNotFoundException } from '../../common/exceptions/domain.exception.js';
+import { FURNITURE_PORT, type FurnitureHint, type FurniturePort } from '../../common/ports/furniture.port.js';
 import type { HomeComfortBonus, InventoryPort, OwnedItem } from '../../common/ports/inventory.port.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { InventoryItemEntity } from './entities/inventory-item.entity.js';
@@ -44,11 +48,36 @@ export interface OwnedStack {
 @Injectable()
 export class InventoryService implements InventoryPort {
   private readonly logger = new Logger(InventoryService.name);
+  /** The decor module's side of furniture, found on first use (the shop doesn't import it: housing consumes the shop). */
+  private furniture: FurniturePort | null | undefined;
+  /** What the furniture just added to the inventory did in this transaction (new pieces, what they could replace). */
+  private readonly arrivals = new WeakMap<SimulationContext, FurniturePurchaseDto>();
+
+  constructor(private readonly moduleRef: ModuleRef) {}
+
+  private furniturePort(): FurniturePort | null {
+    if (this.furniture === undefined) {
+      try {
+        this.furniture = this.moduleRef.get<FurniturePort>(FURNITURE_PORT, { strict: false });
+      } catch {
+        // No decor module in this app (a unit test): furniture is plain belongings.
+        this.furniture = null;
+      }
+    }
+    return this.furniture;
+  }
+
+  /** The pieces the last purchase of furniture created in this transaction, once. */
+  takeArrival(ctx: SimulationContext): FurniturePurchaseDto | null {
+    const arrival = this.arrivals.get(ctx) ?? null;
+    this.arrivals.delete(ctx);
+    return arrival;
+  }
 
   // ----- InventoryPort ---------------------------------------------------------------------------------------------
 
   async homeComfortBonus(ctx: SimulationContext): Promise<HomeComfortBonus> {
-    return aggregateHomeComfort(await this.workingItems(ctx));
+    return aggregateHomeComfort(await this.workingItems(ctx), await this.furniturePort()?.decorBedQuality(ctx));
   }
 
   async owned(ctx: SimulationContext): Promise<readonly OwnedItem[]> {
@@ -146,7 +175,7 @@ export class InventoryService implements InventoryPort {
    * Add units to the character's inventory. Units of the same product stack (condition averages with the new
    * units); quantities are capped at the product's maximum and clothing at one.
    */
-  async add(ctx: SimulationContext, product: ShopProduct, quantity: number, source: InventorySource, unitPrice: number): Promise<InventoryItemEntity | null> {
+  async add(ctx: SimulationContext, product: ShopProduct, quantity: number, source: InventorySource, unitPrice: number, hint?: FurnitureHint): Promise<InventoryItemEntity | null> {
     // Groceries stock the kitchen (a meal count), they don't become belongings.
     if (product.kind === 'item' && product.def.meals) {
       ctx.character.pantryMeals = Math.min(PANTRY_MAX_MEALS, ctx.character.pantryMeals + product.def.meals * quantity);
@@ -185,16 +214,47 @@ export class InventoryService implements InventoryPort {
       // Free assets count as unearned wealth at the value net worth gives them (keeps the self-made list honest).
       ctx.wallet.recordUnearnedAsset(expectedResaleValue(ctx.world.price(product.def.price, ctx.time), 100) * units);
     }
+    // Furniture is a piece for every unit, put in the room you are in (or wherever it fits) at once.
+    const port = product.kind === 'item' && isFurnitureProduct(product.def.id) ? this.furniturePort() : null;
+    if (port) this.arrivals.set(ctx, await port.acquired(ctx, { id: row.id, itemId: row.itemId }, units, hint));
     return row;
   }
 
-  async remove(ctx: SimulationContext, row: InventoryItemEntity, quantity: number): Promise<void> {
+  async remove(ctx: SimulationContext, row: InventoryItemEntity, quantity: number, releasePieces = true): Promise<void> {
+    const units = Math.min(quantity, row.quantity);
     if (quantity >= row.quantity) await ctx.manager.delete(InventoryItemEntity, { id: row.id });
     else {
       row.quantity -= quantity;
       await ctx.manager.save(row);
     }
     this.changed(ctx);
+    // The furniture goes from the rooms too (a piece sold back from its room is released by the caller).
+    if (releasePieces && isFurnitureProduct(row.itemId)) await this.furniturePort()?.released(ctx, row.id, units);
+  }
+
+  /** What a unit of furniture would fetch if sold back today: a share of the shelf price, less for worn pieces. */
+  furnitureSellBack(ctx: SimulationContext, stackId: string, rate: number): Promise<number> {
+    return this.find(ctx, stackId).then((stack) => this.furnitureOffer(ctx, stack, rate));
+  }
+
+  /** Sell one unit of furniture back to the store (the caller deletes its piece). Paid through the ledger, once per piece. */
+  async sellFurnitureUnit(ctx: SimulationContext, stackId: string, pieceId: string, rate: number): Promise<number> {
+    const stack = await this.find(ctx, stackId);
+    const amount = this.furnitureOffer(ctx, stack, rate);
+    await this.remove(ctx, stack.row, 1, false);
+    if (amount > 0) {
+      await ctx.wallet.receive(amount, 'refund', `Sold back ${stack.product.def.name}`, `furniture-sell:${pieceId}`, {
+        income: 'neutral',
+        metadata: { itemId: stack.row.itemId, pieceId },
+      });
+    }
+    return amount;
+  }
+
+  private furnitureOffer(ctx: SimulationContext, stack: OwnedStack, rate: number): number {
+    const shelf = ctx.world.price(stack.product.def.price, ctx.time);
+    const wear = 0.5 + (0.5 * this.condition(ctx, stack)) / 100;
+    return Math.round(shelf * rate * wear);
   }
 
   async setCondition(ctx: SimulationContext, row: InventoryItemEntity, condition: number): Promise<void> {
@@ -273,9 +333,13 @@ export class InventoryService implements InventoryPort {
   }
 
   private async workingItems(ctx: SimulationContext): Promise<OwnedForComfort[]> {
+    // Furniture counts where it stands: a bed in storage doesn't sleep you, a TV in a box doesn't show anything.
+    const counted = await this.furniturePort()?.countedStacks(ctx);
     const items: OwnedForComfort[] = [];
     for (const stack of await this.stacks(ctx)) {
-      if (stack.product.kind === 'item') items.push({ def: stack.product.def, condition: this.condition(ctx, stack) });
+      if (stack.product.kind !== 'item') continue;
+      if (counted && isFurnitureProduct(stack.row.itemId) && !counted.has(stack.row.id)) continue;
+      items.push({ def: stack.product.def, condition: this.condition(ctx, stack) });
     }
     return items;
   }

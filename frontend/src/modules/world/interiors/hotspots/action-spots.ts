@@ -261,8 +261,10 @@ export function actionAnchor(
   const spot = actionSpot(template, action);
   const tag = action.requires?.itemTag;
   for (const slot of tag ? (TAG_SLOTS[tag] ?? []) : []) {
-    const piece = slots.furniture.find((candidate) => candidate.slot === slot);
-    if (!piece || !hasLike(template, piece)) continue;
+    // The piece standing in the room (your TV, wherever you put it; the family's in their house) is what it is at.
+    const standing = template.furniture.find((candidate) => candidate.slot === slot && !candidate.base);
+    const piece = standing ?? slots.furniture.find((candidate) => candidate.slot === slot && !candidate.base);
+    if (!piece || (!standing && !hasLike(template, piece))) continue;
     const [w, , d] = FURNITURE_MANIFEST[piece.model].size;
     const size = Math.max(w, d) * FURNITURE_SCALE * (piece.scale ?? 1);
     return { at: piece.at, y: pieceTop(piece) + 0.38, reach: SPOT_REACH + size / 2 };

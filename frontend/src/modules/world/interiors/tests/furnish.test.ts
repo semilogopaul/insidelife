@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { ITEMS, type ItemCategory } from '@insidelife/shared';
 import { DUPLEX_LAYOUT, FLAT_LAYOUT, HOME_LAYOUTS, MANSION_LAYOUT } from '../layouts/catalog';
 import { FLAT_BEDROOM } from '../templates/catalog/home-rooms';
-import { HOME_DUPLEX, HOME_FACE_ME, HOME_FAMILY, HOME_FLAT, HOME_HOSTEL, HOME_MANSION } from '../templates/catalog/homes';
+import { HOME_DUPLEX, HOME_FACE_ME, HOME_FAMILY, HOME_FLAT, HOME_HOSTEL } from '../templates/catalog/homes';
 import { furnish, isFixture, slotOf } from '../templates/furnish';
+import { furnishedHome } from './furnished-home';
 import type { InteriorTemplate } from '../templates/types';
 import type { HomeLayout } from '../layouts/types';
 
@@ -11,53 +12,64 @@ const models = (template: { readonly furniture: readonly { readonly model: strin
 const propKinds = (template: { readonly props: readonly { readonly kind: string }[] }) => template.props.map((prop) => prop.kind);
 
 describe('furnish', () => {
-  /** A rented flat (living room, kitchen, bedroom) furnished with what you own. */
-  const furnishFlat = (owned: readonly string[]): ReadonlyMap<string, InteriorTemplate> =>
-    new Map(FLAT_LAYOUT.rooms.map((room) => [room.id, furnish(room.template, owned, { providedFurniture: false })]));
-  const wholeFlat = (rooms: ReadonlyMap<string, InteriorTemplate>) => ({ furniture: [...rooms.values()].flatMap((room) => room.furniture), props: [...rooms.values()].flatMap((room) => room.props) });
+  const propsOf = (home: ReturnType<typeof furnishedHome>) => [...home.rooms.values()].flatMap((room) => room.props);
+  const furnitureOf = (home: ReturnType<typeof furnishedHome>) => [...home.rooms.values()].flatMap((room) => room.furniture);
+  const roomModels = (home: ReturnType<typeof furnishedHome>, roomId: string) => models(home.rooms.get(roomId)!);
 
   it('shows a new tenant only their starter mattress: no TV, sofas, fridge or AC', () => {
-    const rooms = furnishFlat(['bed-foam-mattress', 'phone-tecno-spark']);
-    const flat = wholeFlat(rooms);
-    expect(models(flat)).not.toContain('televisionModern');
-    expect(models(flat)).not.toContain('loungeDesignSofa');
-    expect(models(flat)).not.toContain('kitchenFridge');
-    expect(models(flat)).not.toContain('bedDouble');
-    expect(propKinds(flat)).not.toContain('aircon');
-    const bedroom = rooms.get('bedroom');
-    expect(propKinds(bedroom ?? { props: [] })).toContain('mattress');
+    const flat = furnishedHome('home-flat', ['bed-foam-mattress'], ['phone-tecno-spark']);
+    expect(models({ furniture: furnitureOf(flat) })).not.toContain('televisionModern');
+    expect(models({ furniture: furnitureOf(flat) })).not.toContain('loungeDesignSofa');
+    expect(models({ furniture: furnitureOf(flat) })).not.toContain('kitchenFridge');
+    expect(models({ furniture: furnitureOf(flat) })).not.toContain('bedDouble');
+    expect(propKinds({ props: propsOf(flat) })).not.toContain('aircon');
+    const bedroom = flat.rooms.get('bedroom')!;
+    expect(propKinds(bedroom)).toContain('mattress');
     // Fixed fittings stay.
-    expect(models(flat)).toContain('kitchenSink');
+    expect(models({ furniture: furnitureOf(flat) })).toContain('kitchenSink');
     // The sleeper lies on the mattress, not in the air where the bed was.
-    expect(bedroom?.player.sleep?.at[1]).toBeCloseTo(0.22);
+    expect(bedroom.player.sleep?.at[1]).toBeCloseTo(0.22);
+    expect(flat.home.sleep).toMatchObject({ roomId: 'bedroom' });
   });
 
   it('puts a mat on the floor where the bed would be when you own nothing to sleep on', () => {
-    const bedroom = furnishFlat([]).get('bedroom');
+    const bedroom = furnishedHome('home-flat', []).rooms.get('bedroom')!;
     const bed = FLAT_BEDROOM.furniture.find((piece) => piece.slot === 'bed');
-    expect(bedroom?.props.some((prop) => prop.kind === 'mat' && prop.at[0] === bed?.at[0] && prop.at[1] === bed?.at[1])).toBe(true);
-    expect(bedroom?.player.sleep?.at[1]).toBeCloseTo(0.08);
+    expect(bedroom.props.some((prop) => prop.kind === 'mat' && prop.at[0] === bed?.at[0] && prop.at[1] === bed?.at[1])).toBe(true);
+    expect(bedroom.player.sleep?.at[1]).toBeCloseTo(0.08);
+  });
+
+  it('puts a bed where you stand it: a better bed beside the old one, each sleeping at its own height', () => {
+    const flat = furnishedHome('home-flat', ['bed-foam-mattress', 'bed-orthopedic']);
+    const bedroom = flat.rooms.get('bedroom')!;
+    expect(propKinds(bedroom)).toContain('mattress');
+    expect(models(bedroom)).toContain('bedDouble');
+    // The best bed is the one you sleep in.
+    expect(flat.home.sleep?.itemId).toBe('home-bed-orthopedic');
+    expect(bedroom.player.sleep?.at[1]).toBeCloseTo(0.4);
+    // No mat under or beside them: there is a bed.
+    expect(bedroom.props.some((prop) => prop.kind === 'mat' && prop.color === '#8d6e63')).toBe(false);
   });
 
   it('puts each thing you buy in its room: the fridge in the kitchen, the bed and AC in the bedroom, the TV in the living room', () => {
-    const rooms = furnishFlat(['fridge-tabletop', 'bed-orthopedic', 'ac-split', 'tv-55', 'ps5']);
-    expect(models(rooms.get('kitchen') ?? { furniture: [] })).toContain('kitchenFridgeSmall');
-    expect(models(rooms.get('bedroom') ?? { furniture: [] })).toContain('bedDouble');
-    expect(propKinds(rooms.get('bedroom') ?? { props: [] })).toContain('aircon');
-    expect(models(rooms.get('living') ?? { furniture: [] })).toContain('televisionModern');
+    const flat = furnishedHome('home-flat', ['bed-orthopedic', 'tv-55'], ['fridge-tabletop', 'ac-split', 'ps5']);
+    expect(roomModels(flat, 'kitchen')).toContain('kitchenFridgeSmall');
+    expect(roomModels(flat, 'bedroom')).toContain('bedDouble');
+    expect(propKinds(flat.rooms.get('bedroom')!)).toContain('aircon');
+    expect(roomModels(flat, 'living')).toContain('televisionModern');
     // The console sits by the TV, and nothing turns up twice.
-    expect(rooms.get('living')?.props.some((prop) => prop.kind === 'box' && prop.color === '#f4f4f4')).toBe(true);
-    expect(models(wholeFlat(rooms)).filter((model) => model.startsWith('kitchenFridge'))).toHaveLength(1);
-    expect(propKinds(wholeFlat(rooms)).filter((kind) => kind === 'aircon')).toHaveLength(1);
+    expect(flat.rooms.get('living')?.props.some((prop) => prop.kind === 'box' && prop.color === '#f4f4f4')).toBe(true);
+    expect(models({ furniture: furnitureOf(flat) }).filter((model) => model.startsWith('kitchenFridge'))).toHaveLength(1);
+    expect(propKinds({ props: propsOf(flat) }).filter((kind) => kind === 'aircon')).toHaveLength(1);
   });
 
-  it('has nobody sitting on air: without the armchair you stand, with it you sit', () => {
-    const bare = furnishFlat([]).get('living');
-    expect(bare?.player.sit?.stance).toBe('stand');
-    const furnished = furnishFlat(['sofa-italian']).get('living');
-    expect(furnished?.player.sit?.stance).toBe('sit');
+  it('has nobody sitting on air: without the sofa you stand, with it you sit', () => {
+    const bare = furnishedHome('home-flat', []).rooms.get('living')!;
+    expect(bare.player.sit).toBeUndefined();
+    const furnished = furnishedHome('home-flat', ['sofa-italian']).rooms.get('living')!;
+    expect(furnished.player.sit?.stance).toBe('sit');
     // A home you rent or own has no strangers in it; the family house keeps the family.
-    expect(bare?.npcs).toEqual([]);
+    expect(bare.npcs).toEqual([]);
     expect(furnish(HOME_FAMILY, [], { providedFurniture: true }).npcs).toHaveLength(HOME_FAMILY.npcs.length);
     // Sitting on the edge of the family-house bed still counts as sitting.
     const family = furnish(HOME_FAMILY, [], { providedFurniture: true });
@@ -85,51 +97,39 @@ describe('furnish', () => {
   });
 
   it('shows what you buy, sized by the item (a 32" TV in a mansion stays small)', () => {
-    const mansion = furnish(HOME_MANSION, ['tv-32', 'sofa-fabric', 'ps5'], { providedFurniture: false });
-    const tv = mansion.furniture.find((piece) => piece.model === 'televisionModern');
+    const mansion = furnishedHome('home-mansion', ['tv-32', 'sofa-fabric'], ['ps5']);
+    const tv = furnitureOf(mansion).find((piece) => piece.model === 'televisionModern');
     expect(tv?.scale).toBeCloseTo(0.8);
-    expect(models(mansion)).toContain('loungeSofaLong');
-    expect(models(mansion)).not.toContain('loungeDesignSofa');
-    expect(mansion.props.some((prop) => prop.kind === 'box' && prop.color === '#f4f4f4')).toBe(true);
+    expect(models({ furniture: furnitureOf(mansion) })).toContain('loungeSofaLong');
+    expect(models({ furniture: furnitureOf(mansion) })).not.toContain('loungeDesignSofa');
+    expect(propsOf(mansion).some((prop) => prop.kind === 'box' && prop.color === '#f4f4f4')).toBe(true);
   });
 
-  it('keeps the template’s full arrangement for the best item in a slot', () => {
-    const mansion = furnish(HOME_MANSION, ['sofa-italian', 'tv-75', 'dining-set'], { providedFurniture: false });
-    expect(models(mansion).filter((model) => model === 'loungeDesignSofa')).toHaveLength(2);
-    expect(models(mansion).filter((model) => model === 'chairModernCushion').length).toBeGreaterThanOrEqual(5);
-    expect(mansion.furniture.find((piece) => piece.model === 'televisionModern')?.scale).toBeCloseTo(1.8);
+  it('shows the biggest pieces as themselves: a 75" TV, the Italian set, the dining set with its chairs', () => {
+    const mansion = furnishedHome('home-mansion', ['sofa-italian', 'tv-75', 'dining-set']);
+    expect(furnitureOf(mansion).find((piece) => piece.model === 'televisionModern')?.scale).toBeCloseTo(1.5);
+    expect(models({ furniture: furnitureOf(mansion) })).toEqual(expect.arrayContaining(['loungeDesignSofa', 'loungeChairRelax']));
+    expect(models({ furniture: furnitureOf(mansion) }).filter((model) => model === 'chairModernCushion')).toHaveLength(4);
   });
 
-  it('leaves the family house furnished, upgrading only what you own better', () => {
-    const family = furnish(HOME_FAMILY, ['bed-foam-mattress'], { providedFurniture: true });
+  it('leaves the family house exactly as it is: its furniture stays put and yours waits for a place of your own', () => {
+    const family = furnish(HOME_FAMILY, ['bed-foam-mattress', 'tv-55', 'bed-spring', 'sofa-leather'], { providedFurniture: true });
+    const plain = furnish(HOME_FAMILY, [], { providedFurniture: true });
+    expect(models(family)).toEqual(models(plain));
     expect(models(family)).toContain('bedDouble');
-    expect(models(family)).toContain('televisionModern');
-    const upgraded = furnish(HOME_FAMILY, ['tv-55'], { providedFurniture: true });
-    expect(upgraded.furniture.filter((piece) => piece.model === 'televisionModern')).toHaveLength(1);
-    expect(upgraded.furniture.find((piece) => piece.model === 'televisionModern')?.scale).toBeCloseTo(1.15);
+    expect(models(family)).not.toContain('bedSingle');
+    expect(family.furniture.find((piece) => piece.model === 'televisionModern')?.scale).toBeCloseTo(0.85);
   });
 
-  it('shows the furniture you buy in the family house, in place of theirs', () => {
-    // A spring bed replaces the family's bed (one bed in the room, not two).
-    const spring = furnish(HOME_FAMILY, ['bed-spring'], { providedFurniture: true });
-    expect(models(spring)).toContain('bedSingle');
-    expect(models(spring)).not.toContain('bedDouble');
-    // The top of the range shows as itself (not as the family's double bed), without doubled bedside drawers.
-    const king = furnish(HOME_FAMILY, ['bed-super-king'], { providedFurniture: true });
-    expect(king.furniture.find((piece) => piece.model === 'bedDouble')?.scale).toBeCloseTo(1.2);
-    expect(models(king).filter((model) => model === 'cabinetBedDrawer')).toHaveLength(2);
-    // A one-tier item (the wardrobe) and a 75" TV show too.
-    const wardrobe = furnish(HOME_FAMILY, ['wardrobe-wooden', 'tv-75'], { providedFurniture: true });
-    expect(models(wardrobe)).toContain('bookcaseClosedWide');
-    expect(models(wardrobe)).not.toContain('bookcaseClosedDoors');
-    expect(wardrobe.furniture.find((piece) => piece.model === 'televisionModern')?.scale).toBeCloseTo(1.5);
+  it('still lets your gadgets and appliances replace theirs in a furnished house', () => {
+    const family = furnish(HOME_FAMILY, ['fan-standing', 'lantern-rechargeable'], { providedFurniture: true });
+    expect(propKinds(family)).toEqual(expect.arrayContaining(['standing-fan', 'lantern']));
   });
 
-  it('shows your own bed in a hostel and keeps your roommate’s bunk', () => {
+  it('keeps the hostel’s bunk whatever bed you own', () => {
     const hostel = furnish(HOME_HOSTEL, ['bed-orthopedic'], { providedFurniture: true });
-    expect(models(hostel).filter((model) => model === 'bedBunk')).toHaveLength(1);
-    expect(models(hostel)).toContain('bedDouble');
-    expect(models(furnish(HOME_HOSTEL, [], { providedFurniture: true })).filter((model) => model === 'bedBunk')).toHaveLength(2);
+    expect(models(hostel).filter((model) => model === 'bedBunk')).toHaveLength(2);
+    expect(models(hostel)).not.toContain('bedDouble');
   });
 });
 
@@ -189,7 +189,6 @@ describe('an empty home', () => {
   });
 
   it.each([
-    ['desk-study', FLAT_LAYOUT, 'bedroom', ['desk', 'chairDesk']],
     ['lamps-set', FLAT_LAYOUT, 'living', ['lampRoundFloor']],
     ['lamps-set', FLAT_LAYOUT, 'bedroom', ['lampRoundTable']],
     ['microwave', FLAT_LAYOUT, 'kitchen', ['kitchenMicrowave']],
@@ -199,10 +198,6 @@ describe('an empty home', () => {
     ['bar-set', DUPLEX_LAYOUT, 'living', ['stoolBar']],
     ['bar-set', DUPLEX_LAYOUT, 'kitchen', ['stoolBar']],
     ['home-cinema', MANSION_LAYOUT, 'cinema', ['loungeChairRelax', 'speaker', 'loungeDesignSofa']],
-    ['plants-snake', DUPLEX_LAYOUT, 'bedroom', ['pottedPlant']],
-    ['tv-32', FLAT_LAYOUT, 'living', ['cabinetTelevision', 'televisionModern']],
-    ['sofa-fabric', FLAT_LAYOUT, 'living', ['loungeSofaLong', 'tableCoffeeGlass']],
-    ['bed-spring', FLAT_LAYOUT, 'bedroom', ['bedSingle', 'cabinetBedDrawer']],
   ] as const)('shows %s (%s) in its %s', (item, layout, roomId, expected) => {
     const rooms = furnishLayout(layout, [item]);
     expect(models(roomOf(rooms, roomId))).toEqual(expect.arrayContaining([...expected]));
@@ -222,10 +217,30 @@ describe('an empty home', () => {
     for (const roomId of roomIds) expect(propKinds(roomOf(rooms, roomId)), roomId).toContain(kind);
   });
 
-  it('shows a desk only in the room that has one, so a purchase shows up once', () => {
-    const rooms = furnishLayout(FLAT_LAYOUT, ['desk-study']);
-    expect(models(roomOf(rooms, 'living'))).not.toContain('desk');
-    expect(models(roomOf(rooms, 'kitchen'))).not.toContain('desk');
+  it.each([
+    ['desk-study', 'home-flat', 'bedroom', ['desk', 'chairDesk']],
+    ['plants-snake', 'home-duplex', 'living', ['pottedPlant']],
+    ['tv-32', 'home-flat', 'living', ['cabinetTelevision', 'televisionModern']],
+    ['sofa-fabric', 'home-flat', 'living', ['loungeSofaLong']],
+    ['bed-spring', 'home-flat', 'bedroom', ['bedSingle']],
+    ['wardrobe-wooden', 'home-flat', 'bedroom', ['bookcaseClosedWide']],
+    ['dining-set', 'home-flat', 'kitchen', ['tableCross', 'chairModernCushion']],
+    ['rug-persian', 'home-duplex', 'living', ['rugRectangle']],
+  ] as const)('shows the %s you bought (%s) in its %s', (item, template, roomId, expected) => {
+    const home = furnishedHome(template, [item]);
+    expect(models(home.rooms.get(roomId)!)).toEqual(expect.arrayContaining([...expected]));
+  });
+
+  it('shows a desk only in the room that has it, so a purchase shows up once', () => {
+    const home = furnishedHome('home-flat', ['desk-study']);
+    expect(models(home.rooms.get('living')!)).not.toContain('desk');
+    expect(models(home.rooms.get('kitchen')!)).not.toContain('desk');
+    expect(models(home.rooms.get('bedroom')!).filter((model) => model === 'desk')).toHaveLength(1);
+  });
+
+  it('keeps the fitted appliances where the building put them even when the furniture moves', () => {
+    const home = furnishedHome('home-mansion', [{ item: 'dining-set', room: 'living' }], ['fridge-double', 'cooker-gas']);
+    expect(models(home.rooms.get('kitchen')!)).toEqual(expect.arrayContaining(['kitchenFridgeLarge', 'kitchenStove']));
   });
 
   it('puts a generator in the face-me room, and none for an inverter', () => {
@@ -233,29 +248,36 @@ describe('an empty home', () => {
     expect(propKinds(furnish(HOME_FACE_ME, ['inverter'], { providedFurniture: false }))).not.toContain('generator');
   });
 
-  it('brings no bedside drawers with a mattress on the floor, nor a centre table with plastic chairs', () => {
-    expect(models(roomOf(furnishLayout(FLAT_LAYOUT, ['bed-foam-mattress']), 'bedroom'))).not.toContain('cabinetBedDrawer');
-    expect(models(furnish(HOME_FLAT, ['chairs-plastic'], { providedFurniture: false }))).not.toContain('tableCoffeeGlass');
-  });
-
-  it('sets gadgets on the floor when what they stood on isn’t bought yet', () => {
-    const laptopY = (owned: readonly string[]) => roomOf(furnishLayout(FLAT_LAYOUT, owned), 'bedroom').furniture.find((piece) => piece.model === 'laptop')?.y ?? 0;
-    expect(laptopY(['laptop-hp-uk'])).toBe(0);
-    expect(laptopY(['laptop-hp-uk', 'desk-study'])).toBeCloseTo(0.57);
-    // The lantern sits on a bedside drawer only when a bed frame brought one.
-    const lanternY = (owned: readonly string[]) => roomOf(furnishLayout(FLAT_LAYOUT, owned), 'bedroom').props.find((prop) => prop.kind === 'lantern')?.y ?? 0;
-    expect(lanternY(['lantern-rechargeable'])).toBe(0);
-    expect(lanternY(['lantern-rechargeable', 'bed-orthopedic'])).toBeCloseTo(0.39);
+  it('sets gadgets on the floor when what they stood on isn’t bought yet, and on the desk when it is', () => {
+    const laptopY = (bring: readonly string[]) => furnishedHome('home-flat', bring, ['laptop-hp-uk']).rooms.get('bedroom')!.furniture.find((piece) => piece.model === 'laptop')?.y ?? 0;
+    expect(laptopY([])).toBe(0);
+    expect(laptopY(['desk-study'])).toBeCloseTo(0.57);
+    // A desk in the living room carries the laptop there, and not also in the bedroom.
+    const moved = furnishedHome('home-flat', [{ item: 'desk-study', room: 'living' }], ['laptop-hp-uk']);
+    expect(moved.rooms.get('living')!.furniture.find((piece) => piece.model === 'laptop')?.y).toBeCloseTo(0.57);
+    expect(models(moved.rooms.get('bedroom')!)).not.toContain('laptop');
   });
 
   it('puts a plate on the table only with food in the kitchen and a table to put it on', () => {
     const plate = (template: InteriorTemplate) => template.props.some((prop) => prop.kind === 'food-plate');
-    expect(plate(furnish(HOME_FLAT, ['dining-set'], { providedFurniture: false, pantryMeals: 0 }))).toBe(false);
-    expect(plate(furnish(HOME_FLAT, ['dining-set'], { providedFurniture: false, pantryMeals: 14 }))).toBe(true);
-    expect(plate(furnish(HOME_FLAT, [], { providedFurniture: false, pantryMeals: 14 }))).toBe(false);
+    const withMeals = (meals: number, bring: readonly string[]) => furnishedHome('home-flat', bring, [], { pantryMeals: meals }).rooms.get('kitchen')!;
+    expect(plate(withMeals(0, ['dining-set']))).toBe(false);
+    expect(plate(withMeals(14, ['dining-set']))).toBe(true);
+    expect(plate(withMeals(14, []))).toBe(false);
+    // No plate floating in the parlour where the table used to be.
+    expect(plate(furnishedHome('home-flat', ['dining-set'], [], { pantryMeals: 14 }).rooms.get('living')!)).toBe(false);
     // The sacks of foodstuff by the cooker follow the pantry as before.
     const kitchen = roomOf(furnishLayout(FLAT_LAYOUT, ['cooker-gas'], { pantryMeals: 80 }), 'kitchen');
     expect(kitchen.props.filter((prop) => prop.kind === 'box' && prop.surface === 'cloth')).toHaveLength(2);
+  });
+
+  it('counts a decor bed as a bed you can sleep on', () => {
+    const home = furnishedHome('home-flat', ['bed-royal-gold']);
+    expect(home.home.sleep).toMatchObject({ itemId: 'bed-royal-gold', roomId: 'bedroom', quality: 0.9 });
+    const bedroom = home.rooms.get('bedroom')!;
+    expect(bedroom.player.sleep?.at[1]).toBeCloseTo(0.6);
+    expect(bedroom.things?.some((thing) => thing.kind === 'bed')).toBe(true);
+    expect(bedroom.props.some((prop) => prop.kind === 'mat' && prop.color === '#8d6e63')).toBe(false);
   });
 });
 
@@ -293,11 +315,13 @@ describe('provided homes', () => {
 });
 
 describe('a host’s spread', () => {
-  it('lays the treats on the dining table at its height', () => {
-    const living = furnish(HOME_FLAT, ['dining-set'], { providedFurniture: false, treats: ['suya-platter', 'cake', 'soft-drinks'] });
-    const plate = living.props.find((prop) => prop.kind === 'food-plate' && prop.food === 'suya');
+  it('lays the treats on the table you eat at, in whatever room it stands, at its height', () => {
+    const home = furnishedHome('home-flat', ['dining-set'], [], { treats: ['suya-platter', 'cake', 'soft-drinks'] });
+    const kitchen = home.rooms.get('kitchen')!;
+    const plate = kitchen.props.find((prop) => prop.kind === 'food-plate' && prop.food === 'suya');
     expect(plate?.y).toBeGreaterThan(0.4);
-    expect(propKinds(living)).toEqual(expect.arrayContaining(['cake', 'bottles']));
+    expect(propKinds(kitchen)).toEqual(expect.arrayContaining(['cake', 'bottles']));
+    expect(home.rooms.get('living')!.props.some((prop) => prop.kind === 'food-plate')).toBe(false);
   });
 
   it('spreads a cloth on the floor of an empty parlour, and leaves kitchens and bedrooms out', () => {
@@ -309,6 +333,6 @@ describe('a host’s spread', () => {
   });
 
   it('shows nothing when nothing is out', () => {
-    expect(furnish(HOME_FLAT, ['dining-set'], { providedFurniture: false, treats: [] }).props.some((prop) => prop.kind === 'food-plate')).toBe(false);
+    expect(furnishedHome('home-flat', ['dining-set'], [], { treats: [] }).rooms.get('kitchen')!.props.some((prop) => prop.kind === 'food-plate')).toBe(false);
   });
 });

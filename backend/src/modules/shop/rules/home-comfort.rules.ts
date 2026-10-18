@@ -28,7 +28,7 @@ export function isWorking(entry: OwnedForComfort): boolean {
  * - bed quality: the best working bed (a mat on the floor without one);
  * - power: the best working backup, solar > inverter > generator > none.
  */
-export function aggregateHomeComfort(owned: readonly OwnedForComfort[]): HomeComfortBonus {
+export function aggregateHomeComfort(owned: readonly OwnedForComfort[], decorBedQuality?: number | null): HomeComfortBonus {
   const bestByGroup = new Map<string, number>();
   let bedQuality = NO_BED_QUALITY;
   let power: PowerBackupKind = 'none';
@@ -40,6 +40,9 @@ export function aggregateHomeComfort(owned: readonly OwnedForComfort[]): HomeCom
     if (def.bedQuality !== undefined) bedQuality = Math.max(bedQuality, def.bedQuality);
     if (def.power && powerRank(def.power) > powerRank(power)) power = def.power;
   }
+
+  // Decor beds are beds too (the best bed in the home sets how well you sleep).
+  if (decorBedQuality) bedQuality = Math.max(bedQuality, decorBedQuality);
 
   let raw = 0;
   for (const value of bestByGroup.values()) raw += value;

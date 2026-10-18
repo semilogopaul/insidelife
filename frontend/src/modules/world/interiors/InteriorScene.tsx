@@ -2,12 +2,12 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { MeshStandardMaterial } from 'three';
-import { aircraftIdOfLocation, findAction, homeLocationId, isAircraftDecorTemplate, isHomeLocation, toDateParts, type ActionDefinition, type HomePersonDto, type HostTreatId, type PresencePlayerDto } from '@insidelife/shared';
+import { MISSING_ACTION_NOTE, actionNeeds, aircraftIdOfLocation, findAction, homeFurnishing, homeLocationId, isAircraftDecorTemplate, isHomeLocation, toDateParts, type ActionDefinition, type HomePersonDto, type HostTreatId, type PresencePlayerDto } from '@insidelife/shared';
 import { gameClock } from '@/common/game/game-clock';
 import { segmentAt, useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
-import { useDecorEdit } from '@/common/decor';
-import { isBusy, isPlaceAction, placeActions, servicesAt, useActionAvailability, servicesWithGoal, useGoalHere, type GoalHere, type PlaceService } from '@/common/places';
+import { asRoomed, useDecorEdit } from '@/common/decor';
+import { isBusy, isPlaceAction, placeActions, servicesAt, useActionAvailability, servicesWithGoal, useGoalHere, WARDROBE_SERVICE, type GoalHere, type PlaceService } from '@/common/places';
 import { useHomePeople, useVisits } from '@/common/visits';
 import { animationForSegment } from '@/common/three/avatar';
 import { withApronColliders } from '../aviation/terminal/apron-colliders';
@@ -30,7 +30,9 @@ import type { ActionLike } from './hotspots/action-spots';
 import { buildHotspots, hotspotRoom, type ActionStatus } from './hotspots/hotspots';
 import { withSeating } from './hotspots/seating';
 import { placeLayoutFor } from './layouts/catalog';
+import { withFunctionRooms } from './layouts/function-rooms';
 import { applyDecor } from './templates/decor';
+import { autoFurnish } from './templates/auto-furnish';
 import { furnish } from './templates/furnish';
 import { getTemplate } from './templates/registry';
 import { isNepaOff, resolveTemplateId, type HomeInfo, type InteriorTemplateId } from './templates/resolve';
@@ -118,35 +120,56 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   // Every place is a layout of walkable rooms (a venue has one); which room is on screen is client view state (`walk/`).
   const showsPlayer = player !== null && (player !== undefined || snapshot !== undefined);
   const runningId = player === undefined ? (segment?.actionId ?? null) : (player?.actionId ?? null);
-  const house = useHomeRoom(placeLayoutFor(resolvedId, templateId === undefined && !isHomeLocation(locationId) ? locationId : null), locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer, runningId);
-  const base = house?.room.template ?? getTemplate(resolvedId);
   // Your own home shows what you own; other places show their template.
   const homeItems = snapshot?.summary.homeItems;
   const ownership = snapshot?.summary.home.ownership;
   const decor = snapshot?.summary.home.decor;
   const pantryMeals = snapshot?.summary.pantryMeals ?? 0;
   const surname = ownHome ? snapshot?.character.lastName : visit?.host.lastName;
-  const furnished = useMemo(() => {
-    if (previewItems) return furnish(base, previewItems, { providedFurniture: /^home-(family|hostel)(:|$)/.test(base.id) });
-    // Your paint and floor go on every room of the home (and the host's on a visit).
-    if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: visit.home.ownership === 'family' || visit.home.ownership === 'hostel', surname, treats }), visit.home.decor);
-    return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: ownership === 'family' || ownership === 'hostel', pantryMeals, surname, treats }), decor) : base;
-  }, [base, ownHome, homeItems, ownership, pantryMeals, previewItems, visit, surname, decor, treats]);
-  // Decor: yours in your own home, the host's when you're a guest. The walker bumps into the solid pieces.
+  const baseLayout = useMemo(() => placeLayoutFor(resolvedId, templateId === undefined && !isHomeLocation(locationId) ? locationId : null), [resolvedId, templateId, locationId]);
+  // Decor: yours in your own home, the host's when you're a guest. The walker bumps into the solid pieces. The pieces of
+  // every room say what the home does (the bed you sleep in, the table you eat at) and so where things happen.
   const aircraftId = previewItems ? null : (aircraftProp ?? aircraftIdOfLocation(locationId));
-  const decorMode: DecorMode = aircraftId
-    ? { aircraftId }
-    : templateId !== undefined || previewItems
-      ? null
-      : ownHome
-        ? 'own'
-        : visit && hostId
-          ? { hostId }
-          : null;
-  const decorTemplateId = house?.layout.id;
+  const visitingHost = visit && hostId ? hostId : null;
+  const decorMode: DecorMode = useMemo(
+    () => (aircraftId ? { aircraftId } : templateId !== undefined || previewItems ? null : ownHome ? 'own' : visitingHost ? { hostId: visitingHost } : null),
+    [aircraftId, templateId, previewItems, ownHome, visitingHost],
+  );
+  const decorTemplateId = baseLayout?.id;
+  const loadedDecor = useRoomDecor(decorMode, decorTemplateId);
+  // A preview furnishes the home with what the route names, the way the server would.
+  const previewPieces = useMemo(() => (previewItems && baseLayout ? autoFurnish(baseLayout.id, baseLayout.rooms.map((room) => room.id), previewItems) : null), [previewItems, baseLayout]);
+  const everywhere = previewPieces ?? loadedDecor.everywhere;
+  const providedHome = previewItems ? /^home-(family|hostel)(:|$)/.test(resolvedId) : visit ? visit.home.ownership === 'family' || visit.home.ownership === 'hostel' : ownership === 'family' || ownership === 'hostel';
+  const furnishing = useMemo(() => homeFurnishing(decorTemplateId ?? '', asRoomed(everywhere)), [decorTemplateId, everywhere]);
+  const layout = useMemo(() => (baseLayout && isHomeLocation(locationId) && (decorMode !== null || previewPieces !== null) && !providedHome ? withFunctionRooms(baseLayout, furnishing) : baseLayout), [baseLayout, locationId, decorMode, previewPieces, providedHome, furnishing]);
+  const house = useHomeRoom(layout, locationId, player?.animation ?? animation, camera === 'dollhouse' && showsPlayer, runningId);
+  const base = house?.room.template ?? getTemplate(resolvedId);
   const decorRoomId = house?.room.id;
-  const roomDecor = useRoomDecor(decorMode, decorTemplateId, decorRoomId);
+  const placedHere = useMemo(() => everywhere.filter((piece) => piece.spot.roomId === decorRoomId), [everywhere, decorRoomId]);
+  const roomDecor = useMemo(() => ({ ...loadedDecor, everywhere, placed: placedHere }), [loadedDecor, everywhere, placedHere]);
+  const dragging = useDecorEdit((state) => state.draggingId);
+  const furnished = useMemo(() => {
+    if (previewItems) return furnish(base, previewItems, { providedFurniture: providedHome, pieces: roomDecor.placed, home: furnishing, roomId: decorRoomId });
+    const pieces = roomDecor.placed;
+    // Your paint and floor go on every room of the home (and the host's on a visit).
+    if (visit) return applyDecor(furnish(base, visit.home.items, { providedFurniture: providedHome, surname, treats, pieces, home: furnishing, roomId: decorRoomId }), visit.home.decor);
+    return ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: providedHome, pantryMeals, surname, treats, pieces, home: furnishing, roomId: decorRoomId, hiddenId: dragging }), decor) : base;
+  }, [base, ownHome, homeItems, providedHome, pantryMeals, previewItems, visit, surname, decor, treats, roomDecor.placed, furnishing, decorRoomId, dragging]);
   const decorating = useDecorEdit((state) => state.active) && roomDecor.editable;
+  // Decorate mode checks fits against what is built in (and the family's furniture in their house), not against your own
+  // pieces (those are in `placed`, and the one you are turning must not collide with itself).
+  const editTemplate = useMemo(
+    () => (decorating && ownHome && homeItems ? applyDecor(furnish(base, homeItems, { providedFurniture: providedHome, pantryMeals, home: furnishing, roomId: decorRoomId }), decor) : null),
+    [decorating, ownHome, homeItems, base, providedHome, pantryMeals, furnishing, decorRoomId, decor],
+  );
+  // Where bought furniture goes straight away: the room of your own home on screen.
+  const homeRoomTemplate = ownHome && !aircraftId ? decorTemplateId : undefined;
+  useEffect(() => {
+    if (!homeRoomTemplate || !decorRoomId) return undefined;
+    useDecorEdit.getState().setHomeRoom({ templateId: homeRoomTemplate, roomId: decorRoomId });
+    return () => useDecorEdit.getState().setHomeRoom(null);
+  }, [homeRoomTemplate, decorRoomId]);
   // The overlay (DOM) needs to know which cabin this is; it is client view state, cleared when the cabin goes.
   const cabinAircraftId = aircraftId && decorTemplateId && isAircraftDecorTemplate(decorTemplateId) ? aircraftId : null;
   useEffect(() => {
@@ -202,17 +225,21 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
   const availability = useActionAvailability(here ? snapshot : undefined);
   const status = useCallback((entry: ActionDefinition | PlaceService): ActionStatus => {
     const { priceNote, reason } = availability(entry);
-    return { priceNote, reason };
-  }, [availability]);
+    // Furniture you haven't got yet: the action says so (you can still sleep on the floor; you can't eat at a table that isn't there).
+    const needs = 'animation' in entry && !providedHome && decorMode === 'own' ? actionNeeds(entry) : null;
+    return { priceNote, reason, note: needs && !furnishing[needs] ? MISSING_ACTION_NOTE[needs] : null };
+  }, [availability, providedHome, decorMode, furnishing]);
   const houseLayout = house?.layout;
   const houseRoom = house?.room;
   const hotspots = useMemo(() => {
     if (!houseLayout || !houseRoom || decorating) return NO_HOTSPOTS;
     const own = listed.filter((action) => isPlaceAction(action) && (houseLayout.rooms.length <= 1 || hotspotRoom(houseLayout, action) === houseRoom.id));
     // Services belong to the room you come in by (a venue's only room); the goal's own one joins them there.
-    const here = houseRoom.id === houseLayout.entry ? servicesWithGoal(services, goal) : NO_SERVICES;
+    const entryServices = houseRoom.id === houseLayout.entry ? servicesWithGoal(services, goal) : NO_SERVICES;
+    // The wardrobe you put in a room is where you change clothes.
+    const here = ownHome && !providedHome && furnishing.dress?.roomId === houseRoom.id ? [...entryServices, WARDROBE_SERVICE] : entryServices;
     return buildHotspots(template, own, houseRoom.template, here, goal);
-  }, [houseLayout, houseRoom, listed, template, services, goal, decorating]);
+  }, [houseLayout, houseRoom, listed, template, services, goal, decorating, ownHome, providedHome, furnishing]);
 
   const h = currentHour(hour);
   const dayIndex = gameClock.ready ? toDateParts(minute).dayIndex : 0;
@@ -231,7 +258,7 @@ export function InteriorScene({ locationId, players: present = NO_PLAYERS, playe
       <Suspense fallback={null}>
         <FurnitureLayer placements={template.furniture} />
         {decorMode !== null && decorTemplateId && decorRoomId && (
-          <DecorWorld template={template} templateId={decorTemplateId} roomId={decorRoomId} decor={roomDecor} />
+          <DecorWorld template={editTemplate ?? template} templateId={decorTemplateId} roomId={decorRoomId} decor={roomDecor} />
         )}
         <TvScreens furniture={template.furniture} powerCut={powerCut} />
         {template.extras?.cars && <ShowroomCars cars={template.extras.cars} />}

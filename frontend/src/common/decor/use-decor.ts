@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query';
-import type { DecorChangeDto, DecorPieceDto, DecorPlaceRequest, DecorSpotDto, DecorStateDto } from '@insidelife/shared';
+import type { DecorChangeDto, DecorPieceDto, DecorPlaceRequest, DecorReplaceMode, DecorSpotDto, DecorStateDto } from '@insidelife/shared';
 import { queryKeys } from '@/common/api/query-keys';
 import { decorApi } from './decor.api';
 
@@ -69,10 +69,19 @@ export function useDecorCommands() {
     void client.invalidateQueries({ queryKey: queryKeys.snapshot });
     void client.invalidateQueries({ queryKey: queryKeys.wallet });
   };
+  /** Furniture counts for comfort, sleep and what you can do at home: everything that shows those refreshes. */
+  const refreshFurniture = (): void => {
+    refreshMoney();
+    void client.invalidateQueries({ queryKey: decorKey });
+    void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'home') });
+    void client.invalidateQueries({ queryKey: queryKeys.domain('inventory') });
+    void client.invalidateQueries({ queryKey: queryKeys.domain('shop') });
+    void client.invalidateQueries({ queryKey: queryKeys.domain('housing') });
+  };
   return {
     purchase: useMutation({
-      mutationFn: ({ itemId, variant, quantity }: { itemId: string; variant: string; quantity: number }) =>
-        decorApi.purchase(itemId, variant, quantity),
+      mutationFn: ({ itemId, variant, quantity, place }: { itemId: string; variant: string; quantity: number; place?: { templateId: string; roomId: string } }) =>
+        decorApi.purchase(itemId, variant, quantity, place),
       onSuccess: (result) => {
         client.setQueryData<DecorStateDto>(decorKey, (state) => (state ? { ...state, pieces: [...state.pieces, ...result.pieces] } : state));
         refreshMoney();
@@ -100,6 +109,9 @@ export function useDecorCommands() {
         mergePieces(client, change.pieces);
         void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'home') });
         void client.invalidateQueries({ queryKey: queryKeys.domain('decor', 'aircraft') });
+        // Moving a bed or a table can change what the home does (which room you sleep in): the numbers follow.
+        void client.invalidateQueries({ queryKey: decorKey });
+        void client.invalidateQueries({ queryKey: queryKeys.domain('inventory') });
       },
       onError: (_error, _vars, context) => {
         if (context?.previous) client.setQueryData(decorKey, context.previous);
@@ -125,6 +137,32 @@ export function useDecorCommands() {
         if (context?.previous) client.setQueryData(decorKey, context.previous);
         void client.invalidateQueries({ queryKey: decorKey });
       },
+    }),
+    /** Furniture from the shop: lands in the room you are in (or the inventory), visible at once. */
+    buyFurniture: useMutation({
+      mutationFn: ({ itemId, roomId }: { itemId: string; roomId?: string }) => decorApi.buyFurniture(itemId, roomId),
+      onSuccess: refreshFurniture,
+    }),
+    sell: useMutation({
+      mutationFn: (pieceId: string) => decorApi.sell(pieceId),
+      onMutate: (pieceId) => {
+        const previous = client.getQueryData<DecorStateDto>(decorKey);
+        client.setQueryData<DecorStateDto>(decorKey, (state) => (state ? { ...state, pieces: state.pieces.filter((piece) => piece.id !== pieceId) } : state));
+        return { previous };
+      },
+      onSuccess: refreshFurniture,
+      onError: (_error, _vars, context) => {
+        if (context?.previous) client.setQueryData(decorKey, context.previous);
+        void client.invalidateQueries({ queryKey: decorKey });
+      },
+    }),
+    replace: useMutation({
+      mutationFn: ({ pieceId, oldId, mode }: { pieceId: string; oldId: string; mode: DecorReplaceMode }) => decorApi.replace(pieceId, oldId, mode),
+      onSuccess: refreshFurniture,
+    }),
+    arrange: useMutation({
+      mutationFn: (roomId?: string) => decorApi.arrange(roomId),
+      onSuccess: refreshFurniture,
     }),
     recolour: useMutation({
       mutationFn: ({ pieceId, variant }: { pieceId: string; variant: string }) => decorApi.recolour(pieceId, variant),

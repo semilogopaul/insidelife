@@ -103,8 +103,18 @@ function spotBox(anchor: ActionAnchor): Box3 {
   };
 }
 
+/** What an action is done with, when that is plain from what it is: you cook at the cooker, not at the table beside it. */
+const ACTION_THING: Readonly<Partial<Record<string, readonly PlaceObjectKind[]>>> = {
+  cook: ['cooker'],
+  sleep: ['bed'],
+  shower: ['shower'],
+};
+
 /** The thing a spot belongs to; a chair at a table or a desk is the table's or the desk's. */
-function thingAt(objects: readonly PlaceObject[], at: At): PlaceObject | null {
+function thingAt(objects: readonly PlaceObject[], at: At, action?: Pick<ActionDefinition, 'animation'>): PlaceObject | null {
+  const wanted = action ? ACTION_THING[action.animation] : undefined;
+  const meant = wanted ? objectAt(objects, at, OBJECT_REACH, wanted) : null;
+  if (meant) return meant;
   const found = objectAt(objects, at, OBJECT_REACH);
   if (found?.kind !== 'chair' && found?.kind !== 'seats') return found;
   return objectAt(objects, at, OBJECT_REACH, ['desk', 'table']) ?? found;
@@ -160,7 +170,7 @@ export function buildHotspots(
   };
   for (const action of actions) {
     const anchor = actionAnchor(template, action, slots);
-    join(anchor, thingAt(objects, anchor.at), `${ID_PREFIX}${action.id}`, action.label).actions.push(action);
+    join(anchor, thingAt(objects, anchor.at, action), `${ID_PREFIX}${action.id}`, action.label).actions.push(action);
   }
   for (const service of services) {
     const anchor = serviceAnchor(template, service, objects);
@@ -266,6 +276,8 @@ export function actionButtonLabel(action: Pick<ActionDefinition, 'label'>, note:
 export interface ActionStatus {
   readonly priceNote: string;
   readonly reason: string | null;
+  /** Doable, but something is missing ("No bed here yet — buy one in the furniture store"). */
+  readonly note?: string | null;
 }
 
 /**
@@ -316,6 +328,8 @@ export interface HotspotEntryCard {
   readonly durations: readonly number[];
   readonly effects: readonly string[];
   readonly disabled: string | null;
+  /** A piece of furniture the action wants and the home doesn't have yet. */
+  readonly missing: string | null;
   /** Services: what the button says ("Open Motors"). */
   readonly opens: string | null;
   /** It's what your life goal needs here. */
@@ -343,7 +357,7 @@ export function hotspotCard(
 ): HotspotCard {
   const entries: HotspotEntryCard[] = [
     ...hotspot.actions.map((action): HotspotEntryCard => {
-      const { priceNote, reason } = status(action);
+      const { priceNote, reason, note } = status(action);
       return {
         id: hotspotActionId(action.id),
         emoji: action.emoji,
@@ -353,6 +367,7 @@ export function hotspotCard(
         durations: action.durations,
         effects: actionEffects(action),
         disabled: reason,
+        missing: note ?? null,
         opens: null,
         goal: goal?.actionId === action.id,
       };
@@ -366,6 +381,7 @@ export function hotspotCard(
       durations: [],
       effects: [],
       disabled: status(service).reason,
+      missing: null,
       opens: serviceOpensLabel(service),
       goal: goal?.serviceId === service.id,
     })),

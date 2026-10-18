@@ -4,6 +4,7 @@ import { useState } from 'react';
 import {
   STORE_TIER_LABELS, findVenue, type ShopProductDto } from '@insidelife/shared';
 import { Button, Money, Sheet } from '@/common/components';
+import { arrivalMessage, offerReplace } from '@/common/decor';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useShopCommands } from '../../hooks/use-shop';
 import { announce, complain } from '@/common/game/feedback';
@@ -118,13 +119,13 @@ function BuyForm({ product, onDone }: { readonly product: ShopProductDto; readon
             {
               onSuccess: (result) => {
                 announce(result.order.channel === 'in-store' ? 'Bought! 🛍️' : 'Ordered', {
-                  body:
-                    result.order.channel === 'in-store'
-                      ? `${product.name} is in your things now.`
-                      : `${product.name} is in your things now.`,
+                  // Furniture says where it went; anything else is just in your things.
+                  body: result.furniture ? arrivalMessage(result.furniture, product.name) : `${product.name} is in your things now.`,
                   amount: -result.order.total,
                 });
                 onDone();
+                // A better bed, sofa or TV: what about the old one?
+                offerReplace(result.furniture);
               },
               onError: (error) => complain('Purchase didn’t go through', error),
             },

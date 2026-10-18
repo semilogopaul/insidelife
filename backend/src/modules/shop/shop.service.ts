@@ -52,7 +52,7 @@ export class ShopService {
   }
 
   /** Buy off the shelf if the character is in a venue that sells it, otherwise order online for delivery. */
-  async purchase(ctx: SimulationContext, itemId: string, quantity = 1): Promise<ShopPurchaseResultDto> {
+  async purchase(ctx: SimulationContext, itemId: string, quantity = 1, roomId?: string): Promise<ShopPurchaseResultDto> {
     if (!ctx.character.alive) throw new GameRuleException('DECEASED', 'This character has passed on');
     const product = findProduct(itemId);
     if (!product || (product.kind === 'item' && product.def.unlisted)) throw new ResourceNotFoundException('Product');
@@ -90,12 +90,14 @@ export class ShopService {
       await ctx.wallet.pay(deliveryFee, 'fee', `Delivery: ${label}`, `shop-order:${order.id}:delivery`, { sink: 'fees', metadata });
     }
 
-    const row = await this.inventory.add(ctx, product, quantity, venue ? 'store' : 'online', unitPrice);
+    const row = await this.inventory.add(ctx, product, quantity, venue ? 'store' : 'online', unitPrice, { roomId });
     const stack = (await this.inventory.stacks(ctx)).find((candidate) => candidate.row.id === row?.id);
+    const furniture = this.inventory.takeArrival(ctx);
     return {
       order: this.orderDto(order),
       inventoryItem: stack ? this.inventory.toDto(ctx, stack) : null,
       balance: ctx.wallet.cash,
+      ...(furniture ? { furniture } : {}),
     };
   }
 

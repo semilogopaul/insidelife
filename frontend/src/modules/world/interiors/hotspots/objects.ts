@@ -195,6 +195,9 @@ export function roomObjects(template: InteriorTemplate): PlaceObject[] {
     const object = piece.thing ? { kind: piece.thing.kind, name: piece.thing.name, box: pieceBox(piece) } : furnitureObject(piece, template, staffed);
     if (object) objects.push(object);
   }
+  for (const thing of template.things ?? []) {
+    objects.push({ kind: thing.kind, name: thing.name, box: box(thing.at, thing.size[0], thing.size[1], thing.rot, thing.height) });
+  }
   const floor = template.extras?.clubLights;
   if (floor)
     objects.push({

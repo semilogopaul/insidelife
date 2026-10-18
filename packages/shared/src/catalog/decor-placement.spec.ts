@@ -36,11 +36,13 @@ describe('geometry', () => {
     expect(polygonsOverlap(rectCorners(a), rectCorners(a))).toBe(true);
   });
 
-  it('knows every decorable room and refuses the family house and hostels', () => {
+  it('knows every home room (the family house and hostels too, with their own furniture as fixtures) and nothing else', () => {
     expect(findDecorRoom('home-mansion', 'master')?.width).toBe(8);
     expect(findDecorRoom('home-flat', 'nope')).toBeUndefined();
-    expect(findDecorRoom('home-family', 'room')).toBeUndefined();
-    expect(findDecorRoom('home-hostel', 'room')).toBeUndefined();
+    expect(findDecorRoom('home-family', 'room')?.fixtures?.length).toBeLessThan(findDecorRoom('home-family', 'room', true)!.fixtures!.length);
+    expect(findDecorRoom('home-family', 'room', true)?.fixtures?.length).toBeGreaterThan(5);
+    expect(findDecorRoom('home-hostel', 'room')?.width).toBe(5.6);
+    expect(findDecorRoom('club', 'room')).toBeUndefined();
     expect(findDecorRoom('home-flat', 'toString')).toBeUndefined();
     expect(isDecorTemplate('home-duplex')).toBe(true);
     expect(isDecorTemplate('club')).toBe(false);

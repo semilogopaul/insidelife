@@ -592,7 +592,17 @@ const aircraftModel: Recipe = (kit, { w, d, h, c1, c2 }) => {
   kit.sphere(0.024, [w * 0.45, y, 0], c2, 'metal', [1.4, 1, 1], 8);
 };
 
+/**
+ * Furniture from the shop is drawn from the kit by the room itself (`templates/furnish.ts`); this plain, softly rounded
+ * block is only its ghost while you carry it (and a stand-in anywhere the room can't draw it).
+ */
+const kitBlock: Recipe = (kit, { w, d, h, c1, c2 }) => {
+  kit.box([w, h * 0.55, d], [0, (h * 0.55) / 2, 0], c1, 'cloth', NO_ROT, 0.12);
+  kit.box([w * 0.96, h * 0.45, d * 0.45], [0, h * 0.55 + (h * 0.45) / 2 - 0.01, -d * 0.26], c2, 'cloth', NO_ROT, 0.12);
+};
+
 const RECIPES: Readonly<Record<DecorShape, Recipe>> = {
+  kit: kitBlock,
   'rug-rect': rugRect,
   'rug-round': rugRound,
   'rug-medallion': rugMedallion,

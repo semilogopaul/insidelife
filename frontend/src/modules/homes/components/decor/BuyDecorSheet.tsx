@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { DECOR_MAX_OWNED, type DecorItem } from '@insidelife/shared';
 import { Button, Money, Receipt, Sheet, Stepper } from '@/common/components';
-import { useDecorCommands } from '@/common/decor';
+import { useDecorCommands, useDecorEdit } from '@/common/decor';
 import { announce, complain } from '@/common/game/feedback';
 import { useSnapshot } from '@/common/game/snapshot';
 import { cn } from '@/common/utils/cn';
@@ -86,10 +86,12 @@ function BuyForm({ item, price, owned, total, onDone }: { readonly item: DecorIt
         loading={purchase.isPending}
         onClick={() =>
           purchase.mutate(
-            { itemId: item.id, variant: variant.id, quantity: count },
+            // At home, it goes straight into the room you are in (free spot permitting).
+            { itemId: item.id, variant: variant.id, quantity: count, ...(useDecorEdit.getState().homeRoom ? { place: useDecorEdit.getState().homeRoom! } : {}) },
             {
               onSuccess: (result) => {
-                announce('Decor delivered', { body: `${count > 1 ? `${count} × ` : ''}${item.name} (${variant.label}) is in your decor inventory.`, amount: -result.total });
+                const placed = result.pieces.every((piece) => piece.spot !== null);
+                announce('Decor delivered', { body: `${count > 1 ? `${count} × ` : ''}${item.name} (${variant.label}) is ${placed ? 'in your home — move it in Decorate mode' : 'in your decor inventory'}.`, amount: -result.total });
                 onDone();
               },
               onError: (error) => complain('Purchase didn’t go through', error),
