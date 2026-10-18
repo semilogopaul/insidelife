@@ -306,12 +306,16 @@ const LOOKS: Readonly<Record<string, Look>> = {
   'ikeja-gra-lounge': {
     base: 'bar', tagline: ['SUYA • CHAPMAN • GIST'] },
   // --- Hotels (Lagos) ----------------------------------------------------------------------------------------------
-  'eko-hotel': { base: 'hotel', tagline: ['EKO HOTEL & SUITES • WEDDINGS • LAGOON POOL'], sign: { bg: '#3e2723', fg: '#f3d27a' } },
+  'eko-hotel': { base: 'hotel', tagline: ['EKO HOTEL & SUITES • ROOMS • LAGOON POOL'], sign: { bg: '#3e2723', fg: '#f3d27a' } },
   'federal-palace-hotel': { base: 'hotel', tagline: ['AHMADU BELLO WAY • SINCE 1960'], sign: { bg: '#1b3a2f', fg: '#e8c766' } },
   'the-wheatbaker': { base: 'hotel', tagline: ['IKOYI • ART • AFTERNOON TEA'], sign: { bg: '#2e2a25', fg: '#e8d9b5' } },
   'lagos-continental-hotel': { base: 'hotel', tagline: ['VICTORIA ISLAND • LAGOON VIEWS'], sign: { bg: '#0d2b45', fg: '#f6b90b' } },
   'radisson-blu-ikeja': { base: 'hotel', tagline: ['IKEJA • MEETINGS • POOL BAR'], sign: { bg: '#003b5c', fg: '#e8f1f8' } },
   'four-points-lekki': { base: 'hotel', tagline: ['FOUR POINTS BY SHERATON • LEKKI'], sign: { bg: '#0b3d2e', fg: '#c6f0d8' } },
+  // --- Event centres (weddings and parties live here, not in hotels) ---------------------------------------------
+  'landmark-event-centre': { base: 'event-centre', tagline: ['LANDMARK EVENT CENTRE • ONIRU • OWAMBE'], sign: { bg: '#4a1033', fg: '#ffe6a8' } },
+  'lagos-civic-centre': { base: 'event-centre', tagline: ['THE CIVIC CENTRE • GALAS • WEDDINGS'], sign: { bg: '#0d3b2e', fg: '#f3d27a' } },
+  'icc-abuja': { base: 'event-centre', tagline: ['INTERNATIONAL CONFERENCE CENTRE • SUMMITS • WEDDINGS'], sign: { bg: '#1b3a2f', fg: '#e8c766' } },
   // --- Abuja ------------------------------------------------------------------------------------------------------
   'us-embassy-abuja': { base: 'government', tagline: ['VISAS • AMERICAN CITIZEN SERVICES'], sign: { bg: '#0a3161', fg: '#ffffff' } },
   'uk-high-commission': { base: 'government', tagline: ['VISAS • PASSPORTS • POLITE QUEUES'], sign: { bg: '#012169', fg: '#ffffff' } },
@@ -327,8 +331,8 @@ const LOOKS: Readonly<Record<string, Look>> = {
   'access-bank-utako': { base: 'office', tagline: ['TRANSFERS • LOANS • UTAKO'], sign: { bg: '#1565c0', fg: '#ffffff' } },
   'first-bank-garki': { base: 'office', tagline: ['SINCE 1894 • GARKI BRANCH'], sign: { bg: '#1c3f7a', fg: '#f3d27a' } },
   'central-area-towers': { base: 'office', tagline: ['BANKS • CONSULTANTS • CONTRACTORS'], sign: { bg: '#37474f', fg: '#ffffff' } },
-  'transcorp-hilton': { base: 'hotel', tagline: ['DELEGATIONS • WEDDINGS • POOL BAR'], sign: { bg: '#3e2723', fg: '#f3d27a' } },
-  'sheraton-abuja': { base: 'hotel', tagline: ['CONFERENCES • RECEPTIONS'], sign: { bg: '#1a237e', fg: '#ffe082' } },
+  'transcorp-hilton': { base: 'hotel', tagline: ['DELEGATIONS • ROOMS • POOL BAR'], sign: { bg: '#3e2723', fg: '#f3d27a' } },
+  'sheraton-abuja': { base: 'hotel', tagline: ['ROOMS • QUIET BAR • CENTRAL ABUJA'], sign: { bg: '#1a237e', fg: '#ffe082' } },
   'fraser-suites-abuja': { base: 'hotel', tagline: ['SERVICED SUITES • CENTRAL AREA'], sign: { bg: '#263238', fg: '#80cbc4' } },
   'chelsea-hotel-abuja': { base: 'hotel', dropProps: ['treadmill', 'bench-press', 'dumbbell-rack'], tagline: ['ROOMS • BAR • PEPPER SOUP'], sign: { bg: '#b71c1c', fg: '#fff3e0' } },
   'silverbird-galleria': { base: 'mall', tagline: ['SHOPS • FOOD COURT • CINEMA'], sign: { bg: '#4a148c', fg: '#ffe082' } },

@@ -125,7 +125,7 @@ export const VENUES = [
   v({ id: 'air-obo', name: 'AIR OBO', type: 'private-jet', districtId: 'ikoyi', blurb: 'OBO’s private jet, parked on the pad beside the mansion. Climb aboard; it’s not going anywhere.', hours: [8, 22] }),
 
   // Victoria Island
-  v({ id: 'eko-hotel', name: 'Eko Hotel & Suites', type: 'hotel', districtId: 'victoria-island', blurb: 'Weddings, concerts and society owambes, and rooms over the lagoon.' }),
+  v({ id: 'eko-hotel', name: 'Eko Hotel & Suites', type: 'hotel', districtId: 'victoria-island', blurb: 'The resort hotel on the lagoon: rooms, pools and a quiet bar for a night away from home.' }),
   v({ id: 'the-vault', name: 'The Vault VI', type: 'club', districtId: 'victoria-island', blurb: 'Bottle service, sparklers, EFCC raids.', minStatus: 250, hours: [22, 30] }),
   v({ id: 'vi-lounge', name: 'Ozumba Rooftop Lounge', type: 'bar', districtId: 'victoria-island', blurb: 'Afterwork drinks with a skyline.', hours: [14, 27] }),
   v({ id: 'eko-atlantic', name: 'Eko Atlantic Towers', type: 'office', districtId: 'victoria-island', blurb: 'Oil, gas and glass towers on reclaimed land.', hours: [7, 21] }),
@@ -183,7 +183,7 @@ export const VENUES = [
   v({ id: 'ceddi-plaza', name: 'Ceddi Plaza', type: 'mall', districtId: 'abuja-cbd', blurb: 'Offices, banks, restaurants and shops on Tafawa Balewa Way.', hours: [8, 20] }),
 
   // Maitama
-  v({ id: 'transcorp-hilton', name: 'Transcorp Hilton Abuja', type: 'hotel', districtId: 'maitama', blurb: 'Presidents, delegations and weddings: the grand hotel on Aguiyi Ironsi Street.' }),
+  v({ id: 'transcorp-hilton', name: 'Transcorp Hilton Abuja', type: 'hotel', districtId: 'maitama', blurb: 'Presidents and delegations stay here: the grand hotel on Aguiyi Ironsi Street, with rooms for a night away from home.' }),
   v({ id: 'millennium-park', name: 'Millennium Park', type: 'park', districtId: 'maitama', blurb: 'Fountains, lawns and joggers in the park Queen Elizabeth opened.', hours: [6, 20] }),
   v({ id: 'uk-high-commission', name: 'British High Commission Abuja', type: 'government', districtId: 'maitama', blurb: 'Visas, passports and a very polite queue.', hours: [8, 16] }),
   v({ id: 'canada-high-commission', name: 'High Commission of Canada', type: 'government', districtId: 'maitama', blurb: 'Study permits, visas and Express Entry questions.', hours: [8, 16] }),
@@ -194,7 +194,7 @@ export const VENUES = [
   // Wuse
   v({ id: 'banex-plaza', name: 'Banex Plaza', type: 'market', districtId: 'wuse', blurb: 'Abuja’s phone and gadget plaza in Wuse 2: new phones, “UK used” laptops and repairs.', hours: [9, 19] }),
   v({ id: 'play-imperial', name: 'Play Imperial', type: 'club', districtId: 'wuse', blurb: 'Adetokunbo Ademola Crescent’s iconic club: bottle service and the senator’s table.', minStatus: 150, hours: [22, 30] }),
-  v({ id: 'sheraton-abuja', name: 'Sheraton Abuja Hotel', type: 'hotel', districtId: 'wuse', blurb: 'Conferences, receptions and a lobby where deals get done.' }),
+  v({ id: 'sheraton-abuja', name: 'Sheraton Abuja Hotel', type: 'hotel', districtId: 'wuse', blurb: 'A lobby where deals get done, and rooms for a night away from home.' }),
   v({ id: 'chelsea-hotel-abuja', name: 'Chelsea Hotel Abuja', type: 'hotel', districtId: 'wuse', blurb: 'A dependable mid-range hotel off Wuse: a clean room, a bar and proper pepper soup.' }),
   v({ id: 'healthplus-wuse', name: 'HealthPlus Pharmacy Wuse 2', type: 'pharmacy', districtId: 'wuse', blurb: 'Chain pharmacy on Aminu Kano Crescent: drugs, baby things and a cold-water dispenser.', hours: [8, 22] }),
   v({ id: 'wuse-fitness', name: 'Wuse 2 Fitness Centre', type: 'gym', districtId: 'wuse', blurb: 'Treadmills, free weights and civil servants at six a.m.', hours: [5, 22] }),
@@ -249,11 +249,15 @@ export const VENUES = [
   v({ id: 'asokoro-district-hospital', name: 'Asokoro District Hospital', type: 'hospital-public', districtId: 'asokoro', blurb: 'The district hospital under Aso Rock: cleaner than most, still a queue.' }),
 
   // Hotels added after the first city shipped: last, so every earlier venue keeps the lot it was given.
-  v({ id: 'federal-palace-hotel', name: 'Federal Palace Hotel', type: 'hotel', districtId: 'victoria-island', blurb: 'Ahmadu Bello Way’s grand old hotel: a pool, a ballroom and a bar with a view.' }),
+  v({ id: 'federal-palace-hotel', name: 'Federal Palace Hotel', type: 'hotel', districtId: 'victoria-island', blurb: 'Ahmadu Bello Way’s grand old hotel: a pool, a quiet bar with a view and rooms for the night.' }),
   v({ id: 'lagos-continental-hotel', name: 'The Lagos Continental Hotel', type: 'hotel', districtId: 'victoria-island', blurb: 'A tall business hotel on the Island: meetings, a spa and a lagoon view.' }),
   v({ id: 'the-wheatbaker', name: 'The Wheatbaker', type: 'hotel', districtId: 'ikoyi', blurb: 'Ikoyi’s quiet boutique hotel: art on the walls, afternoon tea and a garden pool.' }),
   v({ id: 'radisson-blu-ikeja', name: 'Radisson Blu Anchorage Ikeja', type: 'hotel', districtId: 'ikeja', blurb: 'Ikeja’s business hotel: meetings by day, a pool and a bar by night.' }),
   v({ id: 'four-points-lekki', name: 'Four Points by Sheraton Lekki', type: 'hotel', districtId: 'lekki', blurb: 'Rooftop views and a breakfast spread on the Lekki side.' }),
+  // Event centres, back after the hotels took over the three old ones (weddings and parties belong here; hotels are for sleeping). Last, so every earlier venue keeps its lot.
+  v({ id: 'landmark-event-centre', name: 'Landmark Event Centre', type: 'event-centre', districtId: 'victoria-island', blurb: 'Oniru’s big hall by the beach: weddings, concerts and society owambes.' }),
+  v({ id: 'lagos-civic-centre', name: 'The Civic Centre', type: 'event-centre', districtId: 'victoria-island', blurb: 'The Ozumba Mbadiwe landmark with the great hall: weddings, galas and owambes.' }),
+  v({ id: 'icc-abuja', name: 'International Conference Centre', type: 'event-centre', districtId: 'abuja-cbd', blurb: 'Abuja’s grand conference hall in the Central Area: summits, galas and big weddings.' }),
 ] as const satisfies readonly VenueDefinition[];
 
 export type VenueId = (typeof VENUES)[number]['id'];

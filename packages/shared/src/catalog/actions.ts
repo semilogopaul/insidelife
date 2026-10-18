@@ -640,7 +640,7 @@ export const ACTIONS = [
     verb: 'Vibing to the band',
     emoji: '🎷',
     category: 'fun',
-    where: { venueTypes: ['bar', 'event-centre', 'hotel'] },
+    where: { venueTypes: ['bar', 'event-centre'] },
     durations: [30, HOUR],
     cost: 12_000,
     drift: { fun: fill(28, 100), social: fill(12, 90) },
@@ -696,7 +696,7 @@ export const ACTIONS = [
     emoji: '🤝',
     category: 'social',
     where: {
-      venueTypes: ['bar', 'club', 'beach', 'park', 'event-centre', 'hotel', 'campus', 'mall', 'gym', 'church', 'mosque', 'office', 'buka'],
+      venueTypes: ['bar', 'club', 'beach', 'park', 'event-centre', 'campus', 'mall', 'gym', 'church', 'mosque', 'office', 'buka'],
     },
     durations: [30],
     cost: 0,

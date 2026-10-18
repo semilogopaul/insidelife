@@ -1,6 +1,6 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
 import { HOTEL_TIER_INFO, findHotel, findVenue, type ProfileContext } from '@insidelife/shared';
-import type { Residence, SummaryContribution, SimulationSystem } from '../simulation/interfaces/simulation-system.interface.js';
+import type { Residence, Segment, SummaryContribution, SimulationSystem } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
 import { HotelsService, STAY_ROWS } from './hotels.service.js';
@@ -42,6 +42,11 @@ export class HotelsSystem implements SimulationSystem, OnModuleInit {
     if (!stay || ctx.character.locationId !== stay.venueId) return base;
     const tier = HOTEL_TIER_INFO[findHotel(stay.venueId)?.tier ?? 'standard'];
     return { ...base, comfort: Math.max(base.comfort, 40 + tier.comfort), bedQuality: Math.max(base.bedQuality, tier.bedQuality) };
+  }
+
+  /** Bedtime with no home in this city and no room: point the traveller at the hotels. */
+  async onSegment(ctx: SimulationContext, segment: Segment): Promise<void> {
+    await this.hotels.noteNoBed(ctx, segment.startsAt, segment.endsAt);
   }
 
   async onSettled(ctx: SimulationContext): Promise<void> {

@@ -153,6 +153,7 @@ const BY_ARCHETYPE: Readonly<Record<LotArchetype, PlaceKind>> = {
   park: 'park',
   beach: 'beach',
   hotel: 'hotel',
+  'event-hall': 'event-centre',
   club: 'club',
   mosque: 'mosque',
   church: 'church',
@@ -165,7 +166,7 @@ const BY_ARCHETYPE: Readonly<Record<LotArchetype, PlaceKind>> = {
   refinery: 'refinery',
 };
 
-/** Buildings that say more than their venue type: the National Stadium is a "park" venue, Eko Hotel an event centre. */
+/** Buildings that say more than their venue type: the National Stadium is a "park" venue. */
 const LANDMARK_ARCHETYPES: ReadonlySet<LotArchetype> = new Set(['stadium', 'hotel', 'office-tower']);
 
 export const placeKindOfVenueType = (type: VenueType): PlaceKind => BY_VENUE_TYPE[type];

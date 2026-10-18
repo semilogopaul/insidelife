@@ -14,7 +14,7 @@ import {
 } from '@insidelife/shared';
 import { HANDLE_PATTERN } from './handle.dto.js';
 
-/** Query string (`?venueId=eko-hotel&tier=owambe&durationHours=4&startsInMinutes=120`). */
+/** Query string (`?venueId=landmark-event-centre&tier=owambe&durationHours=4&startsInMinutes=120`). */
 export class PartyQuoteQueryDto implements PartyQuoteRequest {
   @IsString()
   @MaxLength(64)

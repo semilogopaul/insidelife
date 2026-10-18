@@ -158,7 +158,7 @@ export const EVENT_CENTRE: InteriorTemplate = {
       [3.6, 1.8],
     ].flatMap(([x, z], i) => round([x!, z!], i % 2 === 0 ? '#880e4f' : '#ffd54f')),
     { kind: 'sign', at: [0.0, -4.48], y: 3.1, wall: true, size: [4.2, 0.6], lines: ['TOLU WEDS TOBI • #TT2027'], bg: '#880e4f', fg: '#ffd54f' },
-    { kind: 'sign', at: [-5.98, -2.0], rot: 90, y: 2.9, wall: true, size: [3.2, 0.5], lines: ['EKO HOTEL & SUITES'], bg: '#3e2723', fg: '#f3d27a', venueName: true },
+    { kind: 'sign', at: [-5.98, -2.0], rot: 90, y: 2.9, wall: true, size: [3.2, 0.5], lines: ['EVENT CENTRE'], bg: '#3e2723', fg: '#f3d27a', venueName: true },
     { kind: 'dj-booth', at: [-5.2, 0.6], rot: 90 },
   ],
   player: {

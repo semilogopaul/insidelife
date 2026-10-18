@@ -245,6 +245,7 @@ export type LotArchetype =
   | 'park'
   | 'beach'
   | 'hotel'
+  | 'event-hall'
   | 'club'
   | 'mosque'
   | 'church'
@@ -373,6 +374,10 @@ const LAGOS_VENUE_LOTS: readonly VenueLotSpec[] = [
   lot('the-wheatbaker', [37, 27, 37, 28], 'S', 'hotel'),
   lot('radisson-blu-ikeja', [21, 1, 21, 3], 'S', 'hotel'),
   lot('four-points-lekki', [48, 27, 48, 28], 'S', 'hotel'),
+  // Event centres (weddings and parties live here, not in hotels). Two halls on the sand strip south of the Victoria Island
+  // coast road: sand cells have no filler building, so no home, filling station or ad spot is displaced.
+  lot('lagos-civic-centre', [38, 39, 40, 39], 'N', 'event-hall'),
+  lot('landmark-event-centre', [44, 39, 46, 39], 'N', 'event-hall'),
 ];
 
 /** Landmark lots that are not venues (the renderer puts something iconic there and no filler building). */

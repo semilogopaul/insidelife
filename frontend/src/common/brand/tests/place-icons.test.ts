@@ -54,9 +54,10 @@ describe('place pictograms', () => {
     expect(venuePlaceKind(venue('shitta-amala'))).toBe('food');
     expect(venuePlaceKind(venue('unilag'))).toBe('university');
     expect(venuePlaceKind(venue('cbt-yaba'))).toBe('exam-centre');
-    // The National Stadium is a "park" venue and Eko Hotel an event centre, but the map shows their buildings.
+    // The National Stadium is a "park" venue, but the map shows its building.
     expect(venuePlaceKind(venue('national-stadium'))).toBe('stadium');
     expect(venuePlaceKind(venue('eko-hotel'))).toBe('hotel');
+    expect(venuePlaceKind(venue('landmark-event-centre'))).toBe('event-centre');
     expect(venuePlaceKind(venue('eko-atlantic'))).toBe('office-tower');
     expect(venuePlaceKind(venue('lasustech'))).toBe('university');
   });

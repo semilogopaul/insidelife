@@ -19,6 +19,7 @@ import {
   type VenueType,
 } from '@insidelife/shared';
 import { KIT_MANIFEST } from '../assets/kit-manifest';
+import { EVENT_HALL_LOOKS } from './event-hall-looks';
 import { ABUJA_GOVERNMENT_LOOKS, ABUJA_MARKET_STYLES, ABUJA_PARK_STYLES, ABUJA_PROCEDURAL, ABUJA_SHOP_LOOKS, ABUJA_TOWER_LOOKS } from './abuja-looks';
 import { PROC_MODELS, type ProcModelId } from './proc-models';
 import { estateSite, refinerySite, type Rect } from './showcase-sites';
@@ -684,6 +685,32 @@ function venueLot(plan: PlanBuilder, lot: CityLot, lotIndex: number): void {
       if (big) {
         const [x, z] = at(frame, frame.width / 2 - 4, frontLine - 1.4);
         plan.vehicle('ambulance', x, z, Math.atan2(-frame.az, -frame.ax));
+      }
+      return;
+    }
+    case 'event-hall': {
+      // An event centre: a wide, low hall with a gold-trimmed front, flagpoles and the guests' cars out front (weddings and
+      // parties live here; hotels are tall towers for sleeping).
+      plan.lotGround.set(lotIndex, 0xc9c2b2);
+      const look = lot.venueId ? EVENT_HALL_LOOKS[lot.venueId] : undefined;
+      const thin = frame.depth < 14;
+      const hallDepth = thin ? frame.depth - APRON - 0.3 : frame.depth - 9;
+      const hallV = thin ? frontLine : frontLine - 7;
+      const hallTint = look?.tint ?? 0xf3e6cf;
+      const hallStretch = look?.stretch ?? 1.15;
+      // The look's own building where the plot fits it; a bank-sized block on a one-cell plot (Abuja's ICC).
+      for (const ref of [look?.ref ?? 'c:building-n', 'c:building-k', 'c:building-i', 'c:building-c'] as const) {
+        if (building(ref, 0, hallV, frame.width - 1, hallDepth, hallStretch, hallTint) !== null) break;
+      }
+      for (const u of [-frame.width / 2 + 1.4, frame.width / 2 - 1.4]) {
+        const [x, z] = at(frame, u, frontLine - 0.6);
+        plan.proc('flagpole', x, 0, z, frontFace);
+      }
+      if (!thin) {
+        for (let i = 0; i < 3; i++) {
+          const [x, z] = at(frame, -frame.width / 2 + 5 + i * 6, frontLine - 1.5);
+          plan.vehicle(pick(['sedan', 'suv', 'suv-luxury'], random), x, z, Math.atan2(frame.az, frame.ax));
+        }
       }
       return;
     }

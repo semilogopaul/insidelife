@@ -6,7 +6,7 @@ import { cityPlan } from '../city/layout/placements';
 /**
  * Lagos's plan (every model instance, lamp, wall, collider and lot colour) is pinned: adding Abuja's places, looks and
  * landmarks must never move a tree, a building or a lamp in Lagos. If you change Lagos on purpose, re-pin the hash.
- * (Re-pinned twice: the Lagos General Aviation Terminal lot got its own dressing; then the five Lagos hotels took lots on
+ * (Re-pinned three times: the two Lagos event centres took sand cells south of the coast road (three palms there gave way; nothing else moved, checked by diffing the plan); and before that, the Lagos General Aviation Terminal lot got its own dressing; then the five Lagos hotels took lots on
  * infill cells and Eko Hotel and Eko Atlantic gave up a column each. Lots draw from per-lot random streams.)
  */
 describe('Lagos on the plan', () => {
@@ -24,6 +24,6 @@ describe('Lagos on the plan', () => {
       colliders: plan.colliders.filter((c) => lagos(c.minZ)).map((c) => [round(c.minX), round(c.minZ), round(c.maxX), round(c.maxZ), round(c.height)]),
       ground: CITY_MAP.lots.flatMap((lot, i) => (DISTRICTS[lot.districtId].cityId === 'lagos' ? [[i, plan.lotGround.get(i) ?? -1]] : [])),
     };
-    expect(createHash('sha256').update(JSON.stringify(data)).digest('hex')).toBe('f0d72fa674d267d9c310dd26f1bae846eed6f9ae0a3a2d65a37b4292fa7352a0');
+    expect(createHash('sha256').update(JSON.stringify(data)).digest('hex')).toBe('3e523e2e596a3e552471b8007c821bb6e145abe554d13c2e7301b1b59ad7a87a');
   });
 });

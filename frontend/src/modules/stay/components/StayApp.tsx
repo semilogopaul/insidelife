@@ -15,7 +15,7 @@ import { announce, complain } from '@/common/game/feedback';
 import { useSnapshot } from '@/common/game/snapshot';
 import { useGameMinute } from '@/common/game/use-game-clock';
 import { useHotels, useStayCommands } from '../hooks/use-stay';
-import { checkoutLabel, nightsLabel, stayTotal } from '../services/stay-format';
+import { checkoutLabel, lodgingNote, nightsLabel, stayTotal } from '../services/stay-format';
 
 const AMENITY_ICON: Readonly<Record<HotelAmenity, ReactNode>> = {
   bar: <GlassWater size={14} aria-hidden />,
@@ -34,6 +34,7 @@ export function StayApp() {
   const now = useGameMinute(15_000);
   const { data: snapshot } = useSnapshot();
   const myCity = snapshot?.character.cityId ?? 'lagos';
+  const home = snapshot ? lodgingNote(snapshot.summary.home.districtId, snapshot.summary.home.label, myCity, getCity(myCity).name) : null;
 
   if (query.isPending) return <LoadingRows label="Loading hotels" />;
   if (query.isError || !query.data) return <ErrorState error={query.error} onRetry={() => void query.refetch()} />;
@@ -46,8 +47,11 @@ export function StayApp() {
       {data.stay ? (
         <StayCard stay={data.stay} now={now} data={data} />
       ) : (
-        <p className="rounded-card bg-paper-2 p-3 text-sm text-text-soft">
-          No room booked. Go to a hotel’s reception to book a night or several: the room is your home until checkout, so you can sleep away from home.
+        <p className="rounded-card bg-paper-2 p-3 text-sm text-text-soft">No room booked. Go to a hotel’s reception to book a night or several: the room is your home until checkout.</p>
+      )}
+      {home && (
+        <p data-testid="stay-lodging-note" className={`rounded-card p-3 text-sm ${home.hasHome ? 'bg-paper-2 text-text-soft' : 'bg-danfo-soft ring-1 ring-danfo'}`}>
+          {home.text}
         </p>
       )}
       <section aria-label={`Hotels in ${getCity(myCity).name}`} className="flex flex-col gap-3">
@@ -170,7 +174,7 @@ function HotelCard({ hotel, stay, maxNights }: { readonly hotel: HotelOfferDto; 
         onClose={() => setConfirming(false)}
         tone="danfo"
         title={`${mine ? 'Extend your stay at' : 'Book'} ${hotel.name}?`}
-        description="Paid at reception now. Checkout is at noon; the room is your home until then."
+        description="Paid at reception now. Checkout is at noon; the room is your home until then. Hotels are for when you have no home in this city."
         confirmLabel={`Pay ${nightsLabel(nights)}`}
         loading={book.isPending}
         onConfirm={() =>
