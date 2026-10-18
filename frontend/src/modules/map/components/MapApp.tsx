@@ -1,6 +1,6 @@
 'use client';
 
-import { Bike, Bus, Car, CarTaxiFront, Footprints, Navigation } from 'lucide-react';
+import { Bike, Bus, Car, CarTaxiFront, Footprints, Navigation, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import {
   CITIES,
@@ -11,11 +11,12 @@ import {
   cityOfDistrict,
   cityOfVenue,
   formatClock12,
+  findVenue,
   formatGameDuration,
   homeLocationId,
   type OwnedPropertyMarkerDto,
   type TransportMode,
-  type VenueType,
+  toDateParts,
 } from '@insidelife/shared';
 import { ApiError, errorMessage } from '@/common/api/api-error';
 import { PlaceIcon, propertyPlaceKind, venuePlaceKind } from '@/common/brand/place-icons';
@@ -24,26 +25,17 @@ import { useOwnFleet } from '@/common/aviation';
 import { gameEvents } from '@/common/game/game-events';
 import { useNavigation } from '@/common/game/navigation-store';
 import { useSnapshot, useSnapshotMutation } from '@/common/game/snapshot';
+import { useGameMinute } from '@/common/game/use-game-clock';
 import { useUi } from '@/common/game/ui-store';
 import { formatHour } from '@/common/places';
 import { carAvailability, useTravelQuotes, type TravelQuote } from '@/common/travel/travel-quotes';
 import { cn } from '@/common/utils/cn';
 import { useVisits } from '@/common/visits';
+import { CATEGORIES } from '../services/categories';
+import { normalizeText, searchVenues } from '../services/search';
 import { travelApi } from '../services/travel.api';
 import { expectedVisits, targetFromParam, targetLocationId, targetName, type MapTarget } from '../services/targets';
-
-const CATEGORIES: ReadonlyArray<{ readonly label: string; readonly types: readonly VenueType[] }> = [
-  // The landmarks first: they're what the "now live" announcement points players to.
-  { label: 'Must see', types: ['mansion', 'private-jet', 'refinery'] },
-  { label: 'Food', types: ['buka', 'restaurant'] },
-  { label: 'School', types: ['campus', 'cbt-centre', 'school'] },
-  { label: 'Work', types: ['office', 'government'] },
-  { label: 'Health', types: ['hospital-public', 'hospital-private', 'pharmacy'] },
-  { label: 'Shopping', types: ['market', 'mall', 'car-dealer', 'salon'] },
-  { label: 'Fun', types: ['bar', 'club', 'beach', 'park', 'cinema', 'event-centre', 'gym'] },
-  { label: 'Hotels', types: ['hotel'] },
-  { label: 'Services', types: ['estate-agency', 'airport', 'aviation-terminal', 'motor-park', 'church', 'mosque'] },
-];
+import { MapSearchHints, MapSearchResults } from './MapSearchResults';
 
 const STAGE_LABEL: Readonly<Record<OwnedPropertyMarkerDto['stage'], string>> = {
   land: 'Your land',
@@ -56,7 +48,11 @@ const MODE_ICON: Record<TransportMode, typeof Bus> = { walk: Footprints, okada: 
 /** Pick a destination: walk or drive there with the GPS, or book a ride. */
 export function MapApp() {
   const phoneParam = useUi((state) => state.phoneParam);
-  const [category, setCategory] = useState(0);
+  // The chip filtering the list (`null` = all places). A search looks everywhere until a chip is picked on purpose.
+  const [category, setCategory] = useState<number | null>(0);
+  const [picked, setPicked] = useState(false);
+  const [query, setQuery] = useState('');
+  const minute = useGameMinute(30_000);
   // What's open: a venue id, `home`, or `home:<id>` (resolved on render, so a host's name shows once visits load).
   const [selected, setSelected] = useState<string | null>(phoneParam);
   // A new deep link while the Map is already open jumps to that place (adjusting state during render, not an effect).
@@ -69,7 +65,7 @@ export function MapApp() {
   const visits = useVisits(snapshot !== undefined);
   const cityId = snapshot?.character.cityId ?? 'lagos';
   const openPhone = useUi((state) => state.openPhone);
-  const venues = useMemo(() => VENUES.filter((venue) => cityOfVenue(venue) === cityId && CATEGORIES[category]!.types.includes(venue.type)), [category, cityId]);
+  const venues = useMemo(() => VENUES.filter((venue) => cityOfVenue(venue) === cityId && category !== null && CATEGORIES[category]!.types.includes(venue.type)), [category, cityId]);
   const setDestination = useNavigation((state) => state.setDestination);
   const closePhone = useUi((state) => state.closePhone);
   // Land and houses you own but don't live in (where you live is Home): GPS only, rides go to venues and home.
@@ -79,13 +75,126 @@ export function MapApp() {
   const stay = snapshot?.summary.stay ?? null;
   // Someone is expecting you: their place is a destination like any other while the invite stands.
   const expected = expectedVisits(visits.data?.incoming, snapshot?.character.locationId ?? null);
+  const searching = normalizeText(query) !== '';
+  const fromDistrict = (snapshot ? findVenue(snapshot.character.locationId)?.districtId : undefined) ?? snapshot?.character.homeDistrictId ?? 'ikeja';
+  const groups = useMemo(
+    () => (searching ? searchVenues(query, VENUES, { fromDistrict, cityId, types: category === null ? undefined : CATEGORIES[category]!.types }) : { here: [], elsewhere: [] }),
+    [searching, query, fromDistrict, cityId, category],
+  );
+  const changeQuery = (next: string): void => {
+    setQuery(next);
+    // Typing with the default chip still on would hide most matches; search everything unless a chip was chosen.
+    if (!picked) setCategory(normalizeText(next) === '' ? 0 : null);
+  };
+  const pickCategory = (next: number | null): void => {
+    setPicked(true);
+    setCategory(next);
+  };
   const target = targetFromParam(selected, homeId, visits.data?.incoming);
   const targetId = target ? targetLocationId(target, homeId) : null;
 
   if (target && targetId) return <Destination target={target} destinationId={targetId} onBack={() => setSelected(null)} />;
 
+  const chips = (
+    <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Place categories">
+      {[{ label: 'All', index: null }, ...CATEGORIES.map((item, index) => ({ label: item.label, index }))].map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          role="tab"
+          aria-selected={item.index === category}
+          onClick={() => pickCategory(item.index)}
+          className={cn('h-9 shrink-0 rounded-full px-3.5 text-sm font-bold', item.index === category ? 'bg-ink text-on-ink' : 'bg-paper-2 text-text-soft')}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+  const searchBox = (
+    <div className="flex flex-col gap-2">
+      <form
+        role="search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          const first = groups.here[0] ?? groups.elsewhere[0];
+          if (first) setSelected(first.venue.id);
+        }}
+      >
+        <label htmlFor="map-search" className="sr-only">
+          Search places by name, kind of place or area
+        </label>
+        <div className="relative">
+          <Search size={18} aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-faint" />
+          <input
+            id="map-search"
+            type="text"
+            inputMode="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            value={query}
+            placeholder="Search places: eko, suya, hotel, Jabi…"
+            onChange={(event) => changeQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && query) {
+                event.preventDefault();
+                event.stopPropagation();
+                changeQuery('');
+              }
+              if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                document.querySelector<HTMLButtonElement>('[data-testid="map-search-results"] button[data-result]')?.focus();
+              }
+            }}
+            aria-controls={searching ? 'map-search-results' : undefined}
+            className="h-11 w-full rounded-full bg-paper-2 pl-10 pr-10 text-base text-text placeholder:text-text-faint focus:outline-none focus-visible:ring-2 focus-visible:ring-ink"
+          />
+          {query && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => {
+                changeQuery('');
+                document.getElementById('map-search')?.focus();
+              }}
+              className="absolute right-1.5 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full text-text-soft hover:bg-paper-3"
+            >
+              <X size={16} aria-hidden />
+            </button>
+          )}
+        </div>
+      </form>
+      {!searching && <MapSearchHints onSuggest={changeQuery} />}
+    </div>
+  );
+
+  if (searching)
+    return (
+      <div className="flex flex-col gap-3">
+        {searchBox}
+        {chips}
+        <div id="map-search-results">
+          <MapSearchResults
+            query={query}
+            groups={groups}
+            cityId={cityId}
+            fromDistrict={fromDistrict}
+            hour={toDateParts(minute).hour}
+            scopeLabel={category === null ? null : CATEGORIES[category]!.label}
+            onSelect={setSelected}
+            onSuggest={changeQuery}
+            onSearchAll={() => setCategory(null)}
+            onFly={() => openPhone('flights')}
+          />
+        </div>
+      </div>
+    );
+
   return (
     <div className="flex flex-col gap-4">
+      {searchBox}
       <div className="flex items-center justify-between gap-3 rounded-card bg-ink px-3.5 py-2.5 text-on-ink" data-testid="map-city">
         <span className="min-w-0">
           <span className="block text-xs font-bold uppercase tracking-wide opacity-70">You’re in</span>
@@ -180,20 +289,7 @@ export function MapApp() {
           ))}
         </ul>
       )}
-      <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="tablist" aria-label="Place categories">
-        {CATEGORIES.map((item, index) => (
-          <button
-            key={item.label}
-            type="button"
-            role="tab"
-            aria-selected={index === category}
-            onClick={() => setCategory(index)}
-            className={cn('h-9 shrink-0 rounded-full px-3.5 text-sm font-bold', index === category ? 'bg-ink text-on-ink' : 'bg-paper-2 text-text-soft')}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      {chips}
       <ul className="flex flex-col divide-y divide-line">
         {venues.map((venue, row) => (
           <li key={venue.id} data-tour={row === 0 ? 'map-place' : undefined}>
