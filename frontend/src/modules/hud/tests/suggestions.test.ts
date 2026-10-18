@@ -68,3 +68,12 @@ describe('routine prompts', () => {
     expect(isRoutineDue(work, 1010)).toBe(true);
   });
 });
+
+describe('route card', () => {
+  it('shows on foot and hides behind the wheel', async () => {
+    const { showRouteCard } = await import('../services/suggestions');
+    expect(showRouteCard('venue', 'walking')).toBe(true);
+    expect(showRouteCard('venue', 'driving')).toBe(false);
+    expect(showRouteCard(null, 'walking')).toBe(false);
+  });
+});

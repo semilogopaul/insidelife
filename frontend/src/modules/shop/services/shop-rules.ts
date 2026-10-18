@@ -3,6 +3,7 @@ import {
   ACTIONS,
   CLOTHING_SLOTS,
   MAX_PURCHASE_QUANTITY,
+  PANTRY_MAX_MEALS,
   MOSQUITO_NET_TAG,
   type ActionDefinition,
   type ClothingDefinition,
@@ -74,6 +75,33 @@ export function filterProducts<
 /** How many more you may buy (catalog cap minus owned/on the way, at most 10 at a time). */
 export function maxBuyable(product: Pick<ShopProductDto, 'maxQuantity' | 'owned'>): number {
   return Math.max(0, Math.min(MAX_PURCHASE_QUANTITY, product.maxQuantity - product.owned));
+}
+
+/**
+ * How many you may buy now and, when that is zero, the true reason: kitchen full, one is on its way, or the cap on
+ * how many of it you can keep. Never a vague "enough".
+ */
+export function buyLimit(
+  product: Pick<ShopProductDto, 'maxQuantity' | 'owned' | 'onTheWay' | 'name' | 'item' | 'clothing'>,
+  pantryMeals: number,
+): { readonly limit: number; readonly reason: string | null } {
+  const meals = product.item?.meals;
+  if (meals) {
+    const room = Math.floor((PANTRY_MAX_MEALS - pantryMeals) / meals);
+    if (room <= 0) return { limit: 0, reason: 'Your kitchen is full. Cook or eat some food first, then restock.' };
+    return { limit: Math.min(MAX_PURCHASE_QUANTITY, room), reason: null };
+  }
+  const limit = maxBuyable(product);
+  if (limit > 0) return { limit, reason: null };
+  if (product.onTheWay > 0 && product.onTheWay >= product.owned) {
+    return { limit: 0, reason: `${product.name} is already on its way to you; it arrives next game day.` };
+  }
+  if (product.clothing) return { limit: 0, reason: 'This piece is already in your wardrobe.' };
+  const cap = product.maxQuantity;
+  return {
+    limit: 0,
+    reason: `You already have ${cap === 1 ? 'one' : cap} ${product.name}${product.onTheWay > 0 ? ' (some still on the way)' : ''}. ${cap === 1 ? 'You can only keep one.' : `${cap} is the most you can keep.`}`,
+  };
 }
 
 /** Shelf price × quantity, plus the 10% delivery fee when ordering online. */

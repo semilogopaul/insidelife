@@ -114,21 +114,16 @@ export function usePlayBridge(presence: WorldPresence): void {
     [exit],
   );
 
-  // Inside: the HUD context button offers the hotspot you're standing at ("Drinks at the lounge · ₦18,000"; the
-  // interiors start it), else steps outside.
+  // Inside: the HUD context button is just "Step outside". Walking past a thing never suggests an action (tap the
+  // thing, or use the place's "Things to do").
   useEffect(() => {
     if (presence !== 'inside') return;
-    const show = (offer: Interactable | null): void => useWorld.getState().setNearby(offer ?? STEP_OUTSIDE);
-    show(useHomeView.getState().offer);
-    const offOffer = useHomeView.subscribe((state, previous) => {
-      if (state.offer !== previous.offer) show(state.offer);
-    });
+    useWorld.getState().setNearby(STEP_OUTSIDE);
     const off = gameEvents.on('interact', ({ interactableId }) => {
       if (interactableId === STEP_OUTSIDE_ID) void exit();
     });
     return () => {
       off();
-      offOffer();
       const nearby = useWorld.getState().nearby;
       if (nearby && (nearby.id === STEP_OUTSIDE_ID || nearby.kind === 'activity')) useWorld.getState().setNearby(null);
     };

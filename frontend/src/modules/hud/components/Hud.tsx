@@ -24,6 +24,7 @@ import { ActivityBanner } from './ActivityBanner';
 import { ClockCard } from './ClockCard';
 import { DriveAlert } from './DriveAlert';
 import { DrivePanel } from './DrivePanel';
+import { showRouteCard } from '../services/suggestions';
 import { GpsBanner } from './GpsBanner';
 import { RoutinePrompt } from './RoutinePrompt';
 import { SuggestionChips } from './SuggestionChips';
@@ -187,7 +188,8 @@ export function Hud({ tray, map, notices, talk, feed }: HudProps) {
   const unordered = all.filter((suggestion) => suggestion.id !== routine?.id);
   const chips = inside ? unordered : [...unordered.filter((s) => s.kind === 'goal'), ...unordered.filter((s) => s.kind !== 'goal')];
 
-  const gps = navigation.destinationId ? (
+  // Behind the wheel the yellow route lights on the road are the guidance: no card in front of the player.
+  const gps = showRouteCard(navigation.destinationId, mode) ? (
     <GpsBanner
       instruction={navigation.instruction}
       destination={navigation.destinationName ?? 'destination'}

@@ -41,6 +41,8 @@ export interface ShopProductDto {
   readonly inStoreHere: boolean;
   /** Units owned plus units on the way. */
   readonly owned: number;
+  /** Of `owned`, units still on an online delivery (not yet in your hands). */
+  readonly onTheWay: number;
   readonly maxQuantity: number;
   readonly item: ItemDefinition | null;
   readonly clothing: ClothingDefinition | null;

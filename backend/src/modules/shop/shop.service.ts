@@ -40,12 +40,13 @@ export class ShopService {
     const venueId = query.venueId ?? (findVenue(ctx.character.locationId) ? ctx.character.locationId : undefined);
     const filterOutlet = query.venueId ? shopOutletAt(query.venueId) : undefined;
     const counts = await this.ownedOrOnTheWay(ctx);
+    const pending = await this.pendingCounts(ctx);
 
     const products: ShopProductDto[] = [];
     for (const product of listedProducts()) {
       if (query.category && productCategory(product) !== query.category) continue;
       if (filterOutlet !== undefined && !(filterOutlet && outletSells(filterOutlet, product))) continue;
-      products.push(this.productDto(ctx, product, position, counts.get(product.def.id) ?? 0));
+      products.push(this.productDto(ctx, product, position, counts.get(product.def.id) ?? 0, pending.get(product.def.id) ?? 0));
     }
     return { venue: venueId ? this.venueDto(ctx, venueId) : null, products };
   }
@@ -174,12 +175,18 @@ export class ShopService {
     const left = Math.max(0, max - have);
     throw new GameRuleException(
       'TOO_MANY',
-      left === 0 ? `You already have ${max === 1 ? 'one' : `${max}`} ${product.def.name} — that's plenty` : `You can only get ${left} more ${product.def.name}`,
+      left === 0 ? `You already have ${max === 1 ? 'one' : `${max}`} ${product.def.name} (or it is on its way) — the most you can keep` : `You can only get ${left} more ${product.def.name}`,
     );
   }
 
   private async ownedOrOnTheWay(ctx: SimulationContext): Promise<Map<string, number>> {
     const counts = new Map(await this.inventory.quantities(ctx));
+    for (const order of await this.pendingOrders(ctx)) counts.set(order.itemId, (counts.get(order.itemId) ?? 0) + order.quantity);
+    return counts;
+  }
+
+  private async pendingCounts(ctx: SimulationContext): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
     for (const order of await this.pendingOrders(ctx)) counts.set(order.itemId, (counts.get(order.itemId) ?? 0) + order.quantity);
     return counts;
   }
@@ -191,7 +198,7 @@ export class ShopService {
     });
   }
 
-  private productDto(ctx: SimulationContext, product: ShopProduct, position: ShopperPosition, owned: number): ShopProductDto {
+  private productDto(ctx: SimulationContext, product: ShopProduct, position: ShopperPosition, owned: number, onTheWay = 0): ShopProductDto {
     const price = ctx.world.price(product.def.price, ctx.time);
     return {
       id: product.def.id,
@@ -205,6 +212,7 @@ export class ShopService {
       soldAt: venuesSelling(product),
       inStoreHere: inStoreVenue(position, product) !== null,
       owned,
+      onTheWay,
       maxQuantity: product.kind === 'item' ? product.def.maxQuantity : 1,
       item: product.kind === 'item' ? product.def : null,
       clothing: product.kind === 'clothing' ? product.def : null,
