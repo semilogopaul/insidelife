@@ -1,8 +1,8 @@
-import { CITY_MAP } from '@insidelife/shared';
+import { CITY_MAP, cityOfDistrict, districtAt, isOuterAbujaDistrict } from '@insidelife/shared';
 import { describe, expect, it } from 'vitest';
 import { LANE_OFFSETS, surfaceAt } from '../physics/surface';
 import { buildLaneGraph, type Lane } from '../traffic/lane-graph';
-import { TrafficSim, type TrafficObstacle } from '../traffic/traffic-sim';
+import { TrafficSim, trafficKindAt, type TrafficObstacle } from '../traffic/traffic-sim';
 
 const graph = buildLaneGraph();
 const longLane = (): Lane => graph.lanes.filter((lane) => lane.length > 60).sort((a, b) => b.length - a.length)[0] as Lane;
@@ -112,5 +112,26 @@ describe('traffic lanes', () => {
     const active = sim.cars.filter((car) => car.active);
     expect(active.length).toBe(8);
     for (const car of active) expect(Math.hypot(car.x - focus.x, car.z - focus.z)).toBeLessThan(170);
+  });
+});
+
+describe('traffic mix by city', () => {
+  const kinds = (city: 'lagos' | 'abuja', outskirts: boolean): Set<string> => {
+    const seen = new Set<string>();
+    for (const lane of graph.lanes) {
+      const district = districtAt({ x: lane.x0, z: lane.z0 });
+      if (cityOfDistrict(district) !== city || isOuterAbujaDistrict(district) !== outskirts) continue;
+      for (let roll = 0; roll < 1; roll += 0.05) seen.add(trafficKindAt(lane.x0, lane.z0, lane, roll));
+    }
+    return seen;
+  };
+
+  it('puts danfos and keke on Lagos roads', () => {
+    expect(kinds('lagos', false)).toEqual(new Set(['car', 'danfo', 'keke']));
+  });
+
+  it('never puts a danfo on an Abuja road, and keke only in its satellite towns', () => {
+    expect(kinds('abuja', false)).toEqual(new Set(['car']));
+    expect(kinds('abuja', true)).toEqual(new Set(['car', 'keke']));
   });
 });

@@ -247,7 +247,7 @@ describe('aviation: flying', () => {
     const jet = ok<AircraftPurchaseResultDto>(await player.post('/aircraft/purchases', { aircraftId: 'phenom-300e' }));
     await moveTo(player, 'mmia-airport');
     refused(await player.post(`/aircraft/${jet.aircraft.id}/flights`, { destination: 'naia-gat' }), 422, 'CANNOT_FLY');
-    expect((await hangar(player)).mine[0]!.flyBlocker).toMatch(/another terminal/);
+    expect((await hangar(player)).mine[0]!.flyBlocker).toMatch(/^You’re in Murtala Muhammed Airport\. Your aircraft is at the Lagos General Aviation Terminal next door/);
   });
 });
 

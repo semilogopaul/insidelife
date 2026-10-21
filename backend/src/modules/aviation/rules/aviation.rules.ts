@@ -1,4 +1,16 @@
-import { REGISTRATION_PREFIX, aircraftLocationId, aircraftNeedsLicence, registrationIssue, type AircraftDefinition, type GameMinute, type Rng } from '@insidelife/shared';
+import {
+  CITIES,
+  GAT_NAMES,
+  REGISTRATION_PREFIX,
+  aircraftLocationId,
+  aircraftNeedsLicence,
+  findVenue,
+  isGatId,
+  registrationIssue,
+  type AircraftDefinition,
+  type GameMinute,
+  type Rng,
+} from '@insidelife/shared';
 
 const LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
@@ -32,7 +44,7 @@ export function flyBlocker(check: FlyCheck): string | null {
   if (check.grounded) return 'Grounded for unpaid hangar, crew or maintenance bills. Settle them first';
   if (check.travelling) return 'You’re on the move. Get to the terminal first';
   const aboard = check.aircraftId !== undefined && check.locationId === aircraftLocationId(check.aircraftId);
-  if (check.locationId !== check.parkedAt && !aboard) return 'Your aircraft is parked at another terminal. Go there to fly it';
+  if (check.locationId !== check.parkedAt && !aboard) return goToTerminal(check.parkedAt, check.locationId, 'fly');
   if (aircraftNeedsLicence(check.aircraft) && !check.licenceHeld) return 'You need a Private Pilot Licence to fly this one yourself';
   return null;
 }
@@ -50,6 +62,18 @@ export interface BoardCheck {
 export function boardBlocker(check: BoardCheck): string | null {
   if (check.arrivesAt !== null && check.arrivesAt > check.now) return 'Your aircraft is still in the air or on its ferry flight';
   if (check.travelling) return 'You’re on the move. Get to the terminal first';
-  if (check.locationId !== check.parkedAt && check.locationId !== aircraftLocationId(check.aircraftId)) return 'Your aircraft is parked at another terminal. Go there to board it';
+  if (check.locationId !== check.parkedAt && check.locationId !== aircraftLocationId(check.aircraftId)) return goToTerminal(check.parkedAt, check.locationId, 'board');
   return null;
+}
+
+/**
+ * Where to send an owner who isn't inside the aircraft's terminal (player-facing). Names the terminal, and calls out the
+ * commercial airport next door: the two stand side by side, so it is the easy door to walk into by mistake.
+ */
+function goToTerminal(parkedAt: string, locationId: string, verb: 'fly' | 'board'): string {
+  const terminal = isGatId(parkedAt) ? `the ${GAT_NAMES[parkedAt]}` : 'its terminal';
+  const here = findVenue(locationId);
+  const nextDoor = here?.type === 'airport' && Object.values(CITIES).some((city) => city.airportVenueId === here.id && city.gatVenueId === parkedAt);
+  if (here && nextDoor) return `You’re in ${here.name}. Your aircraft is at ${terminal} next door: go in there to ${verb} it`;
+  return `Your aircraft is parked at ${terminal}. Go inside that terminal to ${verb} it`;
 }
