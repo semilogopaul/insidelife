@@ -128,3 +128,13 @@ export function cabinDecorEntry(aircraftId: string, locationId: string | undefin
   if (locationId !== aircraftLocationId(aircraftId)) return null;
   return cabinOnScreen === aircraftId ? 'decorate' : 'step-in';
 }
+
+/** The plane is ready, you just aren't inside its terminal (or aboard it): the one blocker a trip there fixes. */
+export function awayFromPlane(
+  plane: Pick<OwnedAircraftDto, 'id' | 'parkedAt' | 'airborne' | 'grounded'>,
+  locationId: string | null,
+  travelling: boolean,
+): boolean {
+  if (plane.airborne || plane.grounded || travelling || locationId === null) return false;
+  return locationId !== plane.parkedAt && locationId !== aircraftLocationId(plane.id);
+}

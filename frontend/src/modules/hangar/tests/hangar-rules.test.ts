@@ -3,6 +3,7 @@ import { AIRCRAFT, LIVERY_COLOURS, type AircraftCatalogEntryDto, type OwnedAircr
 import { servicesAt } from '@/common/places/services';
 import {
   airframeFor,
+  awayFromPlane,
   cabinDecorEntry,
   formatFlightTime,
   lessonProgress,
@@ -126,5 +127,23 @@ describe('decorate cabin entry', () => {
     expect(cabinDecorEntry('p1', 'mmia-gat', 'p1')).toBeNull();
     expect(cabinDecorEntry('p1', 'aircraft:p2', 'p2')).toBeNull();
     expect(cabinDecorEntry('p1', undefined, null)).toBeNull();
+  });
+});
+
+describe('away from the plane', () => {
+  const plane = { id: 'p1', parkedAt: 'naia-gat', airborne: false, grounded: false } as const;
+
+  it('is true only when a ready plane waits at a terminal you are not inside', () => {
+    expect(awayFromPlane(plane, 'naia-airport', false)).toBe(true);
+    expect(awayFromPlane(plane, 'street:lugbe', false)).toBe(true);
+    expect(awayFromPlane(plane, 'naia-gat', false)).toBe(false);
+    expect(awayFromPlane(plane, 'aircraft:p1', false)).toBe(false);
+  });
+
+  it('stays out of the way when the plane or you are not ready to go anywhere', () => {
+    expect(awayFromPlane({ ...plane, airborne: true }, 'naia-airport', false)).toBe(false);
+    expect(awayFromPlane({ ...plane, grounded: true }, 'naia-airport', false)).toBe(false);
+    expect(awayFromPlane(plane, 'naia-airport', true)).toBe(false);
+    expect(awayFromPlane(plane, null, false)).toBe(false);
   });
 });

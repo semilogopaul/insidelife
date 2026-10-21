@@ -1,23 +1,31 @@
 'use client';
 
 import { Fuel, PlaneTakeoff } from 'lucide-react';
-import { type OwnedAircraftDto } from '@insidelife/shared';
-import { Badge, HoldButton, Money, Receipt, Sheet } from '@/common/components';
+import { cityOfVenue, findVenue, type OwnedAircraftDto } from '@insidelife/shared';
+import { Badge, GoThere, HoldButton, Money, Receipt, Sheet } from '@/common/components';
 import { announce, complain } from '@/common/game/feedback';
 import { useSnapshot } from '@/common/game/snapshot';
+import { useCurrentPlace } from '@/common/hooks/use-current-place';
 import { useHangarCommands } from '../../hooks/use-hangar';
-import { formatFlightTime, gatName } from '../../services/hangar-rules';
+import { awayFromPlane, formatFlightTime, gatName } from '../../services/hangar-rules';
 
 /** Fly to the other terminal: flight time and fuel bill up front, a hold to take off. */
 export function FlySheet({ plane, onClose }: { readonly plane: OwnedAircraftDto | null; readonly onClose: () => void }) {
   const { fly } = useHangarCommands();
   const { data: snapshot } = useSnapshot();
+  const { locationId, travelling } = useCurrentPlace();
+  const terminal = plane ? findVenue(plane.parkedAt) : undefined;
+  // Directions only within the city: there is no road to the other one (the message already names where it is).
+  const guide = plane !== null && terminal !== undefined && awayFromPlane(plane, locationId, travelling) && cityOfVenue(terminal) === snapshot?.character.cityId;
   return (
     <Sheet open={plane !== null} onClose={onClose} title={plane ? `Fly ${plane.registration}` : ''} description={plane ? `Parked at ${gatName(plane.parkedAt)}` : undefined}>
       {plane && (
         <div className="flex flex-col gap-4 pb-2">
           {plane.flyBlocker ? (
-            <p className="rounded-card bg-paper-2 p-3 text-sm font-bold">{plane.flyBlocker}.</p>
+            <div className="flex flex-col gap-3 rounded-card bg-paper-2 p-3">
+              <p className="text-sm font-bold">{plane.flyBlocker}.</p>
+              {guide && terminal && <GoThere venueId={terminal.id} venueName={terminal.name} />}
+            </div>
           ) : (
             <p className="text-sm text-text-soft">You’re at the terminal and cleared to fly. Pick where you’re going.</p>
           )}

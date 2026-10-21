@@ -1,14 +1,14 @@
-import { LANE_WIDTH, createRng, type Rng } from '@insidelife/shared';
+import { LANE_WIDTH, cityOfDistrict, createRng, districtAt, isOuterAbujaDistrict, type Rng } from '@insidelife/shared';
 import { clamp, dampAngle } from '../physics/math';
 import { ROUNDABOUT_LANE_RADII, type Lane, type LaneGraph } from './lane-graph';
 
 /**
  * Ambient traffic: a modest set of cars, danfos and keke following the lane graph on four-lane roads (two lanes each
- * way, right-hand traffic). Most keep to the kerbside lane — keke always do — so the inner lane stays free for
- * overtaking. Each car follows a polyline (its lane, then a curved turn through the junction or an anticlockwise sweep
- * of the roundabout), keeps a gap to whatever is ahead in its own lane (other traffic, the player), changes lane round
- * parked cars and stopped players, and is recycled ahead of the player when it drifts too far away. Seeded and pure
- * (no three.js); nothing is allocated per frame.
+ * way, right-hand traffic), in each city's own mix (`trafficKindAt`). Most keep to the kerbside lane — keke always do —
+ * so the inner lane stays free for overtaking. Each car follows a polyline (its lane, then a curved turn through the
+ * junction or an anticlockwise sweep of the roundabout), keeps a gap to whatever is ahead in its own lane (other traffic,
+ * the player), changes lane round parked cars and stopped players, and is recycled ahead of the player when it drifts
+ * too far away. Seeded and pure (no three.js); nothing is allocated per frame.
  */
 
 export type TrafficKind = 'car' | 'danfo' | 'keke';
@@ -69,6 +69,17 @@ const KERBSIDE_SHARE = 0.7;
 const SPAWN_MIN = 45;
 const SPAWN_MAX = 160;
 const DESPAWN = 210;
+
+/**
+ * What a vehicle spawned at a point is, from a roll in [0, 1). Lagos: danfos, and keke in the kerbside lane off the
+ * expressways. Abuja has no danfos, and keke run only in its satellite towns (as with booked rides, `modeUnavailableReason`).
+ */
+export function trafficKindAt(x: number, z: number, lane: Pick<Lane, 'roadClass' | 'slot'>, roll: number): TrafficKind {
+  const district = districtAt({ x, z });
+  const kekeLane = lane.roadClass !== 'expressway' && lane.slot === 1;
+  if (cityOfDistrict(district) === 'abuja') return roll < 0.18 && kekeLane && isOuterAbujaDistrict(district) ? 'keke' : 'car';
+  return roll < 0.3 ? 'danfo' : roll < 0.48 && kekeLane ? 'keke' : 'car';
+}
 
 export class TrafficSim {
   readonly cars: TrafficCar[] = [];
@@ -170,9 +181,7 @@ export class TrafficSim {
       if (distance < SPAWN_MIN || distance > SPAWN_MAX) continue;
       if (attempt < 30 && visible?.(x, z)) continue;
       if (this.occupied(x, z, car)) continue;
-      const roll = this.rng.next();
-      const kind: TrafficKind = roll < 0.3 ? 'danfo' : roll < 0.48 && lane.roadClass !== 'expressway' && lane.slot === 1 ? 'keke' : 'car';
-      this.place(car, lane.id, along, kind, Math.floor(this.rng.next() * 1000));
+      this.place(car, lane.id, along, trafficKindAt(x, z, lane, this.rng.next()), Math.floor(this.rng.next() * 1000));
       return true;
     }
     return false;
