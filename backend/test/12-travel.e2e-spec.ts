@@ -5,9 +5,11 @@ import {
   INTERSTATE_BUS,
   MINUTES_PER_HOUR,
   flightWindows,
+  type BuyHouseResultDto,
   type CharacterSnapshotDto,
   type FlightDto,
   type FlightsOverviewDto,
+  type HouseListingDto,
   type JobBoardDto,
   type RentalListingDto,
   type TravelActionResultDto,
@@ -78,6 +80,15 @@ describe('flights: the timetable', () => {
     const search = ok<{ flights: FlightDto[] }>(await player.get('/flights/search?from=abuja&day=1'));
     expect(search.flights.length).toBeGreaterThanOrEqual(8);
     expect(search.flights.every((flight) => flight.fromCity === 'abuja')).toBe(true);
+  });
+
+  it('only sells seats on flights leaving the city you are in', async () => {
+    e2e.clock.at(10);
+    const player = await traveller();
+    const before = await player.cash();
+    const abuja = ok<{ flights: FlightDto[] }>(await player.get('/flights/search?from=abuja&day=1')).flights[0]!;
+    refused(await book(player, abuja), 422, 'WRONG_CITY');
+    expect(await player.cash()).toBe(before);
   });
 });
 
@@ -287,6 +298,54 @@ describe('one city at a time', () => {
     expect(job).toBeDefined();
     expect(job.eligible).toBe(true);
     ok(await player.post('/jobs/wuse-market-trader/applications'));
+  });
+});
+
+describe('home follows the city you are in', () => {
+  const cheapestHouse = async (player: Player): Promise<HouseListingDto> => ok<HouseListingDto[]>(await player.get('/housing/houses')).toSorted((a, b) => a.total - b.total)[0]!;
+  const homeOf = async (player: Player) => {
+    const view = await snapshot(player);
+    return { cityId: CITIES.lagos.districtIds.includes(view.character.homeDistrictId) ? 'lagos' : 'abuja', livedIn: view.summary.properties.find((property) => property.livedIn)?.id ?? null, ownership: view.summary.home.ownership };
+  };
+
+  it('with a house in each city, home is the one in the city you are in, both ways', async () => {
+    e2e.clock.at(10);
+    const player = await traveller('ikeja-city-mall', 'lagos', 2_000_000_000);
+    const lagos = ok<BuyHouseResultDto>(await player.post('/housing/houses', { listingId: (await cheapestHouse(player)).id }));
+    expect(await homeOf(player)).toEqual({ cityId: 'lagos', livedIn: lagos.propertyId, ownership: 'owned' });
+
+    // Bought while in Abuja: that one is home there.
+    await placeIn(player, 'naia-airport', 'abuja');
+    e2e.clock.advance(1);
+    const abuja = ok<BuyHouseResultDto>(await player.post('/housing/houses', { listingId: (await cheapestHouse(player)).id }));
+    expect(await homeOf(player)).toEqual({ cityId: 'abuja', livedIn: abuja.propertyId, ownership: 'owned' });
+
+    // Back in Lagos the Lagos house is home again (rides, the front door and bed all follow); and back in Abuja, Abuja's.
+    await placeIn(player, 'mmia-airport', 'lagos');
+    e2e.clock.advance(1);
+    expect(await homeOf(player)).toEqual({ cityId: 'lagos', livedIn: lagos.propertyId, ownership: 'owned' });
+    const notes = await e2e.dataSource.query(`SELECT body FROM notifications WHERE character_id = $1 AND title LIKE 'Home is here now%'`, [player.characterId]);
+    expect(notes.at(-1)?.body).toMatch(/^You’re in Lagos, so .* is home while you’re here/);
+    await placeIn(player, 'naia-airport', 'abuja');
+    e2e.clock.advance(1);
+    expect(await homeOf(player)).toEqual({ cityId: 'abuja', livedIn: abuja.propertyId, ownership: 'owned' });
+  });
+
+  it('falls back to the family house in your family’s city, and never walks out of a lease', async () => {
+    e2e.clock.at(10);
+    const owner = await traveller('naia-airport', 'abuja', 2_000_000_000);
+    const abuja = ok<BuyHouseResultDto>(await owner.post('/housing/houses', { listingId: (await cheapestHouse(owner)).id }));
+    expect(await homeOf(owner)).toEqual({ cityId: 'abuja', livedIn: abuja.propertyId, ownership: 'owned' });
+    await placeIn(owner, 'mmia-airport', 'lagos');
+    e2e.clock.advance(1);
+    expect(await homeOf(owner)).toEqual({ cityId: 'lagos', livedIn: null, ownership: 'family' });
+
+    const renter = await traveller('naia-airport', 'abuja', 60_000_000);
+    const listing = ok<RentalListingDto[]>(await renter.get('/housing/listings')).find((candidate) => candidate.affordable)!;
+    expect(ok<{ outcome: string }>(await renter.post('/housing/leases', { listingId: listing.id })).outcome).toBe('moved-in');
+    await placeIn(renter, 'mmia-airport', 'lagos');
+    e2e.clock.advance(1);
+    expect(await homeOf(renter)).toMatchObject({ cityId: 'abuja', ownership: 'rented' });
   });
 });
 

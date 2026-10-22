@@ -1,4 +1,5 @@
 import {
+  CITIES,
   DISTRICTS,
   districtDistance,
   cityOfVenue,
@@ -92,6 +93,7 @@ export const SCORE = {
   nameContains: 65,
   category: 50,
   district: 45,
+  city: 40,
   typo: 35,
   blurb: 30,
 } as const;
@@ -109,6 +111,8 @@ interface Indexed {
   readonly idWords: string[];
   readonly categoryWords: string[];
   readonly districtWords: string[];
+  /** The city's name ("lagos", "abuja"). */
+  readonly cityWords: string[];
   readonly blurbWords: string[];
 }
 
@@ -130,6 +134,7 @@ function indexOf(venue: VenueDefinition): Indexed {
     idWords: venue.id.split('-'),
     categoryWords: [...new Set(terms.flatMap(words))],
     districtWords: words(DISTRICTS[venue.districtId].name),
+    cityWords: words(CITIES[cityOfVenue(venue)].name),
     blurbWords: words(venue.blurb),
   };
   indexCache.set(venue, entry);
@@ -147,6 +152,7 @@ function tokenScore(token: string, entry: Indexed): number {
   if (entry.categoryWords.some((word) => word === token || (token.length >= 3 && word.startsWith(token))))
     return SCORE.category;
   if (entry.districtWords.some((word) => word.startsWith(token))) return SCORE.district;
+  if (token.length >= 3 && entry.cityWords.some((word) => word.startsWith(token))) return SCORE.city;
   // Simple typo tolerance against names, categories and districts.
   const budget = typoBudget(token.length);
   if (budget > 0) {

@@ -1,5 +1,5 @@
 import { Injectable, type OnModuleInit } from '@nestjs/common';
-import { DISTRICTS, FAMILY_HINT_AGE, NO_EXTERIOR, isFloodDay, type OwnedPropertyMarkerDto, type ProfileContext } from '@insidelife/shared';
+import { CITIES, DISTRICTS, FAMILY_HINT_AGE, NO_EXTERIOR, isFloodDay, type OwnedPropertyMarkerDto, type ProfileContext } from '@insidelife/shared';
 import type { SimulationSystem, SummaryContribution } from '../simulation/interfaces/simulation-system.interface.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import { SimulationRegistry } from '../simulation/simulation-registry.service.js';
@@ -10,6 +10,7 @@ import { HousingService } from './housing.service.js';
 import { HOUSING_ROWS, HousingStore } from './housing.store.js';
 import { LandService } from './land.service.js';
 import { LettingsService } from './lettings.service.js';
+import { MovesService } from './moves.service.js';
 import { PowerService } from './power.service.js';
 import { PropertySalesService } from './property-sales.service.js';
 import { RentalsService } from './rentals.service.js';
@@ -38,6 +39,7 @@ export class HousingSystem implements SimulationSystem, OnModuleInit {
     private readonly upkeep: UpkeepService,
     private readonly sales: PropertySalesService,
     private readonly housing: HousingService,
+    private readonly moves: MovesService,
   ) {}
 
   onModuleInit(): void {
@@ -58,6 +60,16 @@ export class HousingSystem implements SimulationSystem, OnModuleInit {
   async profileContext(ctx: SimulationContext, base: ProfileContext): Promise<ProfileContext> {
     const comfort = await this.comfort.breakdown(ctx);
     return { ...base, comfort: base.comfort + comfort.total, bedQuality: Math.max(0, Math.min(1, comfort.bedQuality)) };
+  }
+
+  /** Landed in the other city: your house there (or your family's, back home) becomes home. */
+  async onArrival(ctx: SimulationContext): Promise<void> {
+    await this.followCity(ctx);
+  }
+
+  /** The same for anyone already standing in a city their home isn't in (cheap when home is where you are). */
+  async onSettled(ctx: SimulationContext): Promise<void> {
+    await this.followCity(ctx);
   }
 
   async onDayEnd(ctx: SimulationContext, dayIndex: number): Promise<void> {
@@ -122,6 +134,17 @@ export class HousingSystem implements SimulationSystem, OnModuleInit {
     if (!isFloodDay(ctx.world.seed, dayIndex, DISTRICTS[home.districtId].floodRisk)) return;
     await this.homes.markStreetFlood(ctx, dayIndex);
     ctx.notify({ kind: 'property', title: 'Flood for your street', body: `Heavy rain flooded ${DISTRICTS[home.districtId].name}. Wade carefully.`, tone: 'bad' });
+  }
+
+  private async followCity(ctx: SimulationContext): Promise<void> {
+    if (!(await this.moves.followCity(ctx))) return;
+    const home = await this.homes.current(ctx);
+    ctx.notify({
+      kind: 'property',
+      title: 'Home is here now 🏠',
+      body: `You’re in ${CITIES[ctx.character.cityId].name}, so ${home.label} is home while you’re here. Your other house keeps everything as you left it.`,
+      tone: 'good',
+    });
   }
 
   /** At 25 the family starts asking when you're moving out (and the free food gets less free). */

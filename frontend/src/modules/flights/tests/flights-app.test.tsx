@@ -123,6 +123,14 @@ describe('FlightsApp', () => {
     expect((closed as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('only offers flights from the city you are in (no switching to the other city’s departures)', async () => {
+    mockServer(overviewOf());
+    renderApp();
+    await screen.findByRole('list', { name: /Flights from Lagos/ });
+    expect(screen.queryByRole('button', { name: /From Abuja/ })).toBeNull();
+    expect(screen.queryByText(/From Abuja/)).toBeNull();
+  });
+
   it('books from the app with an idempotency key, after a confirmation', async () => {
     mockServer(overviewOf());
     renderApp();

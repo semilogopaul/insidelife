@@ -47,7 +47,13 @@ export function FlightOverlay({ cls, durationMs, from, to, onSkip }: FlightOverl
 
   const route = from && to ? `${from} → ${to}` : null;
   return (
-    <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4 pb-6 text-white" style={{ position: 'absolute', inset: 0, color: '#fff' }} role="status" aria-live="polite">
+    // Clear of the notch / Dynamic Island and the home indicator, so Skip can be tapped on a phone.
+    <div
+      className="pointer-events-none absolute inset-0 flex flex-col justify-between pt-[max(1rem,env(safe-area-inset-top))] pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1.5rem,env(safe-area-inset-bottom))] pl-[max(1rem,env(safe-area-inset-left))] text-white"
+      style={{ position: 'absolute', inset: 0, color: '#fff' }}
+      role="status"
+      aria-live="polite"
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="rounded-xl bg-black/40 px-3 py-2 backdrop-blur-sm">
           <p className="text-lg font-bold leading-tight">{PHASE_CAPTION[phase]}</p>

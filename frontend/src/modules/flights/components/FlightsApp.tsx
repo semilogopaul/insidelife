@@ -7,7 +7,6 @@ import {
   formatGameDuration,
   formatNaira,
   getCity,
-  type CityId,
   type FlightBookingDto,
   type FlightCabin,
   type FlightDto,
@@ -100,14 +99,15 @@ function Header({ overview }: { readonly overview: FlightsOverviewDto }) {
   );
 }
 
+/** Flights leaving the city you're in: you book from where you are (the server refuses the other city's departures). */
 function SearchTab({ overview }: { readonly overview: FlightsOverviewDto }) {
-  const [from, setFrom] = useState<CityId>(overview.cityId);
+  const from = overview.cityId;
   const [day, setDay] = useState(0);
   const [pending, setPending] = useState<PendingBooking | null>(null);
   const search = useFlightSearch(from, day);
   const action = useFlightAction();
 
-  const channel = overview.atAirport && from === overview.cityId ? 'counter' : 'app';
+  const channel = overview.atAirport ? 'counter' : 'app';
   const confirm = (): void => {
     if (!pending) return;
     action.mutate(
@@ -119,12 +119,7 @@ function SearchTab({ overview }: { readonly overview: FlightsOverviewDto }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <FilterChips<CityId>
-        label="Flying from"
-        value={from}
-        onChange={setFrom}
-        options={[overview.cityId, overview.otherCityId].map((id) => ({ id, label: `From ${getCity(id).name}` }))}
-      />
+      <p className="text-sm text-text-soft">Flights from {getCity(from).name}. To fly back, book again once you land.</p>
       <FilterChips<string> label="Day" value={String(day)} onChange={(id) => setDay(Number(id))} options={DAY_OPTIONS} />
       {search.isPending ? (
         <LoadingRows rows={3} label="Searching flights" />

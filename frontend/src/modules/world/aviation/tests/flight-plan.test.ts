@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { AircraftFlightOptionDto, ApronPlaneDto, FlightBookingDto, FlightDto, OwnedAircraftDto } from '@insidelife/shared';
-import { nextBooking } from '../flow/AviationOverlay';
+import { gateStep, nextBooking } from '../flow/AviationOverlay';
 import {
   airlinerLivery,
   apronPlaneOf,
@@ -216,5 +216,14 @@ describe('the gate card', () => {
     expect(nextBooking([missed], 'mmia-airport')?.id).toBe('m');
     expect(nextBooking([soon], 'naia-airport')).toBeNull();
     expect(nextBooking([booking({ status: 'flown' })], 'mmia-airport')).toBeNull();
+  });
+
+  it('stays tucked away only until check-in or boarding opens, or the flight is missed', () => {
+    const waiting = booking({ id: 'b', status: 'checked-in', canCheckIn: false, canBoard: false });
+    expect(gateStep({ ...waiting })).toBe(gateStep(waiting));
+    expect(gateStep({ ...waiting, canBoard: true })).not.toBe(gateStep(waiting));
+    expect(gateStep({ ...waiting, status: 'booked', canCheckIn: true })).not.toBe(gateStep(waiting));
+    expect(gateStep({ ...waiting, status: 'missed' })).not.toBe(gateStep(waiting));
+    expect(gateStep({ ...waiting, id: 'other' })).not.toBe(gateStep(waiting));
   });
 });

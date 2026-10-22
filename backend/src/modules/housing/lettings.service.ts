@@ -47,9 +47,13 @@ export class LettingsService {
   }
 
   /** Can the owner move into this building right now? Throws with the reason if not. */
+  /** Whether the owner has a free unit to live in (a building not let out always has). */
+  ownerCanMoveIn(building: BuildingEntity): boolean {
+    return !building.letting || building.units.some((unit) => unit.tenant === null);
+  }
+
   assertOwnerCanMoveIn(building: BuildingEntity): void {
-    if (!building.letting) return;
-    if (!building.units.some((unit) => unit.tenant === null)) {
+    if (!this.ownerCanMoveIn(building)) {
       throw new GameRuleException(
         'TENANTS_INSIDE',
         BLUEPRINTS[building.blueprintId].units > 1

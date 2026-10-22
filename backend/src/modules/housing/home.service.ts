@@ -89,7 +89,12 @@ export class HomeService {
     const destination = to.kind === 'family' ? (await this.store.residence(ctx)).familyDistrictId : to.kind === 'rented' ? to.lease.districtId : to.property.districtId;
     // A home is moved into where you are: another city's front door is a flight away (no teleporting by signing a lease).
     if (DISTRICTS[destination].cityId !== ctx.character.cityId) {
-      throw new GameRuleException('OTHER_CITY', `That home is in ${DISTRICTS[destination].name}, in another city. Fly or take the bus there first, then move in.`);
+      throw new GameRuleException(
+        'OTHER_CITY',
+        to.kind === 'owned'
+          ? `That house is in ${DISTRICTS[destination].name}, in another city. It becomes your home when you get there (fly or take the bus).`
+          : `That home is in ${DISTRICTS[destination].name}, in another city. Fly or take the bus there first, then move in.`,
+      );
     }
     const residence = await this.store.residence(ctx);
     residence.kind = to.kind;

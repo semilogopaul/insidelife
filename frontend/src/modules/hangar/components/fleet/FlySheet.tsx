@@ -36,6 +36,8 @@ export function FlySheet({ plane, onClose }: { readonly plane: OwnedAircraftDto 
                 <li key={option.destination} className="flex flex-col gap-3 rounded-card bg-paper-2 p-3.5">
                   <div className="flex items-start justify-between gap-2">
                     <div>
+                      {/* "Fly to": the bold name is where you'd go, not where the plane is (that's the sheet's subtitle). */}
+                      <p className="text-xs font-bold uppercase tracking-wide text-text-soft">Fly to</p>
                       <p className="type-title text-lg leading-tight">{gatName(option.destination)}</p>
                       <p className="text-sm text-text-soft">
                         {option.km} km · {formatFlightTime(option.minutes)}

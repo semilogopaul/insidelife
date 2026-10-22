@@ -171,11 +171,17 @@ export class FlightsService {
 
   // ----- booking ---------------------------------------------------------------------------------------------------
 
-  /** Buy a seat. From the app anywhere; at the counter only standing in the departure airport (and you're checked in on the spot). */
+  /**
+   * Buy a seat on a flight leaving the city you're in: from the app anywhere in it; at the counter only standing in the
+   * departure airport (and you're checked in on the spot).
+   */
   async book(ctx: SimulationContext, flightId: string, cabin: FlightCabin, channel: FlightChannel): Promise<FlightBookingDto> {
     this.assertAlive(ctx);
     if (!(FLIGHT_CABINS as readonly string[]).includes(cabin)) throw new GameRuleException('BAD_CABIN', 'Pick economy or business');
     const flight = this.flightOrThrow(ctx, flightId);
+    if (flight.fromCity !== ctx.character.cityId) {
+      throw new GameRuleException('WRONG_CITY', `${flight.number} leaves from ${CITIES[flight.fromCity].name}, and you’re in ${CITIES[ctx.character.cityId].name}. Book a flight from here`);
+    }
     if (channel === 'counter' && !this.atAirport(ctx, flight.fromAirportVenueId)) {
       throw new GameRuleException('NOT_AT_AIRPORT', `The ticket counter is at ${airportName(flight.fromAirportVenueId)}. Use the Flights app from anywhere.`);
     }
