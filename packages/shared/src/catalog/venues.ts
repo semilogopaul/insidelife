@@ -59,7 +59,7 @@ export const VENUES = [
   // Ikeja
   v({ id: 'mmia-airport', name: 'Murtala Muhammed Airport', type: 'airport', districtId: 'ikeja', blurb: 'Japa terminal. Also Dubai.' }),
   // General Aviation Terminal: private flights, hangars, aircraft sales and the flight school (docs/MULTI_CITY.md).
-  v({ id: 'mmia-gat', name: 'MMA2 General Aviation Terminal', type: 'aviation-terminal', districtId: 'ikeja', blurb: 'Private flights, hangars, aircraft sales and the flight school.' }),
+  v({ id: 'mmia-gat', name: 'Lagos General Aviation Terminal', type: 'aviation-terminal', districtId: 'ikeja', blurb: 'Private flights, hangars, aircraft sales and the flight school, beside Murtala Muhammed Airport.' }),
   v({ id: 'computer-village', name: 'Computer Village', type: 'market', districtId: 'ikeja', blurb: 'Phones, laptops and "original" chargers.', hours: [8, 19] }),
   v({ id: 'ikeja-city-mall', name: 'Ikeja City Mall', type: 'mall', districtId: 'ikeja', blurb: 'Shopping, cinema and AC.', hours: [9, 22] }),
   v({ id: 'ikeja-cinema', name: 'Ikeja Cinemas', type: 'cinema', districtId: 'ikeja', blurb: 'Nollywood premieres and popcorn.', hours: [10, 24] }),

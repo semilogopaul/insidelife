@@ -23,6 +23,15 @@ describe('Map search matching', () => {
     expect(names('eko').here.length).toBeGreaterThan(0);
   });
 
+  it('finds a place by its city’s name, like the Hangar calls the terminals', () => {
+    expect(names('Lagos General Aviation Terminal').here[0]?.venue.id).toBe('mmia-gat');
+    expect(names('lagos airport').here.map((r) => r.venue.id)).toEqual(expect.arrayContaining(['mmia-airport', 'mmia-gat']));
+    expect(names('abuja hotel').elsewhere.every((r) => r.cityId === 'abuja' && r.venue.type === 'hotel')).toBe(true);
+    expect(names('abuja hotel').elsewhere.length).toBeGreaterThan(0);
+    // From Abuja, the Lagos terminal is listed with the other city.
+    expect(names('Lagos General Aviation Terminal', { fromDistrict: 'lugbe', cityId: 'abuja' }).elsewhere[0]?.venue.id).toBe('mmia-gat');
+  });
+
   it('tolerates a typo', () => {
     expect(editDistance('hotle', 'hotel', 2)).toBe(1);
     expect(names('hospitl').here.some((r) => r.venue.type.startsWith('hospital'))).toBe(true);

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { cityOfDistrict, type DistrictId } from '@insidelife/shared';
 import { GameRuleException } from '../../common/exceptions/domain.exception.js';
 import type { SimulationContext } from '../simulation/simulation-context.js';
 import type { LeaseEntity } from './entities/lease.entity.js';
@@ -42,6 +43,37 @@ export class MovesService {
     await this.vacateCurrent(ctx);
     await this.lettings.occupyByOwner(ctx, building);
     await this.homes.relocate(ctx, { kind: 'owned', property, building });
+  }
+
+  /**
+   * Home follows the city you're in. Where you own a finished house you can live in (not up for sale, a unit free of
+   * tenants), the best of them is home; back in your family's city with no house of your own there, the family house is.
+   * Free and instant, and each house keeps its furniture (pieces belong to the house they stand in). A rented home is
+   * never left this way: moving out would end the lease. Returns the new home's district when home moved.
+   */
+  async followCity(ctx: SimulationContext): Promise<DistrictId | null> {
+    const character = ctx.character;
+    if (!character.alive || character.travel || cityOfDistrict(character.homeDistrictId) === character.cityId) return null;
+    const residence = await this.store.residence(ctx);
+    if (residence.kind === 'rented') return null;
+    const portfolio = await this.store.portfolio(ctx);
+    const houses = portfolio.properties
+      .filter((property) => property.status === 'owned' && cityOfDistrict(property.districtId) === character.cityId)
+      .flatMap((property) => {
+        const building = this.store.buildingOf(portfolio, property.id);
+        return building && building.status === 'complete' && this.lettings.ownerCanMoveIn(building) ? [{ property, building }] : [];
+      })
+      .toSorted((a, b) => b.building.value - a.building.value);
+    const house = houses[0];
+    if (house) {
+      await this.moveTo(ctx, house.property.id);
+      return house.property.districtId;
+    }
+    if (residence.kind === 'owned' && cityOfDistrict(residence.familyDistrictId) === character.cityId) {
+      await this.moveTo(ctx, 'family');
+      return residence.familyDistrictId;
+    }
+    return null;
   }
 
   /** Move into a freshly signed lease. */

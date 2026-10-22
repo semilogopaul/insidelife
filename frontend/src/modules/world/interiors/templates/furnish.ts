@@ -384,6 +384,13 @@ export function furnish(template: InteriorTemplate, owned: readonly string[], op
 
   // Seats you don't own aren't there: whoever would sit on one stands in its place instead of sitting on air.
   const seats = [...furniture.map(furnitureFootprint), ...props.map(propFootprint)].filter((box) => box !== null);
+  // No table to eat at, nor a stool under the template's seat: eat standing at the worktop, not in the middle of the floor.
+  const cooker = anchors.get('cooker');
+  const eat = spots.eat;
+  if (!providedFurniture && cooker && (!eat || (eat.stance === 'sit' && !hasSeat(eat, seats)))) {
+    const worktop = worktopSpot(furniture, seats, cooker.at, template.room);
+    if (worktop) spots.eat = worktop;
+  }
   const sleep = spots.sleep;
   // On your bed (or mattress, or mat) — or, napping where the couch would be, on the floor.
   const sleepTop = bedTop ?? (sleep && sleep.at.length === 3 && !hasSeat(sleep, seats) ? FLOOR_SLEEP : null);
@@ -517,6 +524,28 @@ const FLOOR_SLEEP = 0.05;
 const SEAT_REACH = 0.3;
 
 /** Is there something under a seated spot (a chair, sofa, bench, stool, mattress…)? */
+/** Floor units of a kitchen run you can stand at (not the wall cupboards). */
+const WORKTOP_MODELS: ReadonlySet<string> = new Set(['kitchenCabinet', 'kitchenCabinetDrawer', 'kitchenSink']);
+/** How far in front of a worktop you stand: as at the cooker. */
+const WORKTOP_GAP = 0.69;
+
+/**
+ * Eating standing up: in front of the worktop furthest from the cooker (cooking and eating don't share a spot), facing
+ * it. Null when no free worktop stands in the room.
+ */
+export function worktopSpot(furniture: readonly FurniturePlacement[], solid: readonly Aabb[], cooker: At, room: { readonly width: number; readonly depth: number }): Spot | null {
+  const away = (at: At): number => Math.hypot(at[0] - cooker[0], at[1] - cooker[1]);
+  const units = furniture.filter((piece) => WORKTOP_MODELS.has(piece.model) && (piece.y ?? 0) < 0.3).toSorted((a, b) => away(b.at) - away(a.at));
+  for (const unit of units) {
+    const rot = unit.rot ?? 0;
+    const [x, z] = forward(unit.at, rot, WORKTOP_GAP);
+    const inside = Math.abs(x) < room.width / 2 - 0.3 && Math.abs(z) < room.depth / 2 - 0.3;
+    const blocked = solid.some((box) => x > box.minX - 0.18 && x < box.maxX + 0.18 && z > box.minZ - 0.18 && z < box.maxZ + 0.18);
+    if (inside && !blocked) return { at: [x, z], rot: rot + 180, animation: 'eat' };
+  }
+  return null;
+}
+
 function hasSeat(spot: Spot, seats: readonly Aabb[]): boolean {
   const x = spot.at[0];
   const z = spot.at[spot.at.length - 1] as number;

@@ -1,7 +1,7 @@
 'use client';
 
-import { Plane, PlaneLanding, PlaneTakeoff, Ticket } from 'lucide-react';
-import { useEffect, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp, Plane, PlaneLanding, PlaneTakeoff, Ticket } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { CITIES, GAT_NAMES, cityOfVenueId, findVenue, formatClock12, formatGameDuration, formatNaira, type CharacterSnapshotDto, type FlightBookingDto, type OwnedAircraftDto } from '@insidelife/shared';
 import { useAboard, useAircraftBoarding, useFlightsState, useFlyAircraft, useGateAction } from '@/common/aviation';
 import { useSnapshot } from '@/common/game/snapshot';
@@ -53,9 +53,12 @@ function useReturnToApron(scene: AviationScene): void {
   }, [returning, inTerminal, roomId, fading]);
 }
 
+/** Below the HUD's top bar, which itself sits under the notch / Dynamic Island on phones. */
+const BELOW_TOP_BAR = 'top-[max(4.5rem,calc(env(safe-area-inset-top)+4.5rem))]';
+
 function Card({ children, className }: { readonly children: ReactNode; readonly className?: string }) {
   return (
-    <div className="pointer-events-none absolute inset-x-0 top-[72px] z-10 flex justify-center px-4">
+    <div className={cn('pointer-events-none absolute inset-x-0 z-10 flex justify-center px-4', BELOW_TOP_BAR)}>
       <div className={cn('pointer-events-auto w-full max-w-sm rounded-card bg-ink/85 p-3 text-on-ink shadow-lg backdrop-blur-sm', className)}>{children}</div>
     </div>
   );
@@ -186,6 +189,8 @@ function GateCard() {
   const flights = useFlightsState(true);
   const act = useGateAction();
   const now = useGameMinute(5000);
+  // Tucked away by the player until the booking's next step (check-in, boarding) opens it again.
+  const [tucked, setTucked] = useState<string | null>(null);
   const data = flights.data;
   if (!data?.atAirport) return null;
   const booking = nextBooking(data.bookings, data.airportVenueId);
@@ -193,6 +198,23 @@ function GateCard() {
   const { flight } = booking;
   const to = CITIES[flight.toCity].name;
   const missed = booking.status === 'missed';
+  const step = gateStep(booking);
+  if (tucked === step) {
+    return (
+      <div className={cn('pointer-events-none absolute inset-x-0 z-10 flex justify-center px-4', BELOW_TOP_BAR)}>
+        <button
+          type="button"
+          onClick={() => setTucked(null)}
+          aria-label={`Show your flight: ${flight.number} to ${to}`}
+          className="pointer-events-auto flex min-h-10 items-center gap-2 rounded-full bg-ink/85 px-3.5 text-sm font-semibold text-on-ink shadow-lg backdrop-blur-sm"
+        >
+          <Ticket size={16} aria-hidden />
+          {flight.number} · Gate {booking.gate}
+          <ChevronDown size={16} aria-hidden />
+        </button>
+      </div>
+    );
+  }
   return (
     <Card>
       <div className="flex items-center gap-2">
@@ -203,6 +225,9 @@ function GateCard() {
           </p>
           <p className="text-xs text-on-ink-soft">{missed ? `You missed it. Change it for ${formatNaira(booking.changeFee ?? 0)}.` : `Gate ${booking.gate}, seat ${booking.seat}. ${gateLine(booking, now)}`}</p>
         </div>
+        <button type="button" onClick={() => setTucked(step)} aria-label="Hide the flight card" className="-mr-1 grid size-10 shrink-0 place-items-center rounded-card text-on-ink-soft">
+          <ChevronUp size={18} aria-hidden />
+        </button>
       </div>
       <div className="mt-2 flex gap-2">
         {booking.canCheckIn && (
@@ -230,6 +255,11 @@ export function nextBooking(bookings: readonly FlightBookingDto[], airportVenueI
   const here = bookings.filter((booking) => booking.flight.fromAirportVenueId === airportVenueId);
   const live = here.filter((booking) => booking.status === 'booked' || booking.status === 'checked-in').toSorted((a, b) => a.flight.departAt - b.flight.departAt);
   return live.find((booking) => booking.canBoard || booking.canCheckIn) ?? live[0] ?? here.find((booking) => booking.status === 'missed') ?? null;
+}
+
+/** Which step a booking is at: hiding the card lasts until this changes (check-in or boarding opens, or it's missed). */
+export function gateStep(booking: Pick<FlightBookingDto, 'id' | 'status' | 'canCheckIn' | 'canBoard'>): string {
+  return `${booking.id}:${booking.status}:${booking.canCheckIn ? 'check-in' : booking.canBoard ? 'board' : 'wait'}`;
 }
 
 function gateLine(booking: FlightBookingDto, now: number): string {

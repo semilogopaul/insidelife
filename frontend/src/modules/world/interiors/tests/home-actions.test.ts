@@ -149,6 +149,21 @@ describe('home actions in a home you furnish', () => {
     }
   });
 
+  it('with no table, eats standing at the worktop — not in the middle of the kitchen floor', () => {
+    const meal = homeActions.find((action) => action.id === 'home-meal')!;
+    const worktops = new Set(['kitchenCabinet', 'kitchenCabinetDrawer', 'kitchenSink']);
+    for (const templateId of ['home-flat', 'home-duplex', 'home-mansion'] as const) {
+      const home = furnishedHome(templateId, ['sofa-leather']);
+      const { furnished } = hotspotOf(home.layout, home.rooms, meal);
+      const spot = actionSpot(furnished, meal);
+      const [x, z] = [spot.at[0], spot.at[spot.at.length - 1] as number];
+      expect(spot.stance ?? 'stand', templateId).toBe('stand');
+      expect([x, z], templateId).not.toEqual(furnished.player.default?.at);
+      const nearest = Math.min(...furnished.furniture.filter((piece) => worktops.has(piece.model) && (piece.y ?? 0) < 0.3).map((piece) => Math.hypot(piece.at[0] - x, piece.at[1] - z)));
+      expect(nearest, templateId).toBeLessThan(0.8);
+    }
+  });
+
   it('puts the bed hotspot where the bed stands, wherever you stand it', () => {
     const sleep = homeActions.find((action) => action.id === 'sleep')!;
     const home = furnishedHome('home-mansion', [{ item: 'bed-super-king', room: 'master' }, 'bed-foam-mattress']);
