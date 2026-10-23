@@ -6,14 +6,6 @@ pass it all on to your heir. Built to fix what went wrong with the viral *Lagos 
 server-authoritative (no client-side money), prices are real 2026 Lagos prices, and the rich list only counts money
 you actually earned.
 
-| | |
-|---|---|
-| Game design | [`docs/GAME_DESIGN.md`](docs/GAME_DESIGN.md) |
-| Player experience & flows | [`docs/UX_FLOWS.md`](docs/UX_FLOWS.md) |
-| Player psychology & monetisation ethics | [`docs/PLAYER_PSYCHOLOGY.md`](docs/PLAYER_PSYCHOLOGY.md) |
-| Architecture & how to add features | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
-| Research (Nigeria 2026 data, competitor teardown) | [`docs/research/`](docs/research/) |
-
 ## Run it
 
 ### Everything in Docker (closest to production)
@@ -60,7 +52,7 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 | Variable | Purpose |
 |---|---|
 | `GAME_TIME_SCALE` | Game minutes per real minute since `GAME_EPOCH` (default `60`: a game day is 24 real minutes, a year 6 real days). |
-| `GAME_TIME_RESCALES` | Later speed changes, `<ISO time>@<scale>,…`, each continuous with the clock before it (see `docs/DEPLOY.md` → Game speed). |
+| `GAME_TIME_RESCALES` | Later speed changes, `<ISO time>@<scale>,…`, each continuous with the clock before it. |
 | `GAME_EPOCH`, `WORLD_SEED` | Anchor of the shared world clock and the seed for weather, economy and world events. |
 | `FLUTTERWAVE_SECRET_KEY` | `FLWSECK_TEST-…` / `FLWSECK-…` (live). Empty in development → sandbox checkout. Required in production; the live site refuses test keys. |
 | `FLUTTERWAVE_PUBLIC_KEY` | Optional (hosted checkout doesn't need it); checked so the live site never ships a test key. |
@@ -68,7 +60,7 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 | `PAYMENT_CALLBACK_URL` | Where Flutterwave returns players after checkout (`/payments/callback`). |
 | `TOPUP_DAILY_LIMIT_NGN` | Real-money top-up cap per account per UTC day. `0` (default) = no cap; set one if chargebacks appear. |
 | `TOPUP_MAX_PER_PAYMENT_NGN` | Largest single top-up in real naira (default ₦10,000,000). Players pay a pack or any whole amount from ₦500. |
-| `PAYMENTS_USD_ENABLED` | `true` lets players pay top-ups, ads and club songs in US dollars (default `false`). The game stays in naira; prices convert at the owner's "₦ per $1 for payments" rate (admin → Ad prices → `usd-rate`, default ₦1,500, ₦500–₦5,000). Needs international cards on the Flutterwave account (docs/DEPLOY.md). |
+| `PAYMENTS_USD_ENABLED` | `true` lets players pay top-ups, ads and club songs in US dollars (default `false`). The game stays in naira; prices convert at the owner's "₦ per $1 for payments" rate (admin → Ad prices → `usd-rate`, default ₦1,500, ₦500–₦5,000). Needs international cards on the Flutterwave account. |
 | `TOPUP_MAX_PER_PAYMENT_USD` | Largest single dollar top-up, whole dollars (default 5,000; at most 20,000 on the live site). Dollar top-ups start at $1. |
 | `PAYMENTS_WALLETS_ENABLED` | `true` also offers Apple Pay (Safari only) and Google Pay for dollar payments (default `false`; needs `PAYMENTS_USD_ENABLED` and the wallets switched on in the Flutterwave dashboard). |
 | `ADMIN_EMAILS` | Owners of the admin portal (moderation, players, payments, audit log); they can grant the admin role to others. |
@@ -86,8 +78,7 @@ Backend environment is validated at startup — see [`backend/.env.example`](bac
 3. Generate a webhook secret hash (`openssl rand -hex 32`), put it in `FLUTTERWAVE_WEBHOOK_SECRET_HASH` and in
    *Settings → Webhooks → Secret hash*, with the webhook URL `https://<your-domain>/api/v1/payments/flutterwave/webhook`.
    Every charge is re-verified with the Flutterwave API before anything is delivered, and delivery is idempotent per
-   payment reference, so the redirect, the webhook and the reconciler can race safely. See
-   [`docs/DEPLOY.md`](docs/DEPLOY.md#5-flutterwave) for the dashboard settings and local webhook testing.
+   payment reference, so the redirect, the webhook and the reconciler can race safely.
 
 ## How it's built
 
@@ -119,8 +110,7 @@ Success has to be earned, so balance is tested, not guessed. `backend/src/tools/
 with a fast-forward clock and plays bot cohorts (idle, hustler, scholar, techie, investor, spender, entrepreneur) for
 years of game time, reporting wealth per strategy, health, careers and the money supply. In a 3-game-year run nobody
 got rich quick: minimum-wage hustles only support a modest lifestyle, small businesses and steady investing build
-slowly, and the big money (remote tech, professions, scaled businesses, property) takes many game years. See
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#economy-balancing-bot-simulation) to run it.
+slowly, and the big money (remote tech, professions, scaled businesses, property) takes many game years.
 
 Assets: 3D models and sound effects are [Kenney](https://kenney.nl) packs (CC0). Characters, clothing, music and
 ambience are generated in code.

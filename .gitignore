@@ -15,8 +15,12 @@ next-env.d.ts
 !.env.example
 !.env.production.example
 
-# Internal documents (not published, not tracked)
-/docs/private/
+# Internal documents, notes and agent instructions (kept locally, not on GitHub)
+/docs/
+/quickchecklist.txt
+/skillsresearch.txt
+CLAUDE.md
+AGENTS.md
 
 # Database dumps (docker-compose.prod.yml)
 /backups/
